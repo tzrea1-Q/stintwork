@@ -1,0 +1,22 @@
+{
+  "name": "@stintwork/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.3",
+    "@stintwork/core": "workspace:*",
+    "hono": "4.13.13"
+  }
+}

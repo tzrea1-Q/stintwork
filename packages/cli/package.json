@@ -1,0 +1,16 @@
+{
+  "name": "stintwork",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "stintwork": "./dist/bin.js"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@stintwork/server": "workspace:*"
+  }
+}

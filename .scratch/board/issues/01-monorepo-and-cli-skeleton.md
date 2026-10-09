@@ -1,6 +1,6 @@
 # 01 — Monorepo skeleton and a CLI that serves a page
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -23,3 +23,7 @@ The workspace every later ticket builds on, proven end to end by a CLI that serv
 ## Out of scope
 
 Indexing `.scratch/`, WebSocket, any UI beyond the placeholder.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** After `pnpm install`: `pnpm format:check`, `lint`, `typecheck`, `test` (6 tests, including the three named checks) and `build` all pass. `pnpm stintwork --no-open` prints `http://localhost:4317`, `/api/health` returns `{"ok":true,"repo":...}`, and the built page is served. Run from `/tmp`, the CLI exits 1 with "Not inside a Git repository".
