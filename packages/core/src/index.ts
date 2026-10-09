@@ -13,3 +13,6 @@ export {
   type WorkItem,
   type WorkItemIndex,
 } from "./work-items.js";
+
+export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
+export { detectSetup, type SetupReport } from "./setup.js";
