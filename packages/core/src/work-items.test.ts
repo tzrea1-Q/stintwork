@@ -54,6 +54,7 @@ test("indexes a work item with spec and tickets", () => {
     blockedBy: [],
     blocked: false,
     comments: [],
+    body: contractPackage[".scratch/contract-package/issues/01-package-skeleton.md"],
     path: ".scratch/contract-package/issues/01-package-skeleton.md",
   });
   expect(workItem.tickets.map((ticket) => ticket.blockedBy)).toEqual([
@@ -336,15 +337,21 @@ test("indexes this repo's board files correctly", () => {
   expect(board?.title).toBe("M1 · The board (read-only)");
   expect(board?.spec?.path).toBe(".scratch/board/spec.md");
   expect(board?.tickets.map((ticket) => ticket.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-  expect(board?.tickets.filter((ticket) => ticket.resolved)).toHaveLength(1);
-  expect(board?.tickets.map((ticket) => ticket.blocked)).toEqual([
-    false,
-    false,
-    true,
-    true,
-    true,
-    true,
-    true,
-    true,
+  // Statuses change as the milestone progresses; assert the dependency graph, not progress.
+  expect(board?.tickets.map((ticket) => ticket.blockedBy)).toEqual([
+    [],
+    [1],
+    [2],
+    [2],
+    [3, 4],
+    [5],
+    [6],
+    [7],
   ]);
+  for (const ticket of board?.tickets ?? []) {
+    const openBlocker = ticket.blockedBy.some(
+      (number) => !board?.tickets.find((candidate) => candidate.number === number)?.resolved,
+    );
+    expect(ticket.blocked).toBe(openBlocker);
+  }
 });
