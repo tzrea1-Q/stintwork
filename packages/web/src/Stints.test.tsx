@@ -86,6 +86,14 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
     type: "ended",
     at: "2026-10-09T10:01:00Z",
     status: "finished",
+    checkpointCommit: "0123456789abcdef",
+    handoff: {
+      stint: stint.id,
+      agent: stint.agent,
+      stoppedAt: "Implemented **code**",
+      unresolved: "Review the tests",
+      nextStep: "Resume here",
+    },
   }) as Stint;
   rerender(
     <WorkItemDrawer
@@ -96,7 +104,26 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
   const history = screen.getByRole("list", { name: "Stint history" });
   expect(history).toHaveTextContent("codex · Ticket 1 · finished");
   expect(history).toHaveTextContent("Started 2026-10-09T10:00:00Z · Ended 2026-10-09T10:01:00Z");
+  const handoff = within(history).getByRole("article", { name: "Handoff" });
+  expect(handoff).toHaveTextContent("Where I stoppedImplemented code");
+  expect(handoff).toHaveTextContent("UnresolvedReview the tests");
+  expect(handoff).toHaveTextContent("Suggested nextResume here");
+  expect(handoff).toHaveTextContent("Checkpoint commit: 0123456789abcdef");
+  expect(handoff.querySelector("strong")).toHaveTextContent("code");
   expect(screen.getByRole("button", { name: "Start stint" })).toBeEnabled();
+});
+
+test("history renders an explicit no-handoff card when the stint has none", () => {
+  const stint = applyStintLogEntry(applyStintLogEntry(null, started), {
+    type: "ended",
+    at: "2026-10-09T10:01:00Z",
+    status: "failed",
+    handoff: null,
+  }) as Stint;
+  render(<WorkItemDrawer item={{ ...item, stints: [summarizeStint(stint)] }} onClose={() => {}} />);
+  const card = screen.getByRole("article", { name: "Handoff" });
+  expect(card).toHaveTextContent("No handoff was given.");
+  expect(card).toHaveTextContent("No checkpoint recorded.");
 });
 
 test("a rejected start retains the copyable brief and displays the reason", async () => {

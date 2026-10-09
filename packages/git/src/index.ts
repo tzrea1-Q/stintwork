@@ -3,6 +3,8 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
+export { changedSince, createCheckpoint } from "./checkpoints.js";
+
 const execute = promisify(execFile);
 
 export async function ensureWorktree(

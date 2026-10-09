@@ -8,10 +8,16 @@ export type FakeAgentStep =
   | { type: "message" | "thought"; text: string }
   | { type: "delay"; milliseconds: number }
   | { type: "update"; update: Record<string, unknown> }
+  | { type: "write"; path: string; content: string }
+  | { type: "expect-prompt"; includes: string }
+  | { type: "crash" }
   | ({ type: "permission" } & Pick<RequestPermissionRequest, "toolCall" | "options">)
   | { type: "end"; stopReason?: string };
 
-export function createFakeAgentLauncher(script: readonly FakeAgentStep[]): AgentLauncher {
+export function createFakeAgentLauncher(
+  script: readonly FakeAgentStep[],
+  handoff: readonly FakeAgentStep[] = [],
+): AgentLauncher {
   const source = import.meta.url.endsWith(".ts");
   const entry = fileURLToPath(
     new URL(source ? "./fake-agent.ts" : "./fake-agent.js", import.meta.url),
@@ -23,7 +29,11 @@ export function createFakeAgentLauncher(script: readonly FakeAgentStep[]): Agent
       {
         cwd,
         stdio: "pipe",
-        env: { ...process.env, STINTWORK_FAKE_SCRIPT: JSON.stringify(script) },
+        env: {
+          ...process.env,
+          STINTWORK_FAKE_SCRIPT: JSON.stringify(script),
+          STINTWORK_FAKE_HANDOFF: JSON.stringify(handoff),
+        },
       },
     ),
   );

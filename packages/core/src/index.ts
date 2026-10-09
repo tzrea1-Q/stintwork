@@ -35,6 +35,7 @@ export {
   applyStintLogEntry,
   foldStintLog,
   indexStints,
+  isBriefHandoff,
   isStintEvent,
   isStintLogEntry,
   mergeStintEvent,

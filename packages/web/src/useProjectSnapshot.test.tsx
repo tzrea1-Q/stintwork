@@ -117,12 +117,27 @@ test("stint messages share the snapshot connection, merge chunks and finish with
   ]);
   expect(result.current.connection).toBe("live");
   expect(socket.close).not.toHaveBeenCalled();
-  send(5, { type: "ended", at: "2026-10-09T10:01:00Z", status: "finished" });
+  const handoff = {
+    stint: "first",
+    agent: "codex",
+    stoppedAt: "Code",
+    unresolved: "Checks",
+    nextStep: "Review",
+  };
+  send(5, {
+    type: "ended",
+    at: "2026-10-09T10:01:00Z",
+    status: "finished",
+    checkpointCommit: "checkpoint",
+    handoff,
+  });
   expect(result.current.snapshot?.workItems[0].activeStint).toBeNull();
   expect(result.current.snapshot?.workItems[0].stints[0]).toMatchObject({
     id: "first",
     status: "finished",
     endedAt: "2026-10-09T10:01:00Z",
+    checkpointCommit: "checkpoint",
+    handoff,
   });
 });
 
