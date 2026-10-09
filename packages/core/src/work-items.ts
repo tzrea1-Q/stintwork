@@ -72,28 +72,26 @@ function parseTicket(path: string, text: string, warnings: Warning[]): Ticket | 
   const filename = /\/(\d{2,})-([^/]+)\.md$/.exec(path);
   const number = Number(filename?.[1]);
   const title = heading(text)
-    ?.replace(/^\d+\s+(?:—|-)\s+/, "")
+    ?.replace(/^\d+(?::[ \t]*|\s+(?:—|-)\s+)/, "")
     .trim();
   if (!filename || !Number.isSafeInteger(number) || number < 1 || !title) {
     warnings.push({ path, message: "Ticket needs a NN-slug.md filename and a nonempty # heading" });
     return undefined;
   }
   const header = text.split(/^## /m, 1)[0];
-  const status = /^Status:[ \t]*(.*)$/m.exec(header)?.[1].trim();
-  const blockers = /^Blocked by:[ \t]*(.*)$/m.exec(header)?.[1].trim();
+  const status = /^(?:Status:|\*\*Status:\*\*)[ \t]*(.*)$/m.exec(header)?.[1].trim();
+  const blockers = /^(?:Blocked by:|\*\*Blocked by:\*\*)[ \t]*(.*)$/m.exec(header)?.[1].trim();
   if (!status) warnings.push({ path, message: "Missing Status before the first ## section" });
   if (blockers === undefined) {
     warnings.push({ path, message: "Missing Blocked by before the first ## section" });
   }
-  const references = !blockers || /^none$/i.test(blockers) ? [] : blockers.split(",");
-  if (
-    references.some(
-      (reference) =>
-        !/^\d+$/.test(reference.trim()) ||
-        !Number.isSafeInteger(Number(reference)) ||
-        Number(reference) < 1,
-    )
-  ) {
+  const references =
+    !blockers || /^none(?:[ \t]+\([^()]*\))?$/i.test(blockers)
+      ? []
+      : blockers
+          .split(",")
+          .map((reference) => Number(/^(\d+)(?:[ \t]+.+)?$/.exec(reference.trim())?.[1]));
+  if (references.some((reference) => !Number.isSafeInteger(reference) || reference < 1)) {
     warnings.push({ path, message: "Blocked by must be none or comma-separated ticket numbers" });
     return undefined;
   }
@@ -104,7 +102,7 @@ function parseTicket(path: string, text: string, warnings: Warning[]): Ticket | 
     title,
     status: status ?? "",
     resolved: /^(resolved|done|closed)$/i.test(status ?? ""),
-    blockedBy: [...new Set(references.map(Number))],
+    blockedBy: [...new Set(references)],
     blocked: false,
     comments: comments
       .split(/\n[ \t]*\n|\n(?=\*\*.+?\*\*)/u)
@@ -153,9 +151,11 @@ function orderTickets(tickets: Ticket[], warnings: Warning[]): Ticket[] {
  * Index immediate .scratch/<slug>/ work items, sorted by slug, without I/O.
  * Specs retain their exact text; titles use the first literal '# ' heading or
  * title-cased slug. map.md presence selects effort, otherwise type is feature.
- * Ticket metadata uses the first literal Status:/Blocked by: before a '## '
- * section, trimming values but preserving status case. Missing status is open;
- * missing/empty blockers mean none, with missing metadata producing warnings.
+ * Ticket metadata uses the first plain or bold Status:/Blocked by: before a
+ * '## ' section, trimming values but preserving status case. Blockers may have
+ * titles after their numbers, or a parenthesized explanation after none.
+ * Missing status is open; missing/empty blockers mean none, with missing metadata
+ * producing warnings.
  * Invalid filenames, missing titles, binary text and invalid blocker lists skip
  * that ticket. Duplicate numbers keep the lexically first file and warn.
  * Comments use the first literal '## Comments' section, ending at the next
