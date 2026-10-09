@@ -1,6 +1,6 @@
 # 01 — Read mattpocock's /to-tickets format
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -22,3 +22,7 @@ Both the plain format (`Status:` lines) and this bold format must work, includin
 - [ ] The metadata is found anywhere before the first `## ` heading, in either order.
 - [ ] Existing plain-format tests still pass unchanged. New tests use a fixture copied from real `/to-tickets` output.
 - [ ] The board on this repo shows no warnings for `.scratch/board` and `.scratch/first-stint` tickets.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** All checks pass in the worktree (141 tests, including 26 new to-tickets-format tests built on a byte-for-byte copy of real /to-tickets output). Plain-format tests unchanged.
