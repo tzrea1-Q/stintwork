@@ -1,0 +1,3 @@
+# Use the developer's own agents and logins; never handle credentials
+
+Stintwork launches the agents the developer has already installed and signed in to, under their own logins. It never reads, stores or proxies tokens or API keys, and never offers its own model access. This keeps it a local tool with no account and no backend, and keeps it clear of provider rules on third-party use of subscriptions, which Anthropic changed several times in 2026. When an agent reports "Authentication required" over ACP, Stintwork tells the developer which login command to run instead of authenticating for them.

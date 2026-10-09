@@ -8,7 +8,10 @@ A local, open-source workbench for building software with coding agents. Open an
 
 | Path | What it is |
 |---|---|
-| [`docs/brief.md`](docs/brief.md) | The v1 product brief: concepts, on-disk format, workflows, architecture, scope, open questions |
+| [`docs/plan.md`](docs/plan.md) | Production plan: architecture, milestones M1–M5 to v0.1, risks, open questions |
+| [`GLOSSARY.md`](GLOSSARY.md) | The product's vocabulary (work item, stage, stint, brief, handoff, checkpoint…) |
+| [`docs/adr/`](docs/adr/) | Decision records |
+| [`docs/brief.md`](docs/brief.md) | The v1 product brief: concepts, on-disk format, workflows, architecture, scope |
 | [`docs/research/2026-10-09-spikes.md`](docs/research/2026-10-09-spikes.md) | Results of the ACP connection test and the brief/handoff test |
 | [`prototype/`](prototype/) | Throwaway UI prototype: three variants (A Lists, B Pipeline, C Cockpit) over fake data. B was chosen as the primary view |
 | [`spikes/acp-probe/`](spikes/acp-probe/) | ACP probe harness for checking what each agent supports |

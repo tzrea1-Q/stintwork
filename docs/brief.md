@@ -36,7 +36,7 @@ You first: a solo developer maintaining a real application over weeks, using Cla
 |---|---|---|
 | **Project** | A git repo | The repo |
 | **Work item** | A feature or bug going through a workflow | `.scratch/<slug>/` |
-| **Run** | One agent session working on one stage of a work item | `.stintwork/local/runs/` (gitignored) |
+| **Stint** | One agent's turn on one stage of a work item, optionally on one ticket | `.stintwork/local/stints/` (gitignored) |
 
 Tickets (`issues/NN-*.md`) appear inside a work item as its task list, not as a fourth top-level concept. Agents are detected on your PATH and picked from a dropdown, with nothing to configure.
 
@@ -58,12 +58,12 @@ docs/agents/issue-tracker.md        # says "local markdown"    ← setup-matt-po
 .scratch/<feature>/workflow.yaml    # workflow, current stage, agent per stage, approvals (who/when/commit)
 .stintwork/roadmap.md               # milestones → features (edited by you)
 .stintwork/workflows/*.yaml         # workflow definitions
-.stintwork/local/                   # gitignored: run logs, handoff notes, session ids
+.stintwork/local/                   # gitignored: stint logs, handoff notes, session ids
 ```
 
 **Consequence:** memory shared across vendors becomes a property of the file layout, not a feature to build. Claude, Codex and Grok all read AGENTS.md, the glossary, ADRs, the spec and ticket comments natively.
 
-**Handoffs follow mattpocock's own rule.** His `handoff` skill deliberately writes to `$TMPDIR` and references durable artifacts rather than copying them. Per-run handoff notes therefore live in `.stintwork/local/`. Anything worth keeping must land in the spec, tickets, ADRs or glossary.
+**Handoffs follow mattpocock's own rule.** His `handoff` skill deliberately writes to `$TMPDIR` and references durable artifacts rather than copying them. Per-stint handoff notes therefore live in `.stintwork/local/`. Anything worth keeping must land in the spec, tickets, ADRs or glossary.
 
 ## 7. Built-in workflows
 
@@ -87,12 +87,12 @@ Notes:
 - User-invoked skills (`disable-model-invocation: true`) are triggered by sending the slash command as the prompt. Invocation syntax differs between agents, so each adapter handles it.
 - `/implement-spec` (parallel subagents across ready tickets) can be offered as an alternative Implement mode later.
 
-## 8. Runs: brief in, handoff out
+## 8. Stints: brief in, handoff out
 
 - **Start.** Create a worktree (for Implement stages). Compose the prompt: the stage's skill command, pointers to the work item's files, the last handoff, and what changed since it was written. The brief is a list of pointers, not copied text.
 - **During.** The ACP event stream drives the UI: messages, tool calls, plans and permission requests. Questions and approvals go to **Needs you**.
-- **End.** Ask the agent for a handoff: where it stopped, what's unresolved, and which skill should come next. Proposed durable changes (ticket status, ADRs, glossary) appear as diffs for you to accept.
-- **Switching agents** starts a new run on the same work item with the same brief. No transcript is transferred.
+- **End.** Stintwork makes a checkpoint commit (ADR 0004), then asks the agent for a handoff: where it stopped, what's unresolved, and which skill should come next. Proposed durable changes (ticket status, ADRs, glossary) appear as diffs for you to accept.
+- **Switching agents** starts a new stint on the same work item with the same brief. No transcript is transferred.
 
 ## 9. Agent integration
 
@@ -114,7 +114,7 @@ v1 builds these as view B (Pipeline): Project is the stage board, Work item and 
 |---|---|
 | **Needs you** (home) | What's waiting on me: questions, approvals, reviews |
 | **Project** | Milestones → features with a stage pill each; what's in progress; what's blocked |
-| **Work item** | Stage rail; spec and tickets in blocking order; runs; one "next action" button |
+| **Work item** | Stage rail; spec and tickets in blocking order; stints; one "next action" button |
 | **Review** | Diff; findings pinned to lines; checks for that exact commit; accept or request changes |
 
 Throughout: a ⌘K command palette, `c` to create, `j`/`k` to move, and a stable localhost URL for everything. Lists are as dense as Linear's. No dependency graph by default.
@@ -127,12 +127,12 @@ Throughout: a ⌘K command palette, `c` to create, `j`/`k` to move, and a stable
 - **UI:** React + Vite, Tailwind + Radix primitives, cmdk.
 - **Files:** a chokidar watcher feeds an in-memory index; parse with gray-matter/remark. No database in v1.
 - **Git:** shell out to `git` (worktrees) and `gh` (PRs, checks).
-- **Runs:** JSONL event logs in `.stintwork/local/runs/`.
+- **Stints:** JSONL event logs in `.stintwork/local/stints/`.
 - **Packaging:** one npm package. Wrap in Tauri or Electron later if needed.
 
 ## 12. Not in v1
 
-Teams and accounts, cloud runners, scheduled automations, a visual workflow editor, GitHub Issues sync, mobile, more than three agents, autonomous swarms, more than one active run per work item (parallel runs across work items are fine).
+Teams and accounts, cloud runners, scheduled automations, a visual workflow editor, GitHub Issues sync, mobile, more than three agents, autonomous swarms, more than one active stint per work item (parallel stints across work items are fine).
 
 ## 13. First milestone: acceptance scenario
 
@@ -169,6 +169,6 @@ Details: `docs/research/2026-10-09-spikes.md`.
 
 - **ACP works for all three agents:** structured streaming, skill discovery and slash invocation, permission requests, cancel, and `loadSession` resume. Missing logins surface as a structured "Authentication required" error.
 - **Brief and handoff work:** a fresh Codex session and then Claude Code continued a real multi-ticket task from the brief alone. They honoured a requirement changed after the handoff, asked no questions, and all checks passed.
-- **Save git state when a run stops:** interrupted work was left uncommitted, and the next run's commit mixed in some of it.
+- **Save git state when a stint stops:** interrupted work was left uncommitted, and the next stint's commit mixed in some of it.
 - **Worktrees need setup:** they need a dependency install and a writable git directory. Codex's sandbox blocked commits until the git dir was added as writable.
 - **The brief removes confusion, not exploration:** agents still read the files it points to.
