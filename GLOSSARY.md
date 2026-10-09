@@ -69,7 +69,7 @@ The commit Stintwork makes when a stint ends, so the next stint starts from a re
 _Avoid_: Snapshot, save point, WIP
 
 **Permission level**:
-How much a stint may do without asking the developer. Stintwork translates it into each agent's own modes.
+How much a stint may do without asking the developer: Ask, Edit freely, or Autonomous. Stintwork translates it into each agent's own modes.
 _Avoid_: Mode (an agent's own setting), sandbox
 
 ## The developer's attention

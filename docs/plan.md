@@ -114,10 +114,12 @@ Someone else can use it.
 | Scope creep toward a "platform" | The "Later" list and brief §12 are explicit no's; each milestone has one exit test |
 | One maintainer's bandwidth | Agents implement tickets via Stintwork itself from M2; Codex delegation for parallel work |
 
-## Open questions to settle before M1 tickets
+## Settled (2026-10-09)
 
-1. **Stage without `workflow.yaml`.** For an existing `.scratch/<feature>/` with no `workflow.yaml`, infer the stage from the files (no spec → Clarify; spec, no tickets → Spec; open tickets → Implement…) or ask once and write the file? Proposal: infer and show it as inferred, then write `workflow.yaml` on the first action.
-2. **Is `.scratch/` committed?** Proposal: yes. It is the project record (ADR 0001).
-3. **Permission levels.** Proposal, three levels: *Ask* (every edit and command), *Edit freely* (edits in the worktree, ask for commands; the default), and *Autonomous* (everything inside the worktree). Each agent gets a mapping table.
-4. **Where gate approvals are recorded.** Proposal: in `workflow.yaml` (who, when, commit), not in `spec.md`.
-5. **Node version and package manager.** Proposal: Node 22+ and pnpm, matching PagePilot and the prototype.
+1. **Stage without `workflow.yaml`:** infer it from the files, show it as inferred, and write `workflow.yaml` the first time the developer acts on the work item.
+2. **`.scratch/` is committed.** It is the project record (ADR 0001).
+3. **Permission levels:** *Ask* (every edit and command), *Edit freely* (edits in the worktree without asking, ask before commands outside a safe list), and *Autonomous* (anything inside the worktree). **Edit freely is the default.** Each agent gets a mapping table in M3.
+4. **Gate approvals are recorded in `workflow.yaml`** (who, when, at which commit), so specs and tickets stay in mattpocock's format.
+5. **Node 22+ and pnpm**, matching PagePilot and the prototype.
+
+Stintwork's own work is tracked in `.scratch/`, and milestones in `.stintwork/roadmap.md`.
