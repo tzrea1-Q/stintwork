@@ -38,7 +38,17 @@ export type Stint = {
 };
 export type StintSummary = Pick<
   Stint,
-  "id" | "workItem" | "stage" | "ticket" | "agent" | "status" | "startedAt" | "endedAt" | "error"
+  | "id"
+  | "workItem"
+  | "stage"
+  | "ticket"
+  | "agent"
+  | "status"
+  | "startedAt"
+  | "endedAt"
+  | "error"
+  | "checkpointCommit"
+  | "handoff"
 >;
 export type StintLogEntry =
   | {
@@ -57,7 +67,7 @@ export type StintLogEntry =
       stopReason?: string;
       error?: string;
       checkpointCommit?: string;
-      handoff?: BriefHandoff;
+      handoff?: BriefHandoff | null;
     };
 export type StintLiveMessage = {
   type: "stint";
@@ -134,6 +144,8 @@ export function summarizeStint(stint: Stint): StintSummary {
     status,
     startedAt,
     endedAt,
+    checkpointCommit: stint.checkpointCommit,
+    handoff: stint.handoff,
     ...(error ? { error } : {}),
   };
 }
@@ -186,7 +198,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
       ["error", "stopReason", "checkpointCommit"].every(
         (key) => entry[key] === undefined || typeof entry[key] === "string",
       ) &&
-      (entry.handoff === undefined || validHandoff(entry.handoff))
+      (entry.handoff === undefined || entry.handoff === null || isBriefHandoff(entry.handoff))
     );
   if (entry.type !== "started" || !entry.stint || typeof entry.stint !== "object") return false;
   const stint = entry.stint as Record<string, unknown>;
@@ -201,8 +213,9 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
     typeof worktree?.path === "string" &&
     typeof worktree.branch === "string" &&
     typeof brief?.prompt === "string" &&
+    (brief.checkpointCommit == null || typeof brief.checkpointCommit === "string") &&
     (brief.skill === null || typeof brief.skill === "string") &&
-    (brief.lastHandoff === null || validHandoff(brief.lastHandoff)) &&
+    (brief.lastHandoff === null || isBriefHandoff(brief.lastHandoff)) &&
     Array.isArray(brief.changedPaths) &&
     brief.changedPaths.every((path) => typeof path === "string") &&
     Array.isArray(brief.pointers) &&
@@ -216,7 +229,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   );
 }
 
-function validHandoff(value: unknown): value is BriefHandoff {
+export function isBriefHandoff(value: unknown): value is BriefHandoff {
   return (
     !!value &&
     typeof value === "object" &&

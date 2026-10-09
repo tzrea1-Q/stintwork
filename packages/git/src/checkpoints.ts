@@ -1,0 +1,68 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execute = promisify(execFile);
+
+export async function createCheckpoint(
+  worktree: string,
+  stint: { id: string; workItem: string; ticket: number | null; status: string },
+): Promise<string> {
+  const git = async (args: string[]) =>
+    (await execute("git", args, { cwd: worktree })).stdout.trim();
+  await git(["add", "--all"]);
+  const changed = await git(["diff", "--cached", "--quiet"]).then(
+    () => false,
+    (error: { code?: number }) => {
+      if (error.code !== 1) throw error;
+      return true;
+    },
+  );
+  if (changed) {
+    const identity = await Promise.all(
+      ["name", "email"].map((field) =>
+        git(["config", "--get", `user.${field}`]).catch((error: { code?: number }) => {
+          if (error.code !== 1) throw error;
+          return "";
+        }),
+      ),
+    );
+    await git([
+      "-c",
+      `user.name=${identity[0] || "Stintwork"}`,
+      "-c",
+      `user.email=${identity[1] || "stintwork@localhost"}`,
+      "commit",
+      "--author",
+      `${identity[0] || "Stintwork"} <${identity[1] || "stintwork@localhost"}>`,
+      "-m",
+      `Checkpoint: stint ${stint.id}; work item ${stint.workItem}; ticket ${stint.ticket ?? "none"}; ${stint.status}`,
+    ]);
+  }
+  return git(["rev-parse", "HEAD"]);
+}
+
+export async function changedSince(
+  root: string,
+  checkpointCommit: string,
+  workItem: string,
+): Promise<string[]> {
+  if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(checkpointCommit))
+    throw new Error("Invalid checkpoint commit.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem)) throw new Error("Invalid work item slug.");
+  const prefix = `.scratch/${workItem}/`;
+  const paths = [`${prefix}spec.md`, `${prefix}issues/`];
+  const outputs = await Promise.all(
+    [
+      ["diff", "--name-only", "--no-renames", "-z", checkpointCommit, "--", ...paths],
+      ["ls-files", "--others", "--exclude-standard", "-z", "--", ...paths],
+    ].map((args) => execute("git", ["--literal-pathspecs", ...args], { cwd: root })),
+  );
+  return [...new Set(outputs.flatMap(({ stdout }) => stdout.split("\0")))]
+    .filter(
+      (path) =>
+        path === `${prefix}spec.md` ||
+        (path.startsWith(`${prefix}issues/`) &&
+          /^\d{2,}-[^/]+\.md$/.test(path.slice(`${prefix}issues/`.length))),
+    )
+    .sort();
+}

@@ -15,6 +15,7 @@ export type Brief = {
   pointers: BriefPointer[];
   lastHandoff: BriefHandoff | null;
   changedPaths: string[];
+  checkpointCommit?: string | null;
   prompt: string;
 };
 export type BriefInput = {
@@ -24,6 +25,7 @@ export type BriefInput = {
   ticket: Pick<Ticket, "path">;
   lastHandoff?: BriefHandoff | null;
   changedPaths?: readonly string[];
+  checkpointCommit?: string | null;
 };
 
 export function briefUnavailableReason(
@@ -47,6 +49,7 @@ export function compileBrief({
   ticket,
   lastHandoff = null,
   changedPaths = [],
+  checkpointCommit = null,
 }: BriefInput): Brief {
   const pointers: BriefPointer[] = [];
   function addPointer(path: string, reason: string) {
@@ -72,6 +75,7 @@ export function compileBrief({
     handoff
       ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
       : "Last handoff: none — start from the project conventions and work item scope.",
+    ...(checkpointCommit ? [`Checkpoint commit: ${checkpointCommit}`] : []),
     [
       "Changed since the last handoff:",
       ...(changed.length ? changed.map((path) => `- ${path}`) : ["- none"]),
@@ -87,5 +91,12 @@ export function compileBrief({
       "- Record only checks actually run, with their results.",
     ].join("\n"),
   ].join("\n\n");
-  return { skill: stage.skill, pointers, lastHandoff: handoff, changedPaths: changed, prompt };
+  return {
+    skill: stage.skill,
+    pointers,
+    lastHandoff: handoff,
+    changedPaths: changed,
+    checkpointCommit,
+    prompt,
+  };
 }
