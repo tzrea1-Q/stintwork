@@ -3,6 +3,7 @@ import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { TicketBriefPreview } from "./BriefPreview";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 function Markdown({ text }: { text: string }) {
@@ -177,6 +178,7 @@ export function WorkItemDrawer({
                       <Markdown text={ticket.body} />
                     </details>
                     <FilePath path={ticket.path} />
+                    <TicketBriefPreview item={item} ticket={ticket} />
                   </li>
                 );
               })}

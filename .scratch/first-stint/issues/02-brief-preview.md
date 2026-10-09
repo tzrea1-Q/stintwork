@@ -1,6 +1,6 @@
 # 02 — Brief preview
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -24,3 +24,7 @@ The brief compiler is a pure `core` function (spec → Implementation Decisions)
 - [ ] Server test: the preview endpoint returns the brief for a work item and ticket, and rejects blocked or resolved tickets with a reason.
 - [ ] Component tests: the preview renders each section, copies the prompt, and shows the disabled agents and the disabled reason on blocked tickets.
 - [ ] In the browser on this repo: the preview for an open `first-stint` ticket shows real pointers and paths.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** All checks pass in the worktree (131 tests, including 16 new). Adds compileBrief in core, GET /api/work-items/:slug/tickets/:ticket/brief-preview (404 for missing targets, 409 with a reason when the ticket isn't eligible), and the preview sheet in the drawer. Start stays disabled until 03. Browser check on main after merge.
