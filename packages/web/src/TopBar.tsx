@@ -1,15 +1,17 @@
 import type { ProjectSnapshot } from "@stintwork/core";
-import { AlertTriangle, Check, Circle, GitBranch, Layers3, Settings2 } from "lucide-react";
+import { AlertTriangle, Check, Circle, GitBranch, Layers3, Search, Settings2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function TopBar({
   snapshot,
   milestone,
   onMilestoneChange,
+  onOpenPalette,
 }: {
   snapshot: ProjectSnapshot;
   milestone: string;
   onMilestoneChange: (id: string) => void;
+  onOpenPalette: () => void;
 }) {
   const [panel, setPanel] = useState<"warnings" | "setup" | null>(null);
   const panels = useRef<HTMLDivElement>(null);
@@ -71,6 +73,18 @@ export function TopBar({
         )}
       </div>
       <div className="top-actions">
+        <button
+          type="button"
+          id="command-palette-trigger"
+          className="top-button"
+          aria-label="Open command palette"
+          aria-haspopup="dialog"
+          onClick={onOpenPalette}
+        >
+          <Search size={13} aria-hidden="true" />
+          <span>Jump to…</span>
+          <kbd>⌘K / Ctrl+K</kbd>
+        </button>
         <label className="milestone-filter">
           <span className="muted text-[11px]">Milestone</span>
           <select

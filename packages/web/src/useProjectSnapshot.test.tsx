@@ -125,6 +125,51 @@ test("rejects malformed live data without discarding the last usable project", a
   unmount();
 });
 
+test.each([
+  { spec: { path: ".scratch/board/spec.md", text: 42 } },
+  {
+    tickets: [
+      {
+        number: 1,
+        slug: "slice",
+        title: "Slice",
+        status: "open",
+        body: "# Slice",
+        path: ".scratch/board/issues/01-slice.md",
+        resolved: false,
+        blocked: false,
+        blockedBy: null,
+      },
+    ],
+  },
+  {
+    tickets: [
+      {
+        number: 1,
+        slug: "slice",
+        title: "Slice",
+        status: "open",
+        body: null,
+        path: ".scratch/board/issues/01-slice.md",
+        resolved: false,
+        blocked: false,
+        blockedBy: [],
+      },
+    ],
+  },
+])("rejects malformed drawer content without replacing the snapshot: %j", async (fields) => {
+  const { result, unmount } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  act(() =>
+    TestSocket.instances[0].onmessage?.({
+      data: JSON.stringify({ ...snapshot, workItems: [{ ...snapshot.workItems[0], ...fields }] }),
+    }),
+  );
+  expect(result.current.snapshot).toEqual(snapshot);
+  expect(result.current.connection).toBe("reconnecting");
+  unmount();
+});
+
 test("aborts pending requests and detaches socket handlers on unmount", () => {
   vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
   const { unmount } = renderHook(useProjectSnapshot);

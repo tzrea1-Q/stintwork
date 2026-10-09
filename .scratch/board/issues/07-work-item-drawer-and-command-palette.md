@@ -1,6 +1,6 @@
 # 07 — Work-item drawer and ⌘K
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06
 
 ## What to build
@@ -20,3 +20,7 @@ In `packages/web`: the drawer and the command palette, per `.scratch/board/spec.
 ## Out of scope
 
 Editing, starting stints, review.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** With cmdk 1.1.1, react-markdown 10.1.0 and remark-gfm 4.0.1 installed, two of Codex's extra tests failed: unscoped queries, and a role assumption about sanitized links. Codex fixed the tests (now stricter); no component changes were needed. All checks pass (115 tests, including the four named ones). In the browser on this repo: clicking the card opens the drawer with `?item=board`, the stage rail marks Implement as inferred, the spec renders as GFM, tickets show in dependency order with Blocked by and copyable paths, Esc closes it, and the ⌘K search "board" finds the work item and the M1 filter.

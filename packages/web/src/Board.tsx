@@ -1,10 +1,12 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Column } from "./Column";
+import { CommandPalette } from "./CommandPalette";
 import { TopBar } from "./TopBar";
 import type { Connection } from "./useProjectSnapshot";
 import { WorkItemCard } from "./WorkItemCard";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 export function Board({
   snapshot,
@@ -16,7 +18,13 @@ export function Board({
   error?: string;
 }) {
   const [selectedMilestone, setSelectedMilestone] = useState("");
+  const [openSlug, setOpenSlug] = useState<string | null>(() =>
+    new URL(window.location.href).searchParams.get("item"),
+  );
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
+  const openItem = snapshot.workItems.find((item) => item.slug === openSlug);
   const milestone = snapshot.milestones.some((entry) => entry.id === selectedMilestone)
     ? selectedMilestone
     : "";
@@ -29,9 +37,88 @@ export function Board({
   const unstaged = active.filter((item) => item.column === undefined);
   const selected = snapshot.milestones.find((entry) => entry.id === milestone);
 
+  const openWorkItem = useCallback(
+    (slug: string) => {
+      if (
+        milestone &&
+        snapshot.workItems.find((item) => item.slug === slug)?.milestone !== milestone
+      )
+        setSelectedMilestone("");
+      setOpenSlug(slug);
+    },
+    [milestone, snapshot.workItems],
+  );
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (openItem) url.searchParams.set("item", openItem.slug);
+    else url.searchParams.delete("item");
+    window.history.replaceState(window.history.state, "", url);
+
+    if (!openItem && previousItem.current) {
+      setOpenSlug(null);
+      const card = Array.from(
+        scroll.current?.querySelectorAll<HTMLButtonElement>("[data-work-item]") ?? [],
+      ).find((element) => element.dataset.workItem === previousItem.current);
+      const lane = card?.closest("details");
+      if (lane) lane.open = true;
+      (card ?? document.getElementById("command-palette-trigger"))?.focus();
+    }
+    previousItem.current = openItem?.slug ?? null;
+  }, [openItem]);
+
+  useEffect(() => {
+    function handleKeydown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setPaletteOpen((open) => !open);
+        return;
+      }
+      if (openItem || paletteOpen || !(event.target instanceof HTMLElement)) return;
+      const card = event.target.closest<HTMLButtonElement>("button[data-work-item]");
+      const column = card?.closest<HTMLElement>("[data-card-column]");
+      if (!card || !column || !event.key.startsWith("Arrow")) return;
+      const columns = Array.from(
+        scroll.current?.querySelectorAll<HTMLElement>("[data-card-column]") ?? [],
+      )
+        .filter((element) => !element.closest("details:not([open])"))
+        .map((element) =>
+          Array.from(element.querySelectorAll<HTMLButtonElement>("button[data-work-item]")),
+        )
+        .filter((cards) => cards.length > 0);
+      const columnIndex = columns.findIndex((cards) => cards.includes(card));
+      const cards = columns[columnIndex];
+      if (!cards) return;
+      const row = cards.indexOf(card);
+      let target: HTMLButtonElement | undefined;
+      if (event.key === "ArrowUp") target = cards[row - 1];
+      if (event.key === "ArrowDown") target = cards[row + 1];
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        const adjacent = columns[columnIndex + (event.key === "ArrowLeft" ? -1 : 1)];
+        target = adjacent?.[Math.min(row, adjacent.length - 1)];
+      }
+      event.preventDefault();
+      target?.focus();
+    }
+    function handlePopstate() {
+      setOpenSlug(new URL(window.location.href).searchParams.get("item"));
+    }
+    document.addEventListener("keydown", handleKeydown);
+    window.addEventListener("popstate", handlePopstate);
+    return () => {
+      document.removeEventListener("keydown", handleKeydown);
+      window.removeEventListener("popstate", handlePopstate);
+    };
+  }, [openItem, paletteOpen]);
+
   return (
     <div className="pipeline-app">
-      <TopBar snapshot={snapshot} milestone={milestone} onMilestoneChange={setSelectedMilestone} />
+      <TopBar
+        snapshot={snapshot}
+        milestone={milestone}
+        onMilestoneChange={setSelectedMilestone}
+        onOpenPalette={() => setPaletteOpen(true)}
+      />
       <main className="pipeline-main">
         <div className="pipeline-heading">
           <div>
@@ -110,11 +197,16 @@ export function Board({
                     name={stage.name}
                     items={active.filter((item) => item.column === stage.column)}
                     milestones={snapshot.milestones}
+                    onOpen={openWorkItem}
                   />
                 ))}
               </div>
               {unstaged.length > 0 && (
-                <section className="unstaged" aria-label="Work items without a stage">
+                <section
+                  className="unstaged"
+                  data-card-column="unstaged"
+                  aria-label="Work items without a stage"
+                >
                   <h2 className="mb-3 text-xs muted">
                     Work items without a stage · {unstaged.length}
                   </h2>
@@ -124,6 +216,7 @@ export function Board({
                         key={item.slug}
                         item={item}
                         milestone={snapshot.milestones.find((entry) => entry.id === item.milestone)}
+                        onOpen={openWorkItem}
                       />
                     ))}
                   </div>
@@ -139,12 +232,13 @@ export function Board({
               <span className="count">{shipped.length}</span>
             </summary>
             {shipped.length ? (
-              <div className="auxiliary-items mt-3">
+              <div className="auxiliary-items mt-3" data-card-column="shipped">
                 {shipped.map((item) => (
                   <WorkItemCard
                     key={item.slug}
                     item={item}
                     milestone={snapshot.milestones.find((entry) => entry.id === item.milestone)}
+                    onOpen={openWorkItem}
                   />
                 ))}
               </div>
@@ -154,6 +248,23 @@ export function Board({
           </details>
         </section>
       </main>
+      {openItem && (
+        <WorkItemDrawer
+          key={openItem.slug}
+          item={openItem}
+          milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
+          onClose={() => setOpenSlug(null)}
+        />
+      )}
+      {paletteOpen && (
+        <CommandPalette
+          snapshot={snapshot}
+          milestone={milestone}
+          onMilestoneChange={setSelectedMilestone}
+          onOpenItem={openWorkItem}
+          onClose={() => setPaletteOpen(false)}
+        />
+      )}
     </div>
   );
 }

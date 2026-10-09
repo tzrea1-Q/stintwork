@@ -16,15 +16,17 @@ export function Column({
   name,
   items,
   milestones,
+  onOpen,
 }: {
   id: BoardColumn;
   name: string;
   items: BoardWorkItem[];
   milestones: Milestone[];
+  onOpen: (slug: string) => void;
 }) {
   const { icon: Icon, hint } = presentation[id];
   return (
-    <section className="stage-column" aria-labelledby={`stage-${id}`}>
+    <section className="stage-column" data-card-column={id} aria-labelledby={`stage-${id}`}>
       <header className="stage-header">
         <div className="flex items-center gap-2">
           <Icon className={id === "implement" ? "accent" : "muted"} size={14} aria-hidden="true" />
@@ -42,6 +44,7 @@ export function Column({
               key={item.slug}
               item={item}
               milestone={milestones.find((milestone) => milestone.id === item.milestone)}
+              onOpen={onOpen}
             />
           ))
         ) : (

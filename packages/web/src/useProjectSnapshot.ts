@@ -55,11 +55,22 @@ function readSnapshot(value: unknown): ProjectSnapshot {
         (item.column === undefined || stages.some((stage) => stage.column === item.column)) &&
         (item.stage === undefined || stages.some((stage) => stage.id === item.stage)) &&
         (item.milestone === undefined || typeof item.milestone === "string") &&
-        (item.spec === null || (isRecord(item.spec) && typeof item.spec.path === "string")) &&
+        (item.spec === null ||
+          (isRecord(item.spec) &&
+            typeof item.spec.path === "string" &&
+            typeof item.spec.text === "string")) &&
         Array.isArray(item.tickets) &&
         item.tickets.every(
           (ticket: unknown) =>
             isRecord(ticket) &&
+            Number.isSafeInteger(ticket.number) &&
+            typeof ticket.slug === "string" &&
+            typeof ticket.title === "string" &&
+            typeof ticket.status === "string" &&
+            typeof ticket.body === "string" &&
+            typeof ticket.path === "string" &&
+            Array.isArray(ticket.blockedBy) &&
+            ticket.blockedBy.every((number: unknown) => Number.isSafeInteger(number)) &&
             typeof ticket.resolved === "boolean" &&
             typeof ticket.blocked === "boolean",
         ),

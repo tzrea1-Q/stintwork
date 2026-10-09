@@ -4,7 +4,15 @@ import { useId } from "react";
 
 export type BoardWorkItem = ProjectSnapshot["workItems"][number];
 
-export function WorkItemCard({ item, milestone }: { item: BoardWorkItem; milestone?: Milestone }) {
+export function WorkItemCard({
+  item,
+  milestone,
+  onOpen,
+}: {
+  item: BoardWorkItem;
+  milestone?: Milestone;
+  onOpen: (slug: string) => void;
+}) {
   const tooltipId = useId();
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
   const open = item.tickets.filter((ticket) => !ticket.resolved);
@@ -36,7 +44,18 @@ export function WorkItemCard({ item, milestone }: { item: BoardWorkItem; milesto
           </span>
         )}
       </div>
-      <h3 className="my-3 text-[13px] leading-5 font-medium break-words">{item.title}</h3>
+      <h3 className="my-3 text-[13px] leading-5 font-medium break-words">
+        <button
+          type="button"
+          className="work-item-open"
+          data-work-item={item.slug}
+          aria-label={`Open ${item.slug}: ${item.title}`}
+          aria-haspopup="dialog"
+          onClick={() => onOpen(item.slug)}
+        >
+          {item.title}
+        </button>
+      </h3>
       {(blocked || item.inferred) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {blocked && (
