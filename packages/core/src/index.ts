@@ -28,3 +28,5 @@ export {
   type WorkflowId,
   type WorkflowStage,
 } from "./workflows.js";
+export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
+export { detectSetup, type SetupReport } from "./setup.js";

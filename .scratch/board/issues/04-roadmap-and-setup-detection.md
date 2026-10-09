@@ -1,6 +1,6 @@
 # 04 — Roadmap milestones and project setup detection
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -23,3 +23,7 @@ Vitest:
 ## Out of scope
 
 Editing the roadmap, writing setup files.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** `format:check`, `lint`, `typecheck`, `test` and `build` pass in the worktree, including every named acceptance check.
