@@ -31,3 +31,11 @@ export {
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
 export { detectSetup, type SetupReport } from "./setup.js";
 export { indexProject, type ProjectSnapshot } from "./project.js";
+export {
+  type Brief,
+  type BriefHandoff,
+  type BriefInput,
+  type BriefPointer,
+  briefUnavailableReason,
+  compileBrief,
+} from "./brief.js";

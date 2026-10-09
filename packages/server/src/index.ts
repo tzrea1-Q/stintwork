@@ -9,6 +9,7 @@ import { type Health, indexProject, type Warning } from "@stintwork/core";
 import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
+import { addBriefPreviewRoute } from "./brief-preview.js";
 import { createNodeRepoFiles, projectPaths } from "./repo-files.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -75,6 +76,7 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(snapshot);
   });
+  addBriefPreviewRoute(app, files);
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {
     const origin = context.req.header("origin");
