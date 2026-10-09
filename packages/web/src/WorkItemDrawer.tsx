@@ -187,9 +187,69 @@ export function WorkItemDrawer({
             <p className="muted">No tickets yet.</p>
           )}
         </section>
+        {item.activeStint && (
+          <section aria-labelledby="drawer-live-stint-title">
+            <h3 id="drawer-live-stint-title" className="drawer-section-heading">
+              Live stint
+            </h3>
+            <p role="status">
+              {item.activeStint.agent} · Ticket {item.activeStint.ticket} ·{" "}
+              {item.activeStint.status}
+            </p>
+            <div
+              className="stint-messages"
+              role="log"
+              aria-label="Stint messages"
+              aria-live="polite"
+            >
+              {item.activeStint.events
+                .filter((event) => event.type === "message")
+                .map(
+                  (event) =>
+                    event.type === "message" && (
+                      <div key={event.id}>
+                        <Markdown text={event.text} />
+                      </div>
+                    ),
+                )}
+            </div>
+          </section>
+        )}
+        <section aria-labelledby="drawer-stint-history-title">
+          <h3 id="drawer-stint-history-title" className="drawer-section-heading">
+            Stint history
+          </h3>
+          {item.stints.length ? (
+            <ol aria-label="Stint history">
+              {item.stints.map((stint) => (
+                <li key={stint.id}>
+                  <p>
+                    {stint.agent} · Ticket {stint.ticket} · <strong>{stint.status}</strong>
+                  </p>
+                  <p className="muted">
+                    Started <time dateTime={stint.startedAt}>{stint.startedAt}</time>
+                    {stint.endedAt && (
+                      <>
+                        {" "}
+                        · Ended <time dateTime={stint.endedAt}>{stint.endedAt}</time>
+                      </>
+                    )}
+                  </p>
+                  {stint.error && (
+                    <p className="warning" role="alert">
+                      {stint.error}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="muted">No stints yet.</p>
+          )}
+        </section>
       </div>
       <footer className="drawer-footer">
-        <span>Read-only · Local Markdown tracker</span>
+        <span>Local Markdown tracker</span>
         <span>
           <kbd>Esc</kbd> to return to Pipeline
         </span>

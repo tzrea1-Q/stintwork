@@ -1,10 +1,31 @@
-import { builtInWorkflows, type ProjectSnapshot, type WorkflowStage } from "@stintwork/core";
+import {
+  applyStintLogEntry,
+  builtInWorkflows,
+  isStintLogEntry,
+  isStintEvent,
+  summarizeStint,
+  type ProjectSnapshot,
+  type WorkflowStage,
+} from "@stintwork/core";
 import { useEffect, useState } from "react";
 
 export type Connection = "connecting" | "live" | "reconnecting";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function isStintSummary(value: unknown) {
+  return (
+    isRecord(value) &&
+    ["id", "workItem", "stage", "agent", "startedAt"].every(
+      (key) => typeof value[key] === "string",
+    ) &&
+    (value.ticket === null || Number.isSafeInteger(value.ticket)) &&
+    ["running", "finished", "stopped", "failed", "interrupted"].includes(String(value.status)) &&
+    (value.endedAt === null || typeof value.endedAt === "string") &&
+    (value.error === undefined || typeof value.error === "string")
+  );
 }
 
 function readSnapshot(value: unknown): ProjectSnapshot {
@@ -55,6 +76,14 @@ function readSnapshot(value: unknown): ProjectSnapshot {
         (item.column === undefined || stages.some((stage) => stage.column === item.column)) &&
         (item.stage === undefined || stages.some((stage) => stage.id === item.stage)) &&
         (item.milestone === undefined || typeof item.milestone === "string") &&
+        Array.isArray(item.stints) &&
+        item.stints.every(isStintSummary) &&
+        (item.activeStint === null ||
+          (isRecord(item.activeStint) &&
+            isStintSummary(item.activeStint) &&
+            item.activeStint.status === "running" &&
+            Array.isArray(item.activeStint.events) &&
+            item.activeStint.events.every(isStintEvent))) &&
         (item.spec === null ||
           (isRecord(item.spec) &&
             typeof item.spec.path === "string" &&
@@ -95,6 +124,7 @@ export function useProjectSnapshot() {
     let requestTimeout: ReturnType<typeof setTimeout> | undefined;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
+    const sequences = new Map<string, number>();
 
     async function load() {
       if (disposed || request) return;
@@ -159,7 +189,51 @@ export function useProjectSnapshot() {
         deadline = setTimeout(retry, 8000);
         socket.onmessage = (event) => {
           try {
-            const next = readSnapshot(JSON.parse(event.data));
+            const message: unknown = JSON.parse(event.data);
+            if (isRecord(message) && message.type === "stint") {
+              if (
+                typeof message.stintId !== "string" ||
+                typeof message.workItem !== "string" ||
+                !Number.isSafeInteger(message.sequence) ||
+                (message.sequence as number) < 1 ||
+                !isStintLogEntry(message.entry)
+              )
+                throw new Error("Invalid stint event.");
+              const sequence = message.sequence as number;
+              if (sequence <= (sequences.get(message.stintId) ?? 0)) return;
+              sequences.set(message.stintId, sequence);
+              version++;
+              const entry = message.entry;
+              if (
+                entry.type === "started" &&
+                (entry.stint.id !== message.stintId || entry.stint.workItem !== message.workItem)
+              )
+                throw new Error("Stint identity mismatch.");
+              setSnapshot(
+                (current) =>
+                  current && {
+                    ...current,
+                    workItems: current.workItems.map((item) => {
+                      if (item.slug !== message.workItem) return item;
+                      const previous =
+                        item.activeStint?.id === message.stintId ? item.activeStint : null;
+                      const stint = applyStintLogEntry(previous, entry);
+                      if (!stint || stint.id !== message.stintId) return item;
+                      const summary = summarizeStint(stint);
+                      return {
+                        ...item,
+                        activeStint: stint.status === "running" ? stint : null,
+                        stints: [
+                          summary,
+                          ...item.stints.filter((existing) => existing.id !== stint.id),
+                        ],
+                      };
+                    }),
+                  },
+              );
+              return;
+            }
+            const next = readSnapshot(message);
             clearTimeout(deadline);
             version++;
             attempts = 0;

@@ -71,10 +71,7 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
   expect(preview.getByRole("option", { name: "Codex" })).toBeEnabled();
   expect(preview.getByRole("option", { name: "Claude Code — coming in M3" })).toBeDisabled();
   expect(preview.getByRole("option", { name: "Grok Build — coming in M3" })).toBeDisabled();
-  expect(preview.getByRole("button", { name: "Start" })).toBeDisabled();
-  expect(preview.getByRole("button", { name: "Start" })).toHaveAccessibleDescription(
-    "Start arrives in the next ticket.",
-  );
+  expect(preview.getByRole("button", { name: "Start" })).toBeEnabled();
   expect(preview.getByText(/Working instructions:/, { selector: "pre" }).textContent).toBe(
     brief.prompt,
   );

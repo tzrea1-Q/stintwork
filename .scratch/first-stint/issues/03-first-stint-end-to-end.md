@@ -1,6 +1,6 @@
 # 03 — First stint, end to end
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -23,3 +23,15 @@ The `agents` package exposes an agent-neutral interface with a Codex implementat
 - [ ] Core tests: folding a stint log into a Stint (status, times, events).
 - [ ] Component tests: the drawer shows a live stint with streaming messages, then a finished stint in history.
 - [ ] Manually with real Codex on a scratch repo: a stint runs and finishes, and messages stream in the drawer.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** All checks pass (193 tests). Three real Codex stints were run through the built CLI on a throwaway repo, and they found three defects, all fixed before merge:
+
+1. A `ReadableStream` type mismatch between Node and the SDK. Fixed with one documented cast at the stdio boundary.
+2. With no permission handler, requests were answered "cancelled", which ends the ACP turn. Requests are now auto-declined and logged.
+3. The log stored cumulative message text, so it grew quadratically (305 lines for a tiny task). It now stores deltas, folded on read.
+
+The coordinator also changed one rule: an agent that ends its own turn as `cancelled` is `finished`, because `stopped` is reserved for the developer pressing Stop (ticket 05). Regression test added.
+
+The final real stint created worktree `stintwork/greeting`, streamed messages into the drawer live, and wrote `hello.txt` and the ticket status. It ended `finished`. Codex's `git add` permission request was auto-declined; ticket 07 will grant git access.

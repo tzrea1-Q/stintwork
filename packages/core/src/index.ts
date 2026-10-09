@@ -32,6 +32,22 @@ export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
 export { detectSetup, type SetupReport } from "./setup.js";
 export { indexProject, type ProjectSnapshot } from "./project.js";
 export {
+  applyStintLogEntry,
+  foldStintLog,
+  indexStints,
+  isStintEvent,
+  isStintLogEntry,
+  mergeStintEvent,
+  summarizeStint,
+  type Stint,
+  type StintEvent,
+  type StintLogEvent,
+  type StintLiveMessage,
+  type StintLogEntry,
+  type StintStatus,
+  type StintSummary,
+} from "./stints.js";
+export {
   type Brief,
   type BriefHandoff,
   type BriefInput,

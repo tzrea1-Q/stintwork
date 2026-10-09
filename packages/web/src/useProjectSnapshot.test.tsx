@@ -1,4 +1,9 @@
-import { createMemoryRepoFiles, indexProject, type ProjectSnapshot } from "@stintwork/core";
+import {
+  createMemoryRepoFiles,
+  indexProject,
+  type ProjectSnapshot,
+  type StintLogEntry,
+} from "@stintwork/core";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
@@ -51,6 +56,74 @@ test("reads the initial project and replaces it with live snapshots", async () =
   act(() => TestSocket.instances[0].sendSnapshot({ ...snapshot, branch: "changed" }));
   expect(result.current.snapshot?.branch).toBe("changed");
   expect(result.current.connection).toBe("live");
+});
+
+test("stint messages share the snapshot connection, merge chunks and finish without reconnecting", async () => {
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  const socket = TestSocket.instances[0];
+  act(() => socket.sendSnapshot(snapshot));
+  const send = (sequence: number, entry: StintLogEntry) =>
+    act(() =>
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "stint",
+          stintId: "first",
+          workItem: "board",
+          sequence,
+          entry,
+        }),
+      }),
+    );
+  const at = "2026-10-09T10:00:00Z";
+  send(1, {
+    type: "started",
+    at,
+    stint: {
+      id: "first",
+      workItem: "board",
+      stage: "implement",
+      ticket: 1,
+      agent: "codex",
+      worktree: { path: "/worktree", branch: "stintwork/board" },
+      baseCommit: "base",
+      brief: {
+        skill: null,
+        pointers: [],
+        lastHandoff: null,
+        changedPaths: [],
+        prompt: "Read first",
+      },
+    },
+  });
+  send(2, { type: "event", at, event: { type: "message_delta", id: "1", text: "Hello " } });
+  send(3, { type: "event", at, event: { type: "message_delta", id: "1", text: "world" } });
+  send(2, { type: "event", at, event: { type: "message_delta", id: "1", text: "Stale text" } });
+  expect(result.current.snapshot?.workItems[0].activeStint?.events).toEqual([
+    { type: "message", id: "1", text: "Hello world" },
+  ]);
+  const permission = {
+    type: "permission" as const,
+    toolCallId: "git",
+    title: "git add",
+    kind: "execute",
+    automatic: true,
+    decision: { outcome: "selected" as const, optionId: "reject", kind: "reject_once" },
+  };
+  send(4, { type: "event", at, event: permission });
+  expect(result.current.snapshot?.workItems[0].activeStint?.events).toEqual([
+    { type: "message", id: "1", text: "Hello world" },
+    permission,
+  ]);
+  expect(result.current.connection).toBe("live");
+  expect(socket.close).not.toHaveBeenCalled();
+  send(5, { type: "ended", at: "2026-10-09T10:01:00Z", status: "finished" });
+  expect(result.current.snapshot?.workItems[0].activeStint).toBeNull();
+  expect(result.current.snapshot?.workItems[0].stints[0]).toMatchObject({
+    id: "first",
+    status: "finished",
+    endedAt: "2026-10-09T10:01:00Z",
+  });
 });
 
 test("does not let a delayed GET overwrite a newer live snapshot", async () => {

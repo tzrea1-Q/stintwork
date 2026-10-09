@@ -8,7 +8,9 @@ export function TicketBriefPreview({ item, ticket }: { item: BoardWorkItem; tick
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
-  const reason = briefUnavailableReason(item, ticket);
+  const reason = item.activeStint
+    ? "A stint is already active for this work item."
+    : briefUnavailableReason(item, ticket);
 
   useEffect(() => {
     if (reason) setOpen(false);
@@ -57,11 +59,12 @@ function BriefPreviewSheet({
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
-  const startReasonId = useId();
   const agentAvailabilityId = useId();
   const [brief, setBrief] = useState<Brief | null>(null);
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
+  const [starting, setStarting] = useState(false);
+  const [startError, setStartError] = useState("");
 
   useEffect(() => {
     const element = dialog.current;
@@ -101,6 +104,28 @@ function BriefPreviewSheet({
       setCopyStatus("Copied");
     } catch {
       setCopyStatus("Could not copy. Select the prompt to copy it manually.");
+    }
+  }
+
+  async function start() {
+    if (!brief || starting) return;
+    setStarting(true);
+    setStartError("");
+    try {
+      const response = await fetch("/api/stints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent: "codex" }),
+      });
+      if (!response.ok) {
+        const failure: { reason?: string } = await response.json();
+        throw new Error(failure.reason ?? "Could not start the stint.");
+      }
+      onClose();
+    } catch (cause) {
+      setStartError(cause instanceof Error ? cause.message : "Could not start the stint.");
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -233,9 +258,18 @@ function BriefPreviewSheet({
         )}
       </div>
       <footer className="drawer-footer">
-        <p id={startReasonId}>Start arrives in the next ticket.</p>
-        <button type="button" className="top-button" disabled aria-describedby={startReasonId}>
-          Start
+        {startError && (
+          <p role="alert" className="warning">
+            {startError}
+          </p>
+        )}
+        <button
+          type="button"
+          className="top-button"
+          disabled={!brief || starting || !!error}
+          onClick={() => void start()}
+        >
+          {starting ? "Starting…" : "Start"}
         </button>
       </footer>
     </dialog>

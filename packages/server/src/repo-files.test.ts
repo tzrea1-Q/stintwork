@@ -26,6 +26,7 @@ test("filesystem adapter lists and reads only the project paths", () => {
     ".scratch/board/spec.md": "# Board",
     ".scratch/board/issues/01-ticket.md": "# Ticket",
     ".stintwork/roadmap.md": "# Roadmap",
+    ".stintwork/local/stints/first.jsonl": '{"type":"event"}\n',
     "docs/agents/issue-tracker.md": "Local Markdown",
     "docs/adr/0001-files.md": "# Files",
     "AGENTS.md": "# Agents",
@@ -46,6 +47,7 @@ test("filesystem adapter lists and reads only the project paths", () => {
     ".scratch/board/spec.md",
   ]);
   expect(files.list(".scratch/board/issues/")).toEqual([".scratch/board/issues/01-ticket.md"]);
+  expect(files.list(".stintwork/local/stints/")).toEqual([".stintwork/local/stints/first.jsonl"]);
   for (const [path, text] of Object.entries(contents)) expect(files.read(path)).toBe(text);
   for (const path of [".env", "docs/brief.md", "package.json", ".scratch-other/secret.md"]) {
     expect(files.read(path)).toBeUndefined();

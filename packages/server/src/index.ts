@@ -11,12 +11,15 @@ import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
 import { addBriefPreviewRoute } from "./brief-preview.js";
 import { createNodeRepoFiles, projectPaths } from "./repo-files.js";
+import { addStintRoutes, type StintServerOptions } from "./stints.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
+export type { StintServerOptions } from "./stints.js";
 
 export function createProjectServer(
   repoRoot: string,
   webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url)),
+  options: StintServerOptions = {},
 ) {
   try {
     accessSync(join(webRoot, "index.html"));
@@ -77,6 +80,18 @@ export function createProjectServer(
     return context.json(snapshot);
   });
   addBriefPreviewRoute(app, files);
+  const stopStints = addStintRoutes(
+    app,
+    root,
+    files,
+    options,
+    (message) => {
+      for (const client of websocket.clients) {
+        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message));
+      }
+    },
+    refresh,
+  );
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {
     const origin = context.req.header("origin");
@@ -141,6 +156,7 @@ export function createProjectServer(
     stopping ??= (async () => {
       lifetime.abort();
       clearTimeout(debounce);
+      await stopStints();
       for (const client of websocket.clients) client.terminate();
       await Promise.all([
         watcher?.close(),
