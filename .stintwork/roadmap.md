@@ -10,6 +10,8 @@ Status: active
 Id: m2
 Status: planned
 
+- first-stint
+
 ## M3 · Needs you and every agent
 Id: m3
 Status: planned
