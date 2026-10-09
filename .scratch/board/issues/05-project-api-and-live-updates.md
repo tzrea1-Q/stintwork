@@ -1,6 +1,6 @@
 # 05 — Project API and live updates
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03, 04
 
 ## What to build
@@ -20,3 +20,7 @@ In `packages/server`: wire the core index to the real filesystem and push change
 ## Out of scope
 
 Any UI, writing files, incremental patches (a full snapshot is fine).
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** After installing chokidar 4.0.3 and ws 8.22.0, all checks pass (85 tests, including the three named HTTP/WebSocket checks). `pnpm stintwork --no-open` serves `/api/project` for this repo: `board` in m1, inferred implement stage, tickets 01–04 resolved, 05 unblocked, 06–08 blocked, setup fully detected, no warnings.

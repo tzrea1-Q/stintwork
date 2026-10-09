@@ -12,13 +12,25 @@ try {
   }
 
   const repoRoot = findGitRoot(process.env.INIT_CWD ?? process.cwd());
-  const server = createProjectServer(repoRoot);
-  const port = await listenOnAvailablePort(server);
+  const project = createProjectServer(repoRoot);
+  let port: number;
+  try {
+    const server = await project.start();
+    port = await listenOnAvailablePort(server);
+  } catch (error) {
+    await project.stop();
+    throw error;
+  }
   const url = `http://localhost:${port}`;
   console.log(`Stintwork: ${url}`);
 
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
-    process.once(signal, () => server.close());
+    process.once(signal, () => {
+      project.stop().catch((error) => {
+        console.error(`Stintwork: ${String(error)}`);
+        process.exitCode = 1;
+      });
+    });
   }
 
   if (!args.includes("--no-open")) {

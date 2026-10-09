@@ -65,10 +65,23 @@ function readWorkflow(
     ) {
       return invalid("Milestone must be a nonempty string");
     }
+    const stages = JSON.parse(
+      JSON.stringify(data.stages ?? {}, (_key, value) => {
+        if (
+          value instanceof Map ||
+          value instanceof Set ||
+          typeof value === "bigint" ||
+          (typeof value === "number" && !Number.isFinite(value))
+        ) {
+          throw new Error("Stages must contain JSON-serialisable values");
+        }
+        return value;
+      }),
+    ) as StageRecords;
     return {
       workflow,
       stage: stage.id,
-      stages: (data.stages as StageRecords | undefined) ?? {},
+      stages,
       ...(data.milestone === undefined ? {} : { declaredMilestone: data.milestone as string }),
     };
   } catch (error) {

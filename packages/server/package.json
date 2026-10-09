@@ -17,6 +17,11 @@
   "dependencies": {
     "@hono/node-server": "2.1.3",
     "@stintwork/core": "workspace:*",
-    "hono": "4.13.13"
+    "chokidar": "4.0.3",
+    "hono": "4.13.13",
+    "ws": "8.22.0"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2"
   }
 }
