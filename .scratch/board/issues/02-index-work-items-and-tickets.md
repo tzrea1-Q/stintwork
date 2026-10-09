@@ -1,6 +1,6 @@
 # 02 — Index work items and tickets from .scratch/
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -29,3 +29,7 @@ Vitest, with in-memory fixtures (one of them a copy of the PagePilot-shaped cont
 ## Out of scope
 
 Stages, workflows, milestones, setup detection, I/O.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** `pnpm format:check`, `lint`, `typecheck`, `test` (23 tests, including all eight named checks, the contract-package fixture and this repo's real `.scratch/board/`) and `build` pass. Coordinator added `Ticket.body` (the full Markdown), which ticket 07's drawer needs. Public API: `indexWorkItems(files: RepoFiles)` and `createMemoryRepoFiles(contents)`.
