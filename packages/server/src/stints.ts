@@ -5,16 +5,17 @@ import { join } from "node:path";
 import { type AgentLauncher, type AgentStint, startAgentStint } from "@stintwork/agents";
 import {
   foldStintLog,
+  type BriefHandoff,
   type RepoFiles,
   type StintLiveMessage,
   type StintLogEntry,
 } from "@stintwork/core";
-import { ensureWorktree } from "@stintwork/git";
+import { createCheckpoint, ensureWorktree } from "@stintwork/git";
 import type { Hono } from "hono";
 import { prepareStintBrief } from "./brief-preview.js";
 import { addStintPermissionRoute } from "./stint-permissions.js";
 
-export type StintServerOptions = { launchAgent?: AgentLauncher };
+export type StintServerOptions = { launchAgent?: AgentLauncher; handoffTimeoutMs?: number };
 
 function prepareLogs(root: string) {
   let directory = root;
@@ -51,6 +52,9 @@ export function addStintRoutes(
   broadcast: (message: StintLiveMessage) => void,
   refresh: () => void,
 ) {
+  const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
+  if (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)
+    throw new Error("Handoff timeout must be a non-negative number of milliseconds.");
   const active = new Map<string, { handle?: AgentStint; completion?: Promise<void> }>();
   const permissions = addStintPermissionRoute(app);
   let closing = false;
@@ -81,7 +85,7 @@ export function addStintRoutes(
       return context.json({ reason: "Choose a work item, ticket number and Codex." }, 400);
     }
     if (closing) return context.json({ reason: "The project server is stopping." }, 503);
-    const result = prepareStintBrief(files, body.workItem, body.ticket as number);
+    const result = await prepareStintBrief(files, body.workItem, body.ticket as number, root);
     if ("reason" in result)
       return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
     const { workItem, ticket, stage, brief } = result;
@@ -126,12 +130,36 @@ export function addStintRoutes(
           entry,
         });
       }
-      function end(
+      async function end(
         status: "finished" | "stopped" | "failed" | "interrupted",
-        details: { stopReason?: string; error?: string } = {},
+        details: { stopReason?: string; error?: string; handoff?: BriefHandoff | null } = {},
       ) {
         permissions.clear(id);
-        append({ type: "ended", at: new Date().toISOString(), status, ...details });
+        let checkpointCommit: string | undefined;
+        try {
+          checkpointCommit = await createCheckpoint(worktree.path, {
+            id,
+            workItem: workItem.slug,
+            ticket: ticket.number,
+            status,
+          });
+        } catch (error) {
+          status = "failed";
+          details.error = [
+            details.error,
+            `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`,
+          ]
+            .filter(Boolean)
+            .join("\n");
+        }
+        append({
+          type: "ended",
+          at: new Date().toISOString(),
+          status,
+          handoff: null,
+          ...details,
+          ...(checkpointCommit ? { checkpointCommit } : {}),
+        });
         active.delete(workItem.slug);
         refresh();
       }
@@ -140,7 +168,10 @@ export function addStintRoutes(
           agent: "codex",
           cwd: worktree.path,
           prompt: brief.prompt,
+          handoffTimeoutMs,
           onEvent: (event) => {
+            if (event.type === "permission" && event.requestId)
+              permissions.clearRequest(event.requestId);
             append({ type: "event", at: new Date().toISOString(), event });
             if (event.type === "permission_request" || event.type === "permission") refresh();
           },
@@ -151,7 +182,7 @@ export function addStintRoutes(
         });
         state.completion = state.handle.done
           .then(
-            ({ stopReason }) =>
+            ({ stopReason, handoff }) =>
               end(
                 closing
                   ? "interrupted"
@@ -161,7 +192,10 @@ export function addStintRoutes(
                     stopReason === "end_turn" || stopReason === "cancelled"
                     ? "finished"
                     : "failed",
-                { stopReason },
+                {
+                  stopReason,
+                  handoff: handoff ? { ...handoff, stint: id, agent: "codex" } : null,
+                },
               ),
             (error: unknown) =>
               end(closing ? "interrupted" : "failed", {
@@ -172,7 +206,9 @@ export function addStintRoutes(
             console.error("Could not record the end of a stint:", error);
           });
       } catch (error) {
-        end("failed", { error: error instanceof Error ? error.message : String(error) });
+        state.completion = end("failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
       return context.json({ stint: foldStintLog([started]) }, 201);
     } catch (error) {

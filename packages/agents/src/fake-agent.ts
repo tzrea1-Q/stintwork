@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { isAbsolute } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 import { Writable } from "node:stream";
 import { setTimeout as delay } from "node:timers/promises";
 import {
@@ -13,6 +13,8 @@ import type { FakeAgentStep } from "./testing.js";
 import { toAcpReadable } from "./stdio.js";
 
 const script: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_SCRIPT ?? "[]");
+const handoff: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_HANDOFF ?? "[]");
+const briefs = new Map<string, { cwd: string; prompts: number }>();
 const turns = new Map<string, AbortController>();
 const modes = {
   currentModeId: "workspace-write",
@@ -36,7 +38,9 @@ new AgentSideConnection(
     async newSession({ cwd, mcpServers }) {
       assert.ok(isAbsolute(cwd));
       assert.deepEqual(mcpServers, []);
-      return { sessionId: randomUUID(), modes };
+      const id = randomUUID();
+      briefs.set(id, { cwd, prompts: 0 });
+      return { sessionId: id, modes };
     },
     async setSessionMode({ modeId }) {
       assert.equal(modeId, "workspace-write");
@@ -44,15 +48,30 @@ new AgentSideConnection(
     },
     async prompt({ sessionId, prompt }) {
       assert.ok(prompt.some((content) => content.type === "text" && content.text.length));
+      const brief = briefs.get(sessionId);
+      assert.ok(brief, "Follow-up prompts must use the same ACP identifier.");
       const controller = new AbortController();
       turns.set(sessionId, controller);
       try {
-        for (const step of script) {
+        for (const step of brief.prompts++ === 0 ? script : handoff) {
           if (controller.signal.aborted) return { stopReason: "cancelled" };
           if (step.type === "delay")
             await delay(step.milliseconds, undefined, { signal: controller.signal });
           else if (step.type === "end")
             return { stopReason: step.stopReason ?? "end_turn" } as { stopReason: "end_turn" };
+          else if (step.type === "crash") process.exit(1);
+          else if (step.type === "expect-prompt")
+            assert.ok(
+              prompt.some(
+                (content) => content.type === "text" && content.text.includes(step.includes),
+              ),
+            );
+          else if (step.type === "write")
+            await client.writeTextFile({
+              sessionId,
+              path: resolve(brief.cwd, step.path),
+              content: step.content,
+            });
           else if (step.type === "permission") {
             const response = await client.requestPermission({
               sessionId,

@@ -313,3 +313,38 @@ test("project history and active stint come only from local logs; malformed line
     { path: ".stintwork/local/stints/first.jsonl", message: "Invalid stint log entry; skipped" },
   ]);
 });
+
+test.each([
+  null,
+  {
+    stint: "first",
+    agent: "codex",
+    stoppedAt: "Code written",
+    unresolved: "Checks",
+    nextStep: "Review",
+  },
+])("ended entries preserve checkpoint and handoff in folded history (%j)", (handoff) => {
+  const ended: StintLogEntry = {
+    type: "ended",
+    at: "2026-10-09T10:01:00Z",
+    status: "finished",
+    checkpointCommit: "checkpoint",
+    handoff,
+  };
+  expect(isStintLogEntry(ended)).toBe(true);
+  const log = [started, ended];
+  expect(foldStintLog(log)).toMatchObject({ checkpointCommit: "checkpoint", handoff });
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/board/spec.md": "# Board",
+      ".stintwork/local/stints/first.jsonl": log.map((entry) => JSON.stringify(entry)).join("\n"),
+    }),
+    { name: "Board" },
+  );
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    checkpointCommit: "checkpoint",
+    handoff,
+  });
+  expect(isStintLogEntry({ ...ended, handoff: { stoppedAt: "Incomplete" } })).toBe(false);
+  expect(isStintLogEntry({ ...ended, checkpointCommit: 42 })).toBe(false);
+});

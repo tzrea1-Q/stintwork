@@ -79,7 +79,7 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(snapshot);
   });
-  addBriefPreviewRoute(app, files);
+  addBriefPreviewRoute(app, files, root);
   const stopStints = addStintRoutes(
     app,
     root,

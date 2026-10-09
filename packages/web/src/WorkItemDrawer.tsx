@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
+import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 function Markdown({ text }: { text: string }) {
@@ -225,6 +226,7 @@ export function WorkItemDrawer({
                       {stint.error}
                     </p>
                   )}
+                  {stint.status !== "running" && <HandoffCard stint={stint} />}
                 </li>
               ))}
             </ol>

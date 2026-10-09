@@ -51,6 +51,11 @@ export function addStintPermissionRoute(app: Hono) {
     wait(stintId: string, request: PermissionRequest): Promise<PermissionResponse> {
       return new Promise((answer) => pending.set(request.requestId, { stintId, request, answer }));
     },
+    clearRequest(requestId: string) {
+      const permission = pending.get(requestId);
+      pending.delete(requestId);
+      permission?.answer({ outcome: { outcome: "cancelled" } });
+    },
     clear(stintId?: string) {
       for (const [requestId, permission] of pending)
         if (stintId === undefined || permission.stintId === stintId) {

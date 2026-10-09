@@ -3,6 +3,7 @@ import {
   builtInWorkflows,
   isStintLogEntry,
   isStintEvent,
+  isBriefHandoff,
   summarizeStint,
   type ProjectSnapshot,
   type WorkflowStage,
@@ -24,7 +25,9 @@ function isStintSummary(value: unknown) {
     (value.ticket === null || Number.isSafeInteger(value.ticket)) &&
     ["running", "finished", "stopped", "failed", "interrupted"].includes(String(value.status)) &&
     (value.endedAt === null || typeof value.endedAt === "string") &&
-    (value.error === undefined || typeof value.error === "string")
+    (value.error === undefined || typeof value.error === "string") &&
+    (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&
+    (value.handoff == null || isBriefHandoff(value.handoff))
   );
 }
 

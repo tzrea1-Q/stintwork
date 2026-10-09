@@ -107,6 +107,18 @@ test("renders the last handoff and changed paths without letting stale advice ov
   expect(brief.changedPaths).not.toContain("later.md");
 });
 
+test("resume briefs carry the checkpoint even when the last stint gave no handoff", () => {
+  const brief = compileBrief({
+    ...input(),
+    checkpointCommit: "checkpoint",
+    changedPaths: [specPath],
+  });
+  expect(brief.checkpointCommit).toBe("checkpoint");
+  expect(brief.prompt).toContain("Checkpoint commit: checkpoint");
+  expect(brief.lastHandoff).toBeNull();
+  expect(brief.changedPaths).toEqual([specPath]);
+});
+
 test("every built-in stage declares its skill, with no invocation for Do", () => {
   const skills = {
     clarify: "/grill-with-docs",

@@ -209,6 +209,12 @@ function BriefPreviewSheet({
                 ))}
               </ul>
             </section>
+            {brief.checkpointCommit && (
+              <section>
+                <h3>Checkpoint commit</h3>
+                <code>{brief.checkpointCommit}</code>
+              </section>
+            )}
             <section>
               <h3>
                 Last handoff

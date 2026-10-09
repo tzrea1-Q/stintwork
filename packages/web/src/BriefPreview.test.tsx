@@ -32,6 +32,40 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test("resume preview shows the checkpoint alongside the handoff and changed spec", async () => {
+  const resumed = compileBrief({
+    files,
+    workItem: item,
+    stage: builtInWorkflows.feature.stages[3],
+    ticket,
+    checkpointCommit: "0123456789abcdef",
+    lastHandoff: {
+      stint: "previous",
+      agent: "codex",
+      stoppedAt: "Code written",
+      unresolved: "Checks remain",
+      nextStep: "Review changes",
+    },
+    changedPaths: [specPath],
+  });
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(resumed))));
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Start stint" }));
+  const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
+  await sheet.findByRole("heading", { name: "Checkpoint commit" });
+  expect(sheet.getByText("0123456789abcdef", { selector: "code" })).toBeInTheDocument();
+  expect(
+    sheet.getByRole("heading", { name: "Last handoff (previous, codex)" }),
+  ).toBeInTheDocument();
+  expect(sheet.getByText("Checks remain", { selector: "dd" })).toBeInTheDocument();
+  const changes = sheet
+    .getByRole("heading", { name: "Changed since the last handoff" })
+    .closest("section");
+  expect(
+    within(changes as HTMLElement).getByText(specPath, { selector: "code" }),
+  ).toBeInTheDocument();
+});
+
 test("opens the drawer's brief sheet, shows every section and copies the exact prompt", async () => {
   const user = userEvent.setup();
   const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();

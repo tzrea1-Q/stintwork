@@ -5,22 +5,29 @@ import {
   type RepoFiles,
 } from "@stintwork/core";
 import type { Hono } from "hono";
+import { changedSince } from "@stintwork/git";
 
-export function addBriefPreviewRoute(app: Hono, files: RepoFiles) {
-  app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", (context) => {
+export function addBriefPreviewRoute(app: Hono, files: RepoFiles, root: string) {
+  app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
     const number = context.req.param("ticket");
-    const result = prepareStintBrief(
+    const result = await prepareStintBrief(
       files,
       context.req.param("slug"),
       /^\d+$/.test(number) ? Number(number) : NaN,
+      root,
     );
     if ("reason" in result) return context.json({ reason: result.reason }, result.status);
     return context.json(result.brief);
   });
 }
 
-export function prepareStintBrief(files: RepoFiles, slug: string, number: number) {
+export async function prepareStintBrief(
+  files: RepoFiles,
+  slug: string,
+  number: number,
+  root: string,
+) {
   const snapshot = indexProject(files, { name: "" });
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
   if (!workItem) return { reason: "Work item not found.", status: 404 as const };
@@ -34,5 +41,31 @@ export function prepareStintBrief(files: RepoFiles, slug: string, number: number
     (candidate) => candidate.id === workItem.stage,
   );
   if (!stage) return { reason: "Stage not found.", status: 409 as const };
-  return { workItem, ticket, stage, brief: compileBrief({ files, workItem, stage, ticket }) };
+  const previous = workItem.stints.find(
+    (stint) => stint.ticket === number && stint.status !== "running",
+  );
+  const checkpointCommit = previous?.checkpointCommit ?? null;
+  let changedPaths: string[] = [];
+  try {
+    if (checkpointCommit) changedPaths = await changedSince(root, checkpointCommit, slug);
+  } catch (error) {
+    return {
+      reason: `Could not compare the last checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+      status: 503 as const,
+    };
+  }
+  return {
+    workItem,
+    ticket,
+    stage,
+    brief: compileBrief({
+      files,
+      workItem,
+      stage,
+      ticket,
+      lastHandoff: previous?.handoff,
+      checkpointCommit,
+      changedPaths,
+    }),
+  };
 }

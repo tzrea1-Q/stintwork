@@ -8,6 +8,7 @@ import type { RequestPermissionRequest, RequestPermissionResponse } from "@agent
 import type { StintEvent, StintLogEvent } from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
+import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
 
 export type AgentStintOptions = {
   agent: string;
@@ -17,20 +18,24 @@ export type AgentStintOptions = {
   onPermission?: (
     request: RequestPermissionRequest & { requestId: string },
   ) => Promise<RequestPermissionResponse>;
+  handoffTimeoutMs?: number;
 };
-export type AgentStint = { done: Promise<{ stopReason: string }>; cancel: () => Promise<void> };
+export type AgentStint = {
+  done: Promise<{ stopReason: string; handoff?: AgentHandoff | null }>;
+  cancel: () => Promise<void>;
+};
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (cwd: string) => ChildProcessWithoutNullStreams;
 
 export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLauncher {
-  return ({ agent, cwd, prompt, onEvent, onPermission }) => {
+  return ({ agent, cwd, prompt, onEvent, onPermission, handoffTimeoutMs }) => {
     let child: ChildProcessWithoutNullStreams | undefined;
     let connection: import("@agentclientprotocol/sdk").ClientSideConnection | undefined;
     let acpId: string | undefined;
     let cancelled = false;
     let settled = false;
     let cancelPermission: () => void = () => {};
-    const permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
+    let permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
       cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
     });
     let rejectFailure: (error: Error) => void = () => {};
@@ -41,6 +46,9 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
     let chunk: { type: "message_delta" | "thought_delta"; id: string } | undefined;
     let nextMessage = 0;
     const toolKinds = new Map<string, string>();
+    let handoffText: string | undefined;
+    let workTurn: Promise<{ stopReason: string }> | undefined;
+    const writes = new Set<Promise<void>>();
 
     async function safePath(path: string) {
       if (!isAbsolute(path)) throw new Error("Agent file paths must be absolute.");
@@ -93,12 +101,15 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       const acp = new ClientSideConnection(
         () => ({
           async sessionUpdate({ update }) {
+            if (settled) return;
             try {
               const kind = update.sessionUpdate;
               if (
                 (kind === "agent_message_chunk" || kind === "agent_thought_chunk") &&
                 update.content.type === "text"
               ) {
+                if (kind === "agent_message_chunk" && handoffText !== undefined)
+                  handoffText += update.content.text;
                 const type = kind === "agent_message_chunk" ? "message_delta" : "thought_delta";
                 chunk = chunk?.type === type ? chunk : { type, id: String(++nextMessage) };
                 onEvent({ ...chunk, text: update.content.text });
@@ -179,9 +190,18 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
             };
           },
           async writeTextFile({ path, content }) {
-            const target = await safePath(path);
-            await mkdir(dirname(target), { recursive: true });
-            await writeFile(target, content, "utf8");
+            if (settled) throw new Error("The stint has ended.");
+            const writing = (async () => {
+              const target = await safePath(path);
+              await mkdir(dirname(target), { recursive: true });
+              await writeFile(target, content, "utf8");
+            })();
+            writes.add(writing);
+            try {
+              await writing;
+            } finally {
+              writes.delete(writing);
+            }
             return {};
           },
         }),
@@ -216,13 +236,39 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
         await Promise.race([ready, failure, timeout]);
         clearTimeout(timer);
         if (cancelled) return { stopReason: "cancelled" };
-        return await Promise.race([
-          acp.prompt({
-            sessionId: acpId as string,
-            prompt: [{ type: "text", text: prompt }],
-          }),
-          failure,
-        ]);
+        workTurn = acp.prompt({
+          sessionId: acpId as string,
+          prompt: [{ type: "text", text: prompt }],
+        });
+        const result = await Promise.race([workTurn, failure]);
+        if (handoffTimeoutMs === undefined) return result;
+        permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
+          cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
+        });
+        chunk = undefined;
+        handoffText = "";
+        let handoff: AgentHandoff | null = null;
+        try {
+          await Promise.race([
+            acp.prompt({
+              sessionId: acpId as string,
+              prompt: [{ type: "text", text: handoffPrompt }],
+            }),
+            failure,
+            new Promise<never>((_resolve, reject) => {
+              timer = setTimeout(() => reject(new Error("Handoff timed out.")), handoffTimeoutMs);
+            }),
+          ]);
+          handoff = parseHandoff(handoffText);
+        } catch {
+          handoff = null;
+          cancelPermission();
+          await Promise.race([
+            acp.cancel({ sessionId: acpId as string }).catch(() => {}),
+            new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
+          ]);
+        }
+        return { ...result, handoff };
       } catch (error) {
         if (cancelled) return { stopReason: "cancelled" };
         const message = error instanceof Error ? error.message : String(error);
@@ -234,12 +280,18 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       } finally {
         clearTimeout(timer);
         settled = true;
+        const exited = new Promise<void>((resolveExit) => {
+          if (!child?.pid || child.exitCode !== null || child.signalCode !== null) resolveExit();
+          else child.once("exit", () => resolveExit());
+        });
         child.kill("SIGTERM");
         const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
         killTimer.unref();
         child.once("exit", () => clearTimeout(killTimer));
         child.stdin.destroy();
         child.stdout.destroy();
+        await exited;
+        await Promise.allSettled(writes);
       }
     })();
     return {
@@ -253,7 +305,18 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
             new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
           ]);
         }
-        rejectFailure(new Error("Stint cancelled."));
+        let acknowledged = false;
+        if (workTurn)
+          await Promise.race([
+            workTurn.then(
+              () => {
+                acknowledged = true;
+              },
+              () => {},
+            ),
+            new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
+          ]);
+        if (!acknowledged) rejectFailure(new Error("Stint cancelled."));
       },
     };
   };
