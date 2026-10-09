@@ -1,6 +1,6 @@
 # 06 — The Pipeline board
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05
 
 ## What to build
@@ -21,3 +21,7 @@ In `packages/web`: the board, per `.scratch/board/spec.md` → "The board shows"
 ## Out of scope
 
 The drawer, ⌘K, any write actions, agents.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** After installing lucide-react and the web test dependencies, all checks pass (100 tests, including the four named component tests). In the browser at 1280×800 on this repo: stage columns with empty states, the `board` card in Implement with milestone, inferred badge and tooltip, and progress bar; Setup 5/5; Warnings 0. Live update verified: editing this file's Status line changed the card from 5/8 to 6/8 without a reload.

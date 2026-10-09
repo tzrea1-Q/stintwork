@@ -1,12 +1,22 @@
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
   resolve: {
     conditions: ["development"],
   },
   test: {
-    environment: "node",
-    include: ["packages/**/*.test.ts"],
-    testTimeout: 10_000,
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "node",
+          environment: "node",
+          include: ["packages/**/*.test.ts"],
+          exclude: [...configDefaults.exclude, "packages/web/**"],
+          testTimeout: 10_000,
+        },
+      },
+      "packages/web/vitest.config.ts",
+    ],
   },
 });

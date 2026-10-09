@@ -1,0 +1,153 @@
+import { createMemoryRepoFiles, indexProject, type ProjectSnapshot } from "@stintwork/core";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { useProjectSnapshot } from "./useProjectSnapshot";
+
+const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
+  name: "Stintwork",
+});
+
+class TestSocket {
+  static instances: TestSocket[] = [];
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  close = vi.fn();
+  constructor(public url: URL) {
+    TestSocket.instances.push(this);
+  }
+  sendSnapshot(next: ProjectSnapshot) {
+    this.onmessage?.({ data: JSON.stringify(next) });
+  }
+}
+
+function response(next = snapshot) {
+  return new Response(JSON.stringify(next));
+}
+
+beforeEach(() => {
+  TestSocket.instances = [];
+  vi.stubGlobal("WebSocket", TestSocket);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation(async () => response()),
+  );
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+test("reads the initial project and replaces it with live snapshots", async () => {
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/project",
+    expect.objectContaining({ cache: "no-store" }),
+  );
+  expect(TestSocket.instances[0].url.pathname).toBe("/api/live");
+  expect(TestSocket.instances[0].url.protocol).toBe("ws:");
+  act(() => TestSocket.instances[0].sendSnapshot({ ...snapshot, branch: "changed" }));
+  expect(result.current.snapshot?.branch).toBe("changed");
+  expect(result.current.connection).toBe("live");
+});
+
+test("does not let a delayed GET overwrite a newer live snapshot", async () => {
+  let resolveRequest: (value: ReturnType<typeof response>) => void = () => {};
+  vi.mocked(fetch).mockReturnValue(
+    new Promise<Response>((resolve) => {
+      resolveRequest = resolve;
+    }),
+  );
+  const { result } = renderHook(useProjectSnapshot);
+  act(() => TestSocket.instances[0].sendSnapshot({ ...snapshot, name: "Newer project" }));
+  await act(async () => {
+    resolveRequest(response());
+  });
+  expect(result.current.snapshot?.name).toBe("Newer project");
+});
+
+test("reconnects after a socket failure, polls GET while offline, and stops polling when live", async () => {
+  vi.useFakeTimers();
+  const { result, unmount } = renderHook(useProjectSnapshot);
+  await act(async () => {});
+  act(() => TestSocket.instances[0].sendSnapshot(snapshot));
+  act(() => TestSocket.instances[0].onerror?.());
+  expect(result.current.connection).toBe("reconnecting");
+  expect(TestSocket.instances[0].close).toHaveBeenCalledOnce();
+  expect(TestSocket.instances[0].onclose).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(TestSocket.instances).toHaveLength(2);
+  vi.mocked(fetch).mockImplementation(async () =>
+    response({ ...snapshot, name: "Polled project" }),
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(4000);
+  });
+  expect(result.current.snapshot?.name).toBe("Polled project");
+  act(() => TestSocket.instances[1].sendSnapshot(snapshot));
+  const requests = vi.mocked(fetch).mock.calls.length;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(requests);
+  unmount();
+  expect(TestSocket.instances[1].close).toHaveBeenCalledOnce();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("falls back when WebSocket is unavailable and retries failed GET requests", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("WebSocket", undefined);
+  vi.mocked(fetch).mockRejectedValueOnce(new Error("Server unavailable"));
+  const { result, unmount } = renderHook(useProjectSnapshot);
+  await act(async () => {});
+  expect(result.current.error).toBe("Server unavailable");
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(result.current.snapshot).toEqual(snapshot);
+  expect(result.current.error).toBeUndefined();
+  expect(result.current.connection).toBe("reconnecting");
+  unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("rejects malformed live data without discarding the last usable project", async () => {
+  const { result, unmount } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  act(() => TestSocket.instances[0].onmessage?.({ data: '{"workItems":[{}]}' }));
+  expect(result.current.snapshot).toEqual(snapshot);
+  expect(result.current.connection).toBe("reconnecting");
+  unmount();
+});
+
+test("aborts pending requests and detaches socket handlers on unmount", () => {
+  vi.mocked(fetch).mockReturnValue(new Promise(() => {}));
+  const { unmount } = renderHook(useProjectSnapshot);
+  const signal = vi.mocked(fetch).mock.calls[0][1]?.signal;
+  unmount();
+  expect(signal?.aborted).toBe(true);
+  expect(TestSocket.instances[0].onmessage).toBeNull();
+  expect(TestSocket.instances[0].close).toHaveBeenCalledOnce();
+});
+
+test("times out a socket that never sends its initial snapshot", async () => {
+  vi.useFakeTimers();
+  const { result, unmount } = renderHook(useProjectSnapshot);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(8000);
+  });
+  expect(result.current.snapshot).toEqual(snapshot);
+  expect(result.current.connection).toBe("reconnecting");
+  expect(TestSocket.instances[0].close).toHaveBeenCalledOnce();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(TestSocket.instances).toHaveLength(2);
+  unmount();
+  expect(vi.getTimerCount()).toBe(0);
+});
