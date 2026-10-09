@@ -13,3 +13,18 @@ export {
   type WorkItem,
   type WorkItemIndex,
 } from "./work-items.js";
+
+export {
+  resolveStages,
+  type StageRecords,
+  type StagedIndex,
+  type StagedWorkItem,
+} from "./stages.js";
+export {
+  type BoardColumn,
+  builtInWorkflows,
+  type StageId,
+  type WorkflowDefinition,
+  type WorkflowId,
+  type WorkflowStage,
+} from "./workflows.js";
