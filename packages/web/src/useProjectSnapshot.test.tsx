@@ -1,8 +1,11 @@
 import {
   createMemoryRepoFiles,
+  foldStintLog,
   indexProject,
+  summarizeStint,
   type ProjectSnapshot,
   type StintLogEntry,
+  type StintLogEvent,
 } from "@stintwork/core";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -139,6 +142,111 @@ test("does not let a delayed GET overwrite a newer live snapshot", async () => {
     resolveRequest(response());
   });
   expect(result.current.snapshot?.name).toBe("Newer project");
+});
+
+test("a reconnect snapshot restores rich events and pending permissions, then merges live tool updates and decisions", async () => {
+  const at = "2026-10-09T10:00:00Z";
+  const rich: StintLogEvent[] = [
+    {
+      type: "plan",
+      id: "plan",
+      entries: [{ content: "Edit", priority: "high", status: "in_progress" }],
+    },
+    {
+      type: "tool_call",
+      toolCallId: "edit",
+      title: "Edit file",
+      kind: "edit",
+      status: "in_progress",
+      locations: [{ path: "/worktree/file" }],
+    },
+    { type: "file_edit", toolCallId: "edit", path: "/worktree/file" },
+    {
+      type: "permission_request",
+      requestId: "request",
+      toolCallId: "git",
+      title: "git add",
+      kind: "execute",
+      automatic: false,
+      options: [
+        {
+          optionId: "cancel",
+          name: "No, and tell Codex what to do differently",
+          kind: "reject_once",
+        },
+      ],
+    },
+  ];
+  const active = foldStintLog([
+    {
+      type: "started",
+      at,
+      stint: {
+        id: "first",
+        workItem: "board",
+        stage: "implement",
+        ticket: 1,
+        agent: "codex",
+        worktree: { path: "/worktree", branch: "stintwork/board" },
+        baseCommit: "base",
+        brief: { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Work" },
+      },
+    },
+    ...rich.map((event): StintLogEntry => ({ type: "event", at, event })),
+  ]);
+  if (!active) throw new Error("Expected a stint");
+  const next: ProjectSnapshot = {
+    ...snapshot,
+    workItems: snapshot.workItems.map((item) => ({
+      ...item,
+      activeStint: active,
+      stints: [summarizeStint(active)],
+    })),
+  };
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  const socket = TestSocket.instances[0];
+  act(() => socket.sendSnapshot(next));
+  expect(result.current.snapshot?.workItems[0].activeStint?.events).toEqual(rich);
+  const updates: StintLogEvent[] = [
+    {
+      type: "tool_call_update",
+      toolCallId: "edit",
+      status: "completed",
+      content: [{ type: "text", text: "Saved" }],
+    },
+    {
+      type: "permission",
+      requestId: "request",
+      toolCallId: "git",
+      title: "git add",
+      kind: "execute",
+      automatic: false,
+      decision: { outcome: "selected", optionId: "cancel", kind: "reject_once" },
+    },
+  ];
+  updates.forEach((event, index) => {
+    act(() =>
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "stint",
+          stintId: "first",
+          workItem: "board",
+          sequence: index + 1,
+          entry: { type: "event", at, event },
+        }),
+      }),
+    );
+  });
+  expect(result.current.snapshot?.workItems[0].activeStint?.events).toMatchObject([
+    rich[0],
+    { ...rich[1], status: "completed", content: [{ type: "text", text: "Saved" }] },
+    rich[2],
+    rich[3],
+    updates[1],
+  ]);
+  expect(result.current.connection).toBe("live");
+  expect(socket.close).not.toHaveBeenCalled();
 });
 
 test("reconnects after a socket failure, polls GET while offline, and stops polling when live", async () => {

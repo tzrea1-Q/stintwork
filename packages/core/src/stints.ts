@@ -1,11 +1,18 @@
 import type { Brief, BriefHandoff } from "./brief.js";
 import type { RepoFiles, Warning } from "./work-items.js";
+import {
+  isRichStintEvent,
+  type RichStintEvent,
+  type StintToolUpdate,
+} from "./rich-stint-events.js";
 
 export type StintStatus = "running" | "finished" | "stopped" | "failed" | "interrupted";
 export type StintEvent =
+  | RichStintEvent
   | { type: "message" | "thought"; id: string; text: string }
   | {
       type: "permission";
+      requestId?: string;
       toolCallId: string;
       title: string | null;
       kind: string | null;
@@ -17,6 +24,7 @@ export type StintEvent =
     }
   | { type: "other"; kind: string; update: Record<string, unknown> };
 export type StintLogEvent =
+  | StintToolUpdate
   | { type: "message_delta" | "thought_delta"; id: string; text: string }
   | StintEvent;
 export type Stint = {
@@ -68,7 +76,31 @@ export type StintLiveMessage = {
 };
 
 export function mergeStintEvent(events: readonly StintEvent[], event: StintLogEvent): StintEvent[] {
-  if (event.type === "other" || event.type === "permission") return [...events, event];
+  if (event.type === "other" || event.type === "permission" || event.type === "permission_request")
+    return [...events, event];
+  if (
+    event.type === "plan" ||
+    event.type === "file_edit" ||
+    event.type === "tool_call" ||
+    event.type === "tool_call_update"
+  ) {
+    const normalized: StintEvent =
+      event.type === "tool_call_update" ? { ...event, type: "tool_call" } : event;
+    const index = events.findIndex((previous) =>
+      normalized.type === "plan"
+        ? previous.type === "plan" && previous.id === normalized.id
+        : normalized.type === "file_edit"
+          ? previous.type === "file_edit" &&
+            previous.toolCallId === normalized.toolCallId &&
+            previous.path === normalized.path
+          : previous.type === "tool_call" && previous.toolCallId === normalized.toolCallId,
+    );
+    return index < 0
+      ? [...events, normalized]
+      : events.map((previous, position) =>
+          position === index ? ({ ...previous, ...normalized } as StintEvent) : previous,
+        );
+  }
   const delta = event.type === "message_delta" || event.type === "thought_delta";
   const type =
     event.type === "message_delta"
@@ -141,6 +173,7 @@ export function summarizeStint(stint: Stint): StintSummary {
 export function isStintEvent(value: unknown): value is StintEvent {
   if (!value || typeof value !== "object") return false;
   const event = value as Record<string, unknown>;
+  if (isRichStintEvent(event)) return true;
   if (event.type === "permission") {
     const decision = event.decision as Record<string, unknown> | undefined;
     return (
@@ -148,6 +181,7 @@ export function isStintEvent(value: unknown): value is StintEvent {
       (event.title === null || typeof event.title === "string") &&
       (event.kind === null || typeof event.kind === "string") &&
       typeof event.automatic === "boolean" &&
+      (event.requestId === undefined || typeof event.requestId === "string") &&
       !!decision &&
       (decision.outcome === "cancelled" ||
         (decision.outcome === "failed" && typeof decision.reason === "string") ||
@@ -174,6 +208,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
     if (isStintEvent(entry.event)) return true;
     if (!entry.event || typeof entry.event !== "object") return false;
     const event = entry.event as Record<string, unknown>;
+    if (isRichStintEvent(event, true)) return true;
     return (
       (event.type === "message_delta" || event.type === "thought_delta") &&
       typeof event.id === "string" &&

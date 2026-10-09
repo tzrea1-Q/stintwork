@@ -8,7 +8,10 @@ export type FakeAgentStep =
   | { type: "message" | "thought"; text: string }
   | { type: "delay"; milliseconds: number }
   | { type: "update"; update: Record<string, unknown> }
-  | ({ type: "permission" } & Pick<RequestPermissionRequest, "toolCall" | "options">)
+  | ({ type: "permission"; expectedOptionId?: string } & Pick<
+      RequestPermissionRequest,
+      "toolCall" | "options"
+    >)
   | { type: "end"; stopReason?: string };
 
 export function createFakeAgentLauncher(script: readonly FakeAgentStep[]): AgentLauncher {

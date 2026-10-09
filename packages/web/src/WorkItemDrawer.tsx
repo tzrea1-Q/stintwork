@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TicketBriefPreview } from "./BriefPreview";
+import { StintStream } from "./StintStream";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 function Markdown({ text }: { text: string }) {
@@ -196,23 +197,7 @@ export function WorkItemDrawer({
               {item.activeStint.agent} · Ticket {item.activeStint.ticket} ·{" "}
               {item.activeStint.status}
             </p>
-            <div
-              className="stint-messages"
-              role="log"
-              aria-label="Stint messages"
-              aria-live="polite"
-            >
-              {item.activeStint.events
-                .filter((event) => event.type === "message")
-                .map(
-                  (event) =>
-                    event.type === "message" && (
-                      <div key={event.id}>
-                        <Markdown text={event.text} />
-                      </div>
-                    ),
-                )}
-            </div>
+            <StintStream key={item.activeStint.id} stint={item.activeStint} />
           </section>
         )}
         <section aria-labelledby="drawer-stint-history-title">

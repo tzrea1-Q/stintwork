@@ -1,6 +1,7 @@
 import type { Milestone, ProjectSnapshot } from "@stintwork/core";
 import { Bug, Info, Layers3, LockKeyhole, Sparkles, Zap } from "lucide-react";
 import { useId } from "react";
+import "./stint-stream.css";
 
 export type BoardWorkItem = ProjectSnapshot["workItems"][number];
 
@@ -56,6 +57,12 @@ export function WorkItemCard({
           {item.title}
         </button>
       </h3>
+      {item.activeStint?.status === "running" && (
+        <span className="stint-running" role="status">
+          <span className="stint-running-dot" aria-hidden="true" />
+          Stint running
+        </span>
+      )}
       {(blocked || item.inferred) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {blocked && (

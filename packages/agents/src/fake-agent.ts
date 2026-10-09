@@ -61,7 +61,10 @@ new AgentSideConnection(
             });
             if (response.outcome.outcome === "cancelled") return { stopReason: "cancelled" };
             const optionId = response.outcome.optionId;
-            assert.ok(step.options.some((option) => option.optionId === optionId));
+            const option = step.options.find((option) => option.optionId === optionId);
+            assert.ok(option);
+            if (step.expectedOptionId !== undefined) assert.equal(optionId, step.expectedOptionId);
+            if (option.kind.startsWith("reject")) return { stopReason: "cancelled" };
           } else
             await client.sessionUpdate({
               sessionId,

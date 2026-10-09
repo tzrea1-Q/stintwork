@@ -1,6 +1,6 @@
 # 06 — Rich stint stream
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## What to build

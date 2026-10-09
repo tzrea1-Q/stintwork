@@ -7,6 +7,7 @@ import {
   isStintEvent,
   isStintLogEntry,
   type StintLogEntry,
+  type StintLogEvent,
 } from "./stints.js";
 
 const started: StintLogEntry = {
@@ -46,6 +47,133 @@ const events: StintLogEntry[] = [
     event: { type: "other", kind: "plan", update: { entries: [] } },
   },
 ];
+
+test("plans, partial tool updates and file edits fold to latest state without losing fields or mutating the log", () => {
+  const rich: StintLogEvent[] = [
+    {
+      type: "plan",
+      id: "plan",
+      entries: [{ content: "Read", priority: "high", status: "pending" }],
+    },
+    {
+      type: "tool_call",
+      toolCallId: "read",
+      title: "Read ticket",
+      kind: "read",
+      status: "in_progress",
+      content: [{ type: "text", text: "old output" }],
+      locations: [{ path: "/ticket", line: 1 }],
+    },
+    { type: "file_edit", toolCallId: "edit", path: "/file", oldText: "old", newText: "draft" },
+    {
+      type: "plan",
+      id: "plan",
+      entries: [{ content: "Read", priority: "high", status: "completed" }],
+    },
+    {
+      type: "tool_call_update",
+      toolCallId: "read",
+      status: "completed",
+      content: [{ type: "text", text: "new output" }],
+      output: "Done",
+    },
+    { type: "file_edit", toolCallId: "edit", path: "/file", newText: "final" },
+    { type: "tool_call_update", toolCallId: "early", status: "in_progress" },
+    { type: "tool_call", toolCallId: "early", title: "Started after update", kind: "search" },
+    { type: "tool_call_update", toolCallId: "read", locations: [], content: [] },
+    { type: "plan", id: "second-plan", entries: [] },
+  ];
+  const entries: StintLogEntry[] = rich.map((event) => ({ type: "event", at: started.at, event }));
+  const original = structuredClone(entries);
+  expect(entries.every(isStintLogEntry)).toBe(true);
+  expect(isStintEvent(rich[4])).toBe(false);
+  const stint = foldStintLog([started, ...entries]);
+  expect(stint?.events).toEqual([
+    {
+      type: "plan",
+      id: "plan",
+      entries: [{ content: "Read", priority: "high", status: "completed" }],
+    },
+    {
+      type: "tool_call",
+      toolCallId: "read",
+      title: "Read ticket",
+      kind: "read",
+      status: "completed",
+      content: [],
+      locations: [],
+      output: "Done",
+    },
+    { type: "file_edit", toolCallId: "edit", path: "/file", oldText: "old", newText: "final" },
+    {
+      type: "tool_call",
+      toolCallId: "early",
+      status: "in_progress",
+      title: "Started after update",
+      kind: "search",
+    },
+    { type: "plan", id: "second-plan", entries: [] },
+  ]);
+  expect(stint?.events.every(isStintEvent)).toBe(true);
+  expect(entries).toEqual(original);
+});
+
+test.each([
+  {
+    type: "plan",
+    id: "plan",
+    entries: [{ content: "Read", priority: "high", status: "invented" }],
+  },
+  { type: "tool_call_update", toolCallId: "tool", title: null },
+  { type: "tool_call", toolCallId: "tool", content: [{ type: "text", text: 1 }] },
+  { type: "tool_call", toolCallId: "tool", locations: [{ path: "/file", line: -1 }] },
+  { type: "file_edit", toolCallId: "tool", path: 1 },
+  {
+    type: "permission_request",
+    requestId: "request",
+    toolCallId: "tool",
+    title: null,
+    kind: null,
+    automatic: false,
+    options: [{ optionId: "allow", name: 1, kind: "allow_once" }],
+  },
+])("invalid rich log entries are rejected: $type", (event) => {
+  expect(isStintLogEntry({ type: "event", at: started.at, event })).toBe(false);
+});
+
+test("permission requests retain real options and decisions correlate by request ID", () => {
+  const request: StintLogEvent = {
+    type: "permission_request",
+    requestId: "one",
+    toolCallId: "git",
+    title: "git add",
+    kind: "execute",
+    automatic: false,
+    options: [
+      {
+        optionId: "cancel",
+        name: "No, and tell Codex what to do differently",
+        kind: "reject_once",
+      },
+    ],
+  };
+  const decision: StintLogEvent = {
+    type: "permission",
+    requestId: "one",
+    toolCallId: "git",
+    title: "git add",
+    kind: "execute",
+    automatic: false,
+    decision: { outcome: "selected", optionId: "cancel", kind: "reject_once" },
+  };
+  const entries: StintLogEntry[] = [request, decision].map((event) => ({
+    type: "event",
+    at: started.at,
+    event,
+  }));
+  expect(entries.every(isStintLogEntry)).toBe(true);
+  expect(foldStintLog([started, ...entries])?.events).toEqual([request, decision]);
+});
 
 test.each(["message", "thought"] as const)(
   "N %s chunks occupy N small log entries and fold to full text",

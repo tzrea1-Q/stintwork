@@ -12,6 +12,7 @@ import {
 import { ensureWorktree } from "@stintwork/git";
 import type { Hono } from "hono";
 import { prepareStintBrief } from "./brief-preview.js";
+import { addStintPermissionRoute } from "./stint-permissions.js";
 
 export type StintServerOptions = { launchAgent?: AgentLauncher };
 
@@ -51,6 +52,7 @@ export function addStintRoutes(
   refresh: () => void,
 ) {
   const active = new Map<string, { handle?: AgentStint; completion?: Promise<void> }>();
+  const permissions = addStintPermissionRoute(app);
   let closing = false;
   app.post("/api/stints", async (context) => {
     const origin = context.req.header("origin");
@@ -128,6 +130,7 @@ export function addStintRoutes(
         status: "finished" | "stopped" | "failed" | "interrupted",
         details: { stopReason?: string; error?: string } = {},
       ) {
+        permissions.clear(id);
         append({ type: "ended", at: new Date().toISOString(), status, ...details });
         active.delete(workItem.slug);
         refresh();
@@ -137,7 +140,14 @@ export function addStintRoutes(
           agent: "codex",
           cwd: worktree.path,
           prompt: brief.prompt,
-          onEvent: (event) => append({ type: "event", at: new Date().toISOString(), event }),
+          onEvent: (event) => {
+            append({ type: "event", at: new Date().toISOString(), event });
+            if (event.type === "permission_request" || event.type === "permission") refresh();
+          },
+          onPermission: (request) =>
+            closing
+              ? Promise.resolve({ outcome: { outcome: "cancelled" as const } })
+              : permissions.wait(id, request),
         });
         state.completion = state.handle.done
           .then(
@@ -172,6 +182,7 @@ export function addStintRoutes(
   });
   return async () => {
     closing = true;
+    permissions.clear();
     await Promise.all(
       [...active.values()].map(async (state) => {
         await state.handle?.cancel();

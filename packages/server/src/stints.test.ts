@@ -186,57 +186,171 @@ test("starts from the server-compiled preview, records every event and reuses th
   expect(await readdir(join(root, ".stintwork/local/stints"))).toHaveLength(2);
 });
 
-test("automatic permission rejection is logged and the ACP stint continues to finish", async () => {
+test.each(["allow", "cancel"])(
+  "permission %s waits without a UI, reaches ACP and is logged",
+  async (optionId) => {
+    const { root, project } = await fixture(
+      createFakeAgentLauncher([
+        { type: "message", text: "Before permission. " },
+        {
+          type: "permission",
+          toolCall: { toolCallId: "git-add", title: "Escalate git add", kind: "execute" },
+          options: [
+            { optionId: "allow", name: "Yes, proceed", kind: "allow_once" },
+            {
+              optionId: "cancel",
+              name: "No, and tell Codex what to do differently",
+              kind: "reject_once",
+            },
+          ],
+          expectedOptionId: optionId,
+        },
+        { type: "message", text: "Allowed to continue." },
+        { type: "end" },
+      ]),
+    );
+    const response = await start(project);
+    expect(response.status).toBe(201);
+    const { stint }: { stint: Stint } = await response.json();
+    let pending: Extract<Stint["events"][number], { type: "permission_request" }> | undefined;
+    await expect
+      .poll(async () => {
+        const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+        pending = snapshot.workItems[0].activeStint?.events.find(
+          (event) => event.type === "permission_request",
+        );
+        return pending?.requestId;
+      })
+      .toBeTruthy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const waiting = await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8");
+    expect(waiting).not.toContain('"type":"ended"');
+    expect(waiting).not.toContain("Allowed to continue.");
+    expect(pending).toMatchObject({
+      automatic: false,
+      title: "Escalate git add",
+      kind: "execute",
+      options: [
+        { optionId: "allow", name: "Yes, proceed" },
+        { optionId: "cancel", kind: "reject_once" },
+      ],
+    });
+    const url = `/api/stints/${stint.id}/permissions/${pending?.requestId}`;
+    const answer = (body: unknown, path = url) =>
+      project.app.request(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    expect((await answer({ optionId: "invented" })).status).toBe(400);
+    expect((await answer({})).status).toBe(400);
+    expect((await answer({ optionId }, url.replace(stint.id, "another-stint"))).status).toBe(409);
+    expect(
+      (
+        await project.app.request(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: "https://untrusted.example" },
+          body: JSON.stringify({ optionId }),
+        })
+      ).status,
+    ).toBe(403);
+    expect((await project.app.request(url, { method: "POST", body: "{}" })).status).toBe(400);
+    expect(
+      (
+        await project.app.request(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{",
+        })
+      ).status,
+    ).toBe(400);
+    expect((await answer({ optionId })).status).toBe(200);
+    expect((await answer({ optionId })).status).toBe(409);
+    await finished(project, stint.id);
+    const entries: StintLogEntry[] = (
+      await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const permission = {
+      type: "permission",
+      requestId: pending?.requestId,
+      toolCallId: "git-add",
+      title: "Escalate git add",
+      kind: "execute",
+      automatic: false,
+      decision: {
+        outcome: "selected",
+        optionId,
+        kind: optionId === "allow" ? "allow_once" : "reject_once",
+      },
+    };
+    expect(entries[2]).toMatchObject({ type: "event", event: pending });
+    expect(entries[3]).toMatchObject({ type: "event", event: permission });
+    expect(entries.at(-1)).toMatchObject({
+      type: "ended",
+      status: "finished",
+      stopReason: optionId === "allow" ? "end_turn" : "cancelled",
+    });
+    expect(foldStintLog(entries)?.events).toContainEqual(permission);
+    expect(
+      entries.some(
+        (entry) =>
+          entry.type === "event" &&
+          entry.event.type === "message_delta" &&
+          entry.event.text === "Allowed to continue.",
+      ),
+    ).toBe(optionId === "allow");
+  },
+);
+
+test("server shutdown cancels a pending permission rather than hanging or retaining an answerable request", async () => {
   const { root, project } = await fixture(
     createFakeAgentLauncher([
-      { type: "message", text: "Before permission. " },
       {
         type: "permission",
-        toolCall: { toolCallId: "git-add", title: "Escalate git add", kind: "execute" },
-        options: [
-          { optionId: "allow", name: "Allow", kind: "allow_once" },
-          { optionId: "reject", name: "Reject", kind: "reject_once" },
-        ],
+        toolCall: { toolCallId: "git" },
+        options: [{ optionId: "allow", name: "Yes", kind: "allow_once" }],
       },
-      { type: "message", text: "Continuing after rejection." },
-      { type: "end" },
     ]),
   );
-  const response = await start(project);
-  expect(response.status).toBe(201);
-  const { stint }: { stint: Stint } = await response.json();
-  await finished(project, stint.id);
+  const { stint }: { stint: Stint } = await (await start(project)).json();
+  let requestId: string | undefined;
+  await expect
+    .poll(async () => {
+      const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+      const event = snapshot.workItems[0].activeStint?.events.find(
+        (entry) => entry.type === "permission_request",
+      );
+      requestId = event?.requestId;
+      return requestId;
+    })
+    .toBeTruthy();
+  await project.stop();
   const entries: StintLogEntry[] = (
     await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8")
   )
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line));
-  const permission = {
-    type: "permission",
-    toolCallId: "git-add",
-    title: "Escalate git add",
-    kind: "execute",
-    automatic: true,
-    decision: { outcome: "selected", optionId: "reject", kind: "reject_once" },
-  };
-  expect(entries.map((entry) => entry.type)).toEqual([
-    "started",
-    "event",
-    "event",
-    "event",
-    "ended",
-  ]);
-  expect(entries[2]).toMatchObject({ type: "event", event: permission });
-  expect(entries.at(-1)).toMatchObject({
-    type: "ended",
-    status: "finished",
-    stopReason: "end_turn",
-  });
-  expect(foldStintLog(entries)?.events).toEqual([
-    { type: "message", id: "1", text: "Before permission. Continuing after rejection." },
-    permission,
-  ]);
+  expect(entries.at(-1)).toMatchObject({ type: "ended", status: "interrupted" });
+  expect(foldStintLog(entries)?.events).toContainEqual(
+    expect.objectContaining({
+      type: "permission",
+      automatic: false,
+      decision: { outcome: "cancelled" },
+    }),
+  );
+  expect(
+    (
+      await project.app.request(`/api/stints/${stint.id}/permissions/${requestId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId: "allow" }),
+      })
+    ).status,
+  ).toBe(409);
 });
 
 test("N ACP chunks persist as N bounded delta entries and fold to the full message", async () => {
@@ -322,6 +436,127 @@ test("HTTP start streams ACP messages over WebSocket in durable log order and en
   ).toEqual(messages.map((message) => message.entry));
   const snapshot: ProjectSnapshot = await (await fetch(`${url}/api/project`)).json();
   expect(snapshot.workItems[0].stints[0]).toMatchObject({ id: stint.id, status: "finished" });
+});
+
+test("rich events and pending permission frames broadcast in durable order and a live HTTP answer reaches ACP", async () => {
+  const { root, project, tracked } = await fixture(
+    createFakeAgentLauncher([
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "plan",
+          entries: [{ content: "Edit greeting", priority: "high", status: "in_progress" }],
+        },
+      },
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "edit",
+          title: "Write greeting",
+          kind: "edit",
+          status: "in_progress",
+        },
+      },
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "edit",
+          status: "completed",
+          content: [{ type: "diff", path: "/worktree/hello.ts", oldText: null, newText: "Hello" }],
+        },
+      },
+      {
+        type: "permission",
+        toolCall: { toolCallId: "git", title: "git add", kind: "execute" },
+        options: [{ optionId: "allow", name: "Yes, proceed", kind: "allow_once" }],
+        expectedOptionId: "allow",
+      },
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "plan",
+          entries: [{ content: "Edit greeting", priority: "high", status: "completed" }],
+        },
+      },
+    ]),
+  );
+  const server = await project.start();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected TCP address");
+  const url = `http://127.0.0.1:${address.port}`;
+  const socket = new WebSocket(`${url.replace("http", "ws")}/api/live`);
+  tracked.socket = socket;
+  const messages: StintLiveMessage[] = [];
+  let permissionReady: (requestId: string) => void = () => {};
+  const permission = new Promise<string>((resolve) => {
+    permissionReady = resolve;
+  });
+  let stintEnded: () => void = () => {};
+  const ended = new Promise<void>((resolve) => {
+    stintEnded = resolve;
+  });
+  socket.on("message", (data) => {
+    const message: StintLiveMessage = JSON.parse(data.toString());
+    if (message.type !== "stint") return;
+    messages.push(message);
+    if (message.entry.type === "event" && message.entry.event.type === "permission_request")
+      permissionReady(message.entry.event.requestId);
+    if (message.entry.type === "ended") stintEnded();
+  });
+  await once(socket, "open");
+  const response = await fetch(`${url}/api/stints`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+  });
+  const { stint }: { stint: Stint } = await response.json();
+  const requestId = await permission;
+  expect(messages.at(-1)?.entry).toMatchObject({
+    type: "event",
+    event: { type: "permission_request", requestId, automatic: false },
+  });
+  const answer = await fetch(`${url}/api/stints/${stint.id}/permissions/${requestId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ optionId: "allow" }),
+  });
+  expect(answer.status).toBe(200);
+  await ended;
+  expect(messages.map((message) => message.sequence)).toEqual(
+    messages.map((_message, index) => index + 1),
+  );
+  const entries: StintLogEntry[] = (
+    await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8")
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(entries).toEqual(messages.map((message) => message.entry));
+  expect(foldStintLog(entries)).toMatchObject({
+    status: "finished",
+    events: [
+      { type: "plan", entries: [{ status: "completed" }] },
+      {
+        type: "tool_call",
+        toolCallId: "edit",
+        title: "Write greeting",
+        kind: "edit",
+        status: "completed",
+      },
+      { type: "file_edit", path: "/worktree/hello.ts", newText: "Hello" },
+      { type: "permission_request", requestId, automatic: false },
+      {
+        type: "permission",
+        requestId,
+        automatic: false,
+        decision: { outcome: "selected", optionId: "allow" },
+      },
+    ],
+  });
 });
 
 test("rejects stale eligibility and untrusted or malformed start requests before any log", async () => {

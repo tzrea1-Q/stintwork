@@ -2,6 +2,12 @@ export type Health = {
   ok: true;
   repo: string;
 };
+export type {
+  RichStintEvent,
+  StintToolContent,
+  StintToolFields,
+  StintToolUpdate,
+} from "./rich-stint-events.js";
 
 export {
   createMemoryRepoFiles,

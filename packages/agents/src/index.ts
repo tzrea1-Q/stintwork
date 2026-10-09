@@ -1,4 +1,5 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, dirname, relative, resolve, delimiter } from "node:path";
 import { Writable } from "node:stream";
@@ -6,13 +7,16 @@ import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import type { StintEvent, StintLogEvent } from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
+import { normalizeStintUpdate } from "./stint-events.js";
 
 export type AgentStintOptions = {
   agent: string;
   cwd: string;
   prompt: string;
   onEvent: (event: StintLogEvent) => void;
-  onPermission?: (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>;
+  onPermission?: (
+    request: RequestPermissionRequest & { requestId: string },
+  ) => Promise<RequestPermissionResponse>;
 };
 export type AgentStint = { done: Promise<{ stopReason: string }>; cancel: () => Promise<void> };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
@@ -25,6 +29,10 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
     let acpId: string | undefined;
     let cancelled = false;
     let settled = false;
+    let cancelPermission: () => void = () => {};
+    const permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
+      cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
+    });
     let rejectFailure: (error: Error) => void = () => {};
     const failure = new Promise<never>((_resolve, reject) => {
       rejectFailure = reject;
@@ -32,6 +40,7 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
     void failure.catch(() => {});
     let chunk: { type: "message_delta" | "thought_delta"; id: string } | undefined;
     let nextMessage = 0;
+    const toolKinds = new Map<string, string>();
 
     async function safePath(path: string) {
       if (!isAbsolute(path)) throw new Error("Agent file paths must be absolute.");
@@ -95,31 +104,44 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
                 onEvent({ ...chunk, text: update.content.text });
               } else {
                 chunk = undefined;
-                onEvent({ type: "other", kind, update: { ...update } });
+                for (const event of normalizeStintUpdate(update, toolKinds)) onEvent(event);
               }
             } catch (error) {
               fail(error instanceof Error ? error : new Error(String(error)));
             }
           },
           async requestPermission(request) {
+            chunk = undefined;
+            const requestId = randomUUID();
             const event: Extract<StintEvent, { type: "permission" }> = {
               type: "permission",
+              requestId,
               toolCallId: request.toolCall.toolCallId,
               title: request.toolCall.title ?? null,
               kind: request.toolCall.kind ?? null,
-              automatic: !onPermission,
+              automatic: false,
               decision: { outcome: "failed", reason: "Permission could not be decided." },
             };
             let response: RequestPermissionResponse;
             try {
-              if (onPermission) response = await onPermission(request);
-              else {
-                const rejected =
-                  request.options.find((option) => option.kind === "reject_once") ??
-                  request.options.find((option) => option.kind.startsWith("reject"));
-                if (!rejected) throw new Error("Agent permission request has no reject option.");
-                response = { outcome: { outcome: "selected", optionId: rejected.optionId } };
-              }
+              onEvent({
+                type: "permission_request",
+                requestId,
+                toolCallId: event.toolCallId,
+                title: event.title,
+                kind: event.kind,
+                automatic: false,
+                options: request.options.map(({ optionId, name, kind }) => ({
+                  optionId,
+                  name,
+                  kind,
+                })),
+              });
+              response = await Promise.race([
+                onPermission ? onPermission({ ...request, requestId }) : permissionCancelled,
+                permissionCancelled,
+                failure,
+              ]);
               if (response.outcome.outcome === "selected") {
                 const optionId = response.outcome.optionId;
                 const selected = request.options.find((option) => option.optionId === optionId);
@@ -224,6 +246,7 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       done,
       async cancel() {
         cancelled = true;
+        cancelPermission();
         if (connection && acpId) {
           await Promise.race([
             connection.cancel({ sessionId: acpId }).catch(() => {}),
