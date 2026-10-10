@@ -1,7 +1,7 @@
 # 09 — M2 exit
 
 Status: ready-for-agent
-Blocked by: 05, 06, 07, 08
+Blocked by: 05, 06, 07, 08, 10
 
 ## What to build
 
