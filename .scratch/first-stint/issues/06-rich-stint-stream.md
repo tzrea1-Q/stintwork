@@ -19,3 +19,7 @@ The stream shows what the agent is actually doing (spec user stories 14–16, 32
 - [ ] Core test: plan, tool-call, tool-call-update and file events fold into the latest state per plan and tool call.
 - [ ] Component tests: each event kind renders, tool output collapses and expands, and the permission prompt sends the chosen option.
 - [ ] Component test: a card with an active stint shows the running indicator.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** All checks pass alone (212 tests). Merging with ticket 04 conflicted in five lifecycle files; the Codex session that wrote this ticket resolved them, adding four regression tests that caught two interaction bugs (cancellation leaking into the handoff request; handoff timeouts leaving permission requests pending). Merged result: 248 tests. Real Codex stint: a permission request ("Run command") appeared with Codex's real options, Allow once was answered through the new endpoint, and Codex then committed its own work.

@@ -187,10 +187,16 @@ test("indexes this repo's board and first-stint tickets without warnings", () =>
     read: (path) => readFileSync(new URL(path, root), "utf8"),
   });
   expect(warnings).toEqual([]);
-  expect(
-    workItems.find((item) => item.slug === "board")?.tickets.map((ticket) => ticket.number),
-  ).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-  expect(
-    workItems.find((item) => item.slug === "first-stint")?.tickets.map((ticket) => ticket.number),
-  ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  // This repo's own plan keeps growing; assert that its tickets parse and are in dependency
+  // order, not the current inventory.
+  for (const slug of ["board", "first-stint"]) {
+    const tickets = workItems.find((item) => item.slug === slug)?.tickets ?? [];
+    expect(tickets.length).toBeGreaterThan(0);
+    const position = new Map(tickets.map((ticket, index) => [ticket.number, index]));
+    for (const ticket of tickets) {
+      for (const blocker of ticket.blockedBy) {
+        expect(position.get(blocker)).toBeLessThan(position.get(ticket.number) ?? -1);
+      }
+    }
+  }
 });
