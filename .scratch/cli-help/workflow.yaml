@@ -1,5 +1,9 @@
 workflow: feature
-stage: implement
+stage: review
 stages:
   implement:
     agent: claude
+    approved:
+      by: tzrea1-Q
+      at: 2026-10-10T09:09:26.288Z
+      commit: 49627527cee83f49453b861849cf601b5e041b1c
