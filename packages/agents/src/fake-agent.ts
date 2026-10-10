@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { isAbsolute, resolve } from "node:path";
 import { Writable } from "node:stream";
@@ -15,6 +16,7 @@ import { toAcpReadable } from "./stdio.js";
 
 const script: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_SCRIPT ?? "[]");
 const handoff: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_HANDOFF ?? "[]");
+const options = JSON.parse(process.env.STINTWORK_FAKE_OPTIONS ?? "{}");
 const briefs = new Map<string, { cwd: string; prompts: number }>();
 const turns = new Map<string, AbortController>();
 const modes = {
@@ -28,7 +30,10 @@ new AgentSideConnection(
       assert.equal(request.protocolVersion, PROTOCOL_VERSION);
       return {
         protocolVersion: PROTOCOL_VERSION,
-        agentCapabilities: {},
+        agentCapabilities:
+          options.additionalDirectories === false
+            ? {}
+            : { sessionCapabilities: { additionalDirectories: {} } },
         authMethods: [],
         agentInfo: { name: "scriptable-fake", version: "1.0.0" },
       };
@@ -36,9 +41,22 @@ new AgentSideConnection(
     async authenticate() {
       throw new Error("Stintwork must never authenticate agents.");
     },
-    async newSession({ cwd, mcpServers }) {
+    async newSession({ cwd, mcpServers, additionalDirectories }) {
       assert.ok(isAbsolute(cwd));
       assert.deepEqual(mcpServers, []);
+      if (options.authRequired) throw RequestError.authRequired();
+      if (options.startupError) throw RequestError.internalError(undefined, options.startupError);
+      if (options.verifyGitDirectories) {
+        const directories = execFileSync(
+          "git",
+          ["rev-parse", "--path-format=absolute", "--git-common-dir", "--git-dir"],
+          { cwd, encoding: "utf8" },
+        )
+          .trim()
+          .split("\n");
+        assert.deepEqual(additionalDirectories, [...new Set(directories)]);
+        assert.ok(additionalDirectories?.every(isAbsolute));
+      }
       const id = randomUUID();
       briefs.set(id, { cwd, prompts: 0 });
       return { sessionId: id, modes };
@@ -79,7 +97,29 @@ new AgentSideConnection(
               path: resolve(brief.cwd, step.path),
               content: step.content,
             });
-          else if (step.type === "permission") {
+          else if (step.type === "expect-file") {
+            const { content } = await client.readTextFile({
+              sessionId,
+              path: resolve(brief.cwd, step.path),
+            });
+            assert.ok(content.includes(step.includes));
+          } else if (step.type === "commit") {
+            execFileSync("git", ["add", "--all"], { cwd: brief.cwd });
+            execFileSync(
+              "git",
+              [
+                "-c",
+                "user.name=Fake Codex",
+                "-c",
+                "user.email=fake@example.invalid",
+                "commit",
+                "--quiet",
+                "-m",
+                step.message,
+              ],
+              { cwd: brief.cwd },
+            );
+          } else if (step.type === "permission") {
             const response = await client.requestPermission({
               sessionId,
               toolCall: step.toolCall,

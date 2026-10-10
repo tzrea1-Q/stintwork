@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 export { changedSince, createCheckpoint } from "./checkpoints.js";
+export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";
 
 const execute = promisify(execFile);
 

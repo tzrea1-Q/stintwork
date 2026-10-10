@@ -55,6 +55,9 @@ async function fixture(
   for (const [path, content] of Object.entries({
     "web/index.html": "<!doctype html><title>Stintwork</title>",
     "AGENTS.md": "Project conventions",
+    ".gitignore": ".stintwork/local/\n",
+    ".scratch/first/workflow.yaml":
+      "workflow: feature\nstage: implement\nstages:\n  implement:\n    agent: codex\n",
     [spec]: "# First",
     [ticket]: "# Checkpoint\nStatus: ready-for-agent\nBlocked by: none",
   })) {
