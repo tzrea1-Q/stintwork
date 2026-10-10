@@ -10,6 +10,7 @@ import { StintHistory } from "./StintHistory";
 import type { BoardWorkItem } from "./WorkItemCard";
 import { StageAgentRail } from "./StageAgentRail";
 import { GateView } from "./GateView";
+import { ReviewOverlay } from "./ReviewOverlay";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -62,6 +63,7 @@ export function WorkItemDrawer({
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
+  const [reviewOpen, setReviewOpen] = useState(false);
   const workflow = builtInWorkflows[item.workflow];
   const type = item.type === "effort" ? "Effort" : workflow.name;
 
@@ -114,6 +116,9 @@ export function WorkItemDrawer({
           <div className="mt-3">
             <p className="text-xs muted">Work item files live in this worktree:</p>
             <FilePath path={item.worktreePath} />
+            <button type="button" className="top-button" onClick={() => setReviewOpen(true)}>
+              Open review
+            </button>
           </div>
         )}
       </header>
@@ -235,6 +240,7 @@ export function WorkItemDrawer({
           <kbd>Esc</kbd> to return to Pipeline
         </span>
       </footer>
+      {reviewOpen && <ReviewOverlay item={item} onClose={() => setReviewOpen(false)} />}
     </dialog>
   );
 }
