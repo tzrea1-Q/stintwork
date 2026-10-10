@@ -34,13 +34,15 @@ export function createReviewEvidenceReader(root: string, checks: ReturnType<type
       try {
         Object.assign(item, checks.evidence(item.slug));
         item.checkCommands = checks.commands();
-        if (path) {
-          item.headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-            cwd: path,
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "pipe"],
-          }).trim();
-          item.evidenceChangedPaths = readEvidenceChangedPaths(path, item.headCommit, [
+        if (path || item.merged) {
+          item.headCommit =
+            item.merged?.commit ??
+            execFileSync("git", ["rev-parse", "HEAD"], {
+              cwd: path,
+              encoding: "utf8",
+              stdio: ["ignore", "pipe", "pipe"],
+            }).trim();
+          item.evidenceChangedPaths = readEvidenceChangedPaths(path ?? root, item.headCommit, [
             ...item.stints.flatMap((stint) => (stint.findings ? [stint.findings.commit] : [])),
             ...(item.checks ?? []).map((result) => result.commit),
           ]);

@@ -14,6 +14,12 @@ export {
   type DiffLine,
 } from "./work-item-diff.js";
 export { checkpointChangedPaths, checkpointFileDiff, commitWorkItemReview } from "./review.js";
+export {
+  dryRunLocalMerge,
+  mergeLocalWorkItem,
+  LocalMergeRefusal,
+  type LocalMergeReport,
+} from "./local-merge.js";
 
 const execute = promisify(execFile);
 
@@ -22,7 +28,8 @@ const execute = promisify(execFile);
  * concurrent stints on different work items must not create worktrees at the same time.
  */
 const repoLocks = new Map<string, Promise<unknown>>();
-function withRepoLock<T>(root: string, task: () => Promise<T>): Promise<T> {
+export async function withRepoLock<T>(repoRoot: string, task: () => Promise<T>): Promise<T> {
+  const root = await realpath(repoRoot);
   const run = (repoLocks.get(root) ?? Promise.resolve()).catch(() => {}).then(task);
   repoLocks.set(root, run);
   return run;

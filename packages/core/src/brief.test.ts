@@ -9,6 +9,17 @@ import {
   stageAgent,
 } from "./index.js";
 
+test("a shipped work item has no stint brief, even if its stage is edited later", () => {
+  expect(
+    briefUnavailableReason({
+      type: "feature",
+      workflow: "feature",
+      stage: "review",
+      merged: { at: "2026-10-10T10:00:00Z", commit: "a".repeat(40) },
+    }),
+  ).toBe("This work item is shipped.");
+});
+
 test("Review briefs point at every ticket, exact diff range and /code-review, defaulting to Codex", () => {
   const reviewInput = input({
     ...contents,

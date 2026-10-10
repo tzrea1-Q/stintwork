@@ -9,7 +9,7 @@ import "./checks-panel.css";
 
 type ChecksItem = Pick<
   ProjectSnapshot["workItems"][number],
-  "slug" | "headCommit" | "checks" | "checkExecution" | "evidenceChangedPaths"
+  "slug" | "headCommit" | "checks" | "checkExecution" | "evidenceChangedPaths" | "merged"
 >;
 
 export function ChecksPanel({ item }: { item: ChecksItem }) {
@@ -30,6 +30,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
   };
 
   useEffect(() => {
+    if (item.merged) return;
     let disposed = false;
     let request: AbortController | undefined;
     async function load() {
@@ -57,7 +58,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
       clearInterval(poll);
       request?.abort();
     };
-  }, [endpoint]);
+  }, [endpoint, item.merged]);
 
   async function action(cancel: boolean) {
     setBusy(true);
@@ -79,33 +80,39 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
 
   return (
     <div className="checks-panel">
-      <p className="muted">Commands execute in the work item worktree, on the recorded commit.</p>
-      <div className="checks-actions">
-        <button
-          type="button"
-          className="top-button"
-          disabled={busy || active || !data?.commands.length}
-          onClick={() => void action(false)}
-        >
-          Run checks
-        </button>
-        {active && (
+      <p className="muted">
+        {item.merged
+          ? "Recorded check evidence for this shipped work item."
+          : "Commands execute in the work item worktree, on the recorded commit."}
+      </p>
+      {!item.merged && (
+        <div className="checks-actions">
           <button
             type="button"
             className="top-button"
-            disabled={busy}
-            onClick={() => void action(true)}
+            disabled={busy || active || !data?.commands.length}
+            onClick={() => void action(false)}
           >
-            Cancel checks
+            Run checks
           </button>
-        )}
-      </div>
+          {active && (
+            <button
+              type="button"
+              className="top-button"
+              disabled={busy}
+              onClick={() => void action(true)}
+            >
+              Cancel checks
+            </button>
+          )}
+        </div>
+      )}
       {error && (
         <p role="alert" className="warning">
           {error}
         </p>
       )}
-      {!data && !error && <p className="muted">Reading checks…</p>}
+      {!data && !error && !item.merged && <p className="muted">Reading checks…</p>}
       {data && !data.commands.length && <p className="muted">No checks configured.</p>}
       {data && !results.length && data.commands.length > 0 && (
         <p className="muted">No check evidence yet.</p>

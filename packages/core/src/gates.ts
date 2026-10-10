@@ -14,7 +14,8 @@ export function gateReadiness(item: GateWorkItem) {
   const nextStage = stages[position + 1]?.id;
   const stageStint = item.stints.find((stint) => stint.stage === item.stage);
   let reason: string | null = null;
-  if (position < 0 || !nextStage) reason = "This stage has no approval gate.";
+  if (item.merged) reason = "This work item is shipped.";
+  else if (position < 0 || !nextStage) reason = "This stage has no approval gate.";
   else if (item.activeStint || item.stints.some(({ status }) => status === "running"))
     reason = "A stint is running on this work item. Finish or stop it before approving.";
   else if (["implement", "fix", "do"].includes(item.stage ?? "")) {
@@ -31,11 +32,14 @@ export function gateReadiness(item: GateWorkItem) {
           : [],
       )
       .filter(Number.isFinite);
-    if (
-      stageStint?.status !== "finished" ||
+    if (stageStint?.status !== "finished") reason = "The stage stint must finish before approving.";
+    else if (
       evidenceAfter.some((at) => !stageStint.endedAt || Date.parse(stageStint.endedAt) <= at)
     )
-      reason = "The stage stint must finish before approving.";
+      reason =
+        item.stage === "review"
+          ? "Start a new Review stint after reopening or entering Review."
+          : "The stage stint must finish before approving.";
     else if (item.stage !== "review" && !stageStint.handoff)
       reason = "The finished stage stint needs a handoff before approving.";
   }

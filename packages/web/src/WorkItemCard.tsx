@@ -65,6 +65,7 @@ export function WorkItemCard({
           Stint running
         </span>
       )}
+      {item.merged && <span className="badge success">Shipped</span>}
       {(blocked || item.inferred || attentionCount > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {attentionCount > 0 && (

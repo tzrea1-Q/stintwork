@@ -33,9 +33,7 @@ export function Board({
     ? selectedMilestone
     : "";
   const visible = snapshot.workItems.filter((item) => !milestone || item.milestone === milestone);
-  const isShipped = (item: ProjectSnapshot["workItems"][number]) =>
-    (item.stage === "ship" && item.tickets.every((ticket) => ticket.resolved)) ||
-    snapshot.milestones.some((entry) => entry.id === item.milestone && entry.status === "shipped");
+  const isShipped = (item: ProjectSnapshot["workItems"][number]) => !!item.merged;
   const active = visible.filter((item) => !isShipped(item));
   const shipped = visible.filter(isShipped);
   const unstaged = active.filter((item) => item.column === undefined);

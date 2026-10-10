@@ -297,8 +297,11 @@ export function addCheckRoutes(
     const project = readProjectFiles();
     const failure = project.warnings.find(({ path }) => path === ".git");
     if (failure) return { reason: failure.message, status: 503 as const };
-    if (!indexProject(project.files, { name: "" }).workItems.some((item) => item.slug === slug))
-      return { reason: "Work item not found.", status: 404 as const };
+    const item = indexProject(project.files, { name: "" }).workItems.find(
+      (item) => item.slug === slug,
+    );
+    if (!item) return { reason: "Work item not found.", status: 404 as const };
+    if (item.merged) return { merged: item.merged };
     const worktree = project.worktreePaths.get(slug);
     return worktree
       ? { worktree }
@@ -308,6 +311,12 @@ export function addCheckRoutes(
     const slug = context.req.param("slug");
     const located = locate(slug);
     if ("reason" in located) return context.json({ reason: located.reason }, located.status);
+    if (located.merged)
+      return context.json({
+        headCommit: located.merged.commit,
+        commands: checks.commands(),
+        ...checks.evidence(slug),
+      });
     try {
       const body: WorkItemChecks = {
         headCommit: git(located.worktree, "rev-parse", "HEAD"),
@@ -328,9 +337,10 @@ export function addCheckRoutes(
     const slug = context.req.param("slug");
     const located = locate(slug);
     if ("reason" in located) return context.json({ reason: located.reason }, located.status);
+    if ("merged" in located) return context.json({ reason: "This work item is shipped." }, 409);
     if (isStintActive(slug))
       return context.json(
-        { reason: "Finish or stop the active stint before checking a commit." },
+        { reason: "Finish the active stint or workflow write before checking a commit." },
         409,
       );
     try {

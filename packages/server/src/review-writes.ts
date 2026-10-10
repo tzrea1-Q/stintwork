@@ -16,7 +16,7 @@ export async function saveWorkItemReview(
 ) {
   const existing = createNodeRepoFiles(worktree).read(`.scratch/${slug}/review.yaml`);
   const decisions = "kind" in decision ? [decision] : decision;
-  if (!decisions.length) throw new Error("A review decision is required.");
+  if (!decisions.length && !sendBack) throw new Error("A review decision is required.");
   let text = existing ?? "decisions: []\n";
   for (const entry of decisions) text = recordReviewDecision(text, entry);
   if (sendBack) text = recordReviewDeveloperNote(text, sendBack.note);
@@ -24,9 +24,11 @@ export async function saveWorkItemReview(
     worktree,
     slug,
     text,
-    decisions
-      .map((entry) => `Record ${entry.kind} ${entry.id} as ${entry.status} for ${slug}`)
-      .join("\n\n"),
+    decisions.length
+      ? decisions
+          .map((entry) => `Record ${entry.kind} ${entry.id} as ${entry.status} for ${slug}`)
+          .join("\n\n")
+      : `Send back ${slug} from Ship`,
     rejection,
     sendBack?.workflow,
   );

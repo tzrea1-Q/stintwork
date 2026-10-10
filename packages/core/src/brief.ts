@@ -37,9 +37,11 @@ export type BriefInput = {
 };
 
 export function briefUnavailableReason(
-  workItem: Pick<StagedWorkItem, "type" | "stage"> & Partial<Pick<StagedWorkItem, "workflow">>,
+  workItem: Pick<StagedWorkItem, "type" | "stage"> &
+    Partial<Pick<StagedWorkItem, "workflow" | "merged">>,
   ticket?: Pick<Ticket, "resolved" | "blocked" | "blockedBy"> | null,
 ): string | null {
+  if (workItem.merged) return "This work item is shipped.";
   if (workItem.type === "effort" || !workItem.stage) return "This work item has no stint stage.";
   if (!ticket || !["implement", "fix", "do"].includes(workItem.stage)) {
     const stage = builtInWorkflows[workItem.workflow ?? "feature"].stages.find(
