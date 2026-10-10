@@ -7,6 +7,7 @@ import {
   AgentSideConnection,
   ndJsonStream,
   PROTOCOL_VERSION,
+  RequestError,
   type SessionUpdate,
 } from "@agentclientprotocol/sdk";
 import type { FakeAgentStep } from "./testing.js";
@@ -60,6 +61,12 @@ new AgentSideConnection(
           else if (step.type === "end")
             return { stopReason: step.stopReason ?? "end_turn" } as { stopReason: "end_turn" };
           else if (step.type === "crash") process.exit(1);
+          else if (step.type === "error") throw RequestError.internalError(undefined, step.message);
+          else if (step.type === "hang")
+            await new Promise<void>((resolveHang) => {
+              if (!step.ignoreCancellation)
+                controller.signal.addEventListener("abort", () => resolveHang(), { once: true });
+            });
           else if (step.type === "expect-prompt")
             assert.ok(
               prompt.some(

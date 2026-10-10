@@ -243,6 +243,11 @@ export function StintStream({ stint }: { stint: Stint }) {
             </div>
           );
         })}
+        {stint.error && (
+          <p role="alert" className="warning">
+            {stint.error}
+          </p>
+        )}
       </div>
       <p className="stint-stream-status" role="status">
         {stint.status === "running"
