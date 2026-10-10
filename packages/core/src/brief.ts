@@ -2,6 +2,7 @@ import type { StagedWorkItem } from "./stages.js";
 import type { RepoFiles, Ticket, WorkItem } from "./work-items.js";
 import { builtInWorkflows, type WorkflowStage } from "./workflows.js";
 import type { DeveloperNote } from "./developer-notes.js";
+import type { PermissionLevel } from "./permission-levels.js";
 
 export type BriefPointer = { path: string; reason: string };
 export type BriefHandoff = {
@@ -12,6 +13,7 @@ export type BriefHandoff = {
   nextStep: string;
 };
 export type Brief = {
+  permissionLevel?: PermissionLevel;
   agent?: string;
   warnings?: readonly string[];
   skill: string | null;

@@ -39,7 +39,7 @@ export type RichStintEvent =
       toolCallId: string;
       title: string | null;
       kind: string | null;
-      automatic: false;
+      automatic: boolean;
       options: { optionId: string; name: string; kind: string }[];
     };
 
@@ -76,7 +76,7 @@ export function isRichStintEvent(value: Record<string, unknown>, update = false)
       typeof value.toolCallId === "string" &&
       (value.title === null || typeof value.title === "string") &&
       (value.kind === null || typeof value.kind === "string") &&
-      value.automatic === false &&
+      typeof value.automatic === "boolean" &&
       Array.isArray(value.options) &&
       value.options.every(
         (option) =>

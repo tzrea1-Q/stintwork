@@ -37,13 +37,13 @@ async function fixture(
         {
           type: "permission",
           toolCall: { toolCallId: "yes", title: "Write greeting", kind: "edit" },
-          expectedOptionId: "allow_once",
+          expectedOptionId: "allow-once",
         },
         { type: "message", text: "Yes received" },
         {
           type: "permission",
           toolCall: { toolCallId: "no", title: "Do something else", kind: "execute" },
-          expectedOptionId: "reject_once",
+          expectedOptionId: "reject",
         },
         { type: "message", text: "No received; continuing" },
         { type: "write", path: "greeting.txt", content: "Hello from Claude" },
@@ -106,8 +106,8 @@ test("a Claude stint accepts Yes and No without ending on decline, then saves it
   expect(response.status).toBe(201);
   const { stint }: { stint: Stint } = await response.json();
   for (const [title, optionId] of [
-    ["Write greeting", "allow_once"],
-    ["Do something else", "reject_once"],
+    ["Write greeting", "allow-once"],
+    ["Do something else", "reject"],
   ]) {
     await expect
       .poll(
@@ -142,8 +142,8 @@ test("a Claude stint accepts Yes and No without ending on decline, then saves it
     handoff: { agent: "claude", stint: stint.id, stoppedAt: "Wrote greeting." },
   });
   expect(history.stint.events.filter((event) => event.type === "permission")).toMatchObject([
-    { decision: { optionId: "allow_once", kind: "allow_once" } },
-    { decision: { optionId: "reject_once", kind: "reject_once" } },
+    { decision: { optionId: "allow-once", kind: "allow_once" } },
+    { decision: { optionId: "reject", kind: "reject_once" } },
   ]);
   expect(history.stint.events).toContainEqual(
     expect.objectContaining({ type: "message", text: "No received; continuing" }),

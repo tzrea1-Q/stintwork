@@ -17,6 +17,37 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+test("the queue shows command and paths, with full permission JSON behind a disclosure", async () => {
+  const snapshot = attentionSnapshot();
+  const item = snapshot.attentionItems[0];
+  if (item.kind !== "permission") throw new Error("Expected a permission item.");
+  item.details = JSON.stringify(
+    {
+      rawInput: { command: "wc greeting.txt", cwd: "/worktree" },
+      locations: [{ path: "/worktree/greeting.txt" }],
+    },
+    null,
+    2,
+  );
+  render(<Board snapshot={snapshot} />);
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  const queue = within(screen.getByRole("dialog"));
+  expect(queue.getByText("wc greeting.txt", { selector: "pre" })).toBeInTheDocument();
+  expect(queue.getByText("/worktree", { selector: "code" })).toBeInTheDocument();
+  expect(queue.getByText("/worktree/greeting.txt", { selector: "code" })).toBeInTheDocument();
+  const disclosure = queue.getByText("Full permission JSON").closest("details");
+  expect(disclosure).not.toHaveAttribute("open");
+  await user.click(queue.getByText("Full permission JSON"));
+  expect(disclosure).toHaveAttribute("open");
+  expect(
+    within(disclosure as HTMLElement).getByText(item.details, {
+      selector: "pre",
+      normalizer: (text) => text,
+    }),
+  ).toBeInTheDocument();
+});
+
 test.each([attentionProfile, loginAttentionProfile])(
   "all attention renderers coexist in derived order with availability $availability",
   async (profile) => {

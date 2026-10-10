@@ -1,12 +1,14 @@
 import type { AgentProfile, Stint, StintEvent, StintToolContent } from "@stintwork/core";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
 import { PermissionAnswer } from "./PermissionAnswer";
+import { PermissionDetails } from "./PermissionDetails";
+import { readableToolOutput } from "./tool-output";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./stint-stream.css";
 
 function toolOutput(content: StintToolContent): string {
-  if (content.type === "text") return content.text;
+  if (content.type === "text") return readableToolOutput(content.text);
   if (content.type === "diff")
     return `${content.path}\n${content.oldText !== null ? `Previous file content:\n${content.oldText}\n` : ""}New file content:\n${content.newText}`;
   if (content.type === "terminal") return `Terminal output · ${content.terminalId}`;
@@ -27,16 +29,20 @@ function PermissionPrompt({
   const decision = stint.events.find(
     (entry) => entry.type === "permission" && entry.requestId === event.requestId,
   );
-  const pending = !replay && !decision && stint.status === "running";
+  const pending = !event.automatic && !replay && !decision && stint.status === "running";
 
-  let outcome =
-    replay && stint.status === "running"
+  let outcome = event.automatic
+    ? !replay && stint.status === "running"
+      ? "Stintwork is answering automatically."
+      : "No automatic answer recorded."
+    : replay && stint.status === "running"
       ? "No answer recorded."
       : "This request is no longer pending.";
   if (decision?.type === "permission") {
     if (decision.decision.outcome === "selected") {
       const optionId = decision.decision.optionId;
       outcome = event.options.find((option) => option.optionId === optionId)?.name ?? optionId;
+      if (decision.automatic) outcome = `Automatic · ${outcome}`;
     } else
       outcome =
         decision.decision.outcome === "failed"
@@ -56,7 +62,10 @@ function PermissionPrompt({
           <PermissionAnswer stintId={stint.id} request={event} profile={profile} />
         </>
       ) : (
-        <p role="status">{outcome}</p>
+        <>
+          <PermissionDetails details={event.details} />
+          <p role="status">{outcome}</p>
+        </>
       )}
     </section>
   );
@@ -74,6 +83,7 @@ export function StintStream({
   const waitingForPermission = stint.events.some(
     (event) =>
       event.type === "permission_request" &&
+      !event.automatic &&
       !stint.events.some(
         (decision) => decision.type === "permission" && decision.requestId === event.requestId,
       ),
@@ -172,7 +182,7 @@ export function StintStream({
                       {!!event.content?.length && (
                         <pre>{event.content.map(toolOutput).join("\n\n")}</pre>
                       )}
-                      {event.output && <pre>{event.output}</pre>}
+                      {event.output && <pre>{readableToolOutput(event.output)}</pre>}
                     </details>
                   ) : null}
                 </div>
@@ -189,7 +199,8 @@ export function StintStream({
               )}
               {event.type === "permission" && (
                 <p>
-                  Permission · {event.title ?? event.toolCallId} ·{" "}
+                  Permission{event.automatic ? " · Automatic" : ""} ·{" "}
+                  {event.title ?? event.toolCallId} ·{" "}
                   {event.decision.outcome === "selected"
                     ? event.decision.optionId
                     : event.decision.outcome}

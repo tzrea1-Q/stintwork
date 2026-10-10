@@ -19,7 +19,7 @@ const script: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_SCRIPT ?? 
 const handoff: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_HANDOFF ?? "[]");
 const options = JSON.parse(process.env.STINTWORK_FAKE_OPTIONS ?? "{}");
 const profile = fakeAgentProfiles[(options.profile ?? "codex") as keyof typeof fakeAgentProfiles];
-const briefs = new Map<string, { cwd: string; prompts: number }>();
+const briefs = new Map<string, { cwd: string; prompts: number; mode: string | null }>();
 const turns = new Map<string, AbortController>();
 const modes =
   profile.capabilities.defaultMode === null
@@ -64,7 +64,7 @@ new AgentSideConnection(
         assert.ok(additionalDirectories?.every(isAbsolute));
       }
       const id = randomUUID();
-      briefs.set(id, { cwd, prompts: 0 });
+      briefs.set(id, { cwd, prompts: 0, mode: profile.capabilities.defaultMode });
       return {
         sessionId: id,
         ...(modes ? { modes } : {}),
@@ -77,8 +77,11 @@ new AgentSideConnection(
         })),
       };
     },
-    async setSessionMode({ modeId }) {
+    async setSessionMode({ sessionId, modeId }) {
       assert.ok(profile.capabilities.modes.includes(modeId), "Agent must offer the selected mode.");
+      const brief = briefs.get(sessionId);
+      assert.ok(brief);
+      brief.mode = modeId;
       return {};
     },
     async prompt({ sessionId, prompt }) {
@@ -104,6 +107,7 @@ new AgentSideConnection(
               if (!step.ignoreCancellation)
                 controller.signal.addEventListener("abort", () => resolveHang(), { once: true });
             });
+          else if (step.type === "expect-mode") assert.equal(brief.mode, step.mode);
           else if (step.type === "expect-prompt")
             assert.ok(
               prompt.some(

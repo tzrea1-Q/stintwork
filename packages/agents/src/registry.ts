@@ -29,12 +29,20 @@ export async function refreshAgentAvailability(
   }
 }
 
-export function createAgentRegistry(
-  agents: readonly RegisteredAgent[] = [
+function defaultAgents(): RegisteredAgent[] {
+  const agents = [
     { ...codexProfile, launch: startAgentStint },
     createClaudeCodeAgent(),
     createGrokAgent(),
-  ],
+  ];
+  // Test runs set this so the default registry never probes the agents installed on the machine.
+  // Tests of detection itself build registries with their own detectors.
+  if (process.env.STINTWORK_SKIP_AGENT_DETECTION !== "1") return agents;
+  return agents.map(({ detectAvailability: _detect, ...agent }) => agent);
+}
+
+export function createAgentRegistry(
+  agents: readonly RegisteredAgent[] = defaultAgents(),
 ): AgentRegistry {
   const registry = new Map<string, RegisteredAgent>();
   for (const agent of agents) {

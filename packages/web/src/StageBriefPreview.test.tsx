@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { StageBriefPreview } from "./BriefPreview";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Conventions",
@@ -35,11 +36,7 @@ test("the stage action previews the stage skill, starts with ticket null, and re
   const user = userEvent.setup();
   const fetch = vi.fn(
     async (url: string) =>
-      new Response(
-        JSON.stringify(
-          url === "/api/agents" ? { agents: [{ id: "codex", displayName: "Codex" }] } : brief,
-        ),
-      ),
+      new Response(JSON.stringify(url === "/api/agents" ? { agents: [codexProfile] } : brief)),
   );
   vi.stubGlobal("fetch", fetch);
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
@@ -67,7 +64,12 @@ test("the stage action previews the stage skill, starts with ticket null, and re
     "/api/stints",
     expect.objectContaining({
       method: "POST",
-      body: JSON.stringify({ workItem: "planning", ticket: null, agent: "codex" }),
+      body: JSON.stringify({
+        workItem: "planning",
+        ticket: null,
+        agent: "codex",
+        permissionLevel: "edit-freely",
+      }),
     }),
   );
   expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
@@ -99,10 +101,7 @@ test("a stage preview defaults to its stage agent rather than the first register
         JSON.stringify(
           url === "/api/agents"
             ? {
-                agents: [
-                  { id: "codex", displayName: "Codex" },
-                  { id: "claude", displayName: "Claude Code" },
-                ],
+                agents: [codexProfile, claudeProfile],
               }
             : { ...brief, agent: "claude" },
         ),
@@ -118,7 +117,12 @@ test("a stage preview defaults to its stage agent rather than the first register
   expect(fetch).toHaveBeenCalledWith(
     "/api/stints",
     expect.objectContaining({
-      body: JSON.stringify({ workItem: "planning", ticket: null, agent: "claude" }),
+      body: JSON.stringify({
+        workItem: "planning",
+        ticket: null,
+        agent: "claude",
+        permissionLevel: "edit-freely",
+      }),
     }),
   );
 });
@@ -132,8 +136,9 @@ test("a stage preview keeps an unavailable stage agent selected and explains the
           url === "/api/agents"
             ? {
                 agents: [
-                  { id: "codex", displayName: "Codex" },
+                  codexProfile,
                   {
+                    ...grokProfile,
                     id: "grok",
                     displayName: "Grok",
                     availability: {
@@ -190,7 +195,7 @@ test("a stale stage start refusal stays visible in the preview", async () => {
         new Response(
           JSON.stringify(
             url === "/api/agents"
-              ? { agents: [{ id: "codex", displayName: "Codex" }] }
+              ? { agents: [codexProfile] }
               : url === "/api/stints"
                 ? { reason: "This stage has no stint skill." }
                 : brief,
@@ -204,7 +209,7 @@ test("a stale stage start refusal stays visible in the preview", async () => {
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
   await sheet.findByRole("heading", { name: "Full prompt" });
   await user.click(sheet.getByRole("button", { name: "Start" }));
-  expect(await sheet.findByRole("alert")).toHaveTextContent("This stage has no stint skill.");
+  expect(await sheet.findByText("This stage has no stint skill.")).toHaveAttribute("role", "alert");
 });
 
 test("changing stages closes the old preview rather than starting from a stale skill", async () => {

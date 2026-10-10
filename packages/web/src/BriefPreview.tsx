@@ -4,6 +4,11 @@ import {
   type Brief,
   briefUnavailableReason,
   type Ticket,
+  defaultPermissionLevel,
+  isPermissionLevel,
+  permissionPolicy,
+  permissionLevels,
+  type PermissionLevel,
 } from "@stintwork/core";
 import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -86,6 +91,10 @@ function BriefPreviewSheet({
   const [brief, setBrief] = useState<Brief | null>(null);
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [agent, setAgent] = useState("");
+  const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>(defaultPermissionLevel);
+  const [projectDefault, setProjectDefault] = useState<PermissionLevel>(defaultPermissionLevel);
+  const [savingDefault, setSavingDefault] = useState(false);
+  const [defaultError, setDefaultError] = useState("");
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
@@ -127,6 +136,8 @@ function BriefPreviewSheet({
           setBrief(preview);
           setAgents(registry.agents);
           setAgent(preview.agent ?? registry.agents[0]?.id ?? "");
+          setPermissionLevel(preview.permissionLevel ?? defaultPermissionLevel);
+          setProjectDefault(preview.permissionLevel ?? defaultPermissionLevel);
         }
       } catch (cause) {
         if (!request.signal.aborted) {
@@ -156,7 +167,7 @@ function BriefPreviewSheet({
       const response = await fetch("/api/stints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent }),
+        body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent, permissionLevel }),
       });
       if (!response.ok) {
         const failure: { reason?: string } = await response.json();
@@ -242,12 +253,72 @@ function BriefPreviewSheet({
                 : "No agents are registered."
               : "Reading registered agents…"}
           </p>
-          {(selectedAgent?.warnings ?? (agent === brief?.agent ? brief?.warnings : []) ?? []).map(
-            (warning) => (
-              <p key={warning} role="alert" className="warning">
-                {warning}
-              </p>
-            ),
+          {(selectedAgent
+            ? permissionPolicy(selectedAgent, permissionLevel).warnings
+            : (brief?.warnings ?? [])
+          ).map((warning) => (
+            <p key={warning} role="alert" className="warning">
+              {warning}
+            </p>
+          ))}
+        </section>
+        <section>
+          <h3>Permission level</h3>
+          <label>
+            <span className="sr-only">Permission level</span>
+            <select
+              value={permissionLevel}
+              disabled={!brief || starting || savingDefault}
+              onChange={(event) => {
+                if (isPermissionLevel(event.target.value)) setPermissionLevel(event.target.value);
+              }}
+            >
+              {permissionLevels.map((level) => (
+                <option key={level} value={level}>
+                  {level === "ask" ? "Ask" : level === "edit-freely" ? "Edit freely" : "Autonomous"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <p className="muted">
+            Project default:{" "}
+            {projectDefault === "ask"
+              ? "Ask"
+              : projectDefault === "edit-freely"
+                ? "Edit freely"
+                : "Autonomous"}
+          </p>
+          <button
+            type="button"
+            className="top-button"
+            disabled={!brief || starting || savingDefault || permissionLevel === projectDefault}
+            onClick={async () => {
+              setSavingDefault(true);
+              setDefaultError("");
+              try {
+                const response = await fetch("/api/project/permission-level", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ permissionLevel }),
+                });
+                if (!response.ok) {
+                  const body = await response.json();
+                  throw new Error(body.reason ?? "Could not save the project default.");
+                }
+                setProjectDefault(permissionLevel);
+              } catch (error) {
+                setDefaultError(error instanceof Error ? error.message : String(error));
+              } finally {
+                setSavingDefault(false);
+              }
+            }}
+          >
+            Use as project default
+          </button>
+          {defaultError && (
+            <p role="alert" className="warning">
+              {defaultError}
+            </p>
           )}
         </section>
         {error ? (

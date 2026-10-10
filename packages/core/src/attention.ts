@@ -106,7 +106,7 @@ export function deriveAttentionItems(
     return [
       ...handoffs,
       ...[...requests.values()]
-        .filter((request) => !answered.has(request.requestId))
+        .filter((request) => !request.automatic && !answered.has(request.requestId))
         .map(
           (request): PermissionAttentionItem => ({
             kind: "permission",

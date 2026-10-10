@@ -15,6 +15,7 @@ export type FakeAgentStep =
   | { type: "expect-file"; path: string; includes: string }
   | { type: "commit"; message: string }
   | { type: "expect-prompt"; includes: string }
+  | { type: "expect-mode"; mode: string | null }
   | { type: "crash" }
   | { type: "hang"; ignoreCancellation?: boolean }
   | { type: "error"; message: string }

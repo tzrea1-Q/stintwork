@@ -8,6 +8,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { codexProfile } from "../../agents/src/profiles";
 
 const ticketPath = ".scratch/first-stint/issues/02-brief-preview.md";
 const specPath = ".scratch/first-stint/spec.md";
@@ -20,7 +21,7 @@ const files = createMemoryRepoFiles({
 });
 const item = indexProject(files, { name: "Stintwork" }).workItems[0];
 const ticket = item.tickets[0];
-const agents = [{ id: "codex", displayName: "Codex" }];
+const agents = [codexProfile];
 const brief = compileBrief({
   files,
   workItem: item,
@@ -111,7 +112,9 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
   ).toBeInTheDocument();
   expect(preview.getByRole("combobox", { name: "Agent" })).toHaveValue("codex");
   expect(preview.getByRole("option", { name: "Codex" })).toBeEnabled();
-  expect(preview.getAllByRole("option")).toHaveLength(1);
+  expect(
+    within(preview.getByRole("combobox", { name: "Agent" })).getAllByRole("option"),
+  ).toHaveLength(1);
   expect(preview.getByRole("button", { name: "Start" })).toBeEnabled();
   expect(preview.getByText(/Working instructions:/, { selector: "pre" }).textContent).toBe(
     brief.prompt,

@@ -54,6 +54,88 @@ function stint(events: StintLogEvent[] = []): Stint {
 }
 afterEach(() => vi.unstubAllGlobals());
 
+test("an automatic request awaiting its receipt does not ask the developer for an answer", () => {
+  const current = stint([{ ...request, automatic: true }]);
+  const { rerender } = render(<StintStream stint={current} />);
+  expect(screen.getByText("Stintwork is answering automatically.")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Allow/ })).not.toBeInTheDocument();
+  expect(screen.queryByText("Waiting for your permission answer")).not.toBeInTheDocument();
+  rerender(<StintStream stint={current} replay />);
+  expect(screen.getByText("No automatic answer recorded.")).toBeInTheDocument();
+});
+
+test.each([false, true])(
+  "tool output decodes Grok UTF-8 byte arrays in live/replay=%s",
+  async (replay) => {
+    const text = "Hello from Grok · 你好\n";
+    const output = JSON.stringify({ output: [...new TextEncoder().encode(text)] });
+    render(
+      <StintStream
+        stint={stint([
+          {
+            type: "tool_call",
+            toolCallId: "grok",
+            output,
+            content: [{ type: "text", text: output }],
+          },
+        ])}
+        replay={replay}
+      />,
+    );
+    await userEvent.setup().click(screen.getByText("Tool output"));
+    expect(screen.getAllByText("Hello from Grok · 你好", { selector: "pre" })).toHaveLength(2);
+    expect(screen.queryByText(output)).not.toBeInTheDocument();
+  },
+);
+
+test.each([false, true])(
+  "permission details and automatic answers remain readable in live/replay=%s",
+  async (replay) => {
+    const details = JSON.stringify(
+      {
+        toolCallId: "command",
+        rawInput: { name: "Bash", command: "printf 'hello' > greeting.txt", cwd: "/worktree" },
+        locations: [{ path: "/worktree/greeting.txt" }],
+      },
+      null,
+      2,
+    );
+    render(
+      <StintStream
+        stint={stint([
+          { ...request, details },
+          {
+            type: "permission",
+            requestId: request.requestId,
+            toolCallId: request.toolCallId,
+            title: request.title,
+            kind: request.kind,
+            automatic: true,
+            decision: { outcome: "selected", optionId: "allow", kind: "allow_once" },
+          },
+        ])}
+        replay={replay}
+      />,
+    );
+    expect(
+      screen.getByText("printf 'hello' > greeting.txt", { selector: "pre" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("/worktree", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText("/worktree/greeting.txt", { selector: "code" })).toBeInTheDocument();
+    expect(screen.getByText("Automatic · Yes, proceed")).toBeInTheDocument();
+    const disclosure = screen.getByText("Full permission JSON").closest("details");
+    expect(disclosure).not.toHaveAttribute("open");
+    await userEvent.setup().click(screen.getByText("Full permission JSON"));
+    expect(disclosure).toHaveAttribute("open");
+    expect(
+      within(disclosure as HTMLElement).getByText(details, {
+        selector: "pre",
+        normalizer: (text) => text,
+      }),
+    ).toBeInTheDocument();
+  },
+);
+
 test("the drawer renders plan progress, messages, thoughts, tool status, file paths and other events; output expands natively", async () => {
   const user = userEvent.setup();
   const events: StintLogEvent[] = [

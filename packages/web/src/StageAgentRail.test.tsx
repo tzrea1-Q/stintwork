@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { StageAgentRail } from "./StageAgentRail";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
 
 const item = indexProject(
   createMemoryRepoFiles({
@@ -20,9 +21,10 @@ const item = indexProject(
   { name: "Project" },
 ).workItems[0];
 const agents = [
-  { id: "codex", displayName: "Codex" },
-  { id: "claude", displayName: "Claude Code" },
+  codexProfile,
+  claudeProfile,
   {
+    ...grokProfile,
     id: "grok",
     displayName: "Grok Build",
     availability: { available: false, reason: "Authentication required. Use grok login." },
@@ -142,7 +144,12 @@ test("the brief preview defaults to the persisted stage agent and starts that ag
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "claude" }),
+    body: JSON.stringify({
+      workItem: "first",
+      ticket: 1,
+      agent: "claude",
+      permissionLevel: "edit-freely",
+    }),
   });
 });
 

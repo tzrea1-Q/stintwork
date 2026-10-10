@@ -28,6 +28,7 @@ export default defineConfig({
           name: "server",
           environment: "node",
           include: ["packages/server/**/*.test.ts"],
+          setupFiles: ["packages/server/test/setup.ts"],
           testTimeout: 10_000,
           fileParallelism: false,
           // Run after the other projects so wall-clock assertions don't compete with them.

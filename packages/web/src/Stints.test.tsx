@@ -10,6 +10,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { codexProfile } from "../../agents/src/profiles";
 
 const item = indexProject(
   createMemoryRepoFiles({
@@ -54,8 +55,8 @@ test("the picker renders registry names and posts the selected registered agent 
         new Response(
           JSON.stringify({
             agents: [
-              { id: "first-agent", displayName: "First agent" },
-              { id: "second-agent", displayName: "Second agent" },
+              { ...codexProfile, id: "first-agent", displayName: "First agent" },
+              { ...codexProfile, id: "second-agent", displayName: "Second agent" },
             ],
           }),
         ),
@@ -75,7 +76,12 @@ test("the picker renders registry names and posts the selected registered agent 
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "second-agent" }),
+    body: JSON.stringify({
+      workItem: "first",
+      ticket: 1,
+      agent: "second-agent",
+      permissionLevel: "edit-freely",
+    }),
   });
 });
 
@@ -121,9 +127,7 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ agents: [{ id: "codex", displayName: "Codex" }] })),
-      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [codexProfile] })))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ stint: applyStintLogEntry(null, started) }), { status: 201 }),
       ),
@@ -136,7 +140,12 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+    body: JSON.stringify({
+      workItem: "first",
+      ticket: 1,
+      agent: "codex",
+      permissionLevel: "edit-freely",
+    }),
   });
   expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
   let stint = applyStintLogEntry(null, started) as Stint;
@@ -209,9 +218,7 @@ test("a rejected start retains the copyable brief and displays the reason", asyn
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ agents: [{ id: "codex", displayName: "Codex" }] })),
-      )
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [codexProfile] })))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ reason: "A stint is already active for this work item." }), {
           status: 409,
@@ -222,8 +229,9 @@ test("a rejected start retains the copyable brief and displays the reason", asyn
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   await screen.findByRole("button", { name: "Copy prompt" });
   fireEvent.click(screen.getByRole("button", { name: "Start" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "A stint is already active for this work item.",
+  expect(await screen.findByText("A stint is already active for this work item.")).toHaveAttribute(
+    "role",
+    "alert",
   );
   expect(
     within(screen.getByRole("dialog", { name: "Brief preview" })).getByText("Exact brief"),

@@ -1,5 +1,6 @@
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
+import { PermissionDetails } from "./PermissionDetails";
 
 export function PermissionAnswer({
   stintId,
@@ -51,7 +52,7 @@ export function PermissionAnswer({
 
   return (
     <>
-      {request.details && <pre className="permission-details">{request.details}</pre>}
+      <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
         <p className="warning">Declining ends {profile.displayName}’s turn.</p>
       )}

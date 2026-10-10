@@ -9,6 +9,16 @@ export type {
   AgentProfile,
 } from "./agents.js";
 export { agentUnavailableReason } from "./agents.js";
+export {
+  defaultPermissionLevel,
+  isPermissionLevel,
+  permissionLevels,
+  permissionPolicy,
+  permissionPaths,
+  projectPermissionLevel,
+  updateProjectPermissionLevel,
+  type PermissionLevel,
+} from "./permission-levels.js";
 export { stageAgent, workflowStageAgent } from "./stage-agent.js";
 export {
   deriveAttentionItems,

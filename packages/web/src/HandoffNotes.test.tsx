@@ -10,6 +10,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { attentionSnapshot } from "./attention-test-fixtures";
+import { codexProfile } from "../../agents/src/profiles";
 
 function handoffSnapshot() {
   const snapshot = attentionSnapshot([]);
@@ -135,11 +136,7 @@ test.each([true, false])(
       "fetch",
       vi.fn(
         async (url: string) =>
-          new Response(
-            JSON.stringify(
-              url === "/api/agents" ? { agents: [{ id: "codex", displayName: "Codex" }] } : brief,
-            ),
-          ),
+          new Response(JSON.stringify(url === "/api/agents" ? { agents: [codexProfile] } : brief)),
       ),
     );
     render(

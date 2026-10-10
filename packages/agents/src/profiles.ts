@@ -37,8 +37,8 @@ export const claudeProfile: AgentProfile = {
     defaultMode: "default",
     additionalDirectories: true,
     permissionOptions: [
-      { optionId: "allow_once", name: "Yes", kind: "allow_once" },
-      { optionId: "reject_once", name: "No", kind: "reject_once" },
+      { optionId: "allow-once", name: "Yes", kind: "allow_once" },
+      { optionId: "reject", name: "No", kind: "reject_once" },
     ],
     declineEndsTurn: false,
     authenticationRequired: {

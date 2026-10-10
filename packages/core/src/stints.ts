@@ -1,5 +1,6 @@
 import type { Brief, BriefHandoff } from "./brief.js";
 import type { RepoFiles, Warning } from "./work-items.js";
+import { isPermissionLevel } from "./permission-levels.js";
 import {
   isRichStintEvent,
   type RichStintEvent,
@@ -275,6 +276,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
     typeof worktree?.path === "string" &&
     typeof worktree.branch === "string" &&
     typeof brief?.prompt === "string" &&
+    (brief.permissionLevel === undefined || isPermissionLevel(brief.permissionLevel)) &&
     (brief.developerNotes === undefined ||
       (Array.isArray(brief.developerNotes) &&
         brief.developerNotes.every(

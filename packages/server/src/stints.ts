@@ -28,6 +28,7 @@ import {
 } from "@stintwork/git";
 import type { Hono } from "hono";
 import { prepareStintBrief } from "./brief-preview.js";
+import { isPermissionLevel, type PermissionLevel } from "@stintwork/core";
 import { addStintPermissionRoute } from "./stint-permissions.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { activeStintIds } from "./stint-history.js";
@@ -127,7 +128,8 @@ export function addStintRoutes(
       ("ticket" in body &&
         body.ticket !== null &&
         (!Number.isSafeInteger(body.ticket) || (body.ticket as number) <= 0)) ||
-      ("agent" in body && typeof body.agent !== "string")
+      ("agent" in body && typeof body.agent !== "string") ||
+      ("permissionLevel" in body && !isPermissionLevel(body.permissionLevel))
     ) {
       return context.json(
         {
@@ -146,6 +148,7 @@ export function addStintRoutes(
       root,
       registry,
       "agent" in body ? (body.agent as string) : undefined,
+      "permissionLevel" in body ? (body.permissionLevel as PermissionLevel) : undefined,
     );
     refresh();
     if ("reason" in result)
@@ -199,6 +202,7 @@ export function addStintRoutes(
         root,
         registry,
         agent.id,
+        result.brief.permissionLevel,
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
       const { stage } = prepared;
@@ -332,6 +336,7 @@ export function addStintRoutes(
             ? { additionalDirectories: await worktreeGitDirectories(worktree.path) }
             : {}),
           prompt: brief.prompt,
+          permissionLevel: brief.permissionLevel,
           handoffTimeoutMs,
           onEvent: (event) => {
             append({ type: "event", at: new Date().toISOString(), event });

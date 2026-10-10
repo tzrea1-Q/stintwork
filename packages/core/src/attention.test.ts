@@ -45,6 +45,19 @@ function project(entries: StintLogEntry[] = [started, request]) {
   );
 }
 
+test("automatic permission requests stay in the durable stream without raising Needs-you attention", () => {
+  const snapshot = project([started, { ...request, event: { ...permission, automatic: true } }]);
+  expect(snapshot.warnings).toEqual([]);
+  expect(snapshot.workItems[0].activeStint?.events).toContainEqual(
+    expect.objectContaining({
+      type: "permission_request",
+      automatic: true,
+      options: permission.options,
+    }),
+  );
+  expect(snapshot.attentionItems).toEqual([]);
+});
+
 test("pending permissions carry source identity, actual options, full details and the log's request time", () => {
   const snapshot = project();
   expect(snapshot.attentionItems).toEqual([

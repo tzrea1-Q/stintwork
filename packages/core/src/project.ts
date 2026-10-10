@@ -6,8 +6,14 @@ import { indexWorkItems, type RepoFiles, type Warning } from "./work-items.js";
 import { builtInWorkflows } from "./workflows.js";
 import { deriveAttentionItems, type AttentionItem } from "./attention.js";
 import type { AgentProfile } from "./agents.js";
+import {
+  defaultPermissionLevel,
+  projectPermissionLevel,
+  type PermissionLevel,
+} from "./permission-levels.js";
 
 export type ProjectSnapshot = {
+  permissionLevel?: PermissionLevel;
   name: string;
   agents: AgentProfile[];
   attentionItems: AttentionItem[];
@@ -30,6 +36,12 @@ export function indexProject(
 ): ProjectSnapshot {
   const staged = resolveStages(indexWorkItems(files), files);
   const warnings = [...staged.warnings];
+  let permissionLevel = defaultPermissionLevel;
+  try {
+    permissionLevel = projectPermissionLevel(files.read(".stintwork/config"));
+  } catch (error) {
+    warnings.push({ path: ".stintwork/config", message: String(error) });
+  }
   const roadmapPath = ".stintwork/roadmap.md";
   let roadmapText = "";
   try {
@@ -43,6 +55,7 @@ export function indexProject(
   const stintIndex = indexStints(files);
   const snapshot: ProjectSnapshot = {
     ...meta,
+    permissionLevel,
     agents: meta.agents ?? [],
     attentionItems: [],
     workflows: builtInWorkflows,

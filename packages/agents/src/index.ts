@@ -5,7 +5,14 @@ import { isAbsolute, dirname, relative, resolve, delimiter } from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
-import type { AgentProfile, StintEvent, StintLogEvent } from "@stintwork/core";
+import {
+  permissionPaths,
+  permissionPolicy,
+  type PermissionLevel,
+  type AgentProfile,
+  type StintEvent,
+  type StintLogEvent,
+} from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
 import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
@@ -28,6 +35,7 @@ export { createGrokAgent } from "./grok.js";
 export { grokProfile } from "./profiles.js";
 
 export type AgentStintOptions = {
+  permissionLevel?: PermissionLevel;
   agent: string;
   cwd: string;
   additionalDirectories?: string[];
@@ -60,6 +68,7 @@ export function createAgentLauncher(
     onPermission,
     handoffTimeoutMs,
     checkAvailability = false,
+    permissionLevel = "edit-freely",
   }) => {
     let resolveReady: () => void = () => {};
     let rejectReady: (error: unknown) => void = () => {};
@@ -90,7 +99,9 @@ export function createAgentLauncher(
     let workTurn: Promise<{ stopReason: string }> | undefined;
     const writes = new Set<Promise<void>>();
 
-    async function safePath(path: string) {
+    const policy = permissionPolicy(profile, permissionLevel);
+
+    async function safePath(path: string, directories = [cwd, ...additionalDirectories]) {
       if (!isAbsolute(path)) throw new Error("Agent file paths must be absolute.");
       const target = resolve(path);
       let existing = target;
@@ -102,7 +113,7 @@ export function createAgentLauncher(
       )
         existing = dirname(existing);
       const realExisting = await realpath(existing);
-      for (const directory of [cwd, ...additionalDirectories]) {
+      for (const directory of directories) {
         const inside = relative(resolve(directory), target);
         const realInside = relative(await realpath(directory), realExisting);
         if (
@@ -188,9 +199,23 @@ export function createAgentLauncher(
             };
             let response: RequestPermissionResponse;
             try {
-              const answer = onPermission
-                ? onPermission({ ...request, requestId, forwarded: receipt.forwarded })
-                : permissionCancelled;
+              const targets = permissionPaths(policy.autoAnswer, request.toolCall, cwd);
+              const inside =
+                targets &&
+                (await Promise.all(targets.map((path) => safePath(path, [cwd]))).then(
+                  () => true,
+                  () => false,
+                ));
+              const allowed =
+                inside && request.options.find((option) => option.kind === "allow_once");
+              event.automatic = !!allowed;
+              const answer = allowed
+                ? Promise.resolve({
+                    outcome: { outcome: "selected" as const, optionId: allowed.optionId },
+                  })
+                : onPermission
+                  ? onPermission({ ...request, requestId, forwarded: receipt.forwarded })
+                  : permissionCancelled;
               void answer.catch(() => {});
               onEvent({
                 type: "permission_request",
@@ -199,7 +224,7 @@ export function createAgentLauncher(
                 toolCallId: event.toolCallId,
                 title: event.title,
                 kind: event.kind,
-                automatic: false,
+                automatic: event.automatic,
                 options: request.options.map(({ optionId, name, kind }) => ({
                   optionId,
                   name,
@@ -295,11 +320,16 @@ export function createAgentLauncher(
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
           });
           acpId = opened.sessionId;
-          if (profile.capabilities.defaultMode !== null)
+          if (policy.mode !== null) {
+            if (!opened.modes?.availableModes.some(({ id }) => id === policy.mode))
+              throw new Error(
+                `${profile.displayName} does not offer the required ${policy.mode} mode.`,
+              );
             await acp.setSessionMode({
               sessionId: acpId,
-              modeId: profile.capabilities.defaultMode,
+              modeId: policy.mode,
             });
+          }
         })();
         const timeout = new Promise<never>((_resolve, reject) => {
           timer = setTimeout(

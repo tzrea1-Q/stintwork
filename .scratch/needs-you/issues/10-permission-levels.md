@@ -1,6 +1,6 @@
 # 10 — Permission levels
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03, 07, 08
 
 ## What to build
@@ -19,3 +19,12 @@ Anything outside the worktree is always forwarded. Auto-answers are logged as `a
 - [ ] Server tests per fake profile: Ask forwards everything. Edit freely auto-answers in-worktree edits and forwards commands. Autonomous auto-answers in-worktree commands and forwards an outside path. Every auto-answer is logged.
 - [ ] Component tests: the selector, the project default, and the warnings.
 - [ ] All checks pass.
+
+## Comments
+
+**2026-10-10 · implemented by Codex, verified by coordinator.** Also folds in three display fixes found while verifying: readable permission details (full JSON behind a disclosure), Grok's byte-array tool output decoded, and options covered by tests on permission items. The coordinator changed two things:
+
+1. Ask mapped Claude to `plan`, which forbids changes altogether. Ask now uses Claude's `default` mode, which asks before every change.
+2. Server tests depended on the machine's real agents, because the default registry probed `claude` and `grok`. Under heavy load that timed out tests and made results depend on local logins. A server-test setup now skips detection in the default registry. Detection tests use explicit registries.
+
+All checks pass, 654 tests.

@@ -131,7 +131,7 @@ test.each([
   },
   {
     profile: "claude",
-    decline: "reject_once",
+    decline: "reject",
     stopReason: "end_turn",
     options: [
       { name: "Yes", kind: "allow_once" },

@@ -11,6 +11,7 @@ import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
 import { addBriefPreviewRoute } from "./brief-preview.js";
+import { addProjectPermissionRoute } from "./project-permissions.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
 import { createProjectFiles } from "./work-item-files.js";
@@ -108,6 +109,7 @@ export function createProjectServer(
   }
 
   const app = new Hono();
+  addProjectPermissionRoute(app, root, () => refresh());
   let initialization: Promise<void> | undefined;
   function initialize() {
     initialization ??= Promise.all([

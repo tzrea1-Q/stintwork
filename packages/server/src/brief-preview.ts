@@ -5,6 +5,9 @@ import {
   indexStints,
   pendingDeveloperNotes,
   stageAgent,
+  projectPermissionLevel,
+  permissionPolicy,
+  type PermissionLevel,
 } from "@stintwork/core";
 import { type AgentRegistry, refreshAgentAvailability } from "@stintwork/agents";
 import type { Hono } from "hono";
@@ -54,6 +57,7 @@ export async function prepareStintBrief(
   root: string,
   registry: AgentRegistry,
   chosenAgent?: string,
+  chosenLevel?: PermissionLevel,
 ) {
   const project = readProjectFiles();
   const files = project.files;
@@ -74,6 +78,12 @@ export async function prepareStintBrief(
   const agent = chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()]);
   const registered = registry.get(agent);
   if (registered) await refreshAgentAvailability(registered);
+  let permissionLevel: PermissionLevel;
+  try {
+    permissionLevel = chosenLevel ?? projectPermissionLevel(files.read(".stintwork/config"));
+  } catch (error) {
+    return { reason: String(error), status: 409 as const };
+  }
   // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
   // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
   const ended = workItem.stints.filter((stint) => stint.status !== "running");
@@ -112,7 +122,8 @@ export async function prepareStintBrief(
         changedPaths,
       }),
       agent,
-      warnings: registry.get(agent)?.warnings ?? [],
+      permissionLevel,
+      warnings: registered ? permissionPolicy(registered, permissionLevel).warnings : [],
     },
   };
 }
