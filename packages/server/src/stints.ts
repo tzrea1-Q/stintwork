@@ -10,6 +10,7 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import {
+  commitStintworkSetup,
   createCheckpoint,
   ensureWorktree,
   installWorktreeDependencies,
@@ -131,13 +132,35 @@ export function addStintRoutes(
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
       const { brief, stage } = prepared;
+      const id = randomUUID();
+      state.id = id;
+      const logs = prepareLogs(root);
+      const setupMessages: string[] = [];
+      const setupFiles: string[] = [];
+      let setupError: unknown;
+      let setupFailed = false;
+      try {
+        if (logs.ignoreAdded)
+          setupMessages.push("Added .stintwork/local/ to the project's .gitignore.\n");
+        if (ensureLocalIgnore(worktree.path)) {
+          setupFiles.push(".gitignore");
+          setupMessages.push("Added .stintwork/local/ to the worktree's .gitignore.\n");
+        }
+        if (!workItem.stints.length && writeFirstStintWorkflow(worktree.path, workItem, stage.id)) {
+          setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
+          setupMessages.push(
+            "Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n",
+          );
+        }
+        await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
+      } catch (error) {
+        setupFailed = true;
+        setupError = error;
+      }
       const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], {
         cwd: worktree.path,
         encoding: "utf8",
       }).trim();
-      const id = randomUUID();
-      state.id = id;
-      const logs = prepareLogs(root);
       const path = join(logs.directory, `${id}.jsonl`);
       const started: StintLogEntry = {
         type: "started",
@@ -216,11 +239,8 @@ export function addStintRoutes(
             at: new Date().toISOString(),
             event: { type: "message", id: `setup-${++setupMessage}`, text },
           });
-        if (logs.ignoreAdded) progress("Added .stintwork/local/ to the project's .gitignore.\n");
-        if (ensureLocalIgnore(worktree.path))
-          progress("Added .stintwork/local/ to the worktree's .gitignore.\n");
-        if (!workItem.stints.length && writeFirstStintWorkflow(worktree.path, workItem, stage.id))
-          progress("Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n");
+        for (const message of setupMessages) progress(message);
+        if (setupFailed) throw setupError;
         const previous = workItem.stints[0];
         await installWorktreeDependencies(
           worktree.path,

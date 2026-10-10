@@ -1,6 +1,6 @@
 # 11 — Commit Stintwork's own worktree writes before the agent starts
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -13,7 +13,11 @@ On a work item's first stint, Stintwork writes `workflow.yaml` and the `.gitigno
 
 ## Acceptance criteria
 
-- [ ] Server test: on a work item's first stint, the agent starts with a clean `git status` in the worktree, and the branch has one setup commit containing exactly `workflow.yaml` and `.gitignore`.
-- [ ] Server test: a second stint on the same work item makes no setup commit.
-- [ ] Server test: an unrelated uncommitted file in the worktree stays uncommitted and isn't part of the setup commit.
-- [ ] All checks pass: `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
+- [x] Server test: on a work item's first stint, the agent starts with a clean `git status` in the worktree, and the branch has one setup commit containing exactly `workflow.yaml` and `.gitignore`.
+- [x] Server test: a second stint on the same work item makes no setup commit.
+- [x] Server test: an unrelated uncommitted file in the worktree stays uncommitted and isn't part of the setup commit.
+- [x] All checks pass: `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm build`.
+
+## Comments
+
+- 2026-10-09: The first stint commits only the Stintwork setup paths before launching the agent, and records the post-setup commit as `baseCommit`. The focused server suite passed (12 tests), and the full suite passed (34 files, 328 tests). `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` also passed. Lint reported the existing Biome `linter.rules.recommended` deprecation notice.
