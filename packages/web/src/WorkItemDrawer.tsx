@@ -103,6 +103,12 @@ export function WorkItemDrawer({
         <p className="mt-3 text-xs muted">
           Milestone: {milestone?.name ?? item.milestone ?? "No milestone"}
         </p>
+        {item.worktreePath && (
+          <div className="mt-3">
+            <p className="text-xs muted">Work item files live in this worktree:</p>
+            <FilePath path={item.worktreePath} />
+          </div>
+        )}
       </header>
       {item.stage ? (
         <ol className="stage-rail" aria-label={`${workflow.name} workflow stages`}>

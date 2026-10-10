@@ -37,6 +37,7 @@ export {
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
 export { detectSetup, type SetupReport } from "./setup.js";
 export { indexProject, type ProjectSnapshot } from "./project.js";
+export { composeWorkItemFiles } from "./work-item-files.js";
 export {
   applyStintLogEntry,
   foldStintLog,

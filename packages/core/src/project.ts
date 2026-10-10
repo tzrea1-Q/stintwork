@@ -14,6 +14,7 @@ export type ProjectSnapshot = {
     milestone?: string;
     stints: StintSummary[];
     activeStint: Stint | null;
+    worktreePath?: string;
   })[];
   setup: SetupReport;
   warnings: Warning[];

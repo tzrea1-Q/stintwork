@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { accessSync } from "node:fs";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAdaptorServer, type ServerType, upgradeWebSocket } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
@@ -10,8 +10,9 @@ import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
 import { addBriefPreviewRoute } from "./brief-preview.js";
-import { createNodeRepoFiles, projectPaths } from "./repo-files.js";
+import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
+import { readProjectFiles } from "./work-item-files.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -32,6 +33,7 @@ export function createProjectServer(
   const root = resolve(repoRoot);
   const files = createNodeRepoFiles(root);
   const name = basename(root);
+  let watchedPaths = new Set<string>();
   function readSnapshot() {
     let branch: string | undefined;
     let branchWarning: Warning | undefined;
@@ -45,7 +47,14 @@ export function createProjectServer(
     } catch (error) {
       branchWarning = { path: ".git", message: `Cannot read project branch: ${String(error)}` };
     }
-    const snapshot = indexProject(files, { name, ...(branch ? { branch } : {}) });
+    const project = readProjectFiles(root, files);
+    watchedPaths = new Set(project.watchPaths);
+    const snapshot = indexProject(project.files, { name, ...(branch ? { branch } : {}) });
+    for (const item of snapshot.workItems) {
+      const path = project.worktreePaths.get(item.slug);
+      if (path) item.worktreePath = path;
+    }
+    snapshot.warnings.push(...project.warnings);
     if (branchWarning) snapshot.warnings.push(branchWarning);
     return snapshot;
   }
@@ -64,7 +73,14 @@ export function createProjectServer(
   });
 
   function refresh() {
+    const previousPaths = watchedPaths;
     snapshot = readSnapshot();
+    for (const path of watchedPaths) {
+      if (!previousPaths.has(path)) watcher?.add(path);
+    }
+    for (const path of previousPaths) {
+      if (!watchedPaths.has(path)) void watcher?.unwatch(path);
+    }
     if (watcherWarning) snapshot.warnings.push(watcherWarning);
     const message = JSON.stringify(snapshot);
     for (const client of websocket.clients) {
@@ -110,27 +126,22 @@ export function createProjectServer(
   function start(): Promise<ServerType> {
     if (stopping) return Promise.reject(new Error("Project server is stopped"));
     starting ??= (async () => {
-      watcher = watch(root, {
+      watcher = watch([...watchedPaths], {
         ignoreInitial: true,
         followSymlinks: false,
         ignored: (path, stat) => {
           if (stat?.isSymbolicLink()) return true;
-          const repoPath = relative(root, path).split(sep).join("/");
-          return (
-            repoPath !== "" &&
-            !projectPaths.some(
-              (scope) =>
-                repoPath === scope ||
-                repoPath.startsWith(`${scope}/`) ||
-                scope.startsWith(`${repoPath}/`),
-            )
+          return ![...watchedPaths].some(
+            (scope) =>
+              path === scope ||
+              path.startsWith(`${scope}${sep}`) ||
+              scope.startsWith(`${path}${sep}`),
           );
         },
       });
       watcher.on("all", (_event, path) => {
         if (stopping) return;
-        const repoPath = relative(root, path).split(sep).join("/");
-        if (!projectPaths.some((scope) => repoPath === scope || repoPath.startsWith(`${scope}/`)))
+        if (![...watchedPaths].some((scope) => path === scope || path.startsWith(`${scope}${sep}`)))
           return;
         clearTimeout(debounce);
         debounce = setTimeout(refresh, 150);

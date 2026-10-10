@@ -6,6 +6,7 @@ import {
 } from "@stintwork/core";
 import type { Hono } from "hono";
 import { changedSince } from "@stintwork/git";
+import { readProjectFiles } from "./work-item-files.js";
 
 export function addBriefPreviewRoute(app: Hono, files: RepoFiles, root: string) {
   app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", async (context) => {
@@ -28,6 +29,8 @@ export async function prepareStintBrief(
   number: number,
   root: string,
 ) {
+  const project = readProjectFiles(root, files);
+  files = project.files;
   const snapshot = indexProject(files, { name: "" });
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
   if (!workItem) return { reason: "Work item not found.", status: 404 as const };
@@ -47,7 +50,12 @@ export async function prepareStintBrief(
   const checkpointCommit = previous?.checkpointCommit ?? null;
   let changedPaths: string[] = [];
   try {
-    if (checkpointCommit) changedPaths = await changedSince(root, checkpointCommit, slug);
+    if (checkpointCommit)
+      changedPaths = await changedSince(
+        project.worktreePaths.get(slug) ?? root,
+        checkpointCommit,
+        slug,
+      );
   } catch (error) {
     return {
       reason: `Could not compare the last checkpoint: ${error instanceof Error ? error.message : String(error)}`,

@@ -88,7 +88,7 @@ export function addStintRoutes(
     const result = await prepareStintBrief(files, body.workItem, body.ticket as number, root);
     if ("reason" in result)
       return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
-    const { workItem, ticket, stage, brief } = result;
+    const { workItem, ticket } = result;
     if (active.has(workItem.slug))
       return context.json({ reason: "A stint is already active for this work item." }, 409);
     const state: { handle?: AgentStint; completion?: Promise<void> } = {};
@@ -96,6 +96,9 @@ export function addStintRoutes(
     try {
       const worktree = await ensureWorktree(root, workItem.slug);
       if (closing) throw new Error("The project server is stopping.");
+      const prepared = await prepareStintBrief(files, workItem.slug, ticket.number, root);
+      if ("reason" in prepared) throw new Error(prepared.reason);
+      const { brief, stage } = prepared;
       const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], {
         cwd: worktree.path,
         encoding: "utf8",

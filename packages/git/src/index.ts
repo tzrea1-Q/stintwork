@@ -4,6 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 export { changedSince, createCheckpoint } from "./checkpoints.js";
+export { listWorkItemWorktrees, workItemFilesDiverged } from "./worktrees.js";
 
 const execute = promisify(execFile);
 
@@ -35,5 +36,9 @@ export async function ensureWorktree(
   if ((await lstat(parent)).isSymbolicLink())
     throw new Error("Worktree directory must not be a symlink.");
   await execute("git", ["worktree", "add", "-b", branch, path, "HEAD"], { cwd: root });
+  const { stdout: base } = await execute("git", ["rev-parse", "HEAD"], { cwd: path });
+  await execute("git", ["config", "--local", `branch.${branch}.stintwork-base`, base.trim()], {
+    cwd: root,
+  });
   return { path, branch };
 }

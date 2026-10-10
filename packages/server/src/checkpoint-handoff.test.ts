@@ -159,11 +159,14 @@ test.each([
   },
 );
 
-test("preview and start rebuild the resume brief from the same ticket's handoff and main checkout changes", async () => {
-  const { root, project } = await fixture();
+test("preview and start rebuild the resume brief from the same ticket's handoff and worktree changes", async () => {
+  const { project } = await fixture();
   const first = await start(project);
   const previous = await ended(project, first.id);
-  await writeFile(join(root, spec), "# First\nA requirement changed without a main-branch commit.");
+  await writeFile(
+    join(first.worktree.path, spec),
+    "# First\nA requirement changed without a commit.",
+  );
   const brief: Brief = await (await project.app.request(preview)).json();
   expect(brief.lastHandoff).toEqual(previous.handoff);
   expect(brief.checkpointCommit).toBe(previous.checkpointCommit);
@@ -173,7 +176,7 @@ test("preview and start rebuild the resume brief from the same ticket's handoff 
   expect(brief.prompt).toContain(`Changed since the last handoff:\n- ${spec}`);
   expect(brief.prompt).toContain("Where the handoff and the files disagree, the files win.");
   await writeFile(
-    join(root, ticket),
+    join(first.worktree.path, ticket),
     "# Checkpoint\nStatus: ready-for-agent\nBlocked by: none\nNew comment.",
   );
   const next = await start(project);
@@ -198,11 +201,11 @@ test("a crashed work turn ends failed but still checkpoints its edits and record
 });
 
 test("a different ticket's brief cannot inherit this ticket's handoff", async () => {
-  const { root, project } = await fixture();
+  const { project } = await fixture();
   const first = await start(project);
   await ended(project, first.id);
   await writeFile(
-    join(root, ".scratch/first/issues/05-other.md"),
+    join(first.worktree.path, ".scratch/first/issues/05-other.md"),
     "# Other\nStatus: ready-for-agent\nBlocked by: none",
   );
   const response = await project.app.request("/api/work-items/first/tickets/5/brief-preview");
