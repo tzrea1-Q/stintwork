@@ -119,14 +119,14 @@ test("resume briefs carry the checkpoint even when the last stint gave no handof
   expect(brief.changedPaths).toEqual([specPath]);
 });
 
-test("every built-in stage declares its skill, with no invocation for Do", () => {
+test("every built-in stage declares its skill, with no invocation for Ship or Do", () => {
   const skills = {
     clarify: "/grill-with-docs",
     spec: "/to-spec",
     tickets: "/to-tickets",
     implement: "/implement",
     review: "/code-review",
-    ship: "/pr",
+    ship: null,
     diagnose: "/diagnosing-bugs",
     fix: "/tdd",
     do: null,
@@ -135,14 +135,13 @@ test("every built-in stage declares its skill, with no invocation for Do", () =>
     for (const stage of workflow.stages) {
       expect(stage.skill).toBe(skills[stage.id]);
       const brief = compileBrief({ ...input(), stage });
-      expect(brief.prompt.split("\n")[0]).toBe(
-        stage.skill ? `${stage.skill} ${ticketPath}` : "Read first:",
-      );
+      if (stage.skill) expect(brief.prompt.split("\n")[0]).toBe(`${stage.skill} ${ticketPath}`);
+      else expect(brief.prompt).not.toMatch(/^\//);
     }
   }
 });
 
-test("only unblocked, unresolved tickets in Implement, Fix or Do can preview a stint", () => {
+test("implementation tickets must be unblocked and unresolved; skill stages can use tickets", () => {
   const ticket = { resolved: false, blocked: false, blockedBy: [] };
   for (const stage of ["implement", "fix", "do"] as const) {
     expect(briefUnavailableReason({ type: "feature", stage }, ticket)).toBeNull();
@@ -156,16 +155,12 @@ test("only unblocked, unresolved tickets in Implement, Fix or Do can preview a s
       { ...ticket, blocked: true, blockedBy: [1, 3] },
     ),
   ).toBe("Blocked by ticket 01, 03.");
-  for (const stage of [
-    "clarify",
-    "spec",
-    "tickets",
-    "review",
-    "ship",
-    "diagnose",
-    undefined,
-  ] as const) {
-    expect(briefUnavailableReason({ type: "feature", stage }, ticket)).toMatch(/only in Implement/);
-  }
+  for (const stage of ["clarify", "spec", "tickets", "review"] as const)
+    expect(briefUnavailableReason({ type: "feature", stage }, ticket)).toBeNull();
+  expect(briefUnavailableReason({ type: "feature", stage: "ship" }, ticket)).not.toBeNull();
+  expect(briefUnavailableReason({ type: "feature", stage: undefined }, ticket)).not.toBeNull();
+  expect(
+    briefUnavailableReason({ type: "feature", workflow: "bug", stage: "diagnose" }, ticket),
+  ).toBeNull();
   expect(briefUnavailableReason({ type: "effort", stage: undefined }, ticket)).not.toBeNull();
 });

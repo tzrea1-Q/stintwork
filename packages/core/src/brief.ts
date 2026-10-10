@@ -1,6 +1,6 @@
 import type { StagedWorkItem } from "./stages.js";
 import type { RepoFiles, Ticket, WorkItem } from "./work-items.js";
-import type { WorkflowStage } from "./workflows.js";
+import { builtInWorkflows, type WorkflowStage } from "./workflows.js";
 
 export type BriefPointer = { path: string; reason: string };
 export type BriefHandoff = {
@@ -22,22 +22,26 @@ export type BriefInput = {
   files: RepoFiles;
   workItem: Pick<WorkItem, "slug" | "spec">;
   stage: WorkflowStage;
-  ticket: Pick<Ticket, "path">;
+  ticket?: Pick<Ticket, "path"> | null;
   lastHandoff?: BriefHandoff | null;
   changedPaths?: readonly string[];
   checkpointCommit?: string | null;
 };
 
 export function briefUnavailableReason(
-  workItem: Pick<StagedWorkItem, "type" | "stage">,
-  ticket: Pick<Ticket, "resolved" | "blocked" | "blockedBy">,
+  workItem: Pick<StagedWorkItem, "type" | "stage"> & Partial<Pick<StagedWorkItem, "workflow">>,
+  ticket?: Pick<Ticket, "resolved" | "blocked" | "blockedBy"> | null,
 ): string | null {
+  if (workItem.type === "effort" || !workItem.stage) return "This work item has no stint stage.";
+  if (!ticket || !["implement", "fix", "do"].includes(workItem.stage)) {
+    const stage = builtInWorkflows[workItem.workflow ?? "feature"].stages.find(
+      (candidate) => candidate.id === workItem.stage,
+    );
+    return stage?.skill ? null : "This stage has no stint skill.";
+  }
   if (ticket.resolved) return "This ticket is resolved.";
   if (ticket.blocked) {
     return `Blocked by ticket ${ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", ")}.`;
-  }
-  if (workItem.type === "effort" || !["implement", "fix", "do"].includes(workItem.stage ?? "")) {
-    return "Stints are available only in Implement, Fix or Do.";
   }
   return null;
 }
@@ -46,7 +50,7 @@ export function compileBrief({
   files,
   workItem,
   stage,
-  ticket,
+  ticket = null,
   lastHandoff = null,
   changedPaths = [],
   checkpointCommit = null,
@@ -65,12 +69,19 @@ export function compileBrief({
     pointers.push({ path, reason: `Decision record: ${title || path.split("/").at(-1)}` });
   }
   if (workItem.spec) addPointer(workItem.spec.path, "Work item scope and acceptance criteria");
-  addPointer(ticket.path, "This ticket's scope, status, blockers and comments");
+  if (ticket) addPointer(ticket.path, "This ticket's scope, status, blockers and comments");
 
   const changed = [...new Set(changedPaths)].sort();
   const handoff = lastHandoff ? { ...lastHandoff } : null;
+  const ticketScoped = ticket && ["implement", "fix", "do"].includes(stage.id);
   const prompt = [
-    ...(stage.skill ? [`${stage.skill} ${ticket.path}`] : []),
+    ...(stage.skill ? [`${stage.skill} ${ticket?.path ?? `.scratch/${workItem.slug}/`}`] : []),
+    ...(!ticketScoped
+      ? [
+          `Work item folder: .scratch/${workItem.slug}/`,
+          ...(!workItem.spec ? ["No spec yet."] : []),
+        ]
+      : []),
     ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason}`)].join("\n"),
     handoff
       ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
@@ -84,10 +95,19 @@ export function compileBrief({
     [
       "Working instructions:",
       `- Work in the work item worktree on its branch, stintwork/${workItem.slug}.`,
-      `- Finish this ticket only: ${ticket.path}.`,
-      "- Keep the project checks green.",
-      "- Update the ticket Status line and append under ## Comments.",
-      `- Commit referencing the ticket (${ticket.path}); do not push.`,
+      ...(ticketScoped
+        ? [
+            `- Finish this ticket only: ${ticket.path}.`,
+            "- Keep the project checks green.",
+            "- Update the ticket Status line and append under ## Comments.",
+            `- Commit referencing the ticket (${ticket.path}); do not push.`,
+          ]
+        : [
+            `- Work on the ${stage.name} stage${ticket ? ` for ticket ${ticket.path}` : ""} only.`,
+            "- Keep the project checks green.",
+            "- Leave stage gate approval to the developer.",
+            "- Do not push.",
+          ]),
       "- Record only checks actually run, with their results.",
     ].join("\n"),
   ].join("\n\n");

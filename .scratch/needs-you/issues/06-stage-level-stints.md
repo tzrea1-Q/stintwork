@@ -1,6 +1,6 @@
 # 06 — Stage-level stints
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build

@@ -8,6 +8,12 @@ export function addBriefPreviewRoute(
   readProjectFiles: ProjectFilesReader,
   root: string,
 ) {
+  app.get("/api/work-items/:slug/brief-preview", async (context) => {
+    context.header("Cache-Control", "no-store");
+    const result = await prepareStintBrief(readProjectFiles, context.req.param("slug"), null, root);
+    if ("reason" in result) return context.json({ reason: result.reason }, result.status);
+    return context.json(result.brief);
+  });
   app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
     const number = context.req.param("ticket");
@@ -25,7 +31,7 @@ export function addBriefPreviewRoute(
 export async function prepareStintBrief(
   readProjectFiles: ProjectFilesReader,
   slug: string,
-  number: number,
+  number: number | null,
   root: string,
 ) {
   const project = readProjectFiles();
@@ -33,8 +39,9 @@ export async function prepareStintBrief(
   const snapshot = indexProject(files, { name: "" });
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
   if (!workItem) return { reason: "Work item not found.", status: 404 as const };
-  const ticket = workItem.tickets.find((candidate) => candidate.number === number);
-  if (!ticket) return { reason: "Ticket not found.", status: 404 as const };
+  const ticket =
+    number === null ? null : workItem.tickets.find((candidate) => candidate.number === number);
+  if (ticket === undefined) return { reason: "Ticket not found.", status: 404 as const };
   const reason = briefUnavailableReason(workItem, ticket);
   if (reason) return { reason, status: 409 as const };
   if (workItem.activeStint)
@@ -46,7 +53,8 @@ export async function prepareStintBrief(
   // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
   // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
   const ended = workItem.stints.filter((stint) => stint.status !== "running");
-  const previous = ended.find((stint) => stint.ticket === number) ?? ended[0];
+  const previous =
+    number === null ? ended[0] : (ended.find((stint) => stint.ticket === number) ?? ended[0]);
   const checkpointCommit = previous?.checkpointCommit ?? null;
   let changedPaths: string[] = [];
   try {
