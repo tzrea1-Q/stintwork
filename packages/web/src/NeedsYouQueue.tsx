@@ -3,6 +3,7 @@ import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { HandoffAnswer } from "./HandoffAnswer";
+import { GateView } from "./GateView";
 import type { useAttentionAlerts } from "./useAttentionAlerts";
 import "./needs-you.css";
 import "./stint-stream.css";
@@ -87,8 +88,12 @@ export function NeedsYouQueue({
           return (
             <article key={item.id} className="attention-item" aria-label={item.title}>
               <p className="eyebrow">
-                {item.kind === "permission" ? "Permission" : "Handoff"} ·{" "}
-                {profile?.displayName ?? item.agent}
+                {item.kind === "permission"
+                  ? "Permission"
+                  : item.kind === "handoff-unresolved"
+                    ? "Handoff"
+                    : "Gate ready"}
+                {item.agent && ` · ${profile?.displayName ?? item.agent}`}
               </p>
               <h3>{item.title}</h3>
               <button
@@ -102,12 +107,19 @@ export function NeedsYouQueue({
                 {workItem?.title ?? item.workItem} · {item.workItem}
               </button>
               <p className="muted">
-                {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`} · Stint{" "}
-                <code>{item.stintId}</code>
+                {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`}
+                {item.stintId && (
+                  <>
+                    {" "}
+                    · Stint <code>{item.stintId}</code>
+                  </>
+                )}
               </p>
               <p className="muted">
                 <time dateTime={item.raisedAt} title={item.raisedAt}>
-                  Waiting {minutes ? `${minutes} min` : "less than a minute"}
+                  {item.raisedAt === "1970-01-01T00:00:00.000Z"
+                    ? "No readiness time recorded"
+                    : `Waiting ${minutes ? `${minutes} min` : "less than a minute"}`}
                 </time>
               </p>
               {item.kind === "permission" && (
@@ -123,6 +135,9 @@ export function NeedsYouQueue({
                   item={item}
                   onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
                 />
+              )}
+              {item.kind === "gate-ready" && workItem && (
+                <GateView item={workItem} warnings={snapshot.warnings} />
               )}
             </article>
           );

@@ -11,7 +11,7 @@ import {
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
-import { attentionSnapshot } from "./attention-test-fixtures";
+import { attentionSnapshot, mixedAttentionSnapshot } from "./attention-test-fixtures";
 
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
   name: "Stintwork",
@@ -62,6 +62,59 @@ test("reads the initial project and replaces it with live snapshots", async () =
   expect(result.current.snapshot?.branch).toBe("changed");
   expect(result.current.connection).toBe("live");
 });
+
+test("mixed attention kinds load over HTTP and live snapshots without rejecting gates", async () => {
+  const next = mixedAttentionSnapshot();
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot(next));
+  expect(result.current.connection).toBe("live");
+  const answered = structuredClone(next);
+  answered.workItems[1].stints[0].handoffAnswer = { at: "2026-10-09T12:00:00Z", note: null };
+  answered.attentionItems = deriveAttentionItems(answered);
+  act(() => TestSocket.instances[0].sendSnapshot(answered));
+  expect(result.current.snapshot?.attentionItems.map(({ kind }) => kind)).toEqual([
+    "permission",
+    "gate-ready",
+  ]);
+  expect(result.current.connection).toBe("live");
+  expect(TestSocket.instances[0].close).not.toHaveBeenCalled();
+});
+
+test("gates without stint evidence accept nullable sources over HTTP and live snapshots", async () => {
+  const next = mixedAttentionSnapshot();
+  next.workItems[1].stints = [];
+  next.attentionItems = deriveAttentionItems(next);
+  expect(next.attentionItems[0]).toMatchObject({
+    kind: "gate-ready",
+    stintId: null,
+    agent: null,
+    raisedAt: "1970-01-01T00:00:00.000Z",
+  });
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot(next));
+  expect(result.current.connection).toBe("live");
+});
+
+test.each([{ stage: "unknown" }, { agent: 42 }, { stintId: 42 }, { ticket: 1 }])(
+  "malformed gate attention (%j) cannot replace the last valid snapshot",
+  async (fields) => {
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    const malformed = mixedAttentionSnapshot();
+    const gate = malformed.attentionItems.find(({ kind }) => kind === "gate-ready");
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({ ...malformed, attentionItems: [{ ...gate, ...fields }] }),
+      }),
+    );
+    expect(result.current.snapshot).toEqual(snapshot);
+    expect(result.current.connection).toBe("reconnecting");
+  },
+);
 
 test.each([null, "Use CSV."])(
   "unresolved handoffs load from HTTP and live snapshots, and a persisted answer (%s) removes them",

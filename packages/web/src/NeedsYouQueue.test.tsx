@@ -2,13 +2,39 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
-import { attentionOptions, attentionProfile, attentionSnapshot } from "./attention-test-fixtures";
+import {
+  attentionOptions,
+  attentionProfile,
+  attentionSnapshot,
+  mixedAttentionSnapshot,
+} from "./attention-test-fixtures";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
   window.history.replaceState(null, "", "/");
+});
+
+test("permission, gate and handoff renderers coexist in the queue's derived order", async () => {
+  const user = userEvent.setup();
+  const snapshot = mixedAttentionSnapshot();
+  render(<Board snapshot={snapshot} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 3" }));
+  const queue = within(screen.getByRole("dialog", { name: "Needs you 3" }));
+  const articles = queue
+    .getAllByRole("article")
+    .filter((article) => article.classList.contains("attention-item"));
+  expect(articles.map((article) => article.getAttribute("aria-label"))).toEqual(
+    snapshot.attentionItems.map(({ title }) => title),
+  );
+  expect(within(articles[0]).getByText("Permission · Test Agent")).toBeInTheDocument();
+  expect(within(articles[0]).getByRole("button", { name: /Yes, proceed/ })).toBeEnabled();
+  expect(within(articles[1]).getByText("Gate ready · Test Agent")).toBeInTheDocument();
+  expect(within(articles[1]).getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+  expect(within(articles[2]).getByText("Handoff · Test Agent")).toBeInTheDocument();
+  expect(within(articles[2]).getByRole("textbox", { name: "Developer note" })).toBeInTheDocument();
+  expect(within(articles[2]).getByRole("button", { name: "Dismiss" })).toBeEnabled();
 });
 
 test("Needs you opens a slide-over with source, waiting time, full command and path; counts and badges follow snapshots", async () => {

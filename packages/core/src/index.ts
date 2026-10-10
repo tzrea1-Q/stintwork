@@ -11,12 +11,14 @@ export {
   type AttentionItemSource,
   type PermissionAttentionItem,
   type HandoffUnresolvedAttentionItem,
+  type GateAttentionItem,
 } from "./attention.js";
 export {
   hasUnresolvedHandoff,
   pendingDeveloperNotes,
   type DeveloperNote,
 } from "./developer-notes.js";
+export { gateReadiness, workflowGate, type GateRecord, type GateWorkItem } from "./gates.js";
 export type {
   RichStintEvent,
   StintToolContent,

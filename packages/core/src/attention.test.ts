@@ -219,3 +219,32 @@ test("an old unresolved handoff and an active permission coexist in oldest-first
     }).map((item) => item.kind),
   ).toEqual(["permission", "handoff-unresolved"]);
 });
+
+test("gate, unresolved handoff and permission items keep stable ids and timestamp/id ordering", () => {
+  const completed = project([started, ended]).workItems[0];
+  completed.stage = "implement";
+  const current = project([
+    { ...started, stint: { ...started.stint, id: "current" } },
+    { ...request, at: ended.at },
+  ]).workItems[0];
+  const snapshot = { workItems: [completed, { ...current, slug: "second" }] };
+  const items = deriveAttentionItems(snapshot);
+  expect(items.map(({ id }) => id)).toEqual([
+    'gate-ready:["first","implement"]',
+    "handoff-unresolved:stint",
+    'permission:["current","request"]',
+  ]);
+  expect(deriveAttentionItems({ workItems: [...snapshot.workItems].reverse() })).toEqual(items);
+  if (!current.activeStint) throw new Error("Expected an active stint");
+  current.activeStint.events[0] = { ...permission, raisedAt: request.at };
+  expect(deriveAttentionItems(snapshot).map(({ kind }) => kind)).toEqual([
+    "permission",
+    "gate-ready",
+    "handoff-unresolved",
+  ]);
+  completed.stints[0].handoffAnswer = { at: ended.at, note: null };
+  expect(deriveAttentionItems(snapshot).map(({ id }) => id)).toEqual([
+    'permission:["current","request"]',
+    'gate-ready:["first","implement"]',
+  ]);
+});

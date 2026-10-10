@@ -1,6 +1,8 @@
 import type { ProjectSnapshot } from "./project.js";
 import type { StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
+import type { StageId } from "./workflows.js";
+import { deriveGateAttentionItems } from "./gates.js";
 
 export type AttentionItemSource = {
   id: string;
@@ -27,7 +29,11 @@ export type HandoffUnresolvedAttentionItem = AttentionItemSource & {
   agent: string;
 };
 
-export type AttentionItem = PermissionAttentionItem | HandoffUnresolvedAttentionItem;
+export type GateAttentionItem = AttentionItemSource & { kind: "gate-ready"; stage: StageId };
+export type AttentionItem =
+  | PermissionAttentionItem
+  | HandoffUnresolvedAttentionItem
+  | GateAttentionItem;
 
 export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems">,
@@ -86,6 +92,7 @@ export function deriveAttentionItems(
           ),
       ];
     })
+    .concat(deriveGateAttentionItems(snapshot))
     .sort(
       (first, second) =>
         first.raisedAt.localeCompare(second.raisedAt) || first.id.localeCompare(second.id),

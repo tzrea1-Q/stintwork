@@ -1,4 +1,4 @@
-import { builtInWorkflows, type Milestone, type AgentProfile } from "@stintwork/core";
+import { builtInWorkflows, type Milestone, type AgentProfile, type Warning } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -9,6 +9,7 @@ import { StopStint } from "./StopStint";
 import { StintHistory } from "./StintHistory";
 import type { BoardWorkItem } from "./WorkItemCard";
 import { StageAgentRail } from "./StageAgentRail";
+import { GateView } from "./GateView";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -50,11 +51,13 @@ export function WorkItemDrawer({
   milestone,
   onClose,
   agents = [],
+  warnings = [],
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
   onClose: () => void;
   agents?: AgentProfile[];
+  warnings?: Warning[];
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -126,6 +129,7 @@ export function WorkItemDrawer({
         </a>
       </nav>
       <div className="drawer-content">
+        <GateView key={`${item.slug}:${item.stage}`} item={item} warnings={warnings} />
         {item.stage &&
           (!item.tickets.length || !["implement", "fix", "do"].includes(item.stage)) && (
             <section aria-label="Stage stint">

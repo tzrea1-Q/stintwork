@@ -134,11 +134,14 @@ test.each([
   "a $stage handoff's note survives restart, reaches the next brief and fake agent, and is consumed on start (ticket $nextTicket)",
   async ({ stage, ticket, nextTicket }) => {
     const state = await fixture(stage);
+    const remainingAttention =
+      stage === "clarify" ? [{ kind: "gate-ready", id: 'gate-ready:["first","clarify"]' }] : [];
     const first = await start(state.project, ticket);
     expect((await ended(state.project, first.id)).handoff?.unresolved).toBe(
       state.script.unresolved,
     );
     expect((await snapshot(state.project)).attentionItems).toMatchObject([
+      ...remainingAttention,
       {
         kind: "handoff-unresolved",
         stintId: first.id,
@@ -150,7 +153,7 @@ test.each([
     expect(response.status).toBe(200);
     const receipt = await response.json();
     expect(receipt.answer).toEqual({ at: expect.any(String), note });
-    expect((await snapshot(state.project)).attentionItems).toEqual([]);
+    expect((await snapshot(state.project)).attentionItems).toMatchObject(remainingAttention);
     expect((await answer(state.project, first.id, note)).status).toBe(200);
     expect((await answer(state.project, first.id, "Different answer")).status).toBe(409);
     const entries: StintLogEntry[] = (
@@ -177,7 +180,7 @@ test.each([
       before.developerNotes,
     );
     await state.restart();
-    expect((await snapshot(state.project)).attentionItems).toEqual([]);
+    expect((await snapshot(state.project)).attentionItems).toMatchObject(remainingAttention);
     expect((await preview(state.project, nextTicket)).developerNotes).toEqual(
       before.developerNotes,
     );
@@ -194,7 +197,7 @@ test.each([
     expect((await preview(state.project, null)).prompt).not.toContain("Developer note (");
     await state.restart();
     expect((await preview(state.project, nextTicket)).developerNotes).toEqual([]);
-    expect((await snapshot(state.project)).attentionItems).toEqual([]);
+    expect((await snapshot(state.project)).attentionItems).toMatchObject(remainingAttention);
     expect((await ended(state.project, first.id)).handoffAnswer).toEqual(receipt.answer);
   },
 );

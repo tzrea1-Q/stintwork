@@ -1,5 +1,3 @@
-import { lstatSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import type { AgentRegistry } from "@stintwork/agents";
 import {
   agentUnavailableReason,
@@ -9,9 +7,9 @@ import {
   type StagedWorkItem,
   type StageId,
 } from "@stintwork/core";
-import { commitStintworkSetup } from "@stintwork/git";
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { saveWorkItemWorkflow, writeWorkItemWorkflow } from "./workflow-writes.js";
 
 export function writeStageAgentWorkflow(
   root: string,
@@ -19,22 +17,9 @@ export function writeStageAgentWorkflow(
   stage: StageId,
   agent: string,
 ): boolean {
-  let directory = root;
-  for (const part of [".scratch", item.slug]) {
-    directory = join(directory, part);
-    const stat = lstatSync(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error("Work item directories must be real directories.");
-  }
-  const path = join(directory, "workflow.yaml");
-  const stat = lstatSync(path, { throwIfNoEntry: false });
-  if (stat && (!stat.isFile() || stat.isSymbolicLink()))
-    throw new Error("workflow.yaml must be a regular file.");
-  const existing = stat ? readFileSync(path, "utf8") : undefined;
-  const text = workflowStageAgent(existing, item, stage, agent);
-  if (text === existing) return false;
-  writeFileSync(path, text, { flag: stat ? "w" : "wx" });
-  return true;
+  return writeWorkItemWorkflow(root, item.slug, (existing) =>
+    workflowStageAgent(existing, item, stage, agent),
+  );
 }
 
 export function addStageAgentRoute(
@@ -44,8 +29,8 @@ export function addStageAgentRoute(
   registry: AgentRegistry,
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
+  writing = new Set<string>(),
 ) {
-  const writing = new Set<string>();
   app.post("/api/work-items/:slug/stages/:stage/agent", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
@@ -91,11 +76,13 @@ export function addStageAgentRoute(
       );
     writing.add(slug);
     try {
-      writeStageAgentWorkflow(project.worktreePaths.get(slug) ?? root, item, stage.id, agent.id);
       const worktree = project.worktreePaths.get(slug);
-      const commit = worktree
-        ? await commitStintworkSetup(worktree, slug, [`.scratch/${slug}/workflow.yaml`])
-        : null;
+      const commit = await saveWorkItemWorkflow(
+        worktree ?? root,
+        slug,
+        (text) => workflowStageAgent(text, item, stage.id, agent.id),
+        !!worktree,
+      );
       refresh();
       return context.json({ stage: stage.id, agent: agent.id, commit });
     } catch (error) {
