@@ -94,7 +94,14 @@ new AgentSideConnection(
         const turn = brief.prompts++;
         if (turn > 0 && turn <= (options.handoffFailures ?? 0))
           throw RequestError.internalError(undefined, "Fake handoff prompt failed.");
-        for (const step of turn === 0 ? script : handoff) {
+        const steps: readonly FakeAgentStep[] | undefined =
+          turn === 0
+            ? script
+            : options.afterTurnRequests
+              ? options.afterTurnRequests[turn - 1]
+              : handoff;
+        assert.ok(steps, "Unexpected after-turn prompt.");
+        for (const step of steps) {
           if (controller.signal.aborted) return { stopReason: "cancelled" };
           if (step.type === "delay")
             await delay(step.milliseconds, undefined, { signal: controller.signal });

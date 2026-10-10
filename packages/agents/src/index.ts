@@ -15,7 +15,12 @@ import {
 } from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
-import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
+import { type AgentHandoff, handoffRequest } from "./handoff.js";
+import {
+  type AfterTurnRequest,
+  collectAfterTurnRequests,
+  joinAfterTurnMessages,
+} from "./after-turn.js";
 import { createPermissionForwarding } from "./permission-forwarding.js";
 import { codexProfile } from "./profiles.js";
 import { AgentAuthenticationError } from "./authentication.js";
@@ -33,6 +38,8 @@ export {
 } from "./registry.js";
 export { createGrokAgent } from "./grok.js";
 export { grokProfile } from "./profiles.js";
+export type { AfterTurnRequest } from "./after-turn.js";
+export { handoffRequest } from "./handoff.js";
 
 export type AgentStintOptions = {
   permissionLevel?: PermissionLevel;
@@ -45,11 +52,18 @@ export type AgentStintOptions = {
     request: RequestPermissionRequest & { requestId: string; forwarded: Promise<void> },
   ) => Promise<RequestPermissionResponse>;
   handoffTimeoutMs?: number;
+  afterTurnTimeoutMs?: number;
+  afterTurnRequests?: readonly AfterTurnRequest[];
   checkAvailability?: boolean;
 };
 export type AgentStint = {
   ready?: Promise<void>;
-  done: Promise<{ stopReason: string; handoff?: AgentHandoff | null; handoffError?: string }>;
+  done: Promise<{
+    stopReason: string;
+    handoff?: AgentHandoff | null;
+    handoffError?: string;
+    [field: string]: unknown;
+  }>;
   cancel: () => Promise<void>;
 };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
@@ -67,6 +81,8 @@ export function createAgentLauncher(
     onEvent,
     onPermission,
     handoffTimeoutMs,
+    afterTurnTimeoutMs = handoffTimeoutMs,
+    afterTurnRequests = [handoffRequest],
     checkAvailability = false,
     permissionLevel = "edit-freely",
   }) => {
@@ -94,8 +110,7 @@ export function createAgentLauncher(
     let chunk: { type: "message_delta" | "thought_delta"; id: string } | undefined;
     let nextMessage = 0;
     const toolKinds = new Map<string, string>();
-    // Each agent message of the handoff turn; agents may write a preamble or call tools first.
-    let handoffMessages: string[] | undefined;
+    let afterTurnMessages: string[] | undefined;
     let workTurn: Promise<{ stopReason: string }> | undefined;
     const writes = new Set<Promise<void>>();
 
@@ -168,9 +183,9 @@ export function createAgentLauncher(
                 (kind === "agent_message_chunk" || kind === "agent_thought_chunk") &&
                 update.content.type === "text"
               ) {
-                if (kind === "agent_message_chunk" && handoffMessages !== undefined) {
-                  if (chunk?.type !== "message_delta") handoffMessages.push("");
-                  handoffMessages[handoffMessages.length - 1] += update.content.text;
+                if (kind === "agent_message_chunk" && afterTurnMessages !== undefined) {
+                  if (chunk?.type !== "message_delta") afterTurnMessages.push("");
+                  afterTurnMessages[afterTurnMessages.length - 1] += update.content.text;
                 }
                 const type = kind === "agent_message_chunk" ? "message_delta" : "thought_delta";
                 chunk = chunk?.type === type ? chunk : { type, id: String(++nextMessage) };
@@ -348,77 +363,35 @@ export function createAgentLauncher(
           prompt: [{ type: "text", text: prompt }],
         });
         const result = await Promise.race([workTurn, failure]);
-        if (handoffTimeoutMs === undefined) return result;
+        if (afterTurnTimeoutMs === undefined) return result;
         permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
           cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
         });
-        let handoff: AgentHandoff | null = null;
-        let handoffError: string | undefined;
-        let retryTimer: ReturnType<typeof setTimeout> | undefined;
-        const deadline = performance.now() + handoffTimeoutMs;
-        const handoffTimeout = new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(new Error("Handoff timed out.")), handoffTimeoutMs);
-        });
-        try {
-          for (let attempt = 0; attempt < 3; attempt++) {
-            if (performance.now() >= deadline) throw new Error("Handoff timed out.");
+        const afterTurnResults = await collectAfterTurnRequests(afterTurnRequests, {
+          timeoutMs: afterTurnTimeoutMs,
+          failure,
+          retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
+          async prompt(text) {
             chunk = undefined;
-            handoffMessages = [];
-            try {
-              await Promise.race([
-                acp.prompt({
-                  sessionId: acpId as string,
-                  prompt: [{ type: "text", text: handoffPrompt }],
-                }),
-                failure,
-                handoffTimeout,
-              ]);
-              // Rejoin the turn's messages verbatim. A message that starts with a heading begins
-              // on a new line, so a preamble message ("Let me check first.") can't swallow it.
-              handoff = parseHandoff(
-                handoffMessages
-                  .map((message, index) =>
-                    index > 0 &&
-                    message.startsWith("#") &&
-                    !handoffMessages?.[index - 1].endsWith("\n")
-                      ? `\n${message}`
-                      : message,
-                  )
-                  .join(""),
-              );
-              if (!handoff)
-                handoffError = "Handoff did not contain the required Markdown sections.";
-              break;
-            } catch (error) {
-              const backoffMs = 500 * 2 ** attempt;
-              if (
-                (!cancelled && result.stopReason !== "cancelled") ||
-                attempt === 2 ||
-                performance.now() + backoffMs >= deadline
-              )
-                throw error;
-              await Promise.race([
-                new Promise<void>((resolveRetry) => {
-                  retryTimer = setTimeout(resolveRetry, backoffMs);
-                }),
-                failure,
-                handoffTimeout,
-              ]);
-            }
-          }
-        } catch (error) {
-          handoff = null;
-          handoffError =
-            (error instanceof Error ? error.message : String(error)) || "Handoff request failed.";
-          cancelPermission();
-          await Promise.race([
-            acp.cancel({ sessionId: acpId as string }).catch(() => {}),
-            new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
-          ]);
-        } finally {
-          clearTimeout(retryTimer);
-        }
-        return { ...result, handoff, ...(handoffError ? { handoffError } : {}) };
+            afterTurnMessages = [];
+            await acp.prompt({
+              sessionId: acpId as string,
+              prompt: [{ type: "text", text }],
+            });
+            return joinAfterTurnMessages(afterTurnMessages);
+          },
+          async cancel() {
+            cancelPermission();
+            await Promise.race([
+              acp.cancel({ sessionId: acpId as string }).catch(() => {}),
+              new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
+            ]);
+            permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
+              cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
+            });
+          },
+        });
+        return { ...result, ...afterTurnResults };
       } catch (error) {
         if (cancelled) return { stopReason: "cancelled" };
         const message = error instanceof Error ? error.message : String(error);
