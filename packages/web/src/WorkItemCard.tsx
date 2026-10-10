@@ -9,10 +9,12 @@ export function WorkItemCard({
   item,
   milestone,
   onOpen,
+  attentionCount = 0,
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
   onOpen: (slug: string) => void;
+  attentionCount?: number;
 }) {
   const tooltipId = useId();
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
@@ -63,8 +65,17 @@ export function WorkItemCard({
           Stint running
         </span>
       )}
-      {(blocked || item.inferred) && (
+      {(blocked || item.inferred || attentionCount > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
+          {attentionCount > 0 && (
+            <span
+              role="status"
+              className="badge warning"
+              aria-label={`${attentionCount} open attention items`}
+            >
+              Needs you · {attentionCount}
+            </span>
+          )}
           {blocked && (
             <span className="badge warning">
               <LockKeyhole size={11} aria-hidden="true" />

@@ -7,6 +7,8 @@ import { TopBar } from "./TopBar";
 import type { Connection } from "./useProjectSnapshot";
 import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { NeedsYouQueue } from "./NeedsYouQueue";
+import { useAttentionAlerts } from "./useAttentionAlerts";
 
 export function Board({
   snapshot,
@@ -22,6 +24,8 @@ export function Board({
     new URL(window.location.href).searchParams.get("item"),
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [needsYouOpen, setNeedsYouOpen] = useState(false);
+  const alerts = useAttentionAlerts(snapshot.attentionItems, snapshot.name);
   const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
   const openItem = snapshot.workItems.find((item) => item.slug === openSlug);
@@ -74,7 +78,7 @@ export function Board({
         setPaletteOpen((open) => !open);
         return;
       }
-      if (openItem || paletteOpen || !(event.target instanceof HTMLElement)) return;
+      if (openItem || paletteOpen || needsYouOpen || !(event.target instanceof HTMLElement)) return;
       const card = event.target.closest<HTMLButtonElement>("button[data-work-item]");
       const column = card?.closest<HTMLElement>("[data-card-column]");
       if (!card || !column || !event.key.startsWith("Arrow")) return;
@@ -109,12 +113,13 @@ export function Board({
       document.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("popstate", handlePopstate);
     };
-  }, [openItem, paletteOpen]);
+  }, [openItem, paletteOpen, needsYouOpen]);
 
   return (
     <div className="pipeline-app">
       <TopBar
         snapshot={snapshot}
+        onOpenNeedsYou={() => setNeedsYouOpen(true)}
         milestone={milestone}
         onMilestoneChange={setSelectedMilestone}
         onOpenPalette={() => setPaletteOpen(true)}
@@ -197,6 +202,7 @@ export function Board({
                     name={stage.name}
                     items={active.filter((item) => item.column === stage.column)}
                     milestones={snapshot.milestones}
+                    attentionItems={snapshot.attentionItems}
                     onOpen={openWorkItem}
                   />
                 ))}
@@ -215,6 +221,10 @@ export function Board({
                       <WorkItemCard
                         key={item.slug}
                         item={item}
+                        attentionCount={
+                          snapshot.attentionItems.filter((entry) => entry.workItem === item.slug)
+                            .length
+                        }
                         milestone={snapshot.milestones.find((entry) => entry.id === item.milestone)}
                         onOpen={openWorkItem}
                       />
@@ -237,6 +247,9 @@ export function Board({
                   <WorkItemCard
                     key={item.slug}
                     item={item}
+                    attentionCount={
+                      snapshot.attentionItems.filter((entry) => entry.workItem === item.slug).length
+                    }
                     milestone={snapshot.milestones.find((entry) => entry.id === item.milestone)}
                     onOpen={openWorkItem}
                   />
@@ -248,10 +261,19 @@ export function Board({
           </details>
         </section>
       </main>
+      {needsYouOpen && (
+        <NeedsYouQueue
+          snapshot={snapshot}
+          alerts={alerts}
+          onClose={() => setNeedsYouOpen(false)}
+          onOpenItem={openWorkItem}
+        />
+      )}
       {openItem && (
         <WorkItemDrawer
           key={openItem.slug}
           item={openItem}
+          agents={snapshot.agents}
           milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
           onClose={() => setOpenSlug(null)}
         />

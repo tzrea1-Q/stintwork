@@ -34,6 +34,8 @@ export type RichStintEvent =
   | {
       type: "permission_request";
       requestId: string;
+      raisedAt?: string;
+      details?: string;
       toolCallId: string;
       title: string | null;
       kind: string | null;
@@ -68,6 +70,9 @@ export function isRichStintEvent(value: Record<string, unknown>, update = false)
   if (value.type === "permission_request")
     return (
       typeof value.requestId === "string" &&
+      ["raisedAt", "details"].every(
+        (key) => value[key] === undefined || typeof value[key] === "string",
+      ) &&
       typeof value.toolCallId === "string" &&
       (value.title === null || typeof value.title === "string") &&
       (value.kind === null || typeof value.kind === "string") &&

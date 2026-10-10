@@ -11,7 +11,6 @@ import {
 import {
   foldStintLog,
   agentUnavailableReason,
-  stageAgent,
   builtInWorkflows,
   type BriefHandoff,
   type StintLiveMessage,
@@ -113,12 +112,15 @@ export function addStintRoutes(
       typeof body !== "object" ||
       !("workItem" in body) ||
       typeof body.workItem !== "string" ||
-      !("ticket" in body) ||
-      !Number.isSafeInteger(body.ticket) ||
+      ("ticket" in body &&
+        body.ticket !== null &&
+        (!Number.isSafeInteger(body.ticket) || (body.ticket as number) <= 0)) ||
       ("agent" in body && typeof body.agent !== "string")
     ) {
       return context.json(
-        { reason: "Choose a work item, ticket number and registered agent." },
+        {
+          reason: "Choose a work item, an optional positive ticket number and a registered agent.",
+        },
         400,
       );
     }
@@ -128,16 +130,14 @@ export function addStintRoutes(
     const result = await prepareStintBrief(
       readProjectFiles,
       body.workItem,
-      body.ticket as number,
+      "ticket" in body ? (body.ticket as number | null) : null,
       root,
+      registry,
     );
     if ("reason" in result)
       return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
     const { workItem, ticket } = result;
-    const agentId =
-      "agent" in body
-        ? (body.agent as string)
-        : stageAgent(workItem, result.stage.id, [...registry.values()]);
+    const agentId = "agent" in body ? (body.agent as string) : result.brief.agent;
     const agent = registry.get(agentId);
     if (!agent) return context.json({ reason: `Agent is not registered: ${agentId}.` }, 400);
     const unavailable = agentUnavailableReason(agent);
@@ -171,8 +171,9 @@ export function addStintRoutes(
       const prepared = await prepareStintBrief(
         readProjectFiles,
         workItem.slug,
-        ticket.number,
+        ticket?.number ?? null,
         root,
+        registry,
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
       const { stage } = prepared;
@@ -219,7 +220,7 @@ export function addStintRoutes(
           id,
           workItem: workItem.slug,
           stage: stage.id,
-          ticket: ticket.number,
+          ticket: ticket?.number ?? null,
           agent: agent.id,
           worktree,
           baseCommit,
@@ -257,7 +258,7 @@ export function addStintRoutes(
           checkpointCommit = await createCheckpoint(worktree.path, {
             id,
             workItem: workItem.slug,
-            ticket: ticket.number,
+            ticket: ticket?.number ?? null,
             status,
           });
         } catch (error) {

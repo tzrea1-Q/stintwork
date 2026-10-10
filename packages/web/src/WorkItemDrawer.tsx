@@ -1,9 +1,9 @@
-import { builtInWorkflows, type Milestone } from "@stintwork/core";
+import { builtInWorkflows, type Milestone, type AgentProfile } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { TicketBriefPreview } from "./BriefPreview";
+import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
 import { StintHistory } from "./StintHistory";
@@ -49,10 +49,12 @@ export function WorkItemDrawer({
   item,
   milestone,
   onClose,
+  agents = [],
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
   onClose: () => void;
+  agents?: AgentProfile[];
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -124,6 +126,15 @@ export function WorkItemDrawer({
         </a>
       </nav>
       <div className="drawer-content">
+        {item.stage &&
+          (!item.tickets.length || !["implement", "fix", "do"].includes(item.stage)) && (
+            <section aria-label="Stage stint">
+              <h3 className="drawer-section-heading">
+                {workflow.stages.find((stage) => stage.id === item.stage)?.name} stint
+              </h3>
+              <StageBriefPreview item={item} />
+            </section>
+          )}
         <section id="drawer-spec" aria-labelledby="drawer-spec-title">
           <h3 id="drawer-spec-title" className="drawer-section-heading">
             Spec
@@ -200,7 +211,11 @@ export function WorkItemDrawer({
               {item.activeStint.status}
             </p>
             <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
-            <StintStream key={item.activeStint.id} stint={item.activeStint} />
+            <StintStream
+              key={item.activeStint.id}
+              stint={item.activeStint}
+              profile={agents.find((agent) => agent.id === item.activeStint?.agent)}
+            />
           </section>
         )}
         <section aria-labelledby="drawer-stint-history-title">

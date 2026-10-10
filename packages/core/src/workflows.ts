@@ -26,7 +26,7 @@ export const builtInWorkflows = {
       { id: "tickets", name: "Tickets", column: "tickets", skill: "/to-tickets" },
       { id: "implement", name: "Implement", column: "implement", skill: "/implement" },
       { id: "review", name: "Review", column: "review", skill: "/code-review" },
-      { id: "ship", name: "Ship", column: "ship", skill: "/pr" },
+      { id: "ship", name: "Ship", column: "ship", skill: null },
     ],
   },
   bug: {
@@ -37,7 +37,7 @@ export const builtInWorkflows = {
       { id: "diagnose", name: "Diagnose", column: "clarify", skill: "/diagnosing-bugs" },
       { id: "fix", name: "Fix", column: "implement", skill: "/tdd" },
       { id: "review", name: "Review", column: "review", skill: "/code-review" },
-      { id: "ship", name: "Ship", column: "ship", skill: "/pr" },
+      { id: "ship", name: "Ship", column: "ship", skill: null },
     ],
   },
   quick: {
@@ -47,7 +47,7 @@ export const builtInWorkflows = {
     stages: [
       { id: "do", name: "Do", column: "implement", skill: null },
       { id: "review", name: "Review", column: "review", skill: "/code-review" },
-      { id: "ship", name: "Ship", column: "ship", skill: "/pr" },
+      { id: "ship", name: "Ship", column: "ship", skill: null },
     ],
   },
 } as const satisfies Record<WorkflowId, WorkflowDefinition>;

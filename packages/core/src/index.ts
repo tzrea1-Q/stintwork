@@ -5,6 +5,12 @@ export type Health = {
 export type { AgentCapabilityProfile, AgentPermissionOption, AgentProfile } from "./agents.js";
 export { agentUnavailableReason } from "./agents.js";
 export { stageAgent, workflowStageAgent } from "./stage-agent.js";
+export {
+  deriveAttentionItems,
+  type AttentionItem,
+  type AttentionItemSource,
+  type PermissionAttentionItem,
+} from "./attention.js";
 export type {
   RichStintEvent,
   StintToolContent,

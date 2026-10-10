@@ -11,6 +11,20 @@ import type { BoardWorkItem } from "./WorkItemCard";
 import "./brief-preview.css";
 
 export function TicketBriefPreview({ item, ticket }: { item: BoardWorkItem; ticket: Ticket }) {
+  return (
+    <StintBriefAction
+      key={`${item.slug}:${item.stage}:${ticket.number}`}
+      item={item}
+      ticket={ticket}
+    />
+  );
+}
+
+export function StageBriefPreview({ item }: { item: BoardWorkItem }) {
+  return <StintBriefAction key={`${item.slug}:${item.stage}`} item={item} />;
+}
+
+function StintBriefAction({ item, ticket }: { item: BoardWorkItem; ticket?: Ticket }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
@@ -42,7 +56,8 @@ export function TicketBriefPreview({ item, ticket }: { item: BoardWorkItem; tick
       {open && !reason && (
         <BriefPreviewSheet
           slug={item.slug}
-          ticketNumber={ticket.number}
+          ticketNumber={ticket?.number ?? null}
+          stageName={item.stage ? item.stage[0].toUpperCase() + item.stage.slice(1) : ""}
           onClose={() => {
             setOpen(false);
             trigger.current?.focus();
@@ -56,10 +71,12 @@ export function TicketBriefPreview({ item, ticket }: { item: BoardWorkItem; tick
 function BriefPreviewSheet({
   slug,
   ticketNumber,
+  stageName,
   onClose,
 }: {
   slug: string;
-  ticketNumber: number;
+  ticketNumber: number | null;
+  stageName: string;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -91,7 +108,7 @@ function BriefPreviewSheet({
       try {
         const [response, registryResponse] = await Promise.all([
           fetch(
-            `/api/work-items/${encodeURIComponent(slug)}/tickets/${ticketNumber}/brief-preview`,
+            `/api/work-items/${encodeURIComponent(slug)}${ticketNumber === null ? "" : `/tickets/${ticketNumber}`}/brief-preview`,
             { signal: request.signal, cache: "no-store" },
           ),
           fetch("/api/agents", { signal: request.signal, cache: "no-store" }),
@@ -187,7 +204,8 @@ function BriefPreviewSheet({
           </button>
         </div>
         <p className="mt-3 muted">
-          {slug} · Ticket {String(ticketNumber).padStart(2, "0")}
+          {slug} ·{" "}
+          {ticketNumber === null ? stageName : `Ticket ${String(ticketNumber).padStart(2, "0")}`}
         </p>
       </header>
       <div className="brief-preview-content">

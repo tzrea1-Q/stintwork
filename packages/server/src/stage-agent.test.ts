@@ -172,6 +172,87 @@ test("a per-stint override does not overwrite the developer's stage preference",
   );
 });
 
+test.each([
+  { ticket: undefined, existingWorktree: false },
+  { ticket: null, existingWorktree: true },
+])(
+  "stage previews and ticketless starts use the stage agent (ticket: $ticket, existing worktree: $existingWorktree)",
+  async ({ ticket, existingWorktree }) => {
+    const { root, project } = await fixture("workflow: feature\nstage: spec\n");
+    if (existingWorktree) await ensureWorktree(root, "first");
+    expect(
+      (await choose(project, "claude", "/api/work-items/first/stages/spec/agent")).status,
+    ).toBe(200);
+    const preview = await (await project.app.request("/api/work-items/first/brief-preview")).json();
+    expect(preview.agent).toBe("claude");
+    const response = await project.app.request("/api/stints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workItem: "first", ticket }),
+    });
+    expect(response.status).toBe(201);
+    const { stint }: { stint: Stint } = await response.json();
+    expect(stint.agent).toBe("claude");
+    expect(stint.ticket).toBeNull();
+    expect(stint.brief).toEqual(preview);
+    await expect
+      .poll(
+        async () =>
+          (await (await project.app.request(`/api/stints/${stint.id}`)).json()).stint.status,
+      )
+      .toBe("finished");
+    expect(await readFile(join(stint.worktree.path, "chosen.txt"), "utf8")).toBe("Claude");
+    expect(await readFile(join(stint.worktree.path, workflowPath), "utf8")).toContain(
+      "agent: claude",
+    );
+  },
+);
+
+test.each([
+  { agent: "grok", status: 409, reason: "grok login" },
+  { agent: "unknown", status: 400, reason: "not registered" },
+])(
+  "ticketless starts refuse a $agent stage default without side effects",
+  async ({ agent, status, reason }) => {
+    const workflow = `workflow: feature\nstage: spec\nstages:\n  spec:\n    agent: ${agent}\n`;
+    const { root, project } = await fixture(workflow);
+    const preview = await (await project.app.request("/api/work-items/first/brief-preview")).json();
+    expect(preview.agent).toBe(agent);
+    for (const ticket of [undefined, null]) {
+      const response = await project.app.request("/api/stints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItem: "first", ticket }),
+      });
+      expect(response.status).toBe(status);
+      expect((await response.json()).reason).toContain(reason);
+    }
+    expect(await readFile(join(root, workflowPath), "utf8")).toBe(workflow);
+    await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect(git(root, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
+  },
+);
+
+test("a ticketless per-stint override preserves the stage preference", async () => {
+  const { project } = await fixture(
+    "workflow: feature\nstage: spec\nstages:\n  spec:\n    agent: claude\n",
+  );
+  const response = await project.app.request("/api/stints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: null, agent: "codex" }),
+  });
+  expect(response.status).toBe(201);
+  const { stint }: { stint: Stint } = await response.json();
+  expect(stint.agent).toBe("codex");
+  expect(stint.brief.agent).toBe("codex");
+  expect(await readFile(join(stint.worktree.path, workflowPath), "utf8")).toContain(
+    "agent: claude",
+  );
+});
+
 test("unavailable and unknown agents are refused for choices and starts before files or worktrees are created", async () => {
   const { root, project } = await fixture();
   const registry = await (await project.app.request("/api/agents")).json();

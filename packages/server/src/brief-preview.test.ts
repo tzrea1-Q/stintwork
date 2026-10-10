@@ -65,6 +65,7 @@ test("preview returns the exact brief from project files without starting a stin
 
 test("rejects newly blocked or resolved tickets with a reason even before watcher refresh", async () => {
   const { root, project } = await fixture();
+  await write(root, ".scratch/first-stint/workflow.yaml", "workflow: feature\nstage: implement");
   await write(root, ticketPath, "# Brief preview\nStatus: open\nBlocked by: 01");
   const blocked = await project.app.request(endpoint);
   expect(blocked.status).toBe(409);
@@ -75,7 +76,7 @@ test("rejects newly blocked or resolved tickets with a reason even before watche
   expect(await resolved.json()).toEqual({ reason: "This ticket is resolved." });
 });
 
-test("Fix uses /tdd, Do has no skill, and other stages cannot preview a stint", async () => {
+test("Fix uses /tdd, Do has no skill, and Review can preview a ticket stint", async () => {
   const { root, project } = await fixture();
   for (const [workflow, stage, skill] of [
     ["bug", "fix", "/tdd"],
@@ -92,10 +93,8 @@ test("Fix uses /tdd, Do has no skill, and other stages cannot preview a stint", 
   }
   await write(root, ".scratch/first-stint/workflow.yaml", "workflow: feature\nstage: review");
   const response = await project.app.request(endpoint);
-  expect(response.status).toBe(409);
-  expect(await response.json()).toEqual({
-    reason: "Stints are available only in Implement, Fix or Do.",
-  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ skill: "/code-review" });
 });
 
 test("unknown work items and tickets cannot select arbitrary file paths", async () => {
