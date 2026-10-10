@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -68,6 +69,213 @@ async function history(
 ): Promise<Stint> {
   return (await (await project.app.request(`/api/stints/${id}`)).json()).stint;
 }
+
+test.each(["edit-freely", "ask"] as const)(
+  "Claude %s logs safe-command decisions and queues manual requests",
+  async (level) => {
+    const offered = fakeAgentProfiles.claude.capabilities.permissionOptions ?? [];
+    const allow = offered.find((option) => option.kind === "allow_once");
+    expect(allow).toBeDefined();
+    const cases: {
+      command: string | string[];
+      automatic: boolean;
+      withoutCwd?: boolean;
+      description?: string;
+      kind?: "execute";
+    }[] = [
+      {
+        command: 'pnpm vitest run packages/cli 2>&1 | grep -E "AssertionError|Expected" | head',
+        description: "Show the failing assertion",
+        withoutCwd: true,
+        automatic: true,
+      },
+      {
+        command: "pnpm format:check 2>&1 | head -30",
+        description: "Show formatting errors",
+        withoutCwd: true,
+        kind: "execute",
+        automatic: true,
+      },
+      { command: "cat .scratch/first/spec.md", automatic: true },
+      { command: "git status && git diff | head -n 20", automatic: true },
+      { command: "pnpm test", automatic: true },
+      { command: ["pnpm", "exec", "vitest", "run"], automatic: true },
+      { command: "cat inside-link/spec.md", automatic: true },
+      { command: "cat ../outside", withoutCwd: true, automatic: false },
+      { command: "cat file > ../outside", automatic: false },
+      { command: "git status && curl https://example.invalid", automatic: false },
+      { command: "cd ../outside && cat file", automatic: false },
+      { command: "cat file | unknown", automatic: false },
+      { command: "pnpm install", automatic: false },
+      { command: "cat outside-link/spec.md", withoutCwd: true, automatic: false },
+    ];
+    const launch: AgentLauncher = (options) => {
+      symlinkSync(join(options.cwd, ".scratch/first"), join(options.cwd, "inside-link"));
+      symlinkSync(dirname(options.cwd), join(options.cwd, "outside-link"));
+      return createFakeAgentLauncher(
+        [
+          ...cases.map(
+            ({ command, withoutCwd, description, kind }, index): FakeAgentStep => ({
+              type: "permission",
+              toolCall: {
+                toolCallId: `command-${index}`,
+                kind,
+                rawInput: {
+                  ...(kind ? {} : { name: "Bash" }),
+                  command,
+                  description,
+                  ...(withoutCwd ? {} : { cwd: options.cwd }),
+                },
+              },
+              expectedOptionId: allow?.optionId,
+            }),
+          ),
+          { type: "message", text: "All command answers reached Claude." },
+        ],
+        [],
+        { profile: "claude" },
+      )(options);
+    };
+    const { root, project } = await fixture("claude", launch);
+    const response = await post(project, "/api/stints", {
+      workItem: "first",
+      ticket: 1,
+      agent: "claude",
+      permissionLevel: level,
+    });
+    expect(response.status).toBe(201);
+    const { stint }: { stint: Stint } = await response.json();
+    for (const [index, entry] of cases.entries()) {
+      const automatic = level === "edit-freely" && entry.automatic;
+      let requestId = "";
+      await expect
+        .poll(async () => {
+          const request = (await history(project, stint.id)).events.find(
+            (event) =>
+              event.type === "permission_request" && event.toolCallId === `command-${index}`,
+          );
+          if (request?.type === "permission_request") {
+            requestId = request.requestId;
+            expect(request.automatic).toBe(automatic);
+          }
+          return !!requestId;
+        })
+        .toBe(true);
+      const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+      const queued = snapshot.attentionItems.find(
+        (item) => item.kind === "permission" && item.requestId === requestId,
+      );
+      if (automatic) expect(queued).toBeUndefined();
+      else {
+        expect(queued).toMatchObject({ kind: "permission", stintId: stint.id, options: offered });
+        expect(
+          (
+            await post(project, `/api/stints/${stint.id}/permissions/${requestId}`, {
+              optionId: allow?.optionId,
+            })
+          ).status,
+        ).toBe(200);
+      }
+      await expect
+        .poll(async () =>
+          (await history(project, stint.id)).events.find(
+            (event) => event.type === "permission" && event.requestId === requestId,
+          ),
+        )
+        .toMatchObject({
+          automatic,
+          decision: { outcome: "selected", optionId: allow?.optionId, kind: "allow_once" },
+        });
+    }
+    await expect.poll(async () => (await history(project, stint.id)).status).toBe("finished");
+    const entries: StintLogEntry[] = (
+      await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8")
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (const eventType of ["permission_request", "permission"]) {
+      expect(
+        entries.flatMap((entry) =>
+          entry.type === "event" &&
+          (entry.event.type === "permission_request" || entry.event.type === "permission") &&
+          entry.event.type === eventType
+            ? [entry.event.automatic]
+            : [],
+        ),
+      ).toEqual(cases.map(({ automatic }) => level === "edit-freely" && automatic));
+    }
+  },
+  30_000,
+);
+
+test("Claude auto-answers a no-cwd check chain with exit-status echoes at Edit freely", async () => {
+  const { root, project } = await fixture(
+    "claude",
+    createFakeAgentLauncher(
+      [
+        {
+          type: "permission",
+          toolCall: {
+            toolCallId: "check-chain",
+            kind: "execute",
+            rawInput: {
+              command:
+                'pnpm test; echo "exit=$?"; pnpm lint; echo "exit=$?"; pnpm build; echo "exit=$?"',
+              description: "Check tests, lint and build",
+            },
+          },
+          options: [{ optionId: "allow-once", name: "Allow", kind: "allow_once" }],
+          expectedOptionId: "allow-once",
+        },
+      ],
+      [],
+      { profile: "claude" },
+    ),
+  );
+  const response = await post(project, "/api/stints", {
+    workItem: "first",
+    ticket: 1,
+    agent: "claude",
+    permissionLevel: "edit-freely",
+  });
+  expect(response.status).toBe(201);
+  const { stint }: { stint: Stint } = await response.json();
+  await expect.poll(async () => (await history(project, stint.id)).status).toBe("finished");
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(
+    snapshot.attentionItems.filter(
+      (item) => item.kind === "permission" && item.stintId === stint.id,
+    ),
+  ).toEqual([]);
+  const entries: StintLogEntry[] = (
+    await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8")
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(entries).toContainEqual(
+    expect.objectContaining({
+      type: "event",
+      event: expect.objectContaining({
+        type: "permission_request",
+        toolCallId: "check-chain",
+        automatic: true,
+      }),
+    }),
+  );
+  expect(entries).toContainEqual(
+    expect.objectContaining({
+      type: "event",
+      event: expect.objectContaining({
+        type: "permission",
+        toolCallId: "check-chain",
+        automatic: true,
+        decision: { outcome: "selected", optionId: "allow-once", kind: "allow_once" },
+      }),
+    }),
+  );
+});
 
 test.each(Object.keys(fakeAgentProfiles) as (keyof typeof fakeAgentProfiles)[])(
   "%s applies every level, forwards outside paths, exposes options, and persists automatic answers",

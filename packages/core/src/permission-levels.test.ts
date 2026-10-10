@@ -25,7 +25,7 @@ test.each([
       const edit = { kind: "edit", rawInput: { path: "src/file.ts" } };
       const command = { kind: "execute", rawInput: { command: "pnpm test", cwd: "/worktree" } };
       expect(permissionPaths(level, edit, "/worktree") !== null).toBe(level !== "ask");
-      expect(permissionPaths(level, command, "/worktree") !== null).toBe(level === "autonomous");
+      expect(permissionPaths(level, command, "/worktree") !== null).toBe(level !== "ask");
       for (const tool of [
         { ...edit, rawInput: { path: "../outside.ts" } },
         { ...edit, locations: [{ path: "/worktree-sibling/file" }] },
