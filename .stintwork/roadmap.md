@@ -14,7 +14,7 @@ Status: shipped
 
 ## M3 · Needs you and every agent
 Id: m3
-Status: active
+Status: shipped
 
 - needs-you
 - cli-help
@@ -22,6 +22,8 @@ Status: active
 ## M4 · Review and ship
 Id: m4
 Status: planned
+
+- agent-polish
 
 ## M5 · v0.1 release
 Id: m5
