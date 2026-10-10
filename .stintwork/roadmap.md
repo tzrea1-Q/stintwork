@@ -8,7 +8,7 @@ Status: active
 
 ## M2 · The first stint
 Id: m2
-Status: planned
+Status: shipped
 
 - first-stint
 

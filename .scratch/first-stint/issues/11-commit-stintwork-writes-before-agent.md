@@ -21,3 +21,5 @@ On a work item's first stint, Stintwork writes `workflow.yaml` and the `.gitigno
 ## Comments
 
 - 2026-10-09: The first stint commits only the Stintwork setup paths before launching the agent, and records the post-setup commit as `baseCommit`. The focused server suite passed (12 tests), and the full suite passed (34 files, 328 tests). `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` also passed. Lint reported the existing Biome `linter.rules.recommended` deprecation notice.
+
+**2026-10-10 · coordinator.** Implemented entirely through Stintwork, on its own repo, by Codex in three stints (the M2 exit test, ticket 09). Stint 1 was stopped mid-edit. Stint 2 resumed from its checkpoint and was stopped mid-edit. Stint 3 resumed from stint 2's handoff and finished. Merged into `main`; the coordinator verified the merged result: all five checks pass, 338 tests, including the three setup-commit tests.
