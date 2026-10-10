@@ -58,6 +58,7 @@ export function addStageAgentRoute(
     const snapshot = indexProject(project.files, { name: "" });
     const item = snapshot.workItems.find((item) => item.slug === slug);
     if (!item) return context.json({ reason: "Work item not found." }, 404);
+    if (item.merged) return context.json({ reason: "This work item is shipped." }, 409);
     const stage = builtInWorkflows[item.workflow].stages.find(
       (stage) => stage.id === context.req.param("stage"),
     );

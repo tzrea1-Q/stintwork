@@ -57,6 +57,7 @@ export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems"> & Partial<Pick<ProjectSnapshot, "agents">>,
 ): AttentionItem[] {
   const workItemAttention = snapshot.workItems.flatMap<AttentionItem>((item) => {
+    if (item.merged) return [];
     // An unresolved handoff is answered by a later stint that started from it (same ticket,
     // or same stage for stage-level stints); that later stint raises its own item if needed.
     const stintsById = new Map(item.stints.map((stint) => [stint.id, stint]));

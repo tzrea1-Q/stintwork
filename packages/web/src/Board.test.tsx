@@ -20,9 +20,10 @@ const files = {
   ".scratch/ship/workflow.yaml": "workflow: feature\nstage: ship",
   ".scratch/ship/issues/01-open.md": "# Open ticket\nStatus: open",
   ".scratch/shipped/spec.md": "# Merged work item",
-  ".scratch/shipped/workflow.yaml": "workflow: feature\nstage: ship",
+  ".scratch/shipped/workflow.yaml": `workflow: feature\nstage: ship\nmerged: { at: '2026-10-10T10:00:00Z', commit: '${"a".repeat(40)}' }`,
   ".scratch/shipped/issues/01-resolved.md": "# Resolved ticket\nStatus: resolved",
   ".scratch/previous/spec.md": "# Previous work item",
+  ".scratch/previous/workflow.yaml": `workflow: feature\nstage: ship\nmerged: { at: '2026-10-10T10:00:00Z', commit: '${"b".repeat(40)}' }`,
   ".scratch/bug-login/spec.md": "# Diagnose login",
   ".scratch/fix-login/issues/01-fix.md": "# Fix login\nStatus: open",
   ".scratch/quick/spec.md": "# Quick change",
@@ -115,7 +116,7 @@ test("keeps shipped work collapsed and separate from active stages", async () =>
   render(<Board snapshot={project()} />);
   const lane = screen.getByRole("heading", { name: "Shipped" }).closest("details");
   expect(lane).not.toHaveAttribute("open");
-  await user.click(screen.getByText("Shipped"));
+  await user.click(screen.getByRole("heading", { name: "Shipped" }));
   expect(lane).toHaveAttribute("open");
   expect(screen.getByRole("article", { name: /^shipped:/ })).toBeInTheDocument();
   expect(screen.getByRole("article", { name: /^previous:/ })).toBeInTheDocument();

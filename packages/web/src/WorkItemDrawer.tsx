@@ -12,6 +12,8 @@ import { StageAgentRail } from "./StageAgentRail";
 import { GateView } from "./GateView";
 import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
+import { ShipActions } from "./ShipActions";
+import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -67,6 +69,7 @@ export function WorkItemDrawer({
   const [reviewOpen, setReviewOpen] = useState(false);
   const workflow = builtInWorkflows[item.workflow];
   const type = item.type === "effort" ? "Effort" : workflow.name;
+  const archived = reviewFindings(item.stints, item.reviewDecisions, item);
 
   useEffect(() => {
     const element = dialog.current;
@@ -123,11 +126,11 @@ export function WorkItemDrawer({
           </div>
         )}
       </header>
-      {item.stage ? (
+      {item.stage && !item.merged ? (
         <StageAgentRail key={item.slug} item={item} />
-      ) : (
+      ) : !item.merged ? (
         <p className="drawer-stage-note muted">No stage declared for this work item.</p>
-      )}
+      ) : null}
       <nav className="drawer-sections" aria-label="Work item sections">
         <a href="#drawer-spec">Spec</a>
         <a href="#drawer-tickets">
@@ -135,8 +138,12 @@ export function WorkItemDrawer({
         </a>
       </nav>
       <div className="drawer-content">
-        <GateView key={`${item.slug}:${item.stage}`} item={item} warnings={warnings} />
+        <ShipActions item={item} />
+        {!item.merged && (
+          <GateView key={`${item.slug}:${item.stage}`} item={item} warnings={warnings} />
+        )}
         {item.stage &&
+          !item.merged &&
           (!item.tickets.length || !["implement", "fix", "do"].includes(item.stage)) && (
             <section aria-label="Stage stint">
               <h3 className="drawer-section-heading">
@@ -202,7 +209,7 @@ export function WorkItemDrawer({
                       <Markdown text={ticket.body} />
                     </details>
                     <FilePath path={ticket.path} />
-                    <TicketBriefPreview item={item} ticket={ticket} />
+                    {!item.merged && <TicketBriefPreview item={item} ticket={ticket} />}
                   </li>
                 );
               })}
@@ -234,6 +241,21 @@ export function WorkItemDrawer({
           </h3>
           <StintHistory stints={item.stints} />
         </section>
+        {item.merged && (
+          <>
+            <section aria-label="Review findings">
+              <h3 className="drawer-section-heading">Review findings</h3>
+              <FindingsRail {...archived} anchor={(finding) => `archived-${finding.id}`} />
+              {archived.findings.map((finding) => (
+                <FindingCard key={finding.id} finding={finding} anchor={`archived-${finding.id}`} />
+              ))}
+            </section>
+            <section aria-label="Recorded checks">
+              <h3 className="drawer-section-heading">Checks</h3>
+              <ChecksPanel item={item} />
+            </section>
+          </>
+        )}
       </div>
       <footer className="drawer-footer">
         <span>Local Markdown tracker</span>

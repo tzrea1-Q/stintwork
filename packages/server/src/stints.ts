@@ -40,6 +40,7 @@ import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
+import { addShipRoutes } from "./ship.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export type StintServerOptions = {
@@ -121,6 +122,16 @@ export function addStintRoutes(
     workflowWrites,
   );
   const permissions = addStintPermissionRoute(app);
+  addShipRoutes(
+    app,
+    root,
+    readProjectFiles,
+    refresh,
+    (slug) => active.has(slug),
+    workflowWrites,
+    isChecking,
+    readReviewEvidence,
+  );
   let closing = false;
   app.post("/api/stints/:stintId/stop", async (context) => {
     const origin = context.req.header("origin");
@@ -495,6 +506,6 @@ export function addStintRoutes(
         }),
       );
     },
-    { isActive: (slug: string) => active.has(slug) },
+    { isActive: (slug: string) => active.has(slug) || workflowWrites.has(slug) },
   );
 }

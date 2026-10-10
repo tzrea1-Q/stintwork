@@ -106,6 +106,9 @@ test("a reopened stage needs fresh stint evidence; build gates stay ticket-deriv
   review.stages.implement = { approved: { by: "You", at: "2026-10-09T10:06:00Z", commit: "head" } };
   review.stints = [stint("review")];
   expect(gateReadiness(review).ready).toBe(false);
+  expect(gateReadiness(review).conditions[0].action).toContain("Start a new Review stint");
+  review.stages.review = { reopened: { at: "2026-10-09T10:06:00Z" } };
+  expect(gateReadiness(review).conditions[0].action).toContain("Start a new Review stint");
   review.stints = [stint("review", { endedAt: "2026-10-09T10:07:00Z" })];
   expect(gateReadiness(review).ready).toBe(true);
 });

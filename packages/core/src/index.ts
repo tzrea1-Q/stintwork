@@ -95,9 +95,11 @@ export {
 
 export {
   resolveStages,
+  workflowMerge,
   type StageRecords,
   type StagedIndex,
   type StagedWorkItem,
+  type MergeRecord,
 } from "./stages.js";
 export {
   type BoardColumn,

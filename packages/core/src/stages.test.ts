@@ -1,5 +1,11 @@
 import { expect, test } from "vitest";
-import { builtInWorkflows, createMemoryRepoFiles, indexWorkItems, resolveStages } from "./index.js";
+import {
+  builtInWorkflows,
+  createMemoryRepoFiles,
+  indexWorkItems,
+  resolveStages,
+  workflowMerge,
+} from "./index.js";
 
 function ticket(status = "open"): string {
   return `# Ticket\nStatus: ${status}\nBlocked by: none\n`;
@@ -9,6 +15,33 @@ function resolve(contents: Record<string, string>) {
   const files = createMemoryRepoFiles(contents);
   return resolveStages(indexWorkItems(files), files);
 }
+
+test("the merge record survives indexing without changing the Ship stage or prior gate records", () => {
+  const merged = { at: "2026-10-10T10:00:00Z", commit: "a".repeat(40) };
+  const original =
+    "# retained\nworkflow: feature\nstage: ship\nstages:\n  review:\n    approved: {by: You}\n";
+  const text = workflowMerge(original, merged);
+  expect(text).toContain("# retained");
+  const result = resolve({
+    ".scratch/first/spec.md": "# First",
+    ".scratch/first/workflow.yaml": text,
+  });
+  expect(result.warnings).toEqual([]);
+  expect(result.workItems[0]).toMatchObject({
+    stage: "ship",
+    merged,
+    stages: { review: { approved: { by: "You" } } },
+  });
+  expect(() => workflowMerge("workflow: feature\nstage: review\n", merged)).toThrow(
+    "Ship workflow",
+  );
+  expect(
+    resolve({
+      ".scratch/first/workflow.yaml":
+        "workflow: feature\nstage: ship\nmerged: {at: invalid, commit: invalid}",
+    }).warnings[0].message,
+  ).toContain("Merged must contain");
+});
 
 test("infers clarify, spec, implement and review from files for a feature", () => {
   const cases: { files: Record<string, string>; stage: string }[] = [

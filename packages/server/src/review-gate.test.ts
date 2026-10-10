@@ -205,7 +205,7 @@ test("sent-back findings are not decided evidence; after Implement a new Review 
   expect((await post(project, `${endpoint}/gates/implement/approve`)).status).toBe(200);
   const previous = await item(project);
   expect(previous.reviewDecisions?.[0].status).toBe("sent-back");
-  expect((await refused(project)).reason).toContain("stage stint must finish");
+  expect((await refused(project)).reason).toContain("Start a new Review stint");
   await stint(project);
   expect(gateReadiness(await item(project)).ready).toBe(true);
   expect((await post(project, `${endpoint}/findings/send-back`)).status).toBe(409);

@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 
-export async function commitWithIdentity(git: (args: string[]) => Promise<string>, args: string[]) {
+export async function withGitIdentity(git: (args: string[]) => Promise<string>, args: string[]) {
   const identity = await Promise.all(
     ["name", "email"].map((field) =>
       git(["config", "--get", `user.${field}`]).catch((error: { code?: number }) => {
@@ -14,16 +14,19 @@ export async function commitWithIdentity(git: (args: string[]) => Promise<string
   );
   const name = identity[0] || "Stintwork";
   const email = identity[1] || "stintwork@localhost";
-  await git([
+  return git([
     "-c",
     `user.name=${name}`,
     "-c",
     `user.email=${email}`,
-    "commit",
-    "--author",
-    `${name} <${email}>`,
-    ...args,
+    ...(args[0] === "commit"
+      ? ["commit", "--author", `${name} <${email}>`, ...args.slice(1)]
+      : args),
   ]);
+}
+
+export async function commitWithIdentity(git: (args: string[]) => Promise<string>, args: string[]) {
+  return withGitIdentity(git, ["commit", ...args]);
 }
 
 export async function commitStintworkSetup(
