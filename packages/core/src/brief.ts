@@ -33,6 +33,7 @@ export type BriefInput = {
   developerNotes?: readonly DeveloperNote[];
   changedPaths?: readonly string[];
   checkpointCommit?: string | null;
+  reviewRange?: { mergeBase: string; headCommit: string };
 };
 
 export function briefUnavailableReason(
@@ -62,6 +63,7 @@ export function compileBrief({
   developerNotes = [],
   changedPaths = [],
   checkpointCommit = null,
+  reviewRange,
 }: BriefInput): Brief {
   const pointers: BriefPointer[] = [];
   function addPointer(path: string, reason: string) {
@@ -78,6 +80,12 @@ export function compileBrief({
   }
   if (workItem.spec) addPointer(workItem.spec.path, "Work item scope and acceptance criteria");
   if (ticket) addPointer(ticket.path, "This ticket's scope, status, blockers and comments");
+  if (stage.id === "review") {
+    for (const path of [...files.list(`.scratch/${workItem.slug}/issues/`)].sort()) {
+      if (path.endsWith(".md") && path !== ticket?.path)
+        addPointer(path, "Review against this ticket's scope and acceptance criteria");
+    }
+  }
 
   const changed = [...new Set(changedPaths)].sort();
   const handoff = lastHandoff ? { ...lastHandoff } : null;
@@ -91,6 +99,13 @@ export function compileBrief({
         ]
       : []),
     ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason}`)].join("\n"),
+    ...(stage.id === "review"
+      ? [
+          `Review diff range: ${reviewRange ? `${reviewRange.mergeBase}...${reviewRange.headCommit}` : `main...stintwork/${workItem.slug}`} (merge base to reviewed commit).`,
+          ...(reviewRange ? [`Reviewed commit: ${reviewRange.headCommit}`] : []),
+          "Review both Standards and Spec with /code-review. Do not implement fixes or change project files. Findings will be requested after the handoff.",
+        ]
+      : []),
     handoff
       ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
       : "Last handoff: none — start from the project conventions and work item scope.",

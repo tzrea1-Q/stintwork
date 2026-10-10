@@ -9,9 +9,9 @@ import {
   permissionPolicy,
   type PermissionLevel,
 } from "@stintwork/core";
-import { type AgentRegistry, refreshAgentAvailability } from "@stintwork/agents";
+import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
-import { changedSince } from "@stintwork/git";
+import { changedSince, workItemDiff } from "@stintwork/git";
 import type { ProjectFilesReader } from "./work-item-files.js";
 
 export function addBriefPreviewRoute(
@@ -91,7 +91,10 @@ export async function prepareStintBrief(
     number === null ? ended[0] : (ended.find((stint) => stint.ticket === number) ?? ended[0]);
   const checkpointCommit = previous?.checkpointCommit ?? null;
   let changedPaths: string[] = [];
+  let reviewRange: { mergeBase: string; headCommit: string } | undefined;
   try {
+    if (stage.id === "review" && project.worktreePaths.has(slug))
+      reviewRange = await workItemDiff(root, slug);
     if (checkpointCommit)
       changedPaths = await changedSince(
         project.worktreePaths.get(slug) ?? root,
@@ -100,30 +103,37 @@ export async function prepareStintBrief(
       );
   } catch (error) {
     return {
-      reason: `Could not compare the last checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `${stage.id === "review" ? "Could not prepare the Review diff" : "Could not compare the last checkpoint"}: ${error instanceof Error ? error.message : String(error)}`,
       status: 503 as const,
     };
   }
+  const brief = compileBrief({
+    files,
+    workItem,
+    stage,
+    ticket,
+    lastHandoff: previous?.handoff,
+    developerNotes: pendingDeveloperNotes(
+      indexStints(files).stints.filter((stint) => stint.workItem === slug),
+    ),
+    checkpointCommit,
+    changedPaths,
+    reviewRange,
+  });
   return {
     workItem,
     ticket,
     stage,
     brief: {
-      ...compileBrief({
-        files,
-        workItem,
-        stage,
-        ticket,
-        lastHandoff: previous?.handoff,
-        developerNotes: pendingDeveloperNotes(
-          indexStints(files).stints.filter((stint) => stint.workItem === slug),
-        ),
-        checkpointCommit,
-        changedPaths,
-      }),
+      ...brief,
       agent,
       permissionLevel,
       warnings: registered ? permissionPolicy(registered, permissionLevel).warnings : [],
+      ...(stage.id === "review"
+        ? {
+            prompt: `${brief.prompt}\n\nAfter-turn findings format for /code-review:\n${findingsFormat}`,
+          }
+        : {}),
     },
   };
 }

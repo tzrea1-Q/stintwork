@@ -7,6 +7,7 @@ import {
   type ProjectSnapshot,
   type StintLogEntry,
   type StintLogEvent,
+  type ReviewFindings,
   type CheckExecution,
 } from "@stintwork/core";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -22,6 +23,57 @@ import {
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
   name: "Stintwork",
 });
+
+test.each<ReviewFindings>([
+  { commit: "reviewed", findings: [] },
+  {
+    commit: "reviewed",
+    findings: [
+      {
+        id: "stint:1",
+        axis: "Spec",
+        severity: "major",
+        path: "file.ts",
+        line: 1,
+        title: "Limit",
+        body: "Missing limit.",
+      },
+    ],
+  },
+  { commit: "reviewed", findings: null, error: "Malformed reply", rawReply: "Raw text" },
+])(
+  "live Review evidence is retained, reloaded over HTTP, and malformed evidence is rejected: %j",
+  async (findings) => {
+    const next = mixedAttentionSnapshot(loginAttentionProfile);
+    vi.mocked(fetch).mockImplementation(async () => response(next));
+    const { result, unmount } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(next));
+    act(() => TestSocket.instances[0].sendSnapshot(next));
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({
+          type: "stint",
+          stintId: "stint",
+          workItem: "first",
+          sequence: 1,
+          entry: { type: "ended", at: "2026-10-10T10:00:00Z", status: "finished", findings },
+        }),
+      }),
+    );
+    expect(result.current.snapshot?.workItems[0].stints[0].findings).toEqual(findings);
+    expect(result.current.connection).toBe("live");
+    const ended = result.current.snapshot as ProjectSnapshot;
+    unmount();
+    vi.mocked(fetch).mockImplementation(async () => response(ended));
+    const reloaded = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(reloaded.result.current.snapshot).toEqual(ended));
+    const malformed = structuredClone(ended);
+    malformed.workItems[0].stints[0].findings = { commit: "reviewed", findings: null };
+    act(() => TestSocket.instances.at(-1)?.sendSnapshot(malformed));
+    expect(reloaded.result.current.snapshot).toEqual(ended);
+    expect(reloaded.result.current.connection).toBe("reconnecting");
+  },
+);
 
 class TestSocket {
   static instances: TestSocket[] = [];

@@ -3,6 +3,14 @@ export type Health = {
   repo: string;
 };
 export {
+  isFindingContent,
+  isReviewFindings,
+  type FindingAxis,
+  type FindingSeverity,
+  type ReviewFinding,
+  type ReviewFindings,
+} from "./findings.js";
+export {
   readProjectConfig,
   defaultCheckCommands,
   type CheckCommand,

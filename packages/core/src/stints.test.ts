@@ -49,6 +49,81 @@ const events: StintLogEntry[] = [
   },
 ];
 
+test.each([
+  { commit: "reviewed", findings: [] },
+  {
+    commit: "reviewed",
+    findings: [
+      {
+        id: "first:1",
+        axis: "Standards",
+        severity: "major",
+        path: "src/file.ts",
+        line: 2,
+        title: "Input",
+        body: "Validate input.",
+      },
+    ],
+  },
+  { commit: "reviewed", findings: null, error: "Malformed reply", rawReply: "Raw text" },
+])("findings survive log folding, summaries and snapshot indexing: %j", (findings) => {
+  const entries = [started, { type: "ended", at: started.at, status: "finished", findings }];
+  expect(entries.every(isStintLogEntry)).toBe(true);
+  const stint = foldStintLog(entries as StintLogEntry[]);
+  expect(stint?.findings).toEqual(findings);
+  expect(summarizeStint(stint as NonNullable<typeof stint>).findings).toEqual(findings);
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/board/spec.md": "# Board",
+      ".stintwork/local/stints/first.jsonl": entries
+        .map((entry) => JSON.stringify(entry))
+        .join("\n"),
+    }),
+    { name: "Test" },
+  );
+  expect(snapshot.warnings).toEqual([]);
+  expect(snapshot.workItems[0].stints[0].findings).toEqual(findings);
+});
+
+test.each([
+  { commit: "reviewed", findings: null },
+  { commit: "reviewed", findings: [], error: "Contradictory" },
+  { commit: "", findings: [] },
+  { commit: "reviewed", findings: null, error: "Malformed", rawReply: 12 },
+  {
+    commit: "reviewed",
+    findings: [
+      {
+        id: "bad",
+        axis: "Standards",
+        severity: ["major"],
+        path: "file",
+        line: 1,
+        title: "Input",
+        body: "Input",
+      },
+    ],
+  },
+  {
+    commit: "reviewed",
+    findings: [
+      {
+        id: "bad",
+        axis: "Standards",
+        severity: "major",
+        path: "file",
+        line: -1,
+        title: "Input",
+        body: "Input",
+      },
+    ],
+  },
+])("invalid finding evidence is rejected at the log boundary: %j", (findings) => {
+  expect(isStintLogEntry({ type: "ended", at: started.at, status: "finished", findings })).toBe(
+    false,
+  );
+});
+
 test("plans, partial tool updates and file edits fold to latest state without losing fields or mutating the log", () => {
   const rich: StintLogEvent[] = [
     {

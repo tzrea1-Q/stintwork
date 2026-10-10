@@ -1,4 +1,5 @@
 import type { Brief, BriefHandoff } from "./brief.js";
+import { isReviewFindings, type ReviewFindings } from "./findings.js";
 import type { RepoFiles, Warning } from "./work-items.js";
 import { isPermissionLevel } from "./permission-levels.js";
 import {
@@ -45,6 +46,7 @@ export type Stint = {
   handoff: BriefHandoff | null;
   handoffAnswer?: { at: string; note: string | null };
   handoffError?: string;
+  findings?: ReviewFindings;
   error?: string;
 };
 export type StintSummary = Pick<
@@ -62,6 +64,7 @@ export type StintSummary = Pick<
   | "handoff"
   | "handoffError"
   | "handoffAnswer"
+  | "findings"
 > & { lastHandoffStintId?: string };
 export type StintLogEntry =
   | {
@@ -83,6 +86,7 @@ export type StintLogEntry =
       checkpointCommit?: string;
       handoff?: BriefHandoff | null;
       handoffError?: string;
+      findings?: ReviewFindings;
     };
 export type StintLiveMessage = {
   type: "stint";
@@ -176,6 +180,7 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     endedAt: entry.at,
     checkpointCommit: entry.checkpointCommit ?? null,
     handoff: entry.handoff ?? null,
+    ...(entry.findings ? { findings: entry.findings } : {}),
     ...(entry.handoffError ? { handoffError: entry.handoffError } : {}),
     ...(entry.error ? { error: entry.error } : {}),
   };
@@ -198,6 +203,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     endedAt,
     checkpointCommit: stint.checkpointCommit,
     handoff: stint.handoff,
+    ...(stint.findings ? { findings: stint.findings } : {}),
     ...(stint.brief.lastHandoff ? { lastHandoffStintId: stint.brief.lastHandoff.stint } : {}),
     ...(stint.handoffAnswer ? { handoffAnswer: stint.handoffAnswer } : {}),
     ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),
@@ -258,6 +264,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   if (entry.type === "ended")
     return (
       ["finished", "stopped", "failed", "interrupted"].includes(String(entry.status)) &&
+      (entry.findings === undefined || isReviewFindings(entry.findings)) &&
       ["error", "stopReason", "checkpointCommit", "handoffError"].every(
         (key) => entry[key] === undefined || typeof entry[key] === "string",
       ) &&

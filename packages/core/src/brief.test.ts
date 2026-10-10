@@ -6,7 +6,39 @@ import {
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
+  stageAgent,
 } from "./index.js";
+
+test("Review briefs point at every ticket, exact diff range and /code-review, defaulting to Codex", () => {
+  const reviewInput = input({
+    ...contents,
+    ".scratch/first-stint/issues/01-first.md": "# First\nStatus: resolved\nBlocked by: none",
+  });
+  const brief = compileBrief({
+    ...reviewInput,
+    stage: builtInWorkflows.feature.stages[4],
+    ticket: null,
+    reviewRange: { mergeBase: "base", headCommit: "reviewed" },
+  });
+  expect(brief.skill).toBe("/code-review");
+  expect(brief.prompt).toContain("/code-review .scratch/first-stint/");
+  expect(brief.prompt).toContain("Review diff range: base...reviewed");
+  expect(brief.prompt).toContain("Reviewed commit: reviewed");
+  expect(brief.prompt).toContain("Do not implement fixes");
+  expect(brief.pointers.map((pointer) => pointer.path)).toEqual(
+    expect.arrayContaining([specPath, ticketPath, ".scratch/first-stint/issues/01-first.md"]),
+  );
+  for (const workflow of ["feature", "bug", "quick"] as const)
+    expect(
+      stageAgent({ workflow, stages: {} }, "review", [{ id: "claude" }, { id: "codex" }]),
+    ).toBe("codex");
+  expect(
+    stageAgent({ workflow: "feature", stages: { review: { agent: "claude" } } }, "review", [
+      { id: "codex" },
+      { id: "claude" },
+    ]),
+  ).toBe("claude");
+});
 
 const ticketPath = ".scratch/first-stint/issues/02-brief-preview.md";
 const specPath = ".scratch/first-stint/spec.md";

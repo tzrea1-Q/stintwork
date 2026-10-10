@@ -4,6 +4,7 @@ export type AfterTurnRequest = {
   parse: (text: string) => unknown | null;
   resultField: string;
   errorField: string;
+  rawReplyField?: string;
   parseError: string;
 };
 
@@ -55,6 +56,7 @@ export async function collectAfterTurnRequests(
               options.failure,
               timeout,
             ]);
+            if (request.rawReplyField) results[request.rawReplyField] = text;
             const parsed = request.parse(text);
             results[request.resultField] = parsed;
             if (parsed === null) results[request.errorField] = request.parseError;
