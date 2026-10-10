@@ -15,6 +15,7 @@ import {
 import type { Hono } from "hono";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { readEvidenceChangedPaths } from "./review-evidence.js";
 
 const excerptLimit = 8192;
 function git(worktree: string, ...args: string[]) {
@@ -313,6 +314,11 @@ export function addCheckRoutes(
         commands: checks.commands(),
         ...checks.evidence(slug),
       };
+      body.evidenceChangedPaths = readEvidenceChangedPaths(
+        located.worktree,
+        body.headCommit,
+        body.checks.map((result) => result.commit),
+      );
       return context.json(body);
     } catch (error) {
       return context.json({ reason: String(error) }, 503);

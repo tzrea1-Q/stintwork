@@ -8,13 +8,16 @@ import { createMemoryRepoFiles } from "./work-items.js";
 import type { StageId, WorkflowId } from "./workflows.js";
 
 function item(stage: StageId, workflow: WorkflowId = "feature") {
-  return indexProject(
+  const workItem = indexProject(
     createMemoryRepoFiles({
       ".scratch/first/workflow.yaml": `workflow: ${workflow}\nstage: ${stage}`,
       ".scratch/first/issues/01-first.md": "# First\nStatus: resolved\nBlocked by: none",
     }),
     { name: "Test" },
   ).workItems[0];
+  workItem.headCommit = "checkpoint";
+  workItem.checkCommands = [];
+  return workItem;
 }
 function stint(stage: StageId, overrides: Partial<StintSummary> = {}): StintSummary {
   return {
@@ -34,6 +37,7 @@ function stint(stage: StageId, overrides: Partial<StintSummary> = {}): StintSumm
       unresolved: "None",
       nextStep: "Approve",
     },
+    ...(stage === "review" ? { findings: { commit: "checkpoint", findings: [] } } : {}),
     ...overrides,
   };
 }

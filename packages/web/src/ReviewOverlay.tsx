@@ -1,5 +1,5 @@
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
-import type { ReviewDecision, StintSummary } from "@stintwork/core";
+import type { EvidenceContext, ReviewDecision, StintSummary } from "@stintwork/core";
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
@@ -166,7 +166,7 @@ export function ReviewOverlay({
   fileFindings,
   outsideDiff,
 }: {
-  item: {
+  item: EvidenceContext & {
     slug: string;
     title: string;
     stints?: StintSummary[];
@@ -188,7 +188,11 @@ export function ReviewOverlay({
   const [sentBack, setSentBack] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(() => setDecisions(item.reviewDecisions ?? []), [item.reviewDecisions]);
-  const evidence = reviewFindings(item.stints, decisions);
+  const evidence = reviewFindings(item.stints, decisions, {
+    slug: item.slug,
+    headCommit: item.headCommit ?? diff?.headCommit,
+    evidenceChangedPaths: item.evidenceChangedPaths,
+  });
   async function act(action: "decision" | "send-back", body: object) {
     setSaving(true);
     setActionError("");
@@ -239,7 +243,6 @@ export function ReviewOverlay({
             key={finding.id}
             finding={finding}
             anchor={anchor(finding)}
-            headCommit={diff?.headCommit}
             onDecision={onDecision}
             saving={saving}
           />
@@ -259,7 +262,6 @@ export function ReviewOverlay({
             key={finding.id}
             finding={finding}
             anchor={anchor(finding)}
-            headCommit={diff?.headCommit}
             onDecision={onDecision}
             saving={saving}
           />
@@ -351,7 +353,7 @@ export function ReviewOverlay({
               saving ||
               sentBack ||
               item.stage !== "review" ||
-              !evidence.findings.some((finding) => finding.status === "open")
+              !evidence.findings.some((finding) => !finding.historical && finding.status === "open")
             }
             onClick={() => void act("send-back", {})}
           >
@@ -416,9 +418,7 @@ export function ReviewOverlay({
         <aside className="review-evidence" aria-label="Review evidence">
           <section aria-label="Findings">
             <h3>Findings</h3>
-            {findings ?? (
-              <FindingsRail {...evidence} anchor={anchor} headCommit={diff?.headCommit} />
-            )}
+            {findings ?? <FindingsRail {...evidence} anchor={anchor} />}
           </section>
           <section aria-label="Checks">
             <h3>Checks</h3>

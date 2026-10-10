@@ -44,6 +44,105 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
+function reviewItem() {
+  const item = project("review").workItems[0];
+  item.headCommit = "head";
+  item.evidenceChangedPaths = { reviewed: [".scratch/first/review.yaml"] };
+  item.stints = [{ ...stint, stage: "review", findings: { commit: "reviewed", findings: [] } }];
+  item.checkCommands = [{ name: "Test", command: "node test.cjs" }];
+  item.checks = [
+    {
+      ...item.checkCommands[0],
+      status: "passed",
+      commit: "reviewed",
+      durationMs: 1,
+      outputExcerpt: "OK",
+    },
+  ];
+  return item;
+}
+
+test("Review lists every evidence condition with state and an actionable remedy", () => {
+  const item = reviewItem();
+  item.stints[0].findings = {
+    commit: "reviewed",
+    findings: [
+      {
+        id: "finding",
+        axis: "Spec",
+        severity: "major",
+        path: "src/file.ts",
+        line: 1,
+        title: "Fix input",
+        body: "Bound input.",
+      },
+    ],
+  };
+  item.checks = [];
+  item.memoryProposals = [
+    {
+      kind: "memory-proposal",
+      id: "proposal",
+      workItem: "first",
+      ticket: null,
+      stintId: stint.id,
+      agent: "codex",
+      title: "Memory proposal",
+      details: "Decide",
+      raisedAt: stint.endedAt as string,
+      path: "GLOSSARY.md",
+      diff: "diff",
+      baseCommit: "base",
+      checkpointCommit: "head",
+    },
+  ];
+  render(<GateView item={item} />);
+  const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
+  expect(conditions.getAllByRole("listitem")).toHaveLength(5);
+  expect(conditions.getByText("Latest Review stint finished").closest("li")).toHaveTextContent(
+    "Ready",
+  );
+  expect(
+    conditions.getByText("Every finding resolved or accepted").closest("li"),
+  ).toHaveTextContent("Blocked");
+  expect(conditions.getByText("Every configured check passing").closest("li")).toHaveTextContent(
+    "Blocked",
+  );
+  expect(conditions.getByText("No stale evidence").closest("li")).toHaveTextContent("Blocked");
+  expect(conditions.getByText("No open memory proposals").closest("li")).toHaveTextContent(
+    "Blocked",
+  );
+  expect(conditions.getByText(/Resolve or accept each current finding/)).toBeInTheDocument();
+  expect(conditions.getByText(/Run all configured checks/)).toBeInTheDocument();
+  expect(conditions.getByText(/Start a new Review stint and rerun checks/)).toBeInTheDocument();
+  expect(conditions.getByText(/Accept or reject every open memory proposal/)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve Review" })).toBeDisabled();
+});
+
+test("fresh bookkeeping evidence enables Review approval, but the server's refusal is shown", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response('{"reason":"Review evidence became stale"}', { status: 409 }),
+      ),
+  );
+  render(<GateView item={reviewItem()} />);
+  const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
+  expect(conditions.getAllByText("No action needed.")).toHaveLength(5);
+  const approve = screen.getByRole("button", { name: "Approve Review" });
+  expect(approve).toBeEnabled();
+  await user.click(approve);
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/work-items/first/gates/review/approve",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Review evidence became stale");
+  expect(screen.queryByText(/Gate approved/)).not.toBeInTheDocument();
+});
+
 test("gate evidence shows tickets, last checkpoint, handoff and open warnings in the drawer", () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response('{"agents":[]}')));
   const item = project().workItems[0];

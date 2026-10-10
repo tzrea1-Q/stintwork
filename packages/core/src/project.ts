@@ -9,6 +9,7 @@ import type { AgentProfile } from "./agents.js";
 import { parseReviewDecisions, type ReviewDecision } from "./review-decisions.js";
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 import type { CheckExecution, CheckResult } from "./checks.js";
+import type { CheckCommand } from "./project-config.js";
 import {
   defaultPermissionLevel,
   projectPermissionLevel,
@@ -33,6 +34,9 @@ export type ProjectSnapshot = {
     headCommit?: string;
     checks?: CheckResult[];
     checkExecution?: CheckExecution | null;
+    checkCommands?: CheckCommand[];
+    evidenceChangedPaths?: Record<string, string[] | null>;
+    reviewEvidenceError?: string;
   })[];
   setup: SetupReport;
   warnings: Warning[];

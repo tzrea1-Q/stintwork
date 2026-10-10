@@ -17,6 +17,7 @@ export type CheckExecution = {
 };
 export type CheckLiveMessage = { type: "checks"; execution: CheckExecution };
 export type WorkItemChecks = {
+  evidenceChangedPaths?: Record<string, string[] | null>;
   headCommit: string;
   commands: CheckCommand[];
   checks: CheckResult[];

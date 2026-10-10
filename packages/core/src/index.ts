@@ -69,6 +69,12 @@ export {
   type DeveloperNote,
 } from "./developer-notes.js";
 export { gateReadiness, workflowGate, type GateRecord, type GateWorkItem } from "./gates.js";
+export {
+  evidenceStale,
+  latestReviewStint,
+  type EvidenceContext,
+  type ReviewGateCondition,
+} from "./review-evidence.js";
 export type {
   RichStintEvent,
   StintToolContent,

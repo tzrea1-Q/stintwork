@@ -1,18 +1,39 @@
-import type { ReviewDecision, ReviewFinding, ReviewFindings, StintSummary } from "@stintwork/core";
+import {
+  evidenceStale,
+  latestReviewStint,
+  type EvidenceContext,
+  type ReviewDecision,
+  type ReviewFinding,
+  type ReviewFindings,
+  type StintSummary,
+} from "@stintwork/core";
 import { useState } from "react";
 
 export type DisplayFinding = ReviewFinding & {
   commit: string;
   status: ReviewDecision["status"];
   reason: string;
+  stale: boolean;
+  historical: boolean;
 };
 
 export function reviewFindings(
   stints: readonly StintSummary[] = [],
   decisions: readonly ReviewDecision[] = [],
+  context: EvidenceContext,
 ) {
+  const latest = latestReviewStint(stints);
   const reports = stints.flatMap((stint) =>
-    stint.findings ? [{ ...stint.findings, stintId: stint.id }] : [],
+    stint.findings
+      ? [
+          {
+            ...stint.findings,
+            stintId: stint.id,
+            stale: evidenceStale(context, stint.findings.commit),
+            historical: stint.id !== latest?.id,
+          },
+        ]
+      : [],
   );
   const findings: DisplayFinding[] = reports.flatMap((report) =>
     (report.findings ?? []).map((finding) => {
@@ -24,6 +45,8 @@ export function reviewFindings(
         commit: report.commit,
         status: decision?.status ?? "open",
         reason: decision?.reason ?? "",
+        stale: report.stale,
+        historical: report.historical,
       };
     }),
   );
@@ -33,13 +56,11 @@ export function reviewFindings(
 export function FindingCard({
   finding,
   anchor,
-  headCommit,
   onDecision,
   saving = false,
 }: {
   finding: DisplayFinding;
   anchor: string;
-  headCommit?: string;
   onDecision?: (
     id: string,
     status: "open" | "resolved" | "accepted",
@@ -64,9 +85,10 @@ export function FindingCard({
       {finding.reason && <p>Reason: {finding.reason}</p>}
       <p className="muted">
         Reviewed commit <code>{finding.commit}</code>
-        {headCommit && headCommit !== finding.commit && " · Stale"}
+        {finding.stale && " · Stale"}
+        {finding.historical && " · History — not gate evidence"}
       </p>
-      {onDecision && (
+      {onDecision && !finding.historical && (
         <div className="review-finding-actions">
           {finding.status !== "resolved" && (
             <button
@@ -137,12 +159,10 @@ export function FindingsRail({
   findings,
   reports,
   anchor,
-  headCommit,
 }: {
   findings: readonly DisplayFinding[];
-  reports: readonly (ReviewFindings & { stintId: string })[];
+  reports: readonly (ReviewFindings & { stintId: string; stale: boolean; historical: boolean })[];
   anchor: (finding: DisplayFinding) => string;
-  headCommit?: string;
 }) {
   const [axis, setAxis] = useState("");
   const [severity, setSeverity] = useState("");
@@ -190,7 +210,8 @@ export function FindingsRail({
           <div key={report.stintId} className="review-finding">
             <p>
               Reviewed commit <code>{report.commit}</code>
-              {headCommit && headCommit !== report.commit && " · Stale"}
+              {report.stale && " · Stale"}
+              {report.historical && " · History — not gate evidence"}
             </p>
             {report.error ? (
               <>
@@ -223,7 +244,11 @@ export function FindingsRail({
                 {finding.path}:{finding.line}
               </code>
             </p>
-            {headCommit && headCommit !== finding.commit && <span className="warning">Stale</span>}
+            <p>
+              Reviewed commit <code>{finding.commit}</code>
+              {finding.stale && <span className="warning"> · Stale</span>}
+              {finding.historical && " · History — not gate evidence"}
+            </p>
           </li>
         ))}
       </ul>

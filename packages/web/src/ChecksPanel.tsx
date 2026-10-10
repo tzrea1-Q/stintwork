@@ -1,10 +1,15 @@
-import type { CheckExecution, ProjectSnapshot, WorkItemChecks } from "@stintwork/core";
+import {
+  evidenceStale,
+  type CheckExecution,
+  type ProjectSnapshot,
+  type WorkItemChecks,
+} from "@stintwork/core";
 import { useEffect, useState } from "react";
 import "./checks-panel.css";
 
 type ChecksItem = Pick<
   ProjectSnapshot["workItems"][number],
-  "slug" | "headCommit" | "checks" | "checkExecution"
+  "slug" | "headCommit" | "checks" | "checkExecution" | "evidenceChangedPaths"
 >;
 
 export function ChecksPanel({ item }: { item: ChecksItem }) {
@@ -16,6 +21,13 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
   const active = execution != null && execution.endedAt === null;
   const headCommit = item.headCommit ?? data?.headCommit;
   const results = item.checks ?? data?.checks ?? [];
+  const evidence = {
+    slug: item.slug,
+    headCommit,
+    evidenceChangedPaths:
+      item.evidenceChangedPaths ??
+      (data?.headCommit === headCommit ? data?.evidenceChangedPaths : undefined),
+  };
 
   useEffect(() => {
     let disposed = false;
@@ -103,7 +115,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
           <li key={result.name}>
             <p>
               <strong>{result.name}</strong> · <span>{result.status}</span>
-              {headCommit && result.commit !== headCommit && (
+              {evidenceStale(evidence, result.commit) && (
                 <strong className="warning"> · Stale</strong>
               )}
             </p>

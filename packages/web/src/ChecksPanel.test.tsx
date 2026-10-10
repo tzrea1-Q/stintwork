@@ -110,6 +110,40 @@ test("starting checks sends an explicit action and displays active evidence", as
   expect(screen.getByRole("button", { name: "Cancel checks" })).toBeEnabled();
 });
 
+test("checks use core freshness: bookkeeping stays fresh, code changes show the evidence commit", async () => {
+  const body = {
+    ...evidence(),
+    headCommit: "b".repeat(40),
+    evidenceChangedPaths: {
+      [commit]: [".scratch/first/review.yaml", ".scratch/first/workflow.yaml"],
+    },
+  };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(body)));
+  const view = render(<ChecksPanel item={{ slug: "first" }} />);
+  await screen.findByText("passed");
+  expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();
+  view.rerender(
+    <ChecksPanel
+      item={{ slug: "first", ...body, evidenceChangedPaths: { [commit]: ["src/example.ts"] } }}
+    />,
+  );
+  const list = screen.getByRole("list", { name: "Latest checks" });
+  expect(list).toHaveTextContent("Stale");
+  expect(list).toHaveTextContent(commit);
+});
+
+test("a comparison fetched for an older head cannot keep new-head check evidence fresh", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(reply({ ...evidence(), evidenceChangedPaths: { [commit]: [] } })),
+  );
+  const view = render(<ChecksPanel item={{ slug: "first" }} />);
+  await screen.findByText("passed");
+  expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();
+  view.rerender(<ChecksPanel item={{ slug: "first", headCommit: "new head" }} />);
+  expect(screen.getByRole("list", { name: "Latest checks" })).toHaveTextContent(`Stale${commit}`);
+});
+
 test("empty configuration and server errors do not present passing checks", async () => {
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply({ ...evidence([]), commands: [] })));
   const view = render(<ChecksPanel item={{ slug: "first" }} />);
