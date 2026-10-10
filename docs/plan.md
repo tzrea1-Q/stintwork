@@ -74,14 +74,14 @@ Stints can ask for things, stages move forward, and any of the three agents can 
 
 ### M4 · Review and ship · L
 
-Work is reviewed with evidence tied to a commit, and shipped.
+Work is reviewed with evidence tied to a commit, and shipped without leaving Stintwork. Spec: `.scratch/review-and-ship/spec.md`. Early M4 polish from the M3 exit lives in `.scratch/agent-polish/`.
 
-- A Review stint runs `/code-review`. Its findings are pinned to diff lines in the review overlay.
-- Checks come from `gh`, tied to a commit. Stale evidence (findings or checks for an older commit) is flagged and blocks merge.
-- The developer can resolve or accept findings, send back to Implement, open a PR, see CI, and merge.
-- Memory proposals: agents' suggested ADR, glossary and ticket changes appear as diffs to accept or reject.
+- Review stints run `/code-review`. Findings are requested in a fixed format after the turn (as with handoffs), tied to the reviewed commit, and pinned to diff lines in the review overlay. Decisions (resolved, accepted, sent back) live in a review file in the work item folder.
+- Checks are configurable local commands (`.stintwork/config`, defaulting to the project's scripts) run in the worktree and tied to a commit, plus the PR's CI checks from `gh` when a pull request exists. Stale evidence (findings or checks for an older commit) is flagged and blocks the Review gate.
+- Memory proposals are derived from stints' changes to project memory files (glossary, decision records, AGENTS.md). You accept them, or reject them with a revert commit. Open proposals block shipping.
+- Ship: open a pull request (push only after explicit confirmation) and merge it via `gh`, or merge locally when there's no remote. Merging removes the worktree and branch and marks the work item shipped.
 
-**Exit test:** the full acceptance scenario in [brief §13](brief.md#13-first-milestone-acceptance-scenario) passes on a second real repo (PagePilot).
+**Exit test:** the full acceptance scenario in [brief §13](brief.md#13-first-milestone-acceptance-scenario) passes on a second real repo (a PagePilot copy).
 
 ### M5 · v0.1 release · M
 

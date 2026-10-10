@@ -21,9 +21,10 @@ Status: shipped
 
 ## M4 · Review and ship
 Id: m4
-Status: planned
+Status: active
 
 - agent-polish
+- review-and-ship
 
 ## M5 · v0.1 release
 Id: m5
