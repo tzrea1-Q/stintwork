@@ -17,6 +17,14 @@ import { addStintPermissionRoute } from "./stint-permissions.js";
 
 export type StintServerOptions = { launchAgent?: AgentLauncher; handoffTimeoutMs?: number };
 
+type ActiveStint = {
+  id?: string;
+  handle?: AgentStint;
+  completion?: Promise<void>;
+  stopRequested?: boolean;
+  ending?: boolean;
+};
+
 function prepareLogs(root: string) {
   let directory = root;
   for (const part of [".stintwork", "local", "stints"]) {
@@ -55,9 +63,24 @@ export function addStintRoutes(
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
   if (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)
     throw new Error("Handoff timeout must be a non-negative number of milliseconds.");
-  const active = new Map<string, { handle?: AgentStint; completion?: Promise<void> }>();
+  const active = new Map<string, ActiveStint>();
   const permissions = addStintPermissionRoute(app);
   let closing = false;
+  app.post("/api/stints/:stintId/stop", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.json({ reason: "Origin must match the project server." }, 403);
+    const id = context.req.param("stintId");
+    const state = [...active.values()].find((candidate) => candidate.id === id);
+    if (!state?.handle || state.ending)
+      return context.json({ reason: "This stint is no longer running." }, 409);
+    if (!state.stopRequested) {
+      state.stopRequested = true;
+      permissions.clear(id);
+      await state.handle.cancel();
+    }
+    return context.json({ stintId: id }, 202);
+  });
   app.post("/api/stints", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
@@ -91,7 +114,7 @@ export function addStintRoutes(
     const { workItem, ticket, stage, brief } = result;
     if (active.has(workItem.slug))
       return context.json({ reason: "A stint is already active for this work item." }, 409);
-    const state: { handle?: AgentStint; completion?: Promise<void> } = {};
+    const state: ActiveStint = {};
     active.set(workItem.slug, state);
     try {
       const worktree = await ensureWorktree(root, workItem.slug);
@@ -101,6 +124,7 @@ export function addStintRoutes(
         encoding: "utf8",
       }).trim();
       const id = randomUUID();
+      state.id = id;
       const path = join(prepareLogs(root), `${id}.jsonl`);
       const started: StintLogEntry = {
         type: "started",
@@ -134,6 +158,7 @@ export function addStintRoutes(
         status: "finished" | "stopped" | "failed" | "interrupted",
         details: { stopReason?: string; error?: string; handoff?: BriefHandoff | null } = {},
       ) {
+        state.ending = true;
         permissions.clear(id);
         let checkpointCommit: string | undefined;
         try {
@@ -186,15 +211,19 @@ export function addStintRoutes(
               end(
                 closing
                   ? "interrupted"
-                  : // "stopped" means the developer pressed Stop (ticket 05). An agent that ends
-                    // its own turn with "cancelled" (Codex does when a permission request is
-                    // declined) has finished its turn; the stop reason stays in the log.
-                    stopReason === "end_turn" || stopReason === "cancelled"
-                    ? "finished"
-                    : "failed",
+                  : state.stopRequested
+                    ? "stopped"
+                    : stopReason === "end_turn" || stopReason === "cancelled"
+                      ? "finished"
+                      : "failed",
                 {
                   stopReason,
                   handoff: handoff ? { ...handoff, stint: id, agent: "codex" } : null,
+                  ...(!state.stopRequested &&
+                  stopReason !== "end_turn" &&
+                  stopReason !== "cancelled"
+                    ? { error: `Agent ended the stint with stop reason: ${stopReason}.` }
+                    : {}),
                 },
               ),
             (error: unknown) =>

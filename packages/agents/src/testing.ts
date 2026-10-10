@@ -11,6 +11,8 @@ export type FakeAgentStep =
   | { type: "write"; path: string; content: string }
   | { type: "expect-prompt"; includes: string }
   | { type: "crash" }
+  | { type: "hang"; ignoreCancellation?: boolean }
+  | { type: "error"; message: string }
   | ({ type: "permission"; expectedOptionId?: string } & Pick<
       RequestPermissionRequest,
       "toolCall" | "options"

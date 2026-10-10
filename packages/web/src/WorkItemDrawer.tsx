@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
+import { StopStint } from "./StopStint";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
 
@@ -198,6 +199,7 @@ export function WorkItemDrawer({
               {item.activeStint.agent} · Ticket {item.activeStint.ticket} ·{" "}
               {item.activeStint.status}
             </p>
+            <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
             <StintStream key={item.activeStint.id} stint={item.activeStint} />
           </section>
         )}
