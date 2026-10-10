@@ -11,6 +11,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { StintStream } from "./StintStream";
 import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { attentionProfile } from "./attention-test-fixtures";
 
 const request: Extract<StintLogEvent, { type: "permission_request" }> = {
   type: "permission_request",
@@ -131,7 +132,12 @@ test.each(["allow", "cancel"])(
   async (optionId) => {
     const user = userEvent.setup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}")));
-    const { rerender } = render(<StintStream stint={stint([request])} />);
+    const { rerender } = render(
+      <StintStream
+        stint={stint([request])}
+        profile={{ ...attentionProfile, id: "codex", displayName: "Codex" }}
+      />,
+    );
     expect(screen.getByText("Declining ends Codex’s turn.")).toBeInTheDocument();
     expect(screen.getByText(/even when this drawer is closed/)).toBeInTheDocument();
     const option = request.options.find((entry) => entry.optionId === optionId);

@@ -53,7 +53,11 @@ export function createProjectServer(
     }
     const project = readProjectFiles(changedPaths);
     watchedPaths = new Set(project.watchPaths);
-    const snapshot = indexProject(project.files, { name, ...(branch ? { branch } : {}) });
+    const snapshot = indexProject(project.files, {
+      name,
+      agents: describeAgents(agentRegistry),
+      ...(branch ? { branch } : {}),
+    });
     for (const item of snapshot.workItems) {
       const path = project.worktreePaths.get(item.slug);
       if (path) item.worktreePath = path;

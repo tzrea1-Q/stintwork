@@ -4,9 +4,13 @@ import { resolveStages, type StagedWorkItem } from "./stages.js";
 import { indexStints, type Stint, type StintSummary, summarizeStint } from "./stints.js";
 import { indexWorkItems, type RepoFiles, type Warning } from "./work-items.js";
 import { builtInWorkflows } from "./workflows.js";
+import { deriveAttentionItems, type AttentionItem } from "./attention.js";
+import type { AgentProfile } from "./agents.js";
 
 export type ProjectSnapshot = {
   name: string;
+  agents: AgentProfile[];
+  attentionItems: AttentionItem[];
   branch?: string;
   workflows: typeof builtInWorkflows;
   milestones: Milestone[];
@@ -22,7 +26,7 @@ export type ProjectSnapshot = {
 
 export function indexProject(
   files: RepoFiles,
-  meta: { name: string; branch?: string },
+  meta: { name: string; branch?: string; agents?: AgentProfile[] },
 ): ProjectSnapshot {
   const staged = resolveStages(indexWorkItems(files), files);
   const warnings = [...staged.warnings];
@@ -37,8 +41,10 @@ export function indexProject(
   const assigned = assignMilestones(staged.workItems, roadmap.milestones);
   const setup = detectSetup(files);
   const stintIndex = indexStints(files);
-  return {
+  const snapshot: ProjectSnapshot = {
     ...meta,
+    agents: meta.agents ?? [],
+    attentionItems: [],
     workflows: builtInWorkflows,
     milestones: roadmap.milestones,
     workItems: staged.workItems.map((item) => {
@@ -60,4 +66,6 @@ export function indexProject(
       ...stintIndex.warnings,
     ],
   };
+  snapshot.attentionItems = deriveAttentionItems(snapshot);
+  return snapshot;
 }

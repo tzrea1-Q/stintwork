@@ -153,7 +153,15 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
   }
   if (stint?.status !== "running") return stint;
   if (entry.type === "event")
-    return { ...stint, events: mergeStintEvent(stint.events, entry.event) };
+    return {
+      ...stint,
+      events: mergeStintEvent(
+        stint.events,
+        entry.event.type === "permission_request"
+          ? { ...entry.event, raisedAt: entry.event.raisedAt ?? entry.at }
+          : entry.event,
+      ),
+    };
   return {
     ...stint,
     status: entry.status,

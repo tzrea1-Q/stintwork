@@ -1,5 +1,14 @@
 import type { ProjectSnapshot } from "@stintwork/core";
-import { AlertTriangle, Check, Circle, GitBranch, Layers3, Search, Settings2 } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  Circle,
+  GitBranch,
+  Inbox,
+  Layers3,
+  Search,
+  Settings2,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 export function TopBar({
@@ -7,11 +16,13 @@ export function TopBar({
   milestone,
   onMilestoneChange,
   onOpenPalette,
+  onOpenNeedsYou,
 }: {
   snapshot: ProjectSnapshot;
   milestone: string;
   onMilestoneChange: (id: string) => void;
   onOpenPalette: () => void;
+  onOpenNeedsYou: () => void;
 }) {
   const [panel, setPanel] = useState<"warnings" | "setup" | null>(null);
   const panels = useRef<HTMLDivElement>(null);
@@ -73,6 +84,16 @@ export function TopBar({
         )}
       </div>
       <div className="top-actions">
+        <button
+          type="button"
+          id="needs-you-trigger"
+          className={`top-button ${snapshot.attentionItems.length ? "warning" : ""}`}
+          aria-haspopup="dialog"
+          onClick={onOpenNeedsYou}
+        >
+          <Inbox size={14} aria-hidden="true" />
+          Needs you <span className="count">{snapshot.attentionItems.length}</span>
+        </button>
         <button
           type="button"
           id="command-palette-trigger"

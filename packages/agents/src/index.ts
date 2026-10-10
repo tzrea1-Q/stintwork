@@ -182,6 +182,7 @@ export function createAgentLauncher(
               onEvent({
                 type: "permission_request",
                 requestId,
+                details: JSON.stringify(request.toolCall, null, 2),
                 toolCallId: event.toolCallId,
                 title: event.title,
                 kind: event.kind,

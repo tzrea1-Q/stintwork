@@ -173,7 +173,10 @@ test("permission requests retain real options and decisions correlate by request
     event,
   }));
   expect(entries.every(isStintLogEntry)).toBe(true);
-  expect(foldStintLog([started, ...entries])?.events).toEqual([request, decision]);
+  expect(foldStintLog([started, ...entries])?.events).toEqual([
+    { ...request, raisedAt: started.at },
+    decision,
+  ]);
 });
 
 test.each(["message", "thought"] as const)(
