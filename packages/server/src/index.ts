@@ -19,6 +19,7 @@ import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.
 import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availability.js";
 import { addHandoffAnswerRoute } from "./handoff-answers.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
+import { createMemoryProposalReader } from "./memory-proposals.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -39,6 +40,7 @@ export function createProjectServer(
   const root = resolve(repoRoot);
   const files = createNodeRepoFiles(root);
   const readProjectFiles = createProjectFiles(root, files);
+  const readMemoryProposals = createMemoryProposalReader(root);
   const name = basename(root);
   const agentRegistry = options.agentRegistry ?? createAgentRegistry();
   let watchedPaths = new Set<string>();
@@ -62,6 +64,7 @@ export function createProjectServer(
       agents: describeAgents(agentRegistry),
       ...(branch ? { branch } : {}),
     });
+    readMemoryProposals(project.files, snapshot);
     for (const item of snapshot.workItems) {
       const path = project.worktreePaths.get(item.slug);
       if (path) item.worktreePath = path;

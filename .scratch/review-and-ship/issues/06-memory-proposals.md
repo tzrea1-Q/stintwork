@@ -1,6 +1,6 @@
 # 06 — Memory proposals
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build

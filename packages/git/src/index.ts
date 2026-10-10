@@ -13,6 +13,7 @@ export {
   type DiffHunk,
   type DiffLine,
 } from "./work-item-diff.js";
+export { checkpointChangedPaths, checkpointFileDiff, commitWorkItemReview } from "./review.js";
 
 const execute = promisify(execFile);
 

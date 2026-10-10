@@ -6,6 +6,8 @@ import { indexWorkItems, type RepoFiles, type Warning } from "./work-items.js";
 import { builtInWorkflows } from "./workflows.js";
 import { deriveAttentionItems, type AttentionItem } from "./attention.js";
 import type { AgentProfile } from "./agents.js";
+import { parseReviewDecisions, type ReviewDecision } from "./review-decisions.js";
+import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 import {
   defaultPermissionLevel,
   projectPermissionLevel,
@@ -25,6 +27,8 @@ export type ProjectSnapshot = {
     stints: StintSummary[];
     activeStint: Stint | null;
     worktreePath?: string;
+    reviewDecisions?: ReviewDecision[];
+    memoryProposals?: MemoryProposalAttentionItem[];
   })[];
   setup: SetupReport;
   warnings: Warning[];
@@ -63,11 +67,20 @@ export function indexProject(
     workItems: staged.workItems.map((item) => {
       const milestone = assigned.assignments.get(item.slug);
       const stints = stintIndex.stints.filter((stint) => stint.workItem === item.slug);
+      const reviewPath = `.scratch/${item.slug}/review.yaml`;
+      let reviewDecisions: ReviewDecision[] = [];
+      try {
+        reviewDecisions = parseReviewDecisions(files.read(reviewPath));
+      } catch (error) {
+        warnings.push({ path: reviewPath, message: String(error) });
+      }
       return {
         ...item,
         ...(milestone === undefined ? {} : { milestone }),
         stints: stints.map(summarizeStint),
         activeStint: stints.find((stint) => stint.status === "running") ?? null,
+        reviewDecisions,
+        memoryProposals: [],
       };
     }),
     setup,
