@@ -39,6 +39,12 @@ test.each([
   ['other = "[x] # [other]"\npermission_mode = "always-approve"', "always-approve"],
   ['# permission_mode = "always-approve"\nmodel = "grok"', null],
   ['[other]\npermission_mode = "always-approve"', null],
+  // Grok's real layout keeps the setting under [ui] after other tables.
+  [
+    '[cli]\nuse_leader = true\n\n[[marketplace.sources]]\nname = "x"\n\n[ui]\nyolo = false\npermission_mode = "always-approve"\n\n[privacy]\ntelemetry = false',
+    "always-approve",
+  ],
+  ['[[ui]]\npermission_mode = "always-approve"', null],
   [
     'description = """\npermission_mode = \'always-approve\'\n"""\npermission_mode = "manual"',
     "manual",

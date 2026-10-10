@@ -26,7 +26,7 @@ export function readGrokConfig(path = grokConfigPath): {
 } {
   try {
     const text = readFileSync(path, "utf8");
-    // ponytail: read only the root scalar, not all TOML; use a TOML parser if Grok nests this setting.
+    // Grok keeps permission_mode under [ui]; also accept it at the root. Not a full TOML parser.
     const normalized = text.replace(
       /"""(?:\\[\s\S]|"(?!"")|[^"\\])*"""|'''[\s\S]*?'''|"(?:\\[^\r\n]|[^"\\\r\n])*"|'[^'\r\n]*'|#[^\r\n]*/g,
       (token) =>
@@ -39,11 +39,16 @@ export function readGrokConfig(path = grokConfigPath): {
     );
     const matches: RegExpMatchArray[] = [];
     let depth = 0;
+    let table = "";
     for (const line of normalized.split(/\r?\n/)) {
       if (depth === 0) {
-        if (/^\s*\[/.test(line)) break;
+        const header = /^\s*(\[\[?)\s*([^[\]]+?)\s*\]\]?\s*$/.exec(line);
+        if (header) {
+          table = header[1] === "[[" ? `[[${header[2]}]]` : header[2].replace(/^"|"$/g, "");
+          continue;
+        }
         const setting = /^\s*(?:permission_mode|"permission_mode")\s*=(.*)$/.exec(line);
-        if (setting) matches.push(setting);
+        if (setting && (table === "" || table === "ui")) matches.push(setting);
       }
       for (const bracket of line.match(/[[\]{}]/g) ?? [])
         depth += bracket === "[" || bracket === "{" ? 1 : -1;
