@@ -20,6 +20,7 @@ import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availab
 import { addHandoffAnswerRoute } from "./handoff-answers.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
 import { createMemoryProposalReader } from "./memory-proposals.js";
+import { addCheckRoutes, createChecks } from "./checks.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -43,6 +44,15 @@ export function createProjectServer(
   const readMemoryProposals = createMemoryProposalReader(root);
   const name = basename(root);
   const agentRegistry = options.agentRegistry ?? createAgentRegistry();
+  const checks = createChecks(
+    root,
+    (message) => {
+      for (const client of websocket.clients) {
+        if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message));
+      }
+    },
+    () => refresh(),
+  );
   let watchedPaths = new Set<string>();
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
@@ -68,6 +78,17 @@ export function createProjectServer(
     for (const item of snapshot.workItems) {
       const path = project.worktreePaths.get(item.slug);
       if (path) item.worktreePath = path;
+      try {
+        Object.assign(item, checks.evidence(item.slug));
+        if (path)
+          item.headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: path,
+            encoding: "utf8",
+            stdio: ["ignore", "pipe", "pipe"],
+          }).trim();
+      } catch (error) {
+        snapshot.warnings.push({ path: ".stintwork/local/checks/", message: String(error) });
+      }
     }
     snapshot.warnings.push(...project.warnings);
     if (branchWarning) snapshot.warnings.push(branchWarning);
@@ -117,6 +138,7 @@ export function createProjectServer(
   let initialization: Promise<void> | undefined;
   function initialize() {
     initialization ??= Promise.all([
+      Promise.resolve().then(() => checks.recover()),
       recoverInterruptedStints(root, files),
       refreshAgentRegistry(agentRegistry),
     ]).then(() => refresh());
@@ -152,7 +174,9 @@ export function createProjectServer(
       }
     },
     refresh,
+    checks.isActive,
   );
+  addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {
     const origin = context.req.header("origin");
@@ -231,7 +255,7 @@ export function createProjectServer(
       clearTimeout(debounce);
       clearTimeout(settle);
       clearInterval(metadataPoll);
-      await stopStints();
+      await Promise.all([stopStints(), checks.stop()]);
       for (const client of websocket.clients) client.terminate();
       await Promise.all([
         watcher?.close(),

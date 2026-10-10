@@ -239,7 +239,18 @@ test("late responses from a previous work item cannot replace the currently open
 test("the drawer opens review only for a worktree, and Escape closes only review and restores focus", async () => {
   const user = userEvent.setup();
   const onClose = vi.fn();
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(diff)));
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockImplementation(async (url) =>
+        reply(
+          String(url).endsWith("/checks")
+            ? { headCommit: diff.headCommit, commands: [], checks: [], checkExecution: null }
+            : diff,
+        ),
+      ),
+  );
   const workItem = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
     name: "Project",
   }).workItems[0];
@@ -254,6 +265,7 @@ test("the drawer opens review only for a worktree, and Escape closes only review
   const trigger = screen.getByRole("button", { name: "Open review" });
   await user.click(trigger);
   await screen.findByText(diff.headCommit);
+  expect(await screen.findByRole("button", { name: "Run checks" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Close review" })).toHaveFocus();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("button", { name: "Close review" })).not.toBeInTheDocument();

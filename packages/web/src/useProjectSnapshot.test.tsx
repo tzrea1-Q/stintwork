@@ -7,6 +7,7 @@ import {
   type ProjectSnapshot,
   type StintLogEntry,
   type StintLogEvent,
+  type CheckExecution,
 } from "@stintwork/core";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -66,6 +67,36 @@ test("reads the initial project and replaces it with live snapshots", async () =
   act(() => TestSocket.instances[0].sendSnapshot({ ...snapshot, branch: "changed" }));
   expect(result.current.snapshot?.branch).toBe("changed");
   expect(result.current.connection).toBe("live");
+});
+
+test("check frames update commit-scoped evidence without reconnecting or discarding the project", async () => {
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  act(() => TestSocket.instances[0].sendSnapshot(snapshot));
+  const execution: CheckExecution = {
+    id: "12345678-1234-1234-1234-123456789abc",
+    workItem: "board",
+    commit: "a".repeat(40),
+    startedAt: "2026-10-10T00:00:00Z",
+    endedAt: null,
+    results: [
+      {
+        name: "test",
+        command: "npm run test",
+        commit: "a".repeat(40),
+        status: "running",
+        durationMs: 0,
+        outputExcerpt: "streamed",
+      },
+    ],
+  };
+  act(() =>
+    TestSocket.instances[0].onmessage?.({ data: JSON.stringify({ type: "checks", execution }) }),
+  );
+  expect(result.current.snapshot?.workItems[0].checks).toEqual(execution.results);
+  expect(result.current.snapshot?.workItems[0].checkExecution).toEqual(execution);
+  expect(result.current.connection).toBe("live");
+  expect(TestSocket.instances[0].close).not.toHaveBeenCalled();
 });
 
 test.each([attentionProfile, loginAttentionProfile])(

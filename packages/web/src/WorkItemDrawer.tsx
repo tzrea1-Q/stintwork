@@ -11,6 +11,7 @@ import type { BoardWorkItem } from "./WorkItemCard";
 import { StageAgentRail } from "./StageAgentRail";
 import { GateView } from "./GateView";
 import { ReviewOverlay } from "./ReviewOverlay";
+import { ChecksPanel } from "./ChecksPanel";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -240,7 +241,13 @@ export function WorkItemDrawer({
           <kbd>Esc</kbd> to return to Pipeline
         </span>
       </footer>
-      {reviewOpen && <ReviewOverlay item={item} onClose={() => setReviewOpen(false)} />}
+      {reviewOpen && (
+        <ReviewOverlay
+          item={item}
+          onClose={() => setReviewOpen(false)}
+          checks={<ChecksPanel item={item} />}
+        />
+      )}
     </dialog>
   );
 }
