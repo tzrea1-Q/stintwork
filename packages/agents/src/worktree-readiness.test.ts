@@ -59,14 +59,17 @@ test("additional roots cannot escape through a symlink", async () => {
   expect(await readFile(join(parent, "keep.txt"), "utf8")).toBe("Keep");
 });
 
-test("refuses unsupported additional-directory grants instead of starting with a silently unwritable index", async () => {
-  const { cwd, common } = await fixture();
-  const stint = createFakeAgentLauncher(
-    [{ type: "write", path: "must-not-exist", content: "No work" }],
-    [],
-    { additionalDirectories: false },
-  )({ agent: "codex", cwd, additionalDirectories: [common], prompt: "Work", onEvent: () => {} });
-  await expect(stint.ready).rejects.toThrow("additional writable directories");
-  await expect(stint.done).rejects.toThrow("additional writable directories");
-  await expect(readFile(join(cwd, "must-not-exist"))).rejects.toMatchObject({ code: "ENOENT" });
-});
+test.each(["codex", "claude"] as const)(
+  "%s refuses unsupported additional-directory grants instead of starting with a silently unwritable index",
+  async (profile) => {
+    const { cwd, common } = await fixture();
+    const stint = createFakeAgentLauncher(
+      [{ type: "write", path: "must-not-exist", content: "No work" }],
+      [],
+      { profile, additionalDirectories: false },
+    )({ agent: profile, cwd, additionalDirectories: [common], prompt: "Work", onEvent: () => {} });
+    await expect(stint.ready).rejects.toThrow("additional writable directories");
+    await expect(stint.done).rejects.toThrow("additional writable directories");
+    await expect(readFile(join(cwd, "must-not-exist"))).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);

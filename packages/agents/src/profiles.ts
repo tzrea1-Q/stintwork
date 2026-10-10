@@ -27,6 +27,28 @@ export const codexProfile: AgentProfile = {
   },
 };
 
+export const claudeProfile: AgentProfile = {
+  id: "claude",
+  displayName: "Claude Code",
+  installationHint:
+    "Install Claude Code and @agentclientprotocol/claude-agent-acp@0.88.0, then sign in with claude auth login.",
+  capabilities: {
+    modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
+    defaultMode: "default",
+    additionalDirectories: true,
+    permissionOptions: [
+      { optionId: "allow_once", name: "Yes", kind: "allow_once" },
+      { optionId: "reject_once", name: "No", kind: "reject_once" },
+    ],
+    declineEndsTurn: false,
+    authenticationRequired: {
+      message: "Authentication required",
+      loginCommand: "claude auth login",
+    },
+    configOptions: [],
+  },
+};
+
 export const grokProfile: AgentProfile = {
   id: "grok",
   displayName: "Grok Build",
@@ -44,25 +66,6 @@ export const grokProfile: AgentProfile = {
 
 export const fakeAgentProfiles: Record<"codex" | "claude" | "grok", AgentProfile> = {
   codex: codexProfile,
-  claude: {
-    id: "claude",
-    displayName: "Claude Code",
-    installationHint: "Install the Claude Code ACP adapter and sign in with claude.",
-    capabilities: {
-      modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
-      defaultMode: "default",
-      additionalDirectories: false,
-      permissionOptions: [
-        { optionId: "allow_once", name: "Yes", kind: "allow_once" },
-        { optionId: "reject_once", name: "No", kind: "reject_once" },
-      ],
-      declineEndsTurn: false,
-      authenticationRequired: {
-        message: "Authentication required",
-        loginCommand: "claude",
-      },
-      configOptions: [],
-    },
-  },
+  claude: claudeProfile,
   grok: grokProfile,
 };

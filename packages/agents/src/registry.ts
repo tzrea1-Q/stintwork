@@ -1,17 +1,38 @@
-import type { AgentProfile } from "@stintwork/core";
+import type { AgentAvailability, AgentProfile } from "@stintwork/core";
 import { type AgentLauncher, startAgentStint } from "./index.js";
 import { codexProfile } from "./profiles.js";
+import { createClaudeCodeAgent } from "./claude-code.js";
 import { createGrokAgent } from "./grok.js";
 
 export type RegisteredAgent = AgentProfile & {
   launch: AgentLauncher;
-  refresh?: (cwd: string) => Promise<void>;
+  detectAvailability?: () => Promise<AgentAvailability>;
 };
 export type AgentRegistry = ReadonlyMap<string, RegisteredAgent>;
+const availabilityChecks = new WeakMap<RegisteredAgent, Promise<void>>();
+
+export async function refreshAgentAvailability(
+  agent: RegisteredAgent,
+  refresh = false,
+): Promise<void> {
+  const pending = availabilityChecks.get(agent);
+  if (pending) return pending;
+  if (!agent.detectAvailability || (agent.availability && !refresh)) return;
+  const checking = agent.detectAvailability().then((availability) => {
+    agent.availability = availability;
+  });
+  availabilityChecks.set(agent, checking);
+  try {
+    await checking;
+  } finally {
+    availabilityChecks.delete(agent);
+  }
+}
 
 export function createAgentRegistry(
   agents: readonly RegisteredAgent[] = [
     { ...codexProfile, launch: startAgentStint },
+    createClaudeCodeAgent(),
     createGrokAgent(),
   ],
 ): AgentRegistry {
@@ -27,14 +48,6 @@ export function createAgentRegistry(
 
 export function describeAgents(registry: AgentRegistry): AgentProfile[] {
   return [...registry.values()].map(
-    ({ launch: _launch, refresh: _refresh, ...profile }) => profile,
+    ({ launch: _launch, detectAvailability: _detect, ...profile }) => profile,
   );
-}
-
-export async function refreshAgents(
-  registry: AgentRegistry,
-  cwd: string,
-  ids = [...registry.keys()],
-) {
-  await Promise.all(ids.map((id) => registry.get(id)?.refresh?.(cwd)));
 }

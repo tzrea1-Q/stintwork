@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
+import type { AgentAvailability } from "@stintwork/core";
 import { type AgentLauncher, createAgentLauncher } from "./index.js";
 import { readGrokConfig } from "./grok-config.js";
 import { grokProfile } from "./profiles.js";
 import type { RegisteredAgent } from "./registry.js";
 
 export function createGrokAgent(
-  options: { configPath?: string; launch?: AgentLauncher } = {},
+  options: { configPath?: string; launch?: AgentLauncher; cwd?: string } = {},
 ): RegisteredAgent {
   const launch =
     options.launch ??
@@ -13,46 +14,42 @@ export function createGrokAgent(
       (cwd) => spawn("grok", ["agent", "stdio"], { cwd, stdio: "pipe" }),
       grokProfile,
     );
-  const agent: RegisteredAgent = { ...grokProfile, launch, refresh };
-  let checking: Promise<void> | undefined;
-  function refresh(cwd: string): Promise<void> {
-    checking ??= (async () => {
-      const config = readGrokConfig(options.configPath);
-      agent.capabilities = { ...grokProfile.capabilities, permissionMode: config.permissionMode };
-      agent.warnings = config.warnings;
-      let available = true;
-      let reason: string | undefined;
-      let status: NonNullable<RegisteredAgent["availability"]>["status"];
+  return {
+    ...grokProfile,
+    launch,
+    get capabilities() {
+      return {
+        ...grokProfile.capabilities,
+        permissionMode: readGrokConfig(options.configPath).permissionMode,
+      };
+    },
+    get warnings() {
+      return readGrokConfig(options.configPath).warnings;
+    },
+    async detectAvailability(): Promise<AgentAvailability> {
+      const checkedAt = new Date().toISOString();
       try {
         await launch({
-          agent: agent.id,
-          cwd,
+          agent: grokProfile.id,
+          cwd: options.cwd ?? process.cwd(),
           prompt: "",
           onEvent: () => {},
           checkAvailability: true,
         }).done;
+        return { available: true, checkedAt };
       } catch (error) {
-        available = false;
-        reason = error instanceof Error ? error.message : String(error);
-        status = /authentication required/i.test(reason)
-          ? "login-required"
-          : /not found/i.test(reason)
-            ? "not-installed"
-            : "error";
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          available: false,
+          reason,
+          kind: /authentication required/i.test(reason)
+            ? "login-required"
+            : /not found/i.test(reason)
+              ? "missing-executable"
+              : "check-failed",
+          checkedAt,
+        };
       }
-      const unchanged =
-        agent.availability?.available === available && agent.availability?.reason === reason;
-      agent.availability = {
-        available,
-        ...(reason ? { reason } : {}),
-        ...(status ? { status } : {}),
-        checkedAt:
-          unchanged && !available ? agent.availability?.checkedAt : new Date().toISOString(),
-      };
-    })().finally(() => {
-      checking = undefined;
-    });
-    return checking;
-  }
-  return agent;
+    },
+  };
 }

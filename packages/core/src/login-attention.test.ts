@@ -1,147 +1,113 @@
 import { expect, test } from "vitest";
 import type { AgentProfile } from "./agents.js";
+import { deriveAttentionItems } from "./attention.js";
 import { indexProject } from "./project.js";
-import type { StintLogEntry } from "./stints.js";
 import { createMemoryRepoFiles } from "./work-items.js";
 
-const agent: AgentProfile = {
-  id: "grok",
-  displayName: "Grok Build",
-  installationHint: "Install Grok Build",
+const profile: AgentProfile = {
+  id: "claude",
+  displayName: "Claude Code",
+  installationHint: "Install Claude Code",
   capabilities: {
-    modes: [],
-    defaultMode: null,
-    additionalDirectories: false,
-    permissionOptions: null,
-    declineEndsTurn: null,
-    configOptions: ["model", "reasoning_effort"],
-    authenticationRequired: { message: "Authentication required", loginCommand: "grok login" },
+    modes: ["default"],
+    defaultMode: "default",
+    additionalDirectories: true,
+    permissionOptions: [],
+    declineEndsTurn: false,
+    authenticationRequired: {
+      message: "Authentication required",
+      loginCommand: "claude auth login",
+    },
+    configOptions: [],
+  },
+  availability: {
+    available: false,
+    kind: "login-required",
+    checkedAt: "2026-10-09T10:00:00Z",
+    reason: "Sign in with claude auth login.",
   },
 };
-const started: StintLogEntry = {
-  type: "started",
-  at: "2026-10-09T10:00:00Z",
-  stint: {
-    id: "first",
-    workItem: "first",
-    stage: "implement",
-    ticket: 1,
-    agent: "grok",
-    baseCommit: "base",
-    worktree: { path: "/worktree", branch: "stintwork/first" },
-    brief: { prompt: "Work", skill: null, pointers: [], changedPaths: [], lastHandoff: null },
+
+test.each([
+  profile,
+  {
+    ...profile,
+    id: "grok",
+    displayName: "Grok Build",
+    capabilities: {
+      ...profile.capabilities,
+      modes: [],
+      defaultMode: null,
+      authenticationRequired: { message: "Authentication required", loginCommand: "grok login" },
+    },
+    availability: { ...profile.availability, available: false, reason: "Sign in with grok login." },
   },
-};
-function project(profile = agent, entries: StintLogEntry[] = []) {
-  return indexProject(
-    createMemoryRepoFiles({
-      ".scratch/first/spec.md": "# First",
-      ".stintwork/local/stints/first.jsonl": entries
-        .map((entry) => JSON.stringify(entry))
-        .join("\n"),
-    }),
-    { name: "Project", agents: [profile] },
-  );
-}
-const failed: StintLogEntry = {
-  type: "ended",
-  at: "2026-10-09T10:01:00Z",
-  status: "failed",
-  error: "Grok Build authentication required. Sign in with grok login.",
-};
-
-test("login attention derives stable agent identity from availability without inventing a work item or stint", () => {
-  const profile: AgentProfile = {
-    ...agent,
-    availability: { available: false, status: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
-  };
-  expect(project(profile).attentionItems).toEqual([
-    expect.objectContaining({
-      id: 'login-required:"grok"',
-      kind: "login-required",
-      workItem: null,
-      stintId: null,
-      ticket: null,
-      agent: "grok",
-      loginCommand: "grok login",
-      raisedAt: profile.availability?.checkedAt,
-    }),
-  ]);
-  expect(
-    project({
-      ...agent,
-      availability: {
-        available: false,
-        status: "not-installed",
-        checkedAt: "2026-10-09T10:00:00Z",
-      },
-    }).attentionItems,
-  ).toEqual([]);
-});
-
-test("logged authentication failures rebuild one attention item; successful stints and unrelated failures do not need login", () => {
-  const snapshot = project(agent, [started, failed]);
-  expect(snapshot.attentionItems).toEqual([
-    expect.objectContaining({
-      workItem: "first",
-      stintId: "first",
-      ticket: 1,
-      raisedAt: failed.at,
-    }),
-  ]);
-  expect(project(agent, [started, failed]).attentionItems).toEqual(snapshot.attentionItems);
-  expect(
-    project(
+  {
+    ...profile,
+    id: "other-agent",
+    displayName: "Other Agent",
+    capabilities: {
+      ...profile.capabilities,
+      authenticationRequired: { message: "Authentication required", loginCommand: "other login" },
+    },
+    availability: {
+      ...profile.availability,
+      available: false,
+      reason: "Sign in with other login.",
+    },
+  },
+])(
+  "$id login attention is agent-wide, stable across snapshot rebuilds, and disappears after login",
+  (profile) => {
+    const snapshot = indexProject(createMemoryRepoFiles({}), {
+      name: "Project",
+      agents: [profile],
+    });
+    expect(snapshot.attentionItems).toEqual([
       {
-        ...agent,
-        availability: {
-          available: false,
-          status: "login-required",
-          checkedAt: "2026-10-09T10:05:00Z",
-        },
+        kind: "login-required",
+        id: `login-required:${JSON.stringify(profile.id)}`,
+        agent: profile.id,
+        workItem: null,
+        ticket: null,
+        stintId: null,
+        title: `${profile.displayName} needs a login`,
+        details: profile.availability?.reason,
+        raisedAt: "2026-10-09T10:00:00Z",
+        loginCommand: profile.capabilities.authenticationRequired.loginCommand,
       },
-      [started, failed],
-    ).attentionItems,
-  ).toEqual(snapshot.attentionItems);
-  expect(
-    project(agent, [started, { ...failed, status: "finished", error: undefined }]).attentionItems,
-  ).toEqual([]);
-  expect(
-    project(agent, [started, { ...failed, error: "Transport closed" }]).attentionItems,
-  ).toEqual([]);
-});
+    ]);
+    expect(deriveAttentionItems(snapshot)).toEqual(snapshot.attentionItems);
+    expect(
+      deriveAttentionItems({
+        ...snapshot,
+        agents: [{ ...profile, availability: { available: true } }],
+      }),
+    ).toEqual([]);
+    const later = deriveAttentionItems({
+      ...snapshot,
+      agents: [
+        {
+          ...profile,
+          availability: {
+            available: false,
+            kind: "login-required",
+            checkedAt: "2026-10-09T11:00:00Z",
+          },
+        },
+      ],
+    });
+    expect(later[0].id).toBe(snapshot.attentionItems[0].id);
+  },
+);
 
-test("a successful newer stint clears an older authentication failure", () => {
-  const snapshot = indexProject(
-    createMemoryRepoFiles({
-      ".scratch/first/spec.md": "# First",
-      ".stintwork/local/stints/first.jsonl": [started, failed]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n"),
-      ".stintwork/local/stints/second.jsonl": [
-        { ...started, at: "2026-10-09T10:02:00Z", stint: { ...started.stint, id: "second" } },
-        { type: "ended", at: "2026-10-09T10:03:00Z", status: "finished" },
-      ]
-        .map((entry) => JSON.stringify(entry))
-        .join("\n"),
-    }),
-    { name: "Project", agents: [agent] },
+test.each([
+  undefined,
+  { available: true },
+  { available: false, kind: "missing-executable" as const },
+  { available: false, kind: "check-failed" as const },
+])("only a confirmed missing login produces login attention: %j", (availability) => {
+  expect(deriveAttentionItems({ workItems: [], agents: [{ ...profile, availability }] })).toEqual(
+    [],
   );
-  expect(snapshot.workItems[0].stints).toHaveLength(2);
-  expect(snapshot.attentionItems).toEqual([]);
-});
-
-test("only an availability check newer than the failed stint clears its login attention", () => {
-  expect(
-    project({ ...agent, availability: { available: true, checkedAt: "2026-10-09T09:00:00Z" } }, [
-      started,
-      failed,
-    ]).attentionItems,
-  ).toHaveLength(1);
-  expect(
-    project({ ...agent, availability: { available: true, checkedAt: "2026-10-09T10:02:00Z" } }, [
-      started,
-      failed,
-    ]).attentionItems,
-  ).toEqual([]);
 });

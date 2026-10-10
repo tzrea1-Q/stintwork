@@ -5,7 +5,12 @@ import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StintLogEvent } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
-import { createGrokAgent, createAgentRegistry, describeAgents, refreshAgents } from "./index.js";
+import {
+  createGrokAgent,
+  createAgentRegistry,
+  describeAgents,
+  refreshAgentAvailability,
+} from "./index.js";
 import { grokPermissionWarning, readGrokConfig } from "./grok-config.js";
 import { createFakeAgentLauncher } from "./testing.js";
 
@@ -71,6 +76,7 @@ test("availability probes never prompt for work, invent modes, or authenticate; 
   let authRequired = true;
   const agent = createGrokAgent({
     configPath,
+    cwd,
     launch: (options) =>
       createFakeAgentLauncher(
         [
@@ -82,25 +88,27 @@ test("availability probes never prompt for work, invent modes, or authenticate; 
       )(options),
   });
   const registry = createAgentRegistry([agent]);
-  await refreshAgents(registry, cwd);
+  await refreshAgentAvailability(agent);
   expect(describeAgents(registry)[0]).toMatchObject({
     capabilities: { modes: [], defaultMode: null, permissionMode: "always-approve" },
     availability: {
       available: false,
-      status: "login-required",
+      kind: "login-required",
       reason: expect.stringContaining("grok login"),
     },
     warnings: [grokPermissionWarning],
   });
   const checkedAt = agent.availability?.checkedAt;
-  await refreshAgents(registry, cwd);
+  await refreshAgentAvailability(agent);
   expect(agent.availability?.checkedAt).toBe(checkedAt);
   authRequired = false;
-  await refreshAgents(registry, cwd);
+  await refreshAgentAvailability(agent);
+  expect(agent.availability).toMatchObject({ available: false, kind: "login-required" });
+  await refreshAgentAvailability(agent, true);
   expect(agent.availability).toMatchObject({ available: true });
   await expect(readFile(join(cwd, "work.txt"))).rejects.toMatchObject({ code: "ENOENT" });
   await writeFile(configPath, 'permission_mode = "manual"');
-  await refreshAgents(registry, cwd);
+  await refreshAgentAvailability(agent);
   expect(agent.capabilities.permissionMode).toBe("manual");
   expect(agent.warnings).toEqual([]);
 });
@@ -118,7 +126,7 @@ test("the native launcher invokes grok agent stdio using the developer's PATH an
   vi.stubEnv("STINTWORK_FAKE_OPTIONS", JSON.stringify({ profile: "grok" }));
   vi.stubEnv("STINTWORK_FAKE_SCRIPT", JSON.stringify([{ type: "message", text: "Working" }]));
   const events: StintLogEvent[] = [];
-  const agent = createGrokAgent({ configPath });
+  const agent = createGrokAgent({ configPath, cwd });
   const stint = agent.launch({
     agent: "grok",
     cwd,
@@ -130,10 +138,10 @@ test("the native launcher invokes grok agent stdio using the developer's PATH an
   expect(JSON.parse(await readFile(join(cwd, "args.json"), "utf8"))).toEqual(["agent", "stdio"]);
   vi.stubEnv("PATH", cwd);
   await rm(executable);
-  await agent.refresh?.(cwd);
+  await refreshAgentAvailability(agent);
   expect(agent.availability).toMatchObject({
     available: false,
-    status: "not-installed",
+    kind: "missing-executable",
     reason: expect.stringContaining("Install Grok Build"),
   });
 });

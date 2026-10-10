@@ -11,7 +11,12 @@ import {
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
-import { attentionProfile, attentionSnapshot } from "./attention-test-fixtures";
+import {
+  attentionProfile,
+  attentionSnapshot,
+  loginAttentionProfile,
+  mixedAttentionSnapshot,
+} from "./attention-test-fixtures";
 
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
   name: "Stintwork",
@@ -63,22 +68,188 @@ test("reads the initial project and replaces it with live snapshots", async () =
   expect(result.current.connection).toBe("live");
 });
 
-test("login-required attention survives HTTP loading and live snapshot validation, then clears after login", async () => {
-  const next = attentionSnapshot([], {
-    ...attentionProfile,
-    availability: { available: false, status: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
+test.each([attentionProfile, loginAttentionProfile])(
+  "mixed attention kinds load over HTTP and live snapshots with availability $availability",
+  async (profile) => {
+    const next = mixedAttentionSnapshot(profile);
+    vi.mocked(fetch).mockImplementation(async () => response(next));
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(next));
+    act(() => TestSocket.instances[0].sendSnapshot(next));
+    expect(result.current.connection).toBe("live");
+    const answered = structuredClone(next);
+    answered.workItems[1].stints[0].handoffAnswer = { at: "2026-10-09T12:00:00Z", note: null };
+    answered.attentionItems = deriveAttentionItems(answered);
+    act(() => TestSocket.instances[0].sendSnapshot(answered));
+    expect(result.current.snapshot?.attentionItems.map(({ kind }) => kind)).toEqual([
+      "permission",
+      "gate-ready",
+      ...(profile.availability?.kind === "login-required" ? ["login-required"] : []),
+    ]);
+    expect(result.current.connection).toBe("live");
+    expect(TestSocket.instances[0].close).not.toHaveBeenCalled();
+  },
+);
+
+test.each([
+  { workItem: "first" },
+  { ticket: 1 },
+  { stintId: "stint" },
+  { agent: null },
+  { loginCommand: undefined },
+  { loginCommand: 42 },
+  { loginCommand: " " },
+  { kind: "unknown" },
+])("malformed login attention (%j) cannot replace the last valid snapshot", async (fields) => {
+  const next = mixedAttentionSnapshot(loginAttentionProfile);
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  const login = next.attentionItems.find(({ kind }) => kind === "login-required");
+  act(() =>
+    TestSocket.instances[0].onmessage?.({
+      data: JSON.stringify({ ...next, attentionItems: [{ ...login, ...fields }] }),
+    }),
+  );
+  expect(result.current.snapshot).toEqual(next);
+  expect(result.current.connection).toBe("reconnecting");
+});
+
+test("a live stint ending preserves gate, handoff and agent-wide login attention while replacing its permission", async () => {
+  const next = mixedAttentionSnapshot(loginAttentionProfile);
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot(next));
+  act(() =>
+    TestSocket.instances[0].onmessage?.({
+      data: JSON.stringify({
+        type: "stint",
+        stintId: "stint",
+        workItem: "first",
+        sequence: 1,
+        entry: {
+          type: "ended",
+          at: "2026-10-09T12:00:00Z",
+          status: "finished",
+          handoff: {
+            stint: "stint",
+            agent: loginAttentionProfile.id,
+            stoppedAt: "Export written.",
+            unresolved: "Which separator?",
+            nextStep: "Choose the separator.",
+          },
+        },
+      }),
+    }),
+  );
+  const items = result.current.snapshot?.attentionItems;
+  expect(items?.slice(0, 3)).toEqual(
+    next.attentionItems.filter(({ kind }) => kind !== "permission"),
+  );
+  expect(items?.[3]).toMatchObject({ kind: "handoff-unresolved", id: "handoff-unresolved:stint" });
+  expect(result.current.connection).toBe("live");
+  expect(TestSocket.instances[0].close).not.toHaveBeenCalled();
+});
+
+test("gates without stint evidence accept nullable sources over HTTP and live snapshots", async () => {
+  const next = mixedAttentionSnapshot();
+  next.workItems[1].stints = [];
+  next.attentionItems = deriveAttentionItems(next);
+  expect(next.attentionItems[0]).toMatchObject({
+    kind: "gate-ready",
+    stintId: null,
+    agent: null,
+    raisedAt: "1970-01-01T00:00:00.000Z",
   });
   vi.mocked(fetch).mockImplementation(async () => response(next));
   const { result } = renderHook(useProjectSnapshot);
-  await waitFor(() => expect(result.current.snapshot?.attentionItems).toEqual(next.attentionItems));
-  const socket = TestSocket.instances[0];
-  act(() => socket.sendSnapshot(next));
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot(next));
   expect(result.current.connection).toBe("live");
-  expect(result.current.snapshot?.attentionItems[0]?.kind).toBe("login-required");
-  act(() => socket.sendSnapshot({ ...next, attentionItems: [] }));
-  expect(result.current.snapshot?.attentionItems).toEqual([]);
-  expect(socket.close).not.toHaveBeenCalled();
 });
+
+test.each([{ stage: "unknown" }, { agent: 42 }, { stintId: 42 }, { ticket: 1 }])(
+  "malformed gate attention (%j) cannot replace the last valid snapshot",
+  async (fields) => {
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    const malformed = mixedAttentionSnapshot();
+    const gate = malformed.attentionItems.find(({ kind }) => kind === "gate-ready");
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({ ...malformed, attentionItems: [{ ...gate, ...fields }] }),
+      }),
+    );
+    expect(result.current.snapshot).toEqual(snapshot);
+    expect(result.current.connection).toBe("reconnecting");
+  },
+);
+
+test.each([null, "Use CSV."])(
+  "unresolved handoffs load from HTTP and live snapshots, and a persisted answer (%s) removes them",
+  async (note) => {
+    const next = attentionSnapshot([]);
+    const item = next.workItems[0];
+    item.activeStint = null;
+    item.stints[0] = {
+      ...item.stints[0],
+      status: "finished",
+      endedAt: "2026-10-09T11:00:00Z",
+      handoff: {
+        stint: "stint",
+        agent: "custom-agent",
+        stoppedAt: "Export written.",
+        unresolved: "Which format?",
+        nextStep: "Choose the format.",
+      },
+    };
+    next.attentionItems = deriveAttentionItems(next);
+    vi.mocked(fetch).mockImplementation(async () => response(next));
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(next));
+    act(() => TestSocket.instances[0].sendSnapshot(next));
+    expect(result.current.connection).toBe("live");
+    const answered = structuredClone(next);
+    answered.workItems[0].stints[0].handoffAnswer = { at: "2026-10-09T12:00:00Z", note };
+    answered.attentionItems = deriveAttentionItems(answered);
+    act(() => TestSocket.instances[0].sendSnapshot(answered));
+    expect(result.current.snapshot?.attentionItems).toEqual([]);
+    expect(result.current.connection).toBe("live");
+    expect(TestSocket.instances[0].close).not.toHaveBeenCalled();
+  },
+);
+
+test("malformed handoff answer data cannot replace the last valid snapshot", async () => {
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  const malformed = attentionSnapshot([]);
+  malformed.workItems[0].stints[0].handoffAnswer = { at: "not a time", note: "Use CSV." };
+  act(() => TestSocket.instances[0].sendSnapshot(malformed));
+  expect(result.current.snapshot).toEqual(snapshot);
+  expect(result.current.connection).toBe("reconnecting");
+});
+
+test.each([{ details: 42 }, { raisedAt: "not a time" }, { kind: "unknown" }])(
+  "malformed handoff attention (%j) cannot replace the last valid snapshot",
+  async (fields) => {
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    const original = attentionSnapshot();
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({
+          ...original,
+          attentionItems: [
+            { ...original.attentionItems[0], kind: "handoff-unresolved", ...fields },
+          ],
+        }),
+      }),
+    );
+    expect(result.current.snapshot).toEqual(snapshot);
+    expect(result.current.connection).toBe("reconnecting");
+  },
+);
 
 test("stint messages share the snapshot connection, merge chunks and finish without reconnecting", async () => {
   const { result } = renderHook(useProjectSnapshot);

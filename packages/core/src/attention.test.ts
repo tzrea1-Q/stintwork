@@ -136,3 +136,142 @@ test("multiple work items use distinct ids even for the same request id and are 
   expect(items.map((item) => item.stintId)).toEqual(["second", "stint"]);
   expect(new Set(items.map((item) => item.id)).size).toBe(2);
 });
+
+const handoff = {
+  stint: "stint",
+  agent: "codex",
+  stoppedAt: "Implementation written.",
+  unresolved: "Which format should the export use?",
+  nextStep: "Ask the developer.",
+};
+const ended: StintLogEntry = {
+  type: "ended",
+  at: "2026-10-09T10:20:00Z",
+  status: "finished",
+  handoff,
+};
+
+test.each(["finished", "stopped", "failed", "interrupted"] as const)(
+  "a %s stint's unresolved handoff needs the developer with a stable source identity",
+  (status) => {
+    const snapshot = project([started, request, { ...ended, status }]);
+    expect(snapshot.attentionItems).toEqual([
+      {
+        kind: "handoff-unresolved",
+        id: "handoff-unresolved:stint",
+        workItem: "first",
+        ticket: 1,
+        stintId: "stint",
+        agent: "codex",
+        title: "Unresolved handoff",
+        details: handoff.unresolved,
+        raisedAt: ended.at,
+      },
+    ]);
+    expect(project([started, request, { ...ended, status }]).attentionItems).toEqual(
+      snapshot.attentionItems,
+    );
+  },
+);
+
+test.each([
+  "",
+  " ",
+  "\r\n\t",
+  "None",
+  " none ",
+  "NONE.",
+  "**None**",
+  "- None.",
+  "_None_",
+  "`None`",
+])("an empty or None handoff (%j) does not need the developer", (unresolved) => {
+  expect(
+    project([started, { ...ended, handoff: { ...handoff, unresolved } }]).attentionItems,
+  ).toEqual([]);
+});
+
+test.each([null, "Use CSV."])("an answered handoff (%s) is not rebuilt after restart", (note) => {
+  const entries: StintLogEntry[] = [
+    started,
+    ended,
+    { type: "handoff_answered", at: ended.at, note },
+  ];
+  expect(project(entries).attentionItems).toEqual([]);
+  expect(project(entries).workItems[0].stints[0].handoffAnswer).toEqual({ at: ended.at, note });
+});
+
+test.each(["None, except format choice.", "- Which format?", "None.\nWhich format?"])(
+  "unresolved content containing or following None (%j) still needs the developer",
+  (unresolved) => {
+    expect(
+      project([started, { ...ended, handoff: { ...handoff, unresolved } }]).attentionItems,
+    ).toMatchObject([{ kind: "handoff-unresolved", details: unresolved }]);
+  },
+);
+
+test("an old unresolved handoff and an active permission coexist in oldest-first order", () => {
+  const old = project([started, ended]);
+  const current = project();
+  expect(
+    deriveAttentionItems({
+      workItems: [{ ...old.workItems[0], activeStint: current.workItems[0].activeStint }],
+    }).map((item) => item.kind),
+  ).toEqual(["permission", "handoff-unresolved"]);
+});
+
+test("all four attention kinds keep stable ids and timestamp/id ordering", () => {
+  const completed = project([started, ended]).workItems[0];
+  completed.stage = "implement";
+  const current = project([
+    { ...started, stint: { ...started.stint, id: "current" } },
+    { ...request, at: ended.at },
+  ]).workItems[0];
+  const snapshot = {
+    workItems: [completed, { ...current, slug: "second" }],
+    agents: [
+      {
+        id: "other-agent",
+        displayName: "Other Agent",
+        installationHint: "Install Other Agent",
+        capabilities: {
+          modes: [],
+          defaultMode: null,
+          additionalDirectories: false,
+          permissionOptions: null,
+          declineEndsTurn: null,
+          authenticationRequired: {
+            message: "Authentication required",
+            loginCommand: "other login",
+          },
+          configOptions: [],
+        },
+        availability: { available: false, kind: "login-required" as const, checkedAt: ended.at },
+      },
+    ],
+  };
+  const items = deriveAttentionItems(snapshot);
+  expect(items.map(({ id }) => id)).toEqual([
+    'gate-ready:["first","implement"]',
+    "handoff-unresolved:stint",
+    'login-required:"other-agent"',
+    'permission:["current","request"]',
+  ]);
+  expect(
+    deriveAttentionItems({ ...snapshot, workItems: [...snapshot.workItems].reverse() }),
+  ).toEqual(items);
+  if (!current.activeStint) throw new Error("Expected an active stint");
+  current.activeStint.events[0] = { ...permission, raisedAt: request.at };
+  expect(deriveAttentionItems(snapshot).map(({ kind }) => kind)).toEqual([
+    "permission",
+    "gate-ready",
+    "handoff-unresolved",
+    "login-required",
+  ]);
+  completed.stints[0].handoffAnswer = { at: ended.at, note: null };
+  expect(deriveAttentionItems(snapshot).map(({ id }) => id)).toEqual([
+    'permission:["current","request"]',
+    'gate-ready:["first","implement"]',
+    'login-required:"other-agent"',
+  ]);
+});

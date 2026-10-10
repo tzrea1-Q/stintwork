@@ -66,8 +66,12 @@ async function fixture(config?: string, launcher: AgentLauncher = launch, inspec
   );
   const agentRegistry = createAgentRegistry([
     inspect
-      ? createGrokAgent({ configPath, launch: launcher })
-      : { ...grokProfile, launch: launcher },
+      ? createGrokAgent({ configPath, launch: launcher, cwd: root })
+      : {
+          ...grokProfile,
+          launch: launcher,
+          detectAvailability: async () => ({ available: true }),
+        },
   ]);
   const project = createProjectServer(root, join(root, "web"), {
     agentRegistry,
@@ -187,6 +191,8 @@ test("a missing Grok login refuses a start before creating a worktree and clears
   ).toHaveLength(1);
   authRequired = false;
   await project.app.request("/api/agents");
+  expect((await snapshot(project)).attentionItems).toEqual(attention);
+  await project.app.request("/api/agents?refresh=true");
   expect((await snapshot(project)).attentionItems).toEqual([]);
 });
 
@@ -208,9 +214,9 @@ test("Authentication required from an actual Grok stint is logged and rebuilds a
   expect(before.attentionItems).toEqual([
     expect.objectContaining({
       kind: "login-required",
-      workItem: "first",
-      ticket: 1,
-      stintId: before.workItems[0].stints[0].id,
+      workItem: null,
+      ticket: null,
+      stintId: null,
       loginCommand: "grok login",
     }),
   ]);
@@ -230,7 +236,7 @@ test("a successful availability recheck clears authentication lost between the p
   expect((await start(project)).status).toBe(503);
   expect((await snapshot(project)).attentionItems[0]?.kind).toBe("login-required");
   authRequired = false;
-  await project.app.request("/api/agents");
+  await project.app.request("/api/agents?refresh=true");
   expect((await snapshot(project)).attentionItems).toEqual([]);
 });
 
@@ -255,6 +261,6 @@ test("a Grok login attention item arrives and clears in live HTTP/WebSocket snap
   await fetch(`${url}/api/agents`);
   await expect.poll(() => snapshots.at(-1)?.attentionItems[0]?.kind).toBe("login-required");
   authRequired = false;
-  await fetch(`${url}/api/agents`);
+  await fetch(`${url}/api/agents?refresh=true`);
   await expect.poll(() => snapshots.at(-1)?.attentionItems).toEqual([]);
 });

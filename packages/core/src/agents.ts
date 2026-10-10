@@ -21,12 +21,14 @@ export type AgentProfile = {
   capabilities: AgentCapabilityProfile;
   installationHint: string;
   warnings?: readonly string[];
-  availability?: {
-    available: boolean;
-    reason?: string;
-    status?: "not-installed" | "login-required" | "error";
-    checkedAt?: string;
-  };
+  availability?: AgentAvailability;
+};
+
+export type AgentAvailability = {
+  available: boolean;
+  reason?: string;
+  kind?: "login-required" | "missing-executable" | "check-failed";
+  checkedAt?: string;
 };
 
 export function agentUnavailableReason(agent: AgentProfile): string | null {

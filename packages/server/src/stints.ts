@@ -7,9 +7,12 @@ import {
   type AgentRegistry,
   type AgentStint,
   createAgentRegistry,
+  AgentAuthenticationError,
+  refreshAgentAvailability,
 } from "@stintwork/agents";
 import {
   foldStintLog,
+  indexProject,
   agentUnavailableReason,
   builtInWorkflows,
   type BriefHandoff,
@@ -30,6 +33,7 @@ import type { ProjectFilesReader } from "./work-item-files.js";
 import { activeStintIds } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
+import { addGateRoutes } from "./gates.js";
 
 export type StintServerOptions = {
   launchAgent?: AgentLauncher;
@@ -72,9 +76,17 @@ export function addStintRoutes(
   if (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)
     throw new Error("Handoff timeout must be a non-negative number of milliseconds.");
   const active = new Map<string, ActiveStint>();
-  const stageAgents = addStageAgentRoute(app, readProjectFiles, root, registry, refresh, (slug) =>
-    active.has(slug),
+  const workflowWrites = new Set<string>();
+  const stageAgents = addStageAgentRoute(
+    app,
+    readProjectFiles,
+    root,
+    registry,
+    refresh,
+    (slug) => active.has(slug),
+    workflowWrites,
   );
+  addGateRoutes(app, readProjectFiles, root, refresh, (slug) => active.has(slug), workflowWrites);
   const permissions = addStintPermissionRoute(app);
   let closing = false;
   app.post("/api/stints/:stintId/stop", async (context) => {
@@ -142,10 +154,20 @@ export function addStintRoutes(
     const agentId = "agent" in body ? (body.agent as string) : result.brief.agent;
     const agent = registry.get(agentId);
     if (!agent) return context.json({ reason: `Agent is not registered: ${agentId}.` }, 400);
+    await refreshAgentAvailability(agent);
     const unavailable = agentUnavailableReason(agent);
     if (unavailable) return context.json({ reason: unavailable }, 409);
     if (active.has(workItem.slug) || stageAgents.isWriting(workItem.slug))
       return context.json({ reason: "A stint is already active for this work item." }, 409);
+    if (
+      indexProject(readProjectFiles().files, { name: "" }).workItems.find(
+        ({ slug }) => slug === workItem.slug,
+      )?.stage !== workItem.stage
+    )
+      return context.json(
+        { reason: "The stage changed. Refresh the brief before starting a stint." },
+        409,
+      );
     const state: ActiveStint = { setupCancellation: new AbortController() };
     let prepared: () => void = () => {};
     state.preparation = new Promise<void>((resolvePreparation) => {
@@ -342,10 +364,18 @@ export function addStintRoutes(
                     : {}),
                 },
               ),
-            (error: unknown) =>
-              end(closing ? "interrupted" : "failed", {
+            (error: unknown) => {
+              if (error instanceof AgentAuthenticationError && agent.detectAvailability)
+                agent.availability = {
+                  available: false,
+                  kind: "login-required",
+                  reason: error.message,
+                  checkedAt: new Date().toISOString(),
+                };
+              return end(closing ? "interrupted" : "failed", {
                 error: error instanceof Error ? error.message : String(error),
-              }),
+              });
+            },
           )
           .catch((error: unknown) => {
             console.error("Could not record the end of a stint:", error);

@@ -298,6 +298,17 @@ function BriefPreviewSheet({
                 <p>None — start from the project conventions and work item scope.</p>
               )}
             </section>
+            {(brief.developerNotes ?? []).length > 0 && (
+              <section>
+                <h3>Developer notes</h3>
+                {brief.developerNotes?.map((note) => (
+                  <div key={note.id}>
+                    <time dateTime={note.at}>{note.at}</time>
+                    <pre className="brief-prompt">{note.text}</pre>
+                  </div>
+                ))}
+              </section>
+            )}
             <section>
               <h3>Changed since the last handoff</h3>
               {brief.changedPaths.length ? (

@@ -2,7 +2,13 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
-import { attentionOptions, attentionProfile, attentionSnapshot } from "./attention-test-fixtures";
+import {
+  attentionOptions,
+  attentionProfile,
+  attentionSnapshot,
+  mixedAttentionSnapshot,
+  loginAttentionProfile,
+} from "./attention-test-fixtures";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -10,6 +16,42 @@ afterEach(() => {
   localStorage.clear();
   window.history.replaceState(null, "", "/");
 });
+
+test.each([attentionProfile, loginAttentionProfile])(
+  "all attention renderers coexist in derived order with availability $availability",
+  async (profile) => {
+    const user = userEvent.setup();
+    const snapshot = mixedAttentionSnapshot(profile);
+    render(<Board snapshot={snapshot} />);
+    const title = `Needs you ${snapshot.attentionItems.length}`;
+    await user.click(screen.getByRole("button", { name: title }));
+    const queue = within(screen.getByRole("dialog", { name: title }));
+    const articles = queue
+      .getAllByRole("article")
+      .filter((article) => article.classList.contains("attention-item"));
+    expect(articles.map((article) => article.getAttribute("aria-label"))).toEqual(
+      snapshot.attentionItems.map(({ title }) => title),
+    );
+    expect(within(articles[0]).getByText("Permission · Test Agent")).toBeInTheDocument();
+    expect(within(articles[0]).getByRole("button", { name: /Yes, proceed/ })).toBeEnabled();
+    expect(within(articles[1]).getByText("Gate ready · Test Agent")).toBeInTheDocument();
+    expect(within(articles[1]).getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+    expect(within(articles[2]).getByText("Handoff · Test Agent")).toBeInTheDocument();
+    expect(
+      within(articles[2]).getByRole("textbox", { name: "Developer note" }),
+    ).toBeInTheDocument();
+    expect(within(articles[2]).getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    if (profile.availability?.kind === "login-required") {
+      expect(
+        within(articles[3]).getByText("test-agent login", { selector: "code" }),
+      ).toBeInTheDocument();
+      expect(
+        within(articles[3]).getByRole("button", { name: "Refresh agent availability" }),
+      ).toBeEnabled();
+      expect(within(articles[3]).queryByText(/Ticket|Stint|No ticket/)).not.toBeInTheDocument();
+    }
+  },
+);
 
 test("Needs you opens a slide-over with source, waiting time, full command and path; counts and badges follow snapshots", async () => {
   const user = userEvent.setup();

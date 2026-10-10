@@ -2,7 +2,12 @@ export type Health = {
   ok: true;
   repo: string;
 };
-export type { AgentCapabilityProfile, AgentPermissionOption, AgentProfile } from "./agents.js";
+export type {
+  AgentAvailability,
+  AgentCapabilityProfile,
+  AgentPermissionOption,
+  AgentProfile,
+} from "./agents.js";
 export { agentUnavailableReason } from "./agents.js";
 export { stageAgent, workflowStageAgent } from "./stage-agent.js";
 export {
@@ -11,7 +16,15 @@ export {
   type AttentionItemSource,
   type PermissionAttentionItem,
   type LoginRequiredAttentionItem,
+  type HandoffUnresolvedAttentionItem,
+  type GateAttentionItem,
 } from "./attention.js";
+export {
+  hasUnresolvedHandoff,
+  pendingDeveloperNotes,
+  type DeveloperNote,
+} from "./developer-notes.js";
+export { gateReadiness, workflowGate, type GateRecord, type GateWorkItem } from "./gates.js";
 export type {
   RichStintEvent,
   StintToolContent,

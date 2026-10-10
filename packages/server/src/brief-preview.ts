@@ -1,5 +1,12 @@
-import { briefUnavailableReason, compileBrief, indexProject, stageAgent } from "@stintwork/core";
-import { type AgentRegistry, refreshAgents } from "@stintwork/agents";
+import {
+  briefUnavailableReason,
+  compileBrief,
+  indexProject,
+  indexStints,
+  pendingDeveloperNotes,
+  stageAgent,
+} from "@stintwork/core";
+import { type AgentRegistry, refreshAgentAvailability } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince } from "@stintwork/git";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -65,7 +72,8 @@ export async function prepareStintBrief(
   );
   if (!stage) return { reason: "Stage not found.", status: 409 as const };
   const agent = chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()]);
-  await refreshAgents(registry, project.worktreePaths.get(slug) ?? root, [agent]);
+  const registered = registry.get(agent);
+  if (registered) await refreshAgentAvailability(registered);
   // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
   // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
   const ended = workItem.stints.filter((stint) => stint.status !== "running");
@@ -97,6 +105,9 @@ export async function prepareStintBrief(
         stage,
         ticket,
         lastHandoff: previous?.handoff,
+        developerNotes: pendingDeveloperNotes(
+          indexStints(files).stints.filter((stint) => stint.workItem === slug),
+        ),
         checkpointCommit,
         changedPaths,
       }),

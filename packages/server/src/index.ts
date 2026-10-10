@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createAdaptorServer, type ServerType, upgradeWebSocket } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Health, indexProject, type Warning } from "@stintwork/core";
-import { createAgentRegistry, describeAgents, refreshAgents } from "@stintwork/agents";
+import { createAgentRegistry, describeAgents } from "@stintwork/agents";
 import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
@@ -15,6 +15,8 @@ import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.js";
+import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availability.js";
+import { addHandoffAnswerRoute } from "./handoff-answers.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -108,7 +110,10 @@ export function createProjectServer(
   const app = new Hono();
   let initialization: Promise<void> | undefined;
   function initialize() {
-    initialization ??= recoverInterruptedStints(root, files).then(() => refresh());
+    initialization ??= Promise.all([
+      recoverInterruptedStints(root, files),
+      refreshAgentRegistry(agentRegistry),
+    ]).then(() => refresh());
     return initialization;
   }
   app.use("/api/*", async (context, next) => {
@@ -125,14 +130,10 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(snapshot);
   });
-  app.get("/api/agents", async (context) => {
-    context.header("Cache-Control", "no-store");
-    await refreshAgents(agentRegistry, root);
-    refresh();
-    return context.json({ agents: describeAgents(agentRegistry) });
-  });
+  addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
   addStintHistoryRoute(app, files);
+  addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   const stopStints = addStintRoutes(
     app,
     root,

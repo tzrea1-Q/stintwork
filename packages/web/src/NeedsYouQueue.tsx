@@ -2,6 +2,8 @@ import type { ProjectSnapshot } from "@stintwork/core";
 import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { PermissionAnswer } from "./PermissionAnswer";
+import { HandoffAnswer } from "./HandoffAnswer";
+import { GateView } from "./GateView";
 import type { useAttentionAlerts } from "./useAttentionAlerts";
 import "./needs-you.css";
 import "./stint-stream.css";
@@ -22,20 +24,18 @@ export function NeedsYouQueue({
   const titleId = useId();
   const [now, setNow] = useState(Date.now);
   const [answerError, setAnswerError] = useState("");
-  const [checkingLogin, setCheckingLogin] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  async function checkLogin() {
-    setCheckingLogin(true);
+  async function refreshAvailability() {
+    setRefreshing(true);
     setAnswerError("");
     try {
-      const response = await fetch("/api/agents", { cache: "no-store" });
+      const response = await fetch("/api/agents?refresh=true");
       if (!response.ok) throw new Error("Could not refresh agent availability.");
-    } catch (error) {
-      setAnswerError(
-        error instanceof Error ? error.message : "Could not refresh agent availability.",
-      );
+    } catch {
+      setAnswerError("Could not refresh agent availability. Try again.");
     } finally {
-      setCheckingLogin(false);
+      setRefreshing(false);
     }
   }
 
@@ -97,58 +97,80 @@ export function NeedsYouQueue({
         )}
         {snapshot.attentionItems.map((item) => {
           const profile = snapshot.agents.find((agent) => agent.id === item.agent);
+          if (item.kind === "login-required")
+            return (
+              <article key={item.id} className="attention-item" aria-label={item.title}>
+                <p className="eyebrow">Login required · {profile?.displayName ?? item.agent}</p>
+                <h3>{item.title}</h3>
+                <p>{item.details}</p>
+                <pre>
+                  <code>{item.loginCommand}</code>
+                </pre>
+                <button
+                  type="button"
+                  className="top-button"
+                  disabled={refreshing}
+                  onClick={() => void refreshAvailability()}
+                >
+                  {refreshing ? "Checking login…" : "Refresh agent availability"}
+                </button>
+              </article>
+            );
           const workItem = snapshot.workItems.find((entry) => entry.slug === item.workItem);
           const minutes = Math.max(0, Math.floor((now - Date.parse(item.raisedAt)) / 60_000));
           return (
             <article key={item.id} className="attention-item" aria-label={item.title}>
               <p className="eyebrow">
-                {item.kind === "permission" ? "Permission" : "Login required"} ·{" "}
-                {profile?.displayName ?? item.agent}
+                {item.kind === "permission"
+                  ? "Permission"
+                  : item.kind === "handoff-unresolved"
+                    ? "Handoff"
+                    : "Gate ready"}
+                {item.agent && ` · ${profile?.displayName ?? item.agent}`}
               </p>
               <h3>{item.title}</h3>
-              {item.workItem && (
-                <button
-                  type="button"
-                  className="attention-work-item"
-                  onClick={() => {
-                    onClose();
-                    if (item.workItem) onOpenItem(item.workItem);
-                  }}
-                >
-                  {workItem?.title ?? item.workItem} · {item.workItem}
-                </button>
-              )}
-              {item.stintId && (
-                <p className="muted">
-                  {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`} · Stint{" "}
-                  <code>{item.stintId}</code>
-                </p>
-              )}
+              <button
+                type="button"
+                className="attention-work-item"
+                onClick={() => {
+                  onClose();
+                  onOpenItem(item.workItem);
+                }}
+              >
+                {workItem?.title ?? item.workItem} · {item.workItem}
+              </button>
+              <p className="muted">
+                {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`}
+                {item.stintId && (
+                  <>
+                    {" "}
+                    · Stint <code>{item.stintId}</code>
+                  </>
+                )}
+              </p>
               <p className="muted">
                 <time dateTime={item.raisedAt} title={item.raisedAt}>
-                  Waiting {minutes ? `${minutes} min` : "less than a minute"}
+                  {item.raisedAt === "1970-01-01T00:00:00.000Z"
+                    ? "No readiness time recorded"
+                    : `Waiting ${minutes ? `${minutes} min` : "less than a minute"}`}
                 </time>
               </p>
-              {item.kind === "permission" ? (
+              {item.kind === "permission" && (
                 <PermissionAnswer
                   stintId={item.stintId}
                   request={item}
                   profile={profile}
                   onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
                 />
-              ) : (
-                <>
-                  <p>{item.details}</p>
-                  <code>{item.loginCommand}</code>
-                  <button
-                    type="button"
-                    className="top-button"
-                    disabled={checkingLogin}
-                    onClick={() => void checkLogin()}
-                  >
-                    {checkingLogin ? "Checking login…" : "I’ve logged in — check again"}
-                  </button>
-                </>
+              )}
+              {item.kind === "handoff-unresolved" && (
+                <HandoffAnswer
+                  item={item}
+                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                />
+              )}
+              {item.kind === "gate-ready" && workItem && (
+                <GateView item={workItem} warnings={snapshot.warnings} />
               )}
             </article>
           );

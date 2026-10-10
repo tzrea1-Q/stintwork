@@ -1,6 +1,7 @@
 import {
   createMemoryRepoFiles,
   indexProject,
+  deriveAttentionItems,
   type AgentProfile,
   type StintLogEntry,
 } from "@stintwork/core";
@@ -73,3 +74,39 @@ export function attentionSnapshot(requestIds = ["request"], profile = attentionP
     { name: "Project", agents: [profile] },
   );
 }
+
+export function mixedAttentionSnapshot(profile = attentionProfile) {
+  const snapshot = attentionSnapshot(["request"], profile);
+  const completed = structuredClone(snapshot.workItems[0]);
+  completed.slug = "second";
+  completed.title = "Second work item";
+  completed.stage = "implement";
+  completed.activeStint = null;
+  completed.tickets[0].resolved = true;
+  completed.stints[0] = {
+    ...completed.stints[0],
+    id: "finished-stint",
+    workItem: "second",
+    status: "finished",
+    endedAt: "2026-10-09T11:00:00Z",
+    handoff: {
+      stint: "finished-stint",
+      agent: profile.id,
+      stoppedAt: "Export written.",
+      unresolved: "Which format?",
+      nextStep: "Choose the format.",
+    },
+  };
+  snapshot.workItems.push(completed);
+  snapshot.attentionItems = deriveAttentionItems(snapshot);
+  return snapshot;
+}
+
+export const loginAttentionProfile: AgentProfile = {
+  ...attentionProfile,
+  availability: {
+    available: false,
+    kind: "login-required",
+    checkedAt: "2026-10-09T11:30:00Z",
+  },
+};

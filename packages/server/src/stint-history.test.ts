@@ -4,6 +4,8 @@ import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/pro
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { createAgentRegistry } from "@stintwork/agents";
+import { createFakeAgentLauncher, fakeAgentProfiles } from "@stintwork/agents/testing";
 import {
   indexStints,
   summarizeStint,
@@ -46,7 +48,12 @@ async function fixture() {
   };
   fixtures.push(tracked);
   function project(options: Parameters<typeof createProjectServer>[2] = {}) {
-    const result = createProjectServer(root, join(root, "web"), options);
+    const result = createProjectServer(root, join(root, "web"), {
+      agentRegistry: createAgentRegistry([
+        { ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) },
+      ]),
+      ...options,
+    });
     tracked.projects.push(result);
     return result;
   }

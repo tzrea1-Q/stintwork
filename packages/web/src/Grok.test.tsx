@@ -62,7 +62,7 @@ test("Needs you shows the Grok login command without permission options and chec
   const user = userEvent.setup();
   const profile: AgentProfile = {
     ...grok,
-    availability: { available: false, status: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
+    availability: { available: false, kind: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
   };
   const snapshot = attentionSnapshot([], profile);
   const fetch = vi.fn().mockResolvedValue(new Response("{}"));
@@ -72,8 +72,8 @@ test("Needs you shows the Grok login command without permission options and chec
   const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
   expect(queue.getByText("grok login", { selector: "code" })).toBeInTheDocument();
   expect(queue.queryByRole("button", { name: /Yes, proceed/ })).not.toBeInTheDocument();
-  await user.click(queue.getByRole("button", { name: "I’ve logged in — check again" }));
-  expect(fetch).toHaveBeenCalledWith("/api/agents", { cache: "no-store" });
+  await user.click(queue.getByRole("button", { name: "Refresh agent availability" }));
+  expect(fetch).toHaveBeenCalledWith("/api/agents?refresh=true");
   rerender(<Board snapshot={{ ...snapshot, attentionItems: [] }} />);
   expect(await screen.findByText("Nothing needs you right now.")).toBeInTheDocument();
 });
@@ -82,12 +82,12 @@ test("a failed login availability refresh stays in Needs you with an error", asy
   const user = userEvent.setup();
   const snapshot = attentionSnapshot([], {
     ...grok,
-    availability: { available: false, status: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
+    availability: { available: false, kind: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
   });
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("{}", { status: 503 })));
   render(<Board snapshot={snapshot} />);
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
-  await user.click(screen.getByRole("button", { name: "I’ve logged in — check again" }));
+  await user.click(screen.getByRole("button", { name: "Refresh agent availability" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "Could not refresh agent availability.",
   );
