@@ -3,6 +3,7 @@ import {
   foldStintLog,
   indexProject,
   summarizeStint,
+  deriveAttentionItems,
   type ProjectSnapshot,
   type StintLogEntry,
   type StintLogEvent,
@@ -10,6 +11,7 @@ import {
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
+import { attentionSnapshot } from "./attention-test-fixtures";
 
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
   name: "Stintwork",
@@ -218,11 +220,15 @@ test("a reconnect snapshot restores rich events and pending permissions, then me
       stints: [summarizeStint(active)],
     })),
   };
+  next.attentionItems = deriveAttentionItems(next);
   const { result } = renderHook(useProjectSnapshot);
   await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
   const socket = TestSocket.instances[0];
   act(() => socket.sendSnapshot(next));
-  expect(result.current.snapshot?.workItems[0].activeStint?.events).toEqual(rich);
+  expect(result.current.snapshot?.workItems[0].activeStint?.events).toEqual(active.events);
+  expect(result.current.snapshot?.attentionItems).toMatchObject([
+    { requestId: "request", raisedAt: at },
+  ]);
   const updates: StintLogEvent[] = [
     {
       type: "tool_call_update",
@@ -261,6 +267,7 @@ test("a reconnect snapshot restores rich events and pending permissions, then me
     updates[1],
   ]);
   expect(result.current.connection).toBe("live");
+  expect(result.current.snapshot?.attentionItems).toEqual([]);
   expect(socket.close).not.toHaveBeenCalled();
 });
 
@@ -375,6 +382,56 @@ test("aborts pending requests and detaches socket handlers on unmount", () => {
   expect(TestSocket.instances[0].onmessage).toBeNull();
   expect(TestSocket.instances[0].close).toHaveBeenCalledOnce();
 });
+
+test("live request and stint-end entries update attention items immediately without a full snapshot", async () => {
+  const initial = attentionSnapshot([]);
+  vi.mocked(fetch).mockResolvedValue(response(initial));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(initial));
+  const socket = TestSocket.instances[0];
+  act(() => socket.sendSnapshot(initial));
+  const pending = attentionSnapshot();
+  const event = pending.workItems[0].activeStint?.events[0];
+  if (!event) throw new Error("Expected a permission request.");
+  function send(sequence: number, entry: StintLogEntry) {
+    act(() =>
+      socket.onmessage?.({
+        data: JSON.stringify({
+          type: "stint",
+          stintId: "stint",
+          workItem: "first",
+          sequence,
+          entry,
+        }),
+      }),
+    );
+  }
+  send(1, { type: "event", at: "2026-10-09T10:15:00Z", event });
+  expect(result.current.snapshot?.attentionItems).toEqual(pending.attentionItems);
+  send(1, { type: "event", at: "2026-10-09T10:15:00Z", event });
+  expect(result.current.snapshot?.attentionItems).toHaveLength(1);
+  send(2, { type: "ended", at: "2026-10-09T10:16:00Z", status: "failed" });
+  expect(result.current.snapshot?.attentionItems).toEqual([]);
+});
+
+test.each([
+  { attentionItems: null },
+  { attentionItems: [{ ...attentionSnapshot().attentionItems[0], options: null }] },
+  { attentionItems: [{ ...attentionSnapshot().attentionItems[0], raisedAt: "not a date" }] },
+  { agents: [{ id: "agent", displayName: "Agent", capabilities: { declineEndsTurn: "yes" } }] },
+])(
+  "rejects malformed attention snapshots while retaining the last usable project: %j",
+  async (fields) => {
+    const { result, unmount } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    act(() =>
+      TestSocket.instances[0].onmessage?.({ data: JSON.stringify({ ...snapshot, ...fields }) }),
+    );
+    expect(result.current.snapshot).toEqual(snapshot);
+    expect(result.current.connection).toBe("reconnecting");
+    unmount();
+  },
+);
 
 test("times out a socket that never sends its initial snapshot", async () => {
   vi.useFakeTimers();

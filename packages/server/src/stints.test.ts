@@ -289,7 +289,10 @@ test.each(["allow", "cancel"])(
         kind: optionId === "allow" ? "allow_once" : "reject_once",
       },
     };
-    expect(entries[2]).toMatchObject({ type: "event", event: pending });
+    if (!pending) throw new Error("Expected the pending permission request.");
+    const { raisedAt, ...loggedRequest } = pending;
+    expect(entries[2]).toEqual({ type: "event", at: raisedAt, event: loggedRequest });
+    expect(foldStintLog(entries)?.events).toContainEqual(pending);
     expect(entries[3]).toMatchObject({ type: "event", event: permission });
     expect(entries.at(-1)).toMatchObject({
       type: "ended",

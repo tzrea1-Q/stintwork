@@ -3,6 +3,12 @@ export type Health = {
   repo: string;
 };
 export type { AgentCapabilityProfile, AgentPermissionOption, AgentProfile } from "./agents.js";
+export {
+  deriveAttentionItems,
+  type AttentionItem,
+  type AttentionItemSource,
+  type PermissionAttentionItem,
+} from "./attention.js";
 export type {
   RichStintEvent,
   StintToolContent,

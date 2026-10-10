@@ -1,6 +1,6 @@
 # 03 — Needs-you queue with permission items
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build

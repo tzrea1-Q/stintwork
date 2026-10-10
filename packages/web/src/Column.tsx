@@ -1,4 +1,4 @@
-import type { BoardColumn, Milestone } from "@stintwork/core";
+import type { AttentionItem, BoardColumn, Milestone } from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";
 
@@ -17,12 +17,14 @@ export function Column({
   items,
   milestones,
   onOpen,
+  attentionItems = [],
 }: {
   id: BoardColumn;
   name: string;
   items: BoardWorkItem[];
   milestones: Milestone[];
   onOpen: (slug: string) => void;
+  attentionItems?: AttentionItem[];
 }) {
   const { icon: Icon, hint } = presentation[id];
   return (
@@ -43,6 +45,7 @@ export function Column({
             <WorkItemCard
               key={item.slug}
               item={item}
+              attentionCount={attentionItems.filter((entry) => entry.workItem === item.slug).length}
               milestone={milestones.find((milestone) => milestone.id === item.milestone)}
               onOpen={onOpen}
             />

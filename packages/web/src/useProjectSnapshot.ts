@@ -5,6 +5,7 @@ import {
   isStintEvent,
   isBriefHandoff,
   summarizeStint,
+  deriveAttentionItems,
   type ProjectSnapshot,
   type WorkflowStage,
 } from "@stintwork/core";
@@ -31,6 +32,25 @@ function isStintSummary(value: unknown) {
   );
 }
 
+function isAttentionItem(value: unknown) {
+  return (
+    isRecord(value) &&
+    value.kind === "permission" &&
+    ["id", "workItem", "stintId", "agent", "requestId", "title", "details", "raisedAt"].every(
+      (key) => typeof value[key] === "string",
+    ) &&
+    (value.ticket === null ||
+      (Number.isSafeInteger(value.ticket) && (value.ticket as number) > 0)) &&
+    !Number.isNaN(Date.parse(value.raisedAt as string)) &&
+    Array.isArray(value.options) &&
+    value.options.every(
+      (option) =>
+        isRecord(option) &&
+        ["optionId", "name", "kind"].every((key) => typeof option[key] === "string"),
+    )
+  );
+}
+
 function readSnapshot(value: unknown): ProjectSnapshot {
   const stages = Object.values(builtInWorkflows).flatMap<WorkflowStage>(
     (workflow) => workflow.stages,
@@ -46,6 +66,18 @@ function readSnapshot(value: unknown): ProjectSnapshot {
   if (
     !isRecord(value) ||
     typeof value.name !== "string" ||
+    !Array.isArray(value.attentionItems) ||
+    !value.attentionItems.every(isAttentionItem) ||
+    !Array.isArray(value.agents) ||
+    !value.agents.every(
+      (agent) =>
+        isRecord(agent) &&
+        typeof agent.id === "string" &&
+        typeof agent.displayName === "string" &&
+        isRecord(agent.capabilities) &&
+        (agent.capabilities.declineEndsTurn === null ||
+          typeof agent.capabilities.declineEndsTurn === "boolean"),
+    ) ||
     (value.branch !== undefined && typeof value.branch !== "string") ||
     !warningsValid(value.warnings) ||
     !isRecord(value.setup) ||
@@ -212,28 +244,29 @@ export function useProjectSnapshot() {
                 (entry.stint.id !== message.stintId || entry.stint.workItem !== message.workItem)
               )
                 throw new Error("Stint identity mismatch.");
-              setSnapshot(
-                (current) =>
-                  current && {
-                    ...current,
-                    workItems: current.workItems.map((item) => {
-                      if (item.slug !== message.workItem) return item;
-                      const previous =
-                        item.activeStint?.id === message.stintId ? item.activeStint : null;
-                      const stint = applyStintLogEntry(previous, entry);
-                      if (!stint || stint.id !== message.stintId) return item;
-                      const summary = summarizeStint(stint);
-                      return {
-                        ...item,
-                        activeStint: stint.status === "running" ? stint : null,
-                        stints: [
-                          summary,
-                          ...item.stints.filter((existing) => existing.id !== stint.id),
-                        ],
-                      };
-                    }),
-                  },
-              );
+              setSnapshot((current) => {
+                if (!current) return current;
+                const next = {
+                  ...current,
+                  workItems: current.workItems.map((item) => {
+                    if (item.slug !== message.workItem) return item;
+                    const previous =
+                      item.activeStint?.id === message.stintId ? item.activeStint : null;
+                    const stint = applyStintLogEntry(previous, entry);
+                    if (!stint || stint.id !== message.stintId) return item;
+                    const summary = summarizeStint(stint);
+                    return {
+                      ...item,
+                      activeStint: stint.status === "running" ? stint : null,
+                      stints: [
+                        summary,
+                        ...item.stints.filter((existing) => existing.id !== stint.id),
+                      ],
+                    };
+                  }),
+                };
+                return { ...next, attentionItems: deriveAttentionItems(next) };
+              });
               return;
             }
             const next = readSnapshot(message);

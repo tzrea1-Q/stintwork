@@ -131,6 +131,118 @@ const script: FakeAgentStep[] = cycles.flatMap(({ optionId, marker }) => [
   { type: "message", text: marker },
 ]);
 
+test("Needs-you snapshots reach both tabs; a queue answer is logged, received by the agent and removed everywhere", async () => {
+  const command = "pnpm test --filter /full/path/to/project";
+  const { root, project, tracked } = await fixture(
+    createFakeAgentLauncher([
+      {
+        ...permission,
+        toolCall: {
+          ...permission.toolCall,
+          rawInput: { command },
+          locations: [{ path: "/full/path/to/file.ts" }],
+        },
+        expectedOptionId: "allow_once",
+      },
+      { type: "message", text: "Queue answer received" },
+      { type: "hang" },
+    ]),
+  );
+  const server = await project.start();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected TCP address.");
+  const url = `http://127.0.0.1:${address.port}`;
+  const tabs = [
+    new WebSocket(`${url.replace("http", "ws")}/api/live`),
+    new WebSocket(`${url.replace("http", "ws")}/api/live`),
+  ];
+  tracked.socket = tabs[0];
+  const snapshots: ProjectSnapshot[][] = tabs.map(() => []);
+  tabs.forEach((socket, index) => {
+    socket.on("message", (data) => {
+      const message = JSON.parse(data.toString());
+      if (message.type !== "stint") snapshots[index].push(message);
+    });
+  });
+  try {
+    await Promise.all(tabs.map((socket) => once(socket, "open")));
+    const stint = await start(project);
+    await expect
+      .poll(() => snapshots.every((messages) => messages.at(-1)?.attentionItems.length === 1))
+      .toBe(true);
+    const item = snapshots[0].at(-1)?.attentionItems[0];
+    if (!item) throw new Error("Expected an attention item.");
+    expect(item).toMatchObject({
+      kind: "permission",
+      workItem: "first",
+      ticket: 1,
+      stintId: stint.id,
+      agent: "codex",
+      options: permission.options,
+    });
+    expect(item.details).toContain(command);
+    expect(item.details).toContain("/full/path/to/file.ts");
+    expect(snapshots[1].at(-1)?.attentionItems[0]).toEqual(item);
+    expect(snapshots[0].at(-1)?.agents).toContainEqual(
+      expect.objectContaining({
+        id: "codex",
+        capabilities: expect.objectContaining({ declineEndsTurn: true }),
+      }),
+    );
+    const response = await fetch(
+      `${url}/api/stints/${item.stintId}/permissions/${item.requestId}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId: "allow_once" }),
+      },
+    );
+    expect(response.status).toBe(200);
+    expect(await decisions(root, stint.id, item.requestId)).toMatchObject([
+      { event: { decision: { outcome: "selected", optionId: "allow_once" } } },
+    ]);
+    await expect
+      .poll(async () =>
+        (await history(project, stint.id)).events.some(
+          (event) => event.type === "message" && event.text === "Queue answer received",
+        ),
+      )
+      .toBe(true);
+    await expect
+      .poll(() => snapshots.every((messages) => messages.at(-1)?.attentionItems.length === 0))
+      .toBe(true);
+    expect((await history(project, stint.id)).status).toBe("running");
+  } finally {
+    tabs[1].terminate();
+  }
+});
+
+test("restart rebuilds the queue from logs and never reoffers permissions from interrupted stints", async () => {
+  const { root, project } = await fixture(createFakeAgentLauncher([permission]));
+  const stint = await start(project);
+  const requestId = await pending(project, stint.id);
+  const before: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(before.attentionItems).toMatchObject([{ stintId: stint.id, requestId }]);
+  await project.stop();
+  const restarted = createProjectServer(root, join(root, "web"));
+  try {
+    const after: ProjectSnapshot = await (await restarted.app.request("/api/project")).json();
+    expect(after.attentionItems).toEqual([]);
+    expect(after.workItems[0].stints[0].status).toBe("interrupted");
+    expect(
+      (
+        await post(restarted.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
+          optionId: "allow_once",
+        })
+      ).status,
+    ).toBe(409);
+  } finally {
+    await restarted.stop();
+  }
+});
+
 test("twenty answers each log exactly one decision before success and reach the fake ACP agent", async () => {
   const { root, project } = await fixture(createFakeAgentLauncher(script));
   const stint = await start(project);
@@ -232,6 +344,7 @@ test("ending a waiting stint removes its pending request and rejects late and un
   expect(await answer.json()).toMatchObject({ reason: expect.stringContaining("stint has ended") });
   const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
   expect(snapshot.workItems[0].activeStint).toBeNull();
+  expect(snapshot.attentionItems).toEqual([]);
   expect((await history(project, stint.id)).events).toContainEqual(
     expect.objectContaining({ type: "permission", requestId, decision: { outcome: "cancelled" } }),
   );

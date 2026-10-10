@@ -1,6 +1,6 @@
-import type { Stint, StintEvent, StintToolContent } from "@stintwork/core";
+import type { AgentProfile, Stint, StintEvent, StintToolContent } from "@stintwork/core";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
-import { useState } from "react";
+import { PermissionAnswer } from "./PermissionAnswer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./stint-stream.css";
@@ -17,44 +17,17 @@ function PermissionPrompt({
   stint,
   event,
   replay,
+  profile,
 }: {
   stint: Stint;
   event: Extract<StintEvent, { type: "permission_request" }>;
   replay: boolean;
+  profile?: AgentProfile;
 }) {
-  const [sending, setSending] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState("");
   const decision = stint.events.find(
     (entry) => entry.type === "permission" && entry.requestId === event.requestId,
   );
   const pending = !replay && !decision && stint.status === "running";
-
-  async function answer(optionId: string) {
-    setSending(true);
-    setError("");
-    try {
-      const response = await fetch(
-        `/api/stints/${encodeURIComponent(stint.id)}/permissions/${encodeURIComponent(event.requestId)}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ optionId }),
-        },
-      );
-      if (!response.ok) {
-        const body = await response.json();
-        throw new Error(
-          typeof body.reason === "string" ? body.reason : "Could not answer permission request.",
-        );
-      }
-      setSubmitted(true);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not answer permission request.");
-    } finally {
-      setSending(false);
-    }
-  }
 
   let outcome =
     replay && stint.status === "running"
@@ -80,32 +53,7 @@ function PermissionPrompt({
       {pending ? (
         <>
           <p>The stint waits for your answer, even when this drawer is closed.</p>
-          {stint.agent === "codex" && <p className="warning">Declining ends Codex’s turn.</p>}
-          <div className="stint-permission-actions">
-            {event.options.map((option) => (
-              <button
-                type="button"
-                key={option.optionId}
-                disabled={sending || submitted}
-                onClick={() => void answer(option.optionId)}
-              >
-                <strong>
-                  {option.kind === "allow_once"
-                    ? "Allow once"
-                    : option.kind === "allow_always"
-                      ? "Allow always"
-                      : "Deny"}
-                </strong>
-                <span>{option.name}</span>
-              </button>
-            ))}
-          </div>
-          {submitted && <p role="status">Answer sent.</p>}
-          {error && (
-            <p role="alert" className="warning">
-              {error}
-            </p>
-          )}
+          <PermissionAnswer stintId={stint.id} request={event} profile={profile} />
         </>
       ) : (
         <p role="status">{outcome}</p>
@@ -114,7 +62,15 @@ function PermissionPrompt({
   );
 }
 
-export function StintStream({ stint, replay = false }: { stint: Stint; replay?: boolean }) {
+export function StintStream({
+  stint,
+  replay = false,
+  profile,
+}: {
+  stint: Stint;
+  replay?: boolean;
+  profile?: AgentProfile;
+}) {
   const waitingForPermission = stint.events.some(
     (event) =>
       event.type === "permission_request" &&
@@ -229,7 +185,7 @@ export function StintStream({ stint, replay = false }: { stint: Stint; replay?: 
                 </div>
               )}
               {event.type === "permission_request" && (
-                <PermissionPrompt stint={stint} event={event} replay={replay} />
+                <PermissionPrompt stint={stint} event={event} replay={replay} profile={profile} />
               )}
               {event.type === "permission" && (
                 <p>
