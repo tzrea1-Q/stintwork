@@ -2,6 +2,14 @@ export type Health = {
   ok: true;
   repo: string;
 };
+export {
+  isFindingContent,
+  isReviewFindings,
+  type FindingAxis,
+  type FindingSeverity,
+  type ReviewFinding,
+  type ReviewFindings,
+} from "./findings.js";
 export type {
   AgentAvailability,
   AgentCapabilityProfile,

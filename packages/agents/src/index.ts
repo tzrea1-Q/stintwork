@@ -12,6 +12,7 @@ import {
   type AgentProfile,
   type StintEvent,
   type StintLogEvent,
+  type ReviewFinding,
 } from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
@@ -40,6 +41,7 @@ export { createGrokAgent } from "./grok.js";
 export { grokProfile } from "./profiles.js";
 export type { AfterTurnRequest } from "./after-turn.js";
 export { handoffRequest } from "./handoff.js";
+export { findingsFormat, findingsRequest, parseFindings } from "./findings.js";
 
 export type AgentStintOptions = {
   permissionLevel?: PermissionLevel;
@@ -62,6 +64,9 @@ export type AgentStint = {
     stopReason: string;
     handoff?: AgentHandoff | null;
     handoffError?: string;
+    findings?: Omit<ReviewFinding, "id">[] | null;
+    findingsError?: string;
+    findingsRawReply?: string;
     [field: string]: unknown;
   }>;
   cancel: () => Promise<void>;

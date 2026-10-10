@@ -9,6 +9,8 @@ import {
   createAgentRegistry,
   AgentAuthenticationError,
   refreshAgentAvailability,
+  handoffRequest,
+  findingsRequest,
 } from "@stintwork/agents";
 import {
   foldStintLog,
@@ -16,6 +18,7 @@ import {
   agentUnavailableReason,
   builtInWorkflows,
   type BriefHandoff,
+  type ReviewFindings,
   type StintLiveMessage,
   type StintLogEntry,
 } from "@stintwork/core";
@@ -215,7 +218,7 @@ export function addStintRoutes(
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
       const { stage } = prepared;
-      const brief = { ...prepared.brief, agent: agent.id };
+      let brief = { ...prepared.brief, agent: agent.id };
       const id = randomUUID();
       state.id = id;
       const logs = prepareLogs(root);
@@ -250,6 +253,19 @@ export function addStintRoutes(
         cwd: worktree.path,
         encoding: "utf8",
       }).trim();
+      if (stage.id === "review" && !setupFailed) {
+        const review = await prepareStintBrief(
+          readProjectFiles,
+          workItem.slug,
+          ticket?.number ?? null,
+          root,
+          registry,
+          agent.id,
+          brief.permissionLevel,
+        );
+        if ("reason" in review) throw new Error(review.reason);
+        brief = { ...review.brief, agent: agent.id };
+      }
       const path = join(logs.directory, `${id}.jsonl`);
       const started: StintLogEntry = {
         type: "started",
@@ -287,6 +303,7 @@ export function addStintRoutes(
           error?: string;
           handoff?: BriefHandoff | null;
           handoffError?: string;
+          findings?: ReviewFindings;
         } = {},
       ) {
         state.ending = true;
@@ -309,6 +326,12 @@ export function addStintRoutes(
             .join("\n");
         }
         activeStintIds.delete(id);
+        if (stage.id === "review" && !details.findings)
+          details.findings = {
+            commit: baseCommit,
+            findings: null,
+            error: "The Review stint ended before findings were collected.",
+          };
         append({
           type: "ended",
           at: new Date().toISOString(),
@@ -347,6 +370,9 @@ export function addStintRoutes(
           prompt: brief.prompt,
           permissionLevel: brief.permissionLevel,
           handoffTimeoutMs,
+          ...(stage.id === "review"
+            ? { afterTurnRequests: [handoffRequest, findingsRequest] }
+            : {}),
           onEvent: (event) => {
             append({ type: "event", at: new Date().toISOString(), event });
             if (event.type === "permission_request" || event.type === "permission") refresh();
@@ -358,7 +384,7 @@ export function addStintRoutes(
         });
         state.completion = state.handle.done
           .then(
-            ({ stopReason, handoff, handoffError }) =>
+            ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) =>
               end(
                 closing
                   ? "interrupted"
@@ -371,6 +397,22 @@ export function addStintRoutes(
                   stopReason,
                   handoff: handoff ? { ...handoff, stint: id, agent: agent.id } : null,
                   ...(handoffError ? { handoffError } : {}),
+                  ...(stage.id === "review"
+                    ? {
+                        findings: {
+                          commit: baseCommit,
+                          findings:
+                            findings?.map((finding, index) => ({
+                              ...finding,
+                              id: `${id}:${index + 1}`,
+                            })) ?? null,
+                          ...(findings == null
+                            ? { error: findingsError ?? "The findings request did not complete." }
+                            : {}),
+                          ...(findingsRawReply === undefined ? {} : { rawReply: findingsRawReply }),
+                        },
+                      }
+                    : {}),
                   ...(!state.stopRequested &&
                   stopReason !== "end_turn" &&
                   stopReason !== "cancelled"

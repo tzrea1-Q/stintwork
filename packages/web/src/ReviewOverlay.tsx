@@ -1,12 +1,16 @@
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
+import type { ReviewDecision, StintSummary } from "@stintwork/core";
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import "./review-overlay.css";
 
 type ReviewSlots = {
   findings?: ReactNode;
   checks?: ReactNode;
   lineFindings?: (file: DiffFile, line: DiffLine, headCommit: string) => ReactNode;
+  fileFindings?: (file: DiffFile) => ReactNode;
+  outsideDiff?: { path: string; content: ReactNode }[];
 };
 
 function Counts({ file }: { file: DiffFile }) {
@@ -33,9 +37,11 @@ function Counts({ file }: { file: DiffFile }) {
 export function ReviewDiff({
   diff,
   lineFindings,
-}: { diff: WorkItemDiff } & Pick<ReviewSlots, "lineFindings">) {
+  fileFindings,
+  outsideDiff = [],
+}: { diff: WorkItemDiff } & Pick<ReviewSlots, "lineFindings" | "fileFindings" | "outsideDiff">) {
   const id = useId();
-  if (!diff.files.length)
+  if (!diff.files.length && !outsideDiff.length)
     return (
       <p className="review-empty" role="status">
         No changes between the merge base and the branch head.
@@ -57,6 +63,14 @@ export function ReviewDiff({
               </a>
             </li>
           ))}
+          {outsideDiff.map((file, index) => (
+            <li key={file.path}>
+              <a href={`#${id}-outside-${index}`}>
+                <code>{file.path}</code>
+                <small>Outside the diff</small>
+              </a>
+            </li>
+          ))}
         </ul>
       </nav>
       <section className="review-diff" aria-label="Work item diff">
@@ -69,6 +83,7 @@ export function ReviewDiff({
               <span className="muted">{file.status}</span>
               <Counts file={file} />
             </header>
+            {fileFindings?.(file)}
             {file.status === "renamed" && (
               <p className="review-file-note">Renamed file — content not shown.</p>
             )}
@@ -126,6 +141,17 @@ export function ReviewDiff({
             ))}
           </section>
         ))}
+        {outsideDiff.map((file, index) => (
+          <section key={file.path} id={`${id}-outside-${index}`} data-diff-path={file.path}>
+            <header className="review-file-header">
+              <h3>
+                <code>{file.path}</code>
+              </h3>
+              <span>Outside the diff</span>
+            </header>
+            {file.content}
+          </section>
+        ))}
       </section>
     </>
   );
@@ -137,16 +163,60 @@ export function ReviewOverlay({
   findings,
   checks,
   lineFindings,
+  fileFindings,
+  outsideDiff,
 }: {
-  item: { slug: string; title: string };
+  item: {
+    slug: string;
+    title: string;
+    stints?: StintSummary[];
+    reviewDecisions?: ReviewDecision[];
+  };
   onClose: () => void;
 } & ReviewSlots) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
+  const findingId = useId();
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
   const [error, setError] = useState("");
   const request = useRef<AbortController | null>(null);
+  const evidence = reviewFindings(item.stints, item.reviewDecisions);
+  const anchor = (finding: { id: string }) => `${findingId}-${finding.id}`;
+  const cards = (path: string, line?: number) => {
+    const matches = evidence.findings.filter(
+      (finding) => finding.path === path && (line === undefined || finding.line === line),
+    );
+    return matches.length
+      ? matches.map((finding) => (
+          <FindingCard
+            key={finding.id}
+            finding={finding}
+            anchor={anchor(finding)}
+            headCommit={diff?.headCommit}
+          />
+        ))
+      : null;
+  };
+  const outOfDiff = (file: DiffFile) => {
+    const lines = new Set(file.hunks.flatMap((hunk) => hunk.lines.map((line) => line.newLine)));
+    const matches = evidence.findings.filter(
+      (finding) => finding.path === file.path && !lines.has(finding.line),
+    );
+    return matches.length ? (
+      <section className="review-outside" aria-label={`${file.path} findings outside the diff`}>
+        <h4>Findings outside the diff</h4>
+        {matches.map((finding) => (
+          <FindingCard
+            key={finding.id}
+            finding={finding}
+            anchor={anchor(finding)}
+            headCommit={diff?.headCommit}
+          />
+        ))}
+      </section>
+    ) : null;
+  };
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -243,7 +313,31 @@ export function ReviewOverlay({
             {error}
           </p>
         ) : diff ? (
-          <ReviewDiff diff={diff} lineFindings={lineFindings} />
+          <ReviewDiff
+            diff={diff}
+            lineFindings={(file, line, head) => {
+              const pinned = line.newLine === null ? null : cards(file.path, line.newLine);
+              const supplied = lineFindings?.(file, line, head);
+              return pinned || supplied ? (
+                <>
+                  {pinned}
+                  {supplied}
+                </>
+              ) : null;
+            }}
+            fileFindings={(file) => (
+              <>
+                {outOfDiff(file)}
+                {fileFindings?.(file)}
+              </>
+            )}
+            outsideDiff={
+              outsideDiff ??
+              [...new Set(evidence.findings.map((finding) => finding.path))]
+                .filter((path) => !diff.files.some((file) => file.path === path))
+                .map((path) => ({ path, content: cards(path) }))
+            }
+          />
         ) : (
           <p role="status" className="review-empty muted">
             Reading the work item diff…
@@ -253,9 +347,7 @@ export function ReviewOverlay({
           <section aria-label="Findings">
             <h3>Findings</h3>
             {findings ?? (
-              <p className="muted">
-                Review findings will appear here, with line findings pinned in the diff.
-              </p>
+              <FindingsRail {...evidence} anchor={anchor} headCommit={diff?.headCommit} />
             )}
           </section>
           <section aria-label="Checks">

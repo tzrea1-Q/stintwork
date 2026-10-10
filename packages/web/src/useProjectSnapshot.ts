@@ -4,6 +4,7 @@ import {
   isStintLogEntry,
   isStintEvent,
   isBriefHandoff,
+  isReviewFindings,
   summarizeStint,
   deriveAttentionItems,
   type ProjectSnapshot,
@@ -29,6 +30,7 @@ function isStintSummary(value: unknown) {
     (value.error === undefined || typeof value.error === "string") &&
     (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&
     (value.handoff == null || isBriefHandoff(value.handoff)) &&
+    (value.findings === undefined || isReviewFindings(value.findings)) &&
     (value.handoffAnswer === undefined ||
       (isRecord(value.handoffAnswer) &&
         typeof value.handoffAnswer.at === "string" &&

@@ -91,6 +91,43 @@
   white-space: nowrap;
   font-family: monospace;
 }
+.review-finding,
+.review-outside {
+  margin: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow-wrap: anywhere;
+}
+.review-finding h4,
+.review-finding p {
+  margin: 6px 0;
+}
+.review-finding-body,
+.review-finding pre {
+  white-space: pre-wrap;
+}
+.review-filters,
+.review-filters label {
+  display: grid;
+  gap: 6px;
+}
+.review-filters {
+  margin-bottom: 12px;
+}
+.review-findings-rail {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.review-findings-rail li {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+.review-findings-rail a {
+  color: var(--text);
+}
 .review-removed-count {
   color: #e36d78;
 }

@@ -141,7 +141,7 @@ test("the overlay fetches the work item diff, labels the exact commits and reser
     expect.objectContaining({ signal: expect.any(AbortSignal) }),
   );
   expect(screen.getByRole("region", { name: "Findings" })).toHaveTextContent(
-    "Review findings will appear here",
+    "No review findings recorded yet.",
   );
   expect(screen.getByRole("region", { name: "Checks" })).toHaveTextContent(
     "Commit-scoped checks will appear here",
