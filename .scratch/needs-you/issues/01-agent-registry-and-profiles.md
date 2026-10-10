@@ -1,6 +1,6 @@
 # 01 — Agent registry and capability profiles
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build

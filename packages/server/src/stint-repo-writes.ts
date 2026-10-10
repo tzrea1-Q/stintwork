@@ -22,6 +22,7 @@ export function writeFirstStintWorkflow(
   root: string,
   workItem: Pick<StagedWorkItem, "slug" | "workflow">,
   stage: StageId,
+  agent: string,
 ): boolean {
   let directory = root;
   for (const part of [".scratch", workItem.slug]) {
@@ -37,7 +38,7 @@ export function writeFirstStintWorkflow(
       throw new Error("workflow.yaml must be a regular file.");
   }
   const existing = stat ? readFileSync(path, "utf8") : undefined;
-  const workflow = firstStintWorkflow(existing, workItem.workflow, stage);
+  const workflow = firstStintWorkflow(existing, workItem.workflow, stage, agent);
   if (workflow === existing) return false;
   writeFileSync(path, workflow, { flag: stat ? "w" : "wx" });
   return true;

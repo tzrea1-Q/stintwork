@@ -2,7 +2,12 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type AgentLauncher, type AgentStint, startAgentStint } from "@stintwork/agents";
+import {
+  type AgentLauncher,
+  type AgentRegistry,
+  type AgentStint,
+  createAgentRegistry,
+} from "@stintwork/agents";
 import {
   foldStintLog,
   type BriefHandoff,
@@ -23,7 +28,11 @@ import type { ProjectFilesReader } from "./work-item-files.js";
 import { activeStintIds } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 
-export type StintServerOptions = { launchAgent?: AgentLauncher; handoffTimeoutMs?: number };
+export type StintServerOptions = {
+  launchAgent?: AgentLauncher;
+  agentRegistry?: AgentRegistry;
+  handoffTimeoutMs?: number;
+};
 
 type ActiveStint = {
   id?: string;
@@ -55,6 +64,7 @@ export function addStintRoutes(
   broadcast: (message: StintLiveMessage) => void,
   refresh: () => void,
 ) {
+  const registry = options.agentRegistry ?? createAgentRegistry();
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
   if (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)
     throw new Error("Handoff timeout must be a non-negative number of milliseconds.");
@@ -99,10 +109,15 @@ export function addStintRoutes(
       !("ticket" in body) ||
       !Number.isSafeInteger(body.ticket) ||
       !("agent" in body) ||
-      body.agent !== "codex"
+      typeof body.agent !== "string"
     ) {
-      return context.json({ reason: "Choose a work item, ticket number and Codex." }, 400);
+      return context.json(
+        { reason: "Choose a work item, ticket number and registered agent." },
+        400,
+      );
     }
+    const agent = registry.get(body.agent);
+    if (!agent) return context.json({ reason: `Agent is not registered: ${body.agent}.` }, 400);
     if (closing) return context.json({ reason: "The project server is stopping." }, 503);
     const result = await prepareStintBrief(
       readProjectFiles,
@@ -146,10 +161,13 @@ export function addStintRoutes(
           setupFiles.push(".gitignore");
           setupMessages.push("Added .stintwork/local/ to the worktree's .gitignore.\n");
         }
-        if (!workItem.stints.length && writeFirstStintWorkflow(worktree.path, workItem, stage.id)) {
+        if (
+          !workItem.stints.length &&
+          writeFirstStintWorkflow(worktree.path, workItem, stage.id, agent.id)
+        ) {
           setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
           setupMessages.push(
-            "Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n",
+            `Wrote workflow.yaml with the workflow, stage and ${agent.displayName} for this stage.\n`,
           );
         }
         await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
@@ -170,7 +188,7 @@ export function addStintRoutes(
           workItem: workItem.slug,
           stage: stage.id,
           ticket: ticket.number,
-          agent: "codex",
+          agent: agent.id,
           worktree,
           baseCommit,
           brief,
@@ -249,10 +267,12 @@ export function addStintRoutes(
           state.setupCancellation?.signal,
         );
         if (closing) throw new Error("The project server is stopping.");
-        state.handle = (options.launchAgent ?? startAgentStint)({
-          agent: "codex",
+        state.handle = (options.launchAgent ?? agent.launch)({
+          agent: agent.id,
           cwd: worktree.path,
-          additionalDirectories: await worktreeGitDirectories(worktree.path),
+          ...(agent.capabilities.additionalDirectories
+            ? { additionalDirectories: await worktreeGitDirectories(worktree.path) }
+            : {}),
           prompt: brief.prompt,
           handoffTimeoutMs,
           onEvent: (event) => {
@@ -279,7 +299,7 @@ export function addStintRoutes(
                       : "failed",
                 {
                   stopReason,
-                  handoff: handoff ? { ...handoff, stint: id, agent: "codex" } : null,
+                  handoff: handoff ? { ...handoff, stint: id, agent: agent.id } : null,
                   ...(handoffError ? { handoffError } : {}),
                   ...(!state.stopRequested &&
                   stopReason !== "end_turn" &&
