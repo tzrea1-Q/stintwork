@@ -203,21 +203,22 @@ test("a crashed work turn ends failed but still checkpoints its edits and record
   );
 });
 
-test("a different ticket's brief cannot inherit this ticket's handoff", async () => {
+test("a ticket's first brief resumes from the work item's last stint", async () => {
   const { project } = await fixture();
   const first = await start(project);
-  await ended(project, first.id);
+  const finished = await ended(project, first.id);
   await writeFile(
     join(first.worktree.path, ".scratch/first/issues/05-other.md"),
     "# Other\nStatus: ready-for-agent\nBlocked by: none",
   );
   const response = await project.app.request("/api/work-items/first/tickets/5/brief-preview");
   expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({
-    lastHandoff: null,
-    checkpointCommit: null,
-    changedPaths: [],
+  const brief = await response.json();
+  expect(brief).toMatchObject({
+    lastHandoff: { stint: first.id },
+    checkpointCommit: finished.checkpointCommit,
   });
+  expect(brief.changedPaths).toContain(".scratch/first/issues/05-other.md");
 });
 
 test("checkpoint errors remain visible and do not report an unrecorded state as a checkpoint", async () => {

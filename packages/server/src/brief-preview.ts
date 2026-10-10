@@ -43,9 +43,10 @@ export async function prepareStintBrief(
     (candidate) => candidate.id === workItem.stage,
   );
   if (!stage) return { reason: "Stage not found.", status: 409 as const };
-  const previous = workItem.stints.find(
-    (stint) => stint.ticket === number && stint.status !== "running",
-  );
+  // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
+  // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
+  const ended = workItem.stints.filter((stint) => stint.status !== "running");
+  const previous = ended.find((stint) => stint.ticket === number) ?? ended[0];
   const checkpointCommit = previous?.checkpointCommit ?? null;
   let changedPaths: string[] = [];
   try {
