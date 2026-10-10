@@ -50,6 +50,7 @@ export async function commitStintworkSetup(
     ...files,
   ]);
   if (!changed) return null;
+  await git(["add", "--", ...files]);
   await commitWithIdentity(git, [
     "--only",
     "-m",
