@@ -3,6 +3,7 @@ import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { HandoffAnswer } from "./HandoffAnswer";
+import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
 import type { useAttentionAlerts } from "./useAttentionAlerts";
 import "./needs-you.css";
@@ -125,7 +126,9 @@ export function NeedsYouQueue({
                   ? "Permission"
                   : item.kind === "handoff-unresolved"
                     ? "Handoff"
-                    : "Gate ready"}
+                    : item.kind === "memory-proposal"
+                      ? "Memory proposal"
+                      : "Gate ready"}
                 {item.agent && ` · ${profile?.displayName ?? item.agent}`}
               </p>
               <h3>{item.title}</h3>
@@ -165,6 +168,12 @@ export function NeedsYouQueue({
               )}
               {item.kind === "handoff-unresolved" && (
                 <HandoffAnswer
+                  item={item}
+                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                />
+              )}
+              {item.kind === "memory-proposal" && (
+                <MemoryProposal
                   item={item}
                   onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
                 />

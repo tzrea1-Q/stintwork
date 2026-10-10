@@ -3,6 +3,7 @@ import type { StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
 import type { StageId } from "./workflows.js";
 import { deriveGateAttentionItems } from "./gates.js";
+import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 
 export type AttentionItemSource = {
   id: string;
@@ -49,6 +50,7 @@ export type AttentionItem =
   | PermissionAttentionItem
   | HandoffUnresolvedAttentionItem
   | GateAttentionItem
+  | MemoryProposalAttentionItem
   | LoginRequiredAttentionItem;
 
 export function deriveAttentionItems(
@@ -92,7 +94,8 @@ export function deriveAttentionItems(
         raisedAt: stint.endedAt ?? stint.startedAt,
       }));
     const stint = item.activeStint;
-    if (stint?.status !== "running") return handoffs;
+    const proposals = item.memoryProposals ?? [];
+    if (stint?.status !== "running") return [...handoffs, ...proposals];
     const answered = new Set(
       stint.events.flatMap((event) =>
         event.type === "permission" && event.requestId ? [event.requestId] : [],
@@ -105,6 +108,7 @@ export function deriveAttentionItems(
     );
     return [
       ...handoffs,
+      ...proposals,
       ...[...requests.values()]
         .filter((request) => !request.automatic && !answered.has(request.requestId))
         .map(

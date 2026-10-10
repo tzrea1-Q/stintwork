@@ -35,6 +35,7 @@ import { activeStintIds } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 import { addGateRoutes } from "./gates.js";
+import { addMemoryProposalRoutes } from "./memory-proposals.js";
 
 export type StintServerOptions = {
   launchAgent?: AgentLauncher;
@@ -88,6 +89,14 @@ export function addStintRoutes(
     workflowWrites,
   );
   addGateRoutes(app, readProjectFiles, root, refresh, (slug) => active.has(slug), workflowWrites);
+  addMemoryProposalRoutes(
+    app,
+    root,
+    readProjectFiles,
+    refresh,
+    (slug) => active.has(slug),
+    workflowWrites,
+  );
   const permissions = addStintPermissionRoute(app);
   let closing = false;
   app.post("/api/stints/:stintId/stop", async (context) => {

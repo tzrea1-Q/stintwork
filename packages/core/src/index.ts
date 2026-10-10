@@ -8,6 +8,16 @@ export type {
   AgentPermissionOption,
   AgentProfile,
 } from "./agents.js";
+export {
+  deriveMemoryProposals,
+  isProjectMemoryPath,
+  type MemoryProposalAttentionItem,
+} from "./memory-proposals.js";
+export {
+  parseReviewDecisions,
+  recordReviewDecision,
+  type ReviewDecision,
+} from "./review-decisions.js";
 export { agentUnavailableReason } from "./agents.js";
 export {
   defaultPermissionLevel,
