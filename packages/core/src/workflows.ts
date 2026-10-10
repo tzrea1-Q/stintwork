@@ -11,6 +11,7 @@ export type WorkflowStage = {
 export type WorkflowDefinition = {
   id: WorkflowId;
   name: string;
+  defaultAgent: string;
   stages: readonly WorkflowStage[];
 };
 
@@ -18,6 +19,7 @@ export const builtInWorkflows = {
   feature: {
     id: "feature",
     name: "Feature",
+    defaultAgent: "codex",
     stages: [
       { id: "clarify", name: "Clarify", column: "clarify", skill: "/grill-with-docs" },
       { id: "spec", name: "Spec", column: "spec", skill: "/to-spec" },
@@ -30,6 +32,7 @@ export const builtInWorkflows = {
   bug: {
     id: "bug",
     name: "Bug",
+    defaultAgent: "codex",
     stages: [
       { id: "diagnose", name: "Diagnose", column: "clarify", skill: "/diagnosing-bugs" },
       { id: "fix", name: "Fix", column: "implement", skill: "/tdd" },
@@ -40,6 +43,7 @@ export const builtInWorkflows = {
   quick: {
     id: "quick",
     name: "Quick",
+    defaultAgent: "codex",
     stages: [
       { id: "do", name: "Do", column: "implement", skill: null },
       { id: "review", name: "Review", column: "review", skill: "/code-review" },

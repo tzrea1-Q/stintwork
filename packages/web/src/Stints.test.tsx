@@ -48,6 +48,7 @@ test("the picker renders registry names and posts the selected registered agent 
     "fetch",
     vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
       .mockResolvedValueOnce(
         new Response(
@@ -83,6 +84,7 @@ test("an empty registry explains why starting a stint is unavailable", async () 
     "fetch",
     vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
       .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] }))),
   );
@@ -98,6 +100,7 @@ test("a failed registry lookup refuses to fall back to a hardcoded agent", async
     "fetch",
     vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ reason: "Agent registry unavailable." }), { status: 503 }),
@@ -116,6 +119,7 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
     "fetch",
     vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ agents: [{ id: "codex", displayName: "Codex" }] })),
@@ -203,6 +207,7 @@ test("a rejected start retains the copyable brief and displays the reason", asyn
     "fetch",
     vi
       .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] })))
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ agents: [{ id: "codex", displayName: "Codex" }] })),

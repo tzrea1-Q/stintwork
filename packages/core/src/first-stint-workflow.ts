@@ -1,11 +1,11 @@
 import { parseDocument } from "yaml";
-import type { StageId, WorkflowId } from "./workflows.js";
+import { builtInWorkflows, type StageId, type WorkflowId } from "./workflows.js";
 
 export function firstStintWorkflow(
   text: string | undefined,
   workflow: WorkflowId,
   stage: StageId,
-  agent = "codex",
+  agent: string = builtInWorkflows[workflow].defaultAgent,
 ): string {
   const document = parseDocument(text ?? "");
   if (document.errors.length || document.warnings.length)

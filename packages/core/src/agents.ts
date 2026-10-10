@@ -19,4 +19,12 @@ export type AgentProfile = {
   displayName: string;
   capabilities: AgentCapabilityProfile;
   installationHint: string;
+  availability?: { available: boolean; reason?: string };
 };
+
+export function agentUnavailableReason(agent: AgentProfile): string | null {
+  return agent.availability?.available === false
+    ? agent.availability.reason?.trim() ||
+        `${agent.displayName} is unavailable. ${agent.capabilities.authenticationRequired.loginCommand}`
+    : null;
+}

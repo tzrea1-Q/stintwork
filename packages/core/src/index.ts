@@ -3,6 +3,8 @@ export type Health = {
   repo: string;
 };
 export type { AgentCapabilityProfile, AgentPermissionOption, AgentProfile } from "./agents.js";
+export { agentUnavailableReason } from "./agents.js";
+export { stageAgent, workflowStageAgent } from "./stage-agent.js";
 export type {
   RichStintEvent,
   StintToolContent,

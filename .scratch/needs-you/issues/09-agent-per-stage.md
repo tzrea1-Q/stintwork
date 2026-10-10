@@ -1,6 +1,6 @@
 # 09 — Agent per stage
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build

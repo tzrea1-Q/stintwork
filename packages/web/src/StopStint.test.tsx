@@ -40,7 +40,13 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
   const user = userEvent.setup();
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(new Response(JSON.stringify({ stintId: stint.id }), { status: 202 })),
+    vi.fn(
+      async (url: string) =>
+        new Response(
+          JSON.stringify(url === "/api/agents" ? { agents: [] } : { stintId: stint.id }),
+          { status: url === "/api/agents" ? 200 : 202 },
+        ),
+    ),
   );
   const { rerender } = render(
     <WorkItemDrawer
@@ -52,7 +58,7 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
   expect(fetch).toHaveBeenCalledWith("/api/stints/first/stop", { method: "POST" });
   expect(screen.getByRole("button", { name: "Stopping stint…" })).toBeDisabled();
   await user.click(screen.getByRole("button", { name: "Stopping stint…" }));
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledTimes(2);
   const stopped = applyStintLogEntry(stint, {
     type: "ended",
     at: "2026-10-09T10:01:00Z",

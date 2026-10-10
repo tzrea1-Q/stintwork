@@ -1,5 +1,6 @@
 import {
   type AgentProfile,
+  agentUnavailableReason,
   type Brief,
   briefUnavailableReason,
   type Ticket,
@@ -72,6 +73,10 @@ function BriefPreviewSheet({
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
+  const selectedAgent = agents.find(({ id }) => id === agent);
+  const unavailable = selectedAgent
+    ? agentUnavailableReason(selectedAgent)
+    : "Agent is not registered.";
 
   useEffect(() => {
     const element = dialog.current;
@@ -104,7 +109,7 @@ function BriefPreviewSheet({
         if (!request.signal.aborted) {
           setBrief(preview);
           setAgents(registry.agents);
-          setAgent(registry.agents[0]?.id ?? "");
+          setAgent(preview.agent ?? registry.agents[0]?.id ?? "");
         }
       } catch (cause) {
         if (!request.signal.aborted) {
@@ -127,7 +132,7 @@ function BriefPreviewSheet({
   }
 
   async function start() {
-    if (!brief || !agent || starting) return;
+    if (!brief || !agent || starting || unavailable) return;
     setStarting(true);
     setStartError("");
     try {
@@ -196,17 +201,26 @@ function BriefPreviewSheet({
               aria-describedby={agentAvailabilityId}
               disabled={!agents.length || starting}
             >
-              {agents.map(({ id, displayName }) => (
-                <option key={id} value={id}>
-                  {displayName}
+              {agent && !selectedAgent && (
+                <option value={agent} disabled>
+                  {agent} — Not registered
                 </option>
-              ))}
+              )}
+              {agents.map((candidate) => {
+                const reason = agentUnavailableReason(candidate);
+                return (
+                  <option key={candidate.id} value={candidate.id} disabled={!!reason}>
+                    {candidate.displayName}
+                    {reason ? ` — ${reason}` : ""}
+                  </option>
+                );
+              })}
             </select>
           </label>
           <p id={agentAvailabilityId} className="muted">
             {brief
               ? agents.length
-                ? "Choose an agent for this stint."
+                ? (unavailable ?? "Choose an agent for this stint.")
                 : "No agents are registered."
               : "Reading registered agents…"}
           </p>
@@ -298,7 +312,7 @@ function BriefPreviewSheet({
         <button
           type="button"
           className="top-button"
-          disabled={!brief || !agent || starting || !!error}
+          disabled={!brief || !agent || starting || !!error || !!unavailable}
           onClick={() => void start()}
         >
           {starting ? "Starting…" : "Start"}

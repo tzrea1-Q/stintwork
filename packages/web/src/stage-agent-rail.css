@@ -1,0 +1,16 @@
+.stage-rail li {
+  min-width: 120px;
+}
+.stage-rail select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-raised);
+  color: var(--text);
+}
+.stage-rail select:disabled {
+  opacity: 0.6;
+}

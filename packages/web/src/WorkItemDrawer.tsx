@@ -8,6 +8,7 @@ import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
 import { StintHistory } from "./StintHistory";
 import type { BoardWorkItem } from "./WorkItemCard";
+import { StageAgentRail } from "./StageAgentRail";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -112,14 +113,7 @@ export function WorkItemDrawer({
         )}
       </header>
       {item.stage ? (
-        <ol className="stage-rail" aria-label={`${workflow.name} workflow stages`}>
-          {workflow.stages.map((stage) => (
-            <li key={stage.id} aria-current={stage.id === item.stage ? "step" : undefined}>
-              <span>{stage.name}</span>
-              {stage.id === item.stage && item.inferred && <small>Inferred</small>}
-            </li>
-          ))}
-        </ol>
+        <StageAgentRail key={item.slug} item={item} />
       ) : (
         <p className="drawer-stage-note muted">No stage declared for this work item.</p>
       )}

@@ -127,11 +127,11 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
     "/api/agents",
     expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
   );
-  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(fetch).toHaveBeenCalledTimes(3);
 });
 
 test("blocked and resolved tickets show disabled reasons, and non-implementation stages cannot start", () => {
-  const fetch = vi.fn();
+  const fetch = previewFetch();
   vi.stubGlobal("fetch", fetch);
   const { rerender } = render(
     <WorkItemDrawer
@@ -158,7 +158,7 @@ test("blocked and resolved tickets show disabled reasons, and non-implementation
   expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(
     "Stints are available only in Implement, Fix or Do.",
   );
-  expect(fetch).not.toHaveBeenCalled();
+  expect(fetch.mock.calls.every(([url]) => url === "/api/agents")).toBe(true);
 });
 
 test("Escape closes only the preview and returns focus to Start stint", async () => {
@@ -183,13 +183,16 @@ test("load failures display the server reason without enabling Start", async () 
     "fetch",
     vi
       .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ reason: "Blocked by ticket 01." }), { status: 409 }),
+      .mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ reason: "Blocked by ticket 01." }), { status: 409 }),
       ),
   );
   render(<WorkItemDrawer item={item} onClose={vi.fn()} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent("Blocked by ticket 01.");
+  expect(
+    await within(screen.getByRole("dialog", { name: "Brief preview" })).findByRole("alert"),
+  ).toHaveTextContent("Blocked by ticket 01.");
   expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Copy prompt" })).not.toBeInTheDocument();
 });
@@ -203,8 +206,8 @@ test("closing during loading cancels the preview request, and a live resolved ti
   expect(
     within(screen.getByRole("dialog", { name: "Brief preview" })).getByRole("status"),
   ).toHaveTextContent("Reading the brief…");
-  const signal: AbortSignal = fetch.mock.calls[0][1].signal;
-  expect(fetch.mock.calls[1][1].signal).toBe(signal);
+  const signal: AbortSignal = fetch.mock.calls[1][1].signal;
+  expect(fetch.mock.calls[2][1].signal).toBe(signal);
   fireEvent.click(screen.getByRole("button", { name: "Close brief preview" }));
   expect(signal.aborted).toBe(true);
   await user.click(screen.getByRole("button", { name: "Start stint" }));

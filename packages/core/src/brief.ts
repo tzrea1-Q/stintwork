@@ -11,6 +11,7 @@ export type BriefHandoff = {
   nextStep: string;
 };
 export type Brief = {
+  agent?: string;
   skill: string | null;
   pointers: BriefPointer[];
   lastHandoff: BriefHandoff | null;

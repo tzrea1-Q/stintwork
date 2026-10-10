@@ -10,6 +10,9 @@ import {
 } from "@stintwork/agents";
 import {
   foldStintLog,
+  agentUnavailableReason,
+  stageAgent,
+  builtInWorkflows,
   type BriefHandoff,
   type StintLiveMessage,
   type StintLogEntry,
@@ -27,6 +30,7 @@ import { addStintPermissionRoute } from "./stint-permissions.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { activeStintIds } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
+import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 
 export type StintServerOptions = {
   launchAgent?: AgentLauncher;
@@ -69,6 +73,9 @@ export function addStintRoutes(
   if (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)
     throw new Error("Handoff timeout must be a non-negative number of milliseconds.");
   const active = new Map<string, ActiveStint>();
+  const stageAgents = addStageAgentRoute(app, readProjectFiles, root, registry, refresh, (slug) =>
+    active.has(slug),
+  );
   const permissions = addStintPermissionRoute(app);
   let closing = false;
   app.post("/api/stints/:stintId/stop", async (context) => {
@@ -108,16 +115,15 @@ export function addStintRoutes(
       typeof body.workItem !== "string" ||
       !("ticket" in body) ||
       !Number.isSafeInteger(body.ticket) ||
-      !("agent" in body) ||
-      typeof body.agent !== "string"
+      ("agent" in body && typeof body.agent !== "string")
     ) {
       return context.json(
         { reason: "Choose a work item, ticket number and registered agent." },
         400,
       );
     }
-    const agent = registry.get(body.agent);
-    if (!agent) return context.json({ reason: `Agent is not registered: ${body.agent}.` }, 400);
+    if ("agent" in body && !registry.has(body.agent as string))
+      return context.json({ reason: `Agent is not registered: ${body.agent}.` }, 400);
     if (closing) return context.json({ reason: "The project server is stopping." }, 503);
     const result = await prepareStintBrief(
       readProjectFiles,
@@ -128,7 +134,15 @@ export function addStintRoutes(
     if ("reason" in result)
       return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
     const { workItem, ticket } = result;
-    if (active.has(workItem.slug))
+    const agentId =
+      "agent" in body
+        ? (body.agent as string)
+        : stageAgent(workItem, result.stage.id, [...registry.values()]);
+    const agent = registry.get(agentId);
+    if (!agent) return context.json({ reason: `Agent is not registered: ${agentId}.` }, 400);
+    const unavailable = agentUnavailableReason(agent);
+    if (unavailable) return context.json({ reason: unavailable }, 409);
+    if (active.has(workItem.slug) || stageAgents.isWriting(workItem.slug))
       return context.json({ reason: "A stint is already active for this work item." }, 409);
     const state: ActiveStint = { setupCancellation: new AbortController() };
     let prepared: () => void = () => {};
@@ -137,8 +151,23 @@ export function addStintRoutes(
     });
     active.set(workItem.slug, state);
     try {
+      const project = readProjectFiles();
+      const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
+      if (discoveryFailure) throw new Error(discoveryFailure.message);
+      const firstWorktree = !project.worktreePaths.has(workItem.slug);
       const worktree = await ensureWorktree(root, workItem.slug);
       if (closing) throw new Error("The project server is stopping.");
+      let inheritedAgents = false;
+      if (firstWorktree) {
+        for (const stage of builtInWorkflows[workItem.workflow].stages) {
+          const choice = workItem.stages[stage.id]?.agent;
+          if (
+            typeof choice === "string" &&
+            writeStageAgentWorkflow(worktree.path, workItem, stage.id, choice)
+          )
+            inheritedAgents = true;
+        }
+      }
       const prepared = await prepareStintBrief(
         readProjectFiles,
         workItem.slug,
@@ -146,12 +175,14 @@ export function addStintRoutes(
         root,
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
-      const { brief, stage } = prepared;
+      const { stage } = prepared;
+      const brief = { ...prepared.brief, agent: agent.id };
       const id = randomUUID();
       state.id = id;
       const logs = prepareLogs(root);
       const setupMessages: string[] = [];
       const setupFiles: string[] = [];
+      if (inheritedAgents) setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
       let setupError: unknown;
       let setupFailed = false;
       try {
@@ -163,6 +194,7 @@ export function addStintRoutes(
         }
         if (
           !workItem.stints.length &&
+          typeof prepared.workItem.stages[stage.id]?.agent !== "string" &&
           writeFirstStintWorkflow(worktree.path, workItem, stage.id, agent.id)
         ) {
           setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);

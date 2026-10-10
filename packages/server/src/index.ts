@@ -125,7 +125,7 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json({ agents: describeAgents(agentRegistry) });
   });
-  addBriefPreviewRoute(app, readProjectFiles, root);
+  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry);
   addStintHistoryRoute(app, files);
   const stopStints = addStintRoutes(
     app,

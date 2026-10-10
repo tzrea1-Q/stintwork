@@ -1,4 +1,5 @@
-import { briefUnavailableReason, compileBrief, indexProject } from "@stintwork/core";
+import { briefUnavailableReason, compileBrief, indexProject, stageAgent } from "@stintwork/core";
+import type { AgentRegistry } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince } from "@stintwork/git";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -7,6 +8,7 @@ export function addBriefPreviewRoute(
   app: Hono,
   readProjectFiles: ProjectFilesReader,
   root: string,
+  registry: AgentRegistry,
 ) {
   app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
@@ -18,7 +20,10 @@ export function addBriefPreviewRoute(
       root,
     );
     if ("reason" in result) return context.json({ reason: result.reason }, result.status);
-    return context.json(result.brief);
+    return context.json({
+      ...result.brief,
+      agent: stageAgent(result.workItem, result.stage.id, [...registry.values()]),
+    });
   });
 }
 
