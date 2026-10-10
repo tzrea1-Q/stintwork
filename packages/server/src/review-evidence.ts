@@ -4,6 +4,7 @@ import { checkpointChangedPaths } from "@stintwork/git";
 import type { createChecks } from "./checks.js";
 import { createMemoryProposalReader } from "./memory-proposals.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { readPullRequestChecks } from "./pull-requests.js";
 
 export function readEvidenceChangedPaths(
   worktree: string,
@@ -34,6 +35,8 @@ export function createReviewEvidenceReader(root: string, checks: ReturnType<type
       try {
         Object.assign(item, checks.evidence(item.slug));
         item.checkCommands = checks.commands();
+        if (item.pullRequest)
+          item.pullRequestChecks = readPullRequestChecks(root, item.pullRequest);
         if (path || item.merged) {
           item.headCommit =
             item.merged?.commit ??
@@ -45,6 +48,7 @@ export function createReviewEvidenceReader(root: string, checks: ReturnType<type
           item.evidenceChangedPaths = readEvidenceChangedPaths(path ?? root, item.headCommit, [
             ...item.stints.flatMap((stint) => (stint.findings ? [stint.findings.commit] : [])),
             ...(item.checks ?? []).map((result) => result.commit),
+            ...(item.pullRequestChecks ? [item.pullRequestChecks.headCommit] : []),
           ]);
         }
         const failure = snapshot.warnings.find(

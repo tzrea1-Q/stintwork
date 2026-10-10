@@ -64,7 +64,7 @@ test("Merge locally sends a Ship action and reports the recorded commit", async 
     `Shipped locally at ${"a".repeat(40)}`,
   );
   expect(screen.getByRole("button", { name: "Merge locally" })).toBeDisabled();
-  expect(screen.queryByRole("button", { name: /pull request/i })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open pull request" })).toBeDisabled();
 });
 
 test("the dry-run conflict report lists paths and Send back reopens implementation", async () => {

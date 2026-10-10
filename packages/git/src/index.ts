@@ -76,3 +76,4 @@ async function ensureWorktreeLocked(
   });
   return { path, branch };
 }
+export { cleanupMergedWorkItem, updateMainAfterPullRequest } from "./local-merge.js";

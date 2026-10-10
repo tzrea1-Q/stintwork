@@ -1,9 +1,10 @@
 import { parseDocument } from "yaml";
+import { isPullRequest, type PullRequest, type MergeMethod } from "./pull-requests.js";
 import type { RepoFiles, Warning, WorkItem, WorkItemIndex } from "./work-items.js";
 import { type BoardColumn, builtInWorkflows, type StageId, type WorkflowId } from "./workflows.js";
 
 export type StageRecords = Record<string, Record<string, unknown>>;
-export type MergeRecord = { at: string; commit: string; pr?: string };
+export type MergeRecord = { at: string; commit: string; pr?: string; method?: MergeMethod };
 export function workflowMerge(text: string | undefined, merged: MergeRecord): string {
   const document = parseDocument(text ?? "");
   if (document.errors.length || document.warnings.length || document.get("stage") !== "ship")
@@ -19,6 +20,7 @@ export type StagedWorkItem = WorkItem & {
   stages: StageRecords;
   declaredMilestone?: string;
   merged?: MergeRecord;
+  pullRequest?: PullRequest;
 };
 export type StagedIndex = { workItems: StagedWorkItem[]; warnings: Warning[] };
 
@@ -28,6 +30,7 @@ type DeclaredWorkflow = {
   stages: StageRecords;
   declaredMilestone?: string;
   merged?: MergeRecord;
+  pullRequest?: PullRequest;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -95,14 +98,19 @@ function readWorkflow(
         !Number.isFinite(Date.parse(data.merged.at)) ||
         typeof data.merged.commit !== "string" ||
         !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(data.merged.commit) ||
-        (data.merged.pr !== undefined && typeof data.merged.pr !== "string"))
+        (data.merged.pr !== undefined && typeof data.merged.pr !== "string") ||
+        (data.merged.method !== undefined &&
+          !["merge", "squash", "rebase"].includes(String(data.merged.method))))
     )
       return invalid("Merged must contain a timestamp and commit");
+    if (data.pullRequest !== undefined && !isPullRequest(data.pullRequest))
+      return invalid("Pull request must contain a GitHub URL, number, repository and branches");
     return {
       workflow,
       stage: stage.id,
       stages,
       ...(data.merged === undefined ? {} : { merged: data.merged as MergeRecord }),
+      ...(data.pullRequest === undefined ? {} : { pullRequest: data.pullRequest as PullRequest }),
       ...(data.milestone === undefined ? {} : { declaredMilestone: data.milestone as string }),
     };
   } catch (error) {
@@ -141,6 +149,7 @@ export function resolveStages(index: WorkItemIndex, files: RepoFiles): StagedInd
       column: builtInWorkflows[workflow].stages.find((candidate) => candidate.id === stage)?.column,
       stages: declared?.stages ?? {},
       ...(declared?.merged ? { merged: declared.merged } : {}),
+      ...(declared?.pullRequest ? { pullRequest: declared.pullRequest } : {}),
       ...(declared?.declaredMilestone === undefined
         ? {}
         : { declaredMilestone: declared.declaredMilestone }),

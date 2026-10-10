@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { evidenceStale, type PullRequestPreview } from "@stintwork/core";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 export function ShipActions({ item }: { item: BoardWorkItem }) {
@@ -7,6 +8,16 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
   const [paths, setPaths] = useState<string[]>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [message, setMessage] = useState("");
+  const [preview, setPreview] = useState<PullRequestPreview | null>(null);
+  const [opened, setOpened] = useState(item.pullRequest);
+  const pullRequest = item.pullRequest ?? opened;
+  const ci = item.pullRequestChecks;
+  const mergeReady =
+    !!item.stages.review?.approved &&
+    !!ci &&
+    ci.checks.length > 0 &&
+    ci.checks.every((check) => check.bucket === "pass") &&
+    !evidenceStale(item, ci.headCommit);
   if (item.stage !== "ship" && !item.merged) return null;
   const blockers = [
     ...(item.activeStint || item.stints.some(({ status }) => status === "running")
@@ -18,7 +29,7 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
     ...(item.checkExecution?.endedAt === null ? ["Cancel or finish checks before shipping."] : []),
     ...(item.reviewEvidenceError ? [item.reviewEvidenceError] : []),
   ];
-  async function action(name: "merge-local" | "send-back") {
+  async function action(name: "merge-local" | "send-back" | "preview-pr" | "open-pr" | "merge-pr") {
     setBusy(true);
     setError("");
     setPaths([]);
@@ -29,7 +40,7 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify(name === "open-pr" ? { confirmation: preview?.confirmation } : {}),
         },
       );
       const result = await response.json();
@@ -38,12 +49,22 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
         setPaths(result.paths ?? []);
         throw new Error(result.reason ?? "Could not ship the work item.");
       }
+      if (name === "preview-pr") {
+        setPreview(result.preview);
+        return;
+      }
+      if (name === "open-pr") {
+        setOpened(result.pullRequest);
+        setPreview(null);
+        return;
+      }
       setMessage(
-        name === "merge-local"
-          ? `Shipped locally at ${result.merged.commit}.`
+        name === "merge-local" || name === "merge-pr"
+          ? `Shipped ${name === "merge-pr" ? `through pull request #${pullRequest?.number}` : "locally"} at ${result.merged.commit}.`
           : `Sent back to ${result.stageName}.`,
       );
     } catch (cause) {
+      if (name === "open-pr") setPreview(null);
       setError(cause instanceof Error ? cause.message : "Could not ship the work item.");
     } finally {
       setBusy(false);
@@ -56,6 +77,13 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
         <p>
           Merged at <time dateTime={item.merged.at}>{item.merged.at}</time> ·{" "}
           <code>{item.merged.commit}</code>
+          {item.merged.pr && (
+            <>
+              {" "}
+              · Pull request #{item.merged.pr}
+              {item.merged.method && <> ({item.merged.method})</>}
+            </>
+          )}
         </p>
       ) : (
         <>
@@ -69,14 +97,80 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
               ))}
             </ul>
           )}
-          <button
-            type="button"
-            className="top-button"
-            disabled={busy || blockers.length > 0 || !!message}
-            onClick={() => void action("merge-local")}
-          >
-            {busy ? "Working…" : "Merge locally"}
-          </button>
+          {pullRequest ? (
+            <>
+              <p>
+                Pull request #{pullRequest.number} ·{" "}
+                <a href={pullRequest.url} target="_blank" rel="noreferrer">
+                  View on GitHub
+                </a>
+              </p>
+              <p>Merge rechecks every CI check and the approved Review gate.</p>
+              {!mergeReady && (
+                <p>Approve the Review gate and refresh passing PR CI checks before merging.</p>
+              )}
+              <button
+                type="button"
+                className="top-button"
+                disabled={busy || blockers.length > 0 || !!message || !mergeReady}
+                onClick={() => void action("merge-pr")}
+              >
+                Merge pull request
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="top-button"
+                disabled={busy || blockers.length > 0 || !!message}
+                onClick={() => void action("merge-local")}
+              >
+                {busy ? "Working…" : "Merge locally"}
+              </button>
+              <button
+                type="button"
+                className="top-button"
+                disabled={busy || blockers.length > 0 || !!message}
+                onClick={() => void action("preview-pr")}
+              >
+                Open pull request
+              </button>
+            </>
+          )}
+          {preview && (
+            <section role="dialog" aria-modal="false" aria-label="Confirm publishing pull request">
+              <h4>Confirm push and pull request</h4>
+              <p>Publishing sends this code to the remote. Nothing is pushed until you confirm.</p>
+              <p>
+                Remote: <code>{preview.remote}</code> · <code>{preview.remoteUrl}</code>
+              </p>
+              <p>
+                Branch: <code>{preview.branch}</code> → <code>{preview.base}</code>
+              </p>
+              <p>
+                Commit: <code>{preview.headCommit}</code>
+              </p>
+              <p>Title: {preview.title}</p>
+              <pre>{preview.body}</pre>
+              <button
+                type="button"
+                className="top-button"
+                disabled={busy}
+                onClick={() => void action("open-pr")}
+              >
+                Confirm push and open pull request
+              </button>
+              <button
+                type="button"
+                className="top-button"
+                disabled={busy}
+                onClick={() => setPreview(null)}
+              >
+                Cancel
+              </button>
+            </section>
+          )}
           {conflicts.length > 0 && (
             <section aria-label="Merge conflicts">
               <h4>Merge conflicts</h4>
