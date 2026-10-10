@@ -14,7 +14,9 @@ Status: shipped
 
 ## M3 · Needs you and every agent
 Id: m3
-Status: planned
+Status: active
+
+- needs-you
 
 ## M4 · Review and ship
 Id: m4

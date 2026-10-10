@@ -61,15 +61,16 @@ The developer starts a stint from a ticket, watches it, stops it, and resumes it
 
 ### M3 · Needs you and every agent · L
 
-Stints can ask for things, and any of the three agents can take any stage.
+Stints can ask for things, stages move forward, and any of the three agents can take any stage. Spec: `.scratch/needs-you/spec.md`.
 
-- Attention items: agent questions, permission requests and gate approvals, in the Needs-you queue and on cards.
-- Permission levels are mapped onto each agent's modes, with explicit handling for agents whose defaults never ask.
-- Claude Code and Grok Build are added. Each stage has an agent picker, and missing logins show "run `claude auth login`".
-- Gates: approve to advance a stage, and checks-pass gates read from the stint's checkpoint.
-- Recovery after a server restart: stints still running are reattached or marked stopped, derived from the logs and git.
+- The Needs-you queue of attention items: permission requests, stints that ended with unresolved handoff items (answered with a developer note in the next brief), stages ready for approval, and agents needing a login. Shown on cards, in the tab title, and as optional browser notifications.
+- Gates are the developer's approval in M3, recorded in `workflow.yaml`. Checks-based gates move to M4.
+- Stage-level stints on any stage with a skill (Clarify, Spec, Tickets, Implement, Review).
+- Claude Code and Grok Build are added. Each stage has an agent picker, and missing logins show the command to run.
+- Permission levels (Ask, Edit freely, Autonomous) are mapped onto each agent's modes, plus answers Stintwork gives itself, with explicit warnings for agents that can't honour a level.
+- After a restart, stints stay `interrupted` and resume from the brief. Reattaching to agent processes is dropped: they end with the server.
 
-**Exit test:** a Stintwork ticket is started with Claude Code, stopped, has a requirement changed, and is finished by Codex. No hand-written context, and every permission prompt is answered from the queue.
+**Exit test:** a Stintwork ticket is started with Claude Code, stopped, has a requirement changed, and is finished by Codex. No hand-written context, and every permission prompt is answered from the queue. The Implement gate is then approved from the queue.
 
 ### M4 · Review and ship · L
 
