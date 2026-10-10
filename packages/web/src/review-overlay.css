@@ -53,6 +53,20 @@
   overflow: auto;
   min-width: 0;
 }
+.review-finding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.review-finding-actions form,
+.review-finding-actions label {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+}
+.review-finding-actions textarea {
+  min-height: 80px;
+}
 .review-files,
 .review-evidence {
   padding: 16px;

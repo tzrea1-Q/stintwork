@@ -39,6 +39,7 @@ import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.
 import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
+import { addFindingDecisionRoutes } from "./finding-decisions.js";
 
 export type StintServerOptions = {
   launchAgent?: AgentLauncher;
@@ -93,6 +94,14 @@ export function addStintRoutes(
     workflowWrites,
   );
   addGateRoutes(app, readProjectFiles, root, refresh, (slug) => active.has(slug), workflowWrites);
+  addFindingDecisionRoutes(
+    app,
+    readProjectFiles,
+    refresh,
+    (slug) => active.has(slug),
+    workflowWrites,
+    isChecking,
+  );
   addMemoryProposalRoutes(
     app,
     root,

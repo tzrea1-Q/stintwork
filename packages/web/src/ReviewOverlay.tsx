@@ -171,6 +171,7 @@ export function ReviewOverlay({
     title: string;
     stints?: StintSummary[];
     reviewDecisions?: ReviewDecision[];
+    stage?: string | null;
   };
   onClose: () => void;
 } & ReviewSlots) {
@@ -180,8 +181,53 @@ export function ReviewOverlay({
   const findingId = useId();
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
   const [error, setError] = useState("");
+  const [decisions, setDecisions] = useState<ReviewDecision[]>(item.reviewDecisions ?? []);
+  const [saving, setSaving] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const [message, setMessage] = useState("");
+  const [sentBack, setSentBack] = useState(false);
   const request = useRef<AbortController | null>(null);
-  const evidence = reviewFindings(item.stints, item.reviewDecisions);
+  useEffect(() => setDecisions(item.reviewDecisions ?? []), [item.reviewDecisions]);
+  const evidence = reviewFindings(item.stints, decisions);
+  async function act(action: "decision" | "send-back", body: object) {
+    setSaving(true);
+    setActionError("");
+    setMessage("");
+    try {
+      const response = await fetch(
+        `/api/work-items/${encodeURIComponent(item.slug)}/findings/${action}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.reason ?? "Could not update findings.");
+      const updated: ReviewDecision[] = result.decisions ?? [result.decision];
+      setDecisions((previous) => [
+        ...previous.filter(
+          (entry) =>
+            !updated.some((decision) => decision.kind === entry.kind && decision.id === entry.id),
+        ),
+        ...updated,
+      ]);
+      if (action === "send-back") {
+        setSentBack(true);
+        setMessage(
+          `${result.stageName ?? "Implement"} reopened. Review findings will be included in the next implement brief.`,
+        );
+      } else setMessage(`Finding recorded as ${result.decision.status}.`);
+      return true;
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : String(cause));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  }
+  const onDecision = (id: string, status: "open" | "resolved" | "accepted", reason = "") =>
+    act("decision", { id, status, reason });
   const anchor = (finding: { id: string }) => `${findingId}-${finding.id}`;
   const cards = (path: string, line?: number) => {
     const matches = evidence.findings.filter(
@@ -194,6 +240,8 @@ export function ReviewOverlay({
             finding={finding}
             anchor={anchor(finding)}
             headCommit={diff?.headCommit}
+            onDecision={onDecision}
+            saving={saving}
           />
         ))
       : null;
@@ -212,6 +260,8 @@ export function ReviewOverlay({
             finding={finding}
             anchor={anchor(finding)}
             headCommit={diff?.headCommit}
+            onDecision={onDecision}
+            saving={saving}
           />
         ))}
       </section>
@@ -278,7 +328,8 @@ export function ReviewOverlay({
           </p>
           <h2 id={titleId}>{item.title}</h2>
           <p className="muted">
-            Read-only · committed changes only; staged and uncommitted changes are not included.
+            Read-only diff · committed changes only; staged and uncommitted changes are not
+            included.
           </p>
           {diff && (
             <div className="review-range">
@@ -293,6 +344,19 @@ export function ReviewOverlay({
           )}
         </div>
         <div className="review-header-actions">
+          <button
+            type="button"
+            className="top-button"
+            disabled={
+              saving ||
+              sentBack ||
+              item.stage !== "review" ||
+              !evidence.findings.some((finding) => finding.status === "open")
+            }
+            onClick={() => void act("send-back", {})}
+          >
+            Send back
+          </button>
           <button type="button" className="top-button" onClick={() => void readDiff()}>
             Refresh diff
           </button>
@@ -307,6 +371,12 @@ export function ReviewOverlay({
           </button>
         </div>
       </header>
+      {actionError && (
+        <p role="alert" className="warning">
+          {actionError}
+        </p>
+      )}
+      {message && <p role="status">{message}</p>}
       <div className="review-grid">
         {error ? (
           <p role="alert" className="review-empty warning">

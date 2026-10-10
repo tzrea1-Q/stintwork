@@ -132,3 +132,26 @@ test("legacy briefs stay readable and malformed note entries are rejected", () =
     }),
   ).toBe(false);
 });
+
+test("review notes share preview and start consumption with developer handoff notes", () => {
+  const previous = stint([started, ended, answered]);
+  const reviewNote = {
+    id: "review:feedback",
+    at: "2026-10-09T13:00:00Z",
+    source: "review" as const,
+    text: "## Review findings\nFrom review: fix validation.",
+  };
+  const notes = pendingDeveloperNotes([previous], [reviewNote]);
+  expect(notes.map((note) => note.id)).toEqual(["previous", "review:feedback"]);
+  const brief = compileBrief({
+    files: createMemoryRepoFiles({}),
+    workItem: { slug: "first", spec: null },
+    stage: builtInWorkflows.feature.stages[3],
+    developerNotes: notes,
+  });
+  expect(brief.prompt).toContain(`Review note (${reviewNote.at}):\n## Review findings`);
+  expect(pendingDeveloperNotes([previous], [reviewNote])).toEqual(notes);
+  const next = stint([{ ...started, stint: { ...started.stint, id: "next", brief } }]);
+  expect(isStintLogEntry({ ...started, stint: { ...started.stint, brief } })).toBe(true);
+  expect(pendingDeveloperNotes([previous, next], [reviewNote])).toEqual([]);
+});

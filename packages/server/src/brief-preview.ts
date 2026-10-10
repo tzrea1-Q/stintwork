@@ -4,10 +4,12 @@ import {
   indexProject,
   indexStints,
   pendingDeveloperNotes,
+  parseReviewDeveloperNotes,
   stageAgent,
   projectPermissionLevel,
   permissionPolicy,
   type PermissionLevel,
+  type DeveloperNote,
 } from "@stintwork/core";
 import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
@@ -107,6 +109,15 @@ export async function prepareStintBrief(
       status: 503 as const,
     };
   }
+  let reviewNotes: DeveloperNote[];
+  try {
+    reviewNotes =
+      stage.column === "implement"
+        ? parseReviewDeveloperNotes(files.read(`.scratch/${slug}/review.yaml`))
+        : [];
+  } catch (error) {
+    return { reason: String(error), status: 409 as const };
+  }
   const brief = compileBrief({
     files,
     workItem,
@@ -115,6 +126,7 @@ export async function prepareStintBrief(
     lastHandoff: previous?.handoff,
     developerNotes: pendingDeveloperNotes(
       indexStints(files).stints.filter((stint) => stint.workItem === slug),
+      reviewNotes,
     ),
     checkpointCommit,
     changedPaths,
