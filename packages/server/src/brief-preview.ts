@@ -1,4 +1,11 @@
-import { briefUnavailableReason, compileBrief, indexProject, stageAgent } from "@stintwork/core";
+import {
+  briefUnavailableReason,
+  compileBrief,
+  indexProject,
+  indexStints,
+  pendingDeveloperNotes,
+  stageAgent,
+} from "@stintwork/core";
 import type { AgentRegistry } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince } from "@stintwork/git";
@@ -91,6 +98,9 @@ export async function prepareStintBrief(
         stage,
         ticket,
         lastHandoff: previous?.handoff,
+        developerNotes: pendingDeveloperNotes(
+          indexStints(files).stints.filter((stint) => stint.workItem === slug),
+        ),
         checkpointCommit,
         changedPaths,
       }),

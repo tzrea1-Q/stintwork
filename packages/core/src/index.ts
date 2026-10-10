@@ -10,7 +10,13 @@ export {
   type AttentionItem,
   type AttentionItemSource,
   type PermissionAttentionItem,
+  type HandoffUnresolvedAttentionItem,
 } from "./attention.js";
+export {
+  hasUnresolvedHandoff,
+  pendingDeveloperNotes,
+  type DeveloperNote,
+} from "./developer-notes.js";
 export type {
   RichStintEvent,
   StintToolContent,

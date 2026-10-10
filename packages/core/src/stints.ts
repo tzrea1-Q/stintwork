@@ -42,6 +42,7 @@ export type Stint = {
   brief: Brief;
   events: StintEvent[];
   handoff: BriefHandoff | null;
+  handoffAnswer?: { at: string; note: string | null };
   handoffError?: string;
   error?: string;
 };
@@ -59,6 +60,7 @@ export type StintSummary = Pick<
   | "checkpointCommit"
   | "handoff"
   | "handoffError"
+  | "handoffAnswer"
 >;
 export type StintLogEntry =
   | {
@@ -70,6 +72,7 @@ export type StintLogEntry =
       >;
     }
   | { type: "event"; at: string; event: StintLogEvent }
+  | { type: "handoff_answered"; at: string; note: string | null }
   | {
       type: "ended";
       at: string;
@@ -151,6 +154,10 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
       }
     );
   }
+  if (entry.type === "handoff_answered")
+    return stint && stint.status !== "running" && stint.handoff && !stint.handoffAnswer
+      ? { ...stint, handoffAnswer: { at: entry.at, note: entry.note } }
+      : stint;
   if (stint?.status !== "running") return stint;
   if (entry.type === "event")
     return {
@@ -190,6 +197,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     endedAt,
     checkpointCommit: stint.checkpointCommit,
     handoff: stint.handoff,
+    ...(stint.handoffAnswer ? { handoffAnswer: stint.handoffAnswer } : {}),
     ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),
     ...(error ? { error } : {}),
   };
@@ -229,6 +237,11 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   if (!value || typeof value !== "object") return false;
   const entry = value as Record<string, unknown>;
   if (typeof entry.at !== "string") return false;
+  if (entry.type === "handoff_answered")
+    return (
+      !Number.isNaN(Date.parse(entry.at)) &&
+      (entry.note === null || (typeof entry.note === "string" && entry.note.trim().length > 0))
+    );
   if (entry.type === "event") {
     if (isStintEvent(entry.event)) return true;
     if (!entry.event || typeof entry.event !== "object") return false;
@@ -261,6 +274,14 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
     typeof worktree?.path === "string" &&
     typeof worktree.branch === "string" &&
     typeof brief?.prompt === "string" &&
+    (brief.developerNotes === undefined ||
+      (Array.isArray(brief.developerNotes) &&
+        brief.developerNotes.every(
+          (note) =>
+            note &&
+            typeof note === "object" &&
+            ["id", "at", "text"].every((key) => typeof note[key] === "string"),
+        ))) &&
     (brief.checkpointCommit == null || typeof brief.checkpointCommit === "string") &&
     (brief.skill === null || typeof brief.skill === "string") &&
     (brief.lastHandoff === null || isBriefHandoff(brief.lastHandoff)) &&

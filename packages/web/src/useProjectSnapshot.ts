@@ -28,26 +28,35 @@ function isStintSummary(value: unknown) {
     (value.endedAt === null || typeof value.endedAt === "string") &&
     (value.error === undefined || typeof value.error === "string") &&
     (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&
-    (value.handoff == null || isBriefHandoff(value.handoff))
+    (value.handoff == null || isBriefHandoff(value.handoff)) &&
+    (value.handoffAnswer === undefined ||
+      (isRecord(value.handoffAnswer) &&
+        typeof value.handoffAnswer.at === "string" &&
+        !Number.isNaN(Date.parse(value.handoffAnswer.at)) &&
+        (value.handoffAnswer.note === null ||
+          (typeof value.handoffAnswer.note === "string" &&
+            value.handoffAnswer.note.trim().length > 0))))
   );
 }
 
 function isAttentionItem(value: unknown) {
   return (
     isRecord(value) &&
-    value.kind === "permission" &&
-    ["id", "workItem", "stintId", "agent", "requestId", "title", "details", "raisedAt"].every(
+    ["id", "workItem", "stintId", "agent", "title", "details", "raisedAt"].every(
       (key) => typeof value[key] === "string",
     ) &&
     (value.ticket === null ||
       (Number.isSafeInteger(value.ticket) && (value.ticket as number) > 0)) &&
     !Number.isNaN(Date.parse(value.raisedAt as string)) &&
-    Array.isArray(value.options) &&
-    value.options.every(
-      (option) =>
-        isRecord(option) &&
-        ["optionId", "name", "kind"].every((key) => typeof option[key] === "string"),
-    )
+    (value.kind === "handoff-unresolved" ||
+      (value.kind === "permission" &&
+        typeof value.requestId === "string" &&
+        Array.isArray(value.options) &&
+        value.options.every(
+          (option) =>
+            isRecord(option) &&
+            ["optionId", "name", "kind"].every((key) => typeof option[key] === "string"),
+        )))
   );
 }
 

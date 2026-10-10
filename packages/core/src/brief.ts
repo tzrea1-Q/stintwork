@@ -1,6 +1,7 @@
 import type { StagedWorkItem } from "./stages.js";
 import type { RepoFiles, Ticket, WorkItem } from "./work-items.js";
 import { builtInWorkflows, type WorkflowStage } from "./workflows.js";
+import type { DeveloperNote } from "./developer-notes.js";
 
 export type BriefPointer = { path: string; reason: string };
 export type BriefHandoff = {
@@ -15,6 +16,7 @@ export type Brief = {
   skill: string | null;
   pointers: BriefPointer[];
   lastHandoff: BriefHandoff | null;
+  developerNotes?: DeveloperNote[];
   changedPaths: string[];
   checkpointCommit?: string | null;
   prompt: string;
@@ -25,6 +27,7 @@ export type BriefInput = {
   stage: WorkflowStage;
   ticket?: Pick<Ticket, "path"> | null;
   lastHandoff?: BriefHandoff | null;
+  developerNotes?: readonly DeveloperNote[];
   changedPaths?: readonly string[];
   checkpointCommit?: string | null;
 };
@@ -53,6 +56,7 @@ export function compileBrief({
   stage,
   ticket = null,
   lastHandoff = null,
+  developerNotes = [],
   changedPaths = [],
   checkpointCommit = null,
 }: BriefInput): Brief {
@@ -87,6 +91,7 @@ export function compileBrief({
     handoff
       ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
       : "Last handoff: none — start from the project conventions and work item scope.",
+    ...developerNotes.map((note) => `Developer note (${note.at}):\n${note.text}`),
     ...(checkpointCommit ? [`Checkpoint commit: ${checkpointCommit}`] : []),
     [
       "Changed since the last handoff:",
@@ -116,6 +121,7 @@ export function compileBrief({
     skill: stage.skill,
     pointers,
     lastHandoff: handoff,
+    developerNotes: developerNotes.map((note) => ({ ...note })),
     changedPaths: changed,
     checkpointCommit,
     prompt,

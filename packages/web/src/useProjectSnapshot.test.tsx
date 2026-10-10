@@ -63,6 +63,71 @@ test("reads the initial project and replaces it with live snapshots", async () =
   expect(result.current.connection).toBe("live");
 });
 
+test.each([null, "Use CSV."])(
+  "unresolved handoffs load from HTTP and live snapshots, and a persisted answer (%s) removes them",
+  async (note) => {
+    const next = attentionSnapshot([]);
+    const item = next.workItems[0];
+    item.activeStint = null;
+    item.stints[0] = {
+      ...item.stints[0],
+      status: "finished",
+      endedAt: "2026-10-09T11:00:00Z",
+      handoff: {
+        stint: "stint",
+        agent: "custom-agent",
+        stoppedAt: "Export written.",
+        unresolved: "Which format?",
+        nextStep: "Choose the format.",
+      },
+    };
+    next.attentionItems = deriveAttentionItems(next);
+    vi.mocked(fetch).mockImplementation(async () => response(next));
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(next));
+    act(() => TestSocket.instances[0].sendSnapshot(next));
+    expect(result.current.connection).toBe("live");
+    const answered = structuredClone(next);
+    answered.workItems[0].stints[0].handoffAnswer = { at: "2026-10-09T12:00:00Z", note };
+    answered.attentionItems = deriveAttentionItems(answered);
+    act(() => TestSocket.instances[0].sendSnapshot(answered));
+    expect(result.current.snapshot?.attentionItems).toEqual([]);
+    expect(result.current.connection).toBe("live");
+    expect(TestSocket.instances[0].close).not.toHaveBeenCalled();
+  },
+);
+
+test("malformed handoff answer data cannot replace the last valid snapshot", async () => {
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+  const malformed = attentionSnapshot([]);
+  malformed.workItems[0].stints[0].handoffAnswer = { at: "not a time", note: "Use CSV." };
+  act(() => TestSocket.instances[0].sendSnapshot(malformed));
+  expect(result.current.snapshot).toEqual(snapshot);
+  expect(result.current.connection).toBe("reconnecting");
+});
+
+test.each([{ details: 42 }, { raisedAt: "not a time" }, { kind: "unknown" }])(
+  "malformed handoff attention (%j) cannot replace the last valid snapshot",
+  async (fields) => {
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    const original = attentionSnapshot();
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({
+          ...original,
+          attentionItems: [
+            { ...original.attentionItems[0], kind: "handoff-unresolved", ...fields },
+          ],
+        }),
+      }),
+    );
+    expect(result.current.snapshot).toEqual(snapshot);
+    expect(result.current.connection).toBe("reconnecting");
+  },
+);
+
 test("stint messages share the snapshot connection, merge chunks and finish without reconnecting", async () => {
   const { result } = renderHook(useProjectSnapshot);
   await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));

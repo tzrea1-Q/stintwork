@@ -2,6 +2,7 @@ import type { ProjectSnapshot } from "@stintwork/core";
 import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { PermissionAnswer } from "./PermissionAnswer";
+import { HandoffAnswer } from "./HandoffAnswer";
 import type { useAttentionAlerts } from "./useAttentionAlerts";
 import "./needs-you.css";
 import "./stint-stream.css";
@@ -85,7 +86,10 @@ export function NeedsYouQueue({
           const minutes = Math.max(0, Math.floor((now - Date.parse(item.raisedAt)) / 60_000));
           return (
             <article key={item.id} className="attention-item" aria-label={item.title}>
-              <p className="eyebrow">Permission · {profile?.displayName ?? item.agent}</p>
+              <p className="eyebrow">
+                {item.kind === "permission" ? "Permission" : "Handoff"} ·{" "}
+                {profile?.displayName ?? item.agent}
+              </p>
               <h3>{item.title}</h3>
               <button
                 type="button"
@@ -106,12 +110,20 @@ export function NeedsYouQueue({
                   Waiting {minutes ? `${minutes} min` : "less than a minute"}
                 </time>
               </p>
-              <PermissionAnswer
-                stintId={item.stintId}
-                request={item}
-                profile={profile}
-                onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
-              />
+              {item.kind === "permission" && (
+                <PermissionAnswer
+                  stintId={item.stintId}
+                  request={item}
+                  profile={profile}
+                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                />
+              )}
+              {item.kind === "handoff-unresolved" && (
+                <HandoffAnswer
+                  item={item}
+                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                />
+              )}
             </article>
           );
         })}
