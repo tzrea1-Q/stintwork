@@ -42,6 +42,7 @@ export type Stint = {
   brief: Brief;
   events: StintEvent[];
   handoff: BriefHandoff | null;
+  handoffError?: string;
   error?: string;
 };
 export type StintSummary = Pick<
@@ -57,6 +58,7 @@ export type StintSummary = Pick<
   | "error"
   | "checkpointCommit"
   | "handoff"
+  | "handoffError"
 >;
 export type StintLogEntry =
   | {
@@ -76,6 +78,7 @@ export type StintLogEntry =
       error?: string;
       checkpointCommit?: string;
       handoff?: BriefHandoff | null;
+      handoffError?: string;
     };
 export type StintLiveMessage = {
   type: "stint";
@@ -157,6 +160,7 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     endedAt: entry.at,
     checkpointCommit: entry.checkpointCommit ?? null,
     handoff: entry.handoff ?? null,
+    ...(entry.handoffError ? { handoffError: entry.handoffError } : {}),
     ...(entry.error ? { error: entry.error } : {}),
   };
 }
@@ -178,6 +182,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     endedAt,
     checkpointCommit: stint.checkpointCommit,
     handoff: stint.handoff,
+    ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),
     ...(error ? { error } : {}),
   };
 }
@@ -230,7 +235,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   if (entry.type === "ended")
     return (
       ["finished", "stopped", "failed", "interrupted"].includes(String(entry.status)) &&
-      ["error", "stopReason", "checkpointCommit"].every(
+      ["error", "stopReason", "checkpointCommit", "handoffError"].every(
         (key) => entry[key] === undefined || typeof entry[key] === "string",
       ) &&
       (entry.handoff === undefined || entry.handoff === null || isBriefHandoff(entry.handoff))

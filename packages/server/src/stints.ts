@@ -170,7 +170,12 @@ export function addStintRoutes(
       }
       async function end(
         status: "finished" | "stopped" | "failed" | "interrupted",
-        details: { stopReason?: string; error?: string; handoff?: BriefHandoff | null } = {},
+        details: {
+          stopReason?: string;
+          error?: string;
+          handoff?: BriefHandoff | null;
+          handoffError?: string;
+        } = {},
       ) {
         state.ending = true;
         permissions.clear(id);
@@ -243,7 +248,7 @@ export function addStintRoutes(
         });
         state.completion = state.handle.done
           .then(
-            ({ stopReason, handoff }) =>
+            ({ stopReason, handoff, handoffError }) =>
               end(
                 closing
                   ? "interrupted"
@@ -255,6 +260,7 @@ export function addStintRoutes(
                 {
                   stopReason,
                   handoff: handoff ? { ...handoff, stint: id, agent: "codex" } : null,
+                  ...(handoffError ? { handoffError } : {}),
                   ...(!state.stopRequested &&
                   stopReason !== "end_turn" &&
                   stopReason !== "cancelled"

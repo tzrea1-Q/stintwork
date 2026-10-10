@@ -23,7 +23,7 @@ export type AgentStintOptions = {
 };
 export type AgentStint = {
   ready?: Promise<void>;
-  done: Promise<{ stopReason: string; handoff?: AgentHandoff | null }>;
+  done: Promise<{ stopReason: string; handoff?: AgentHandoff | null; handoffError?: string }>;
   cancel: () => Promise<void>;
 };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
@@ -276,30 +276,61 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
         permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
           cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
         });
-        chunk = undefined;
-        handoffText = "";
         let handoff: AgentHandoff | null = null;
+        let handoffError: string | undefined;
+        let retryTimer: ReturnType<typeof setTimeout> | undefined;
+        const deadline = performance.now() + handoffTimeoutMs;
+        const handoffTimeout = new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error("Handoff timed out.")), handoffTimeoutMs);
+        });
         try {
-          await Promise.race([
-            acp.prompt({
-              sessionId: acpId as string,
-              prompt: [{ type: "text", text: handoffPrompt }],
-            }),
-            failure,
-            new Promise<never>((_resolve, reject) => {
-              timer = setTimeout(() => reject(new Error("Handoff timed out.")), handoffTimeoutMs);
-            }),
-          ]);
-          handoff = parseHandoff(handoffText);
-        } catch {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if (performance.now() >= deadline) throw new Error("Handoff timed out.");
+            chunk = undefined;
+            handoffText = "";
+            try {
+              await Promise.race([
+                acp.prompt({
+                  sessionId: acpId as string,
+                  prompt: [{ type: "text", text: handoffPrompt }],
+                }),
+                failure,
+                handoffTimeout,
+              ]);
+              handoff = parseHandoff(handoffText);
+              if (!handoff)
+                handoffError = "Handoff did not contain the required Markdown sections.";
+              break;
+            } catch (error) {
+              const backoffMs = 500 * 2 ** attempt;
+              if (
+                (!cancelled && result.stopReason !== "cancelled") ||
+                attempt === 2 ||
+                performance.now() + backoffMs >= deadline
+              )
+                throw error;
+              await Promise.race([
+                new Promise<void>((resolveRetry) => {
+                  retryTimer = setTimeout(resolveRetry, backoffMs);
+                }),
+                failure,
+                handoffTimeout,
+              ]);
+            }
+          }
+        } catch (error) {
           handoff = null;
+          handoffError =
+            (error instanceof Error ? error.message : String(error)) || "Handoff request failed.";
           cancelPermission();
           await Promise.race([
             acp.cancel({ sessionId: acpId as string }).catch(() => {}),
             new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
           ]);
+        } finally {
+          clearTimeout(retryTimer);
         }
-        return { ...result, handoff };
+        return { ...result, handoff, ...(handoffError ? { handoffError } : {}) };
       } catch (error) {
         if (cancelled) return { stopReason: "cancelled" };
         const message = error instanceof Error ? error.message : String(error);

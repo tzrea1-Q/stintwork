@@ -29,6 +29,7 @@ export function createFakeAgentLauncher(
     startupError?: string;
     additionalDirectories?: boolean;
     verifyGitDirectories?: boolean;
+    handoffFailures?: number;
   } = {},
 ): AgentLauncher {
   const source = import.meta.url.endsWith(".ts");

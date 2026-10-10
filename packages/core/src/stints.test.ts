@@ -6,6 +6,7 @@ import {
   foldStintLog,
   isStintEvent,
   isStintLogEntry,
+  summarizeStint,
   type StintLogEntry,
   type StintLogEvent,
 } from "./stints.js";
@@ -347,4 +348,31 @@ test.each([
   });
   expect(isStintLogEntry({ ...ended, handoff: { stoppedAt: "Incomplete" } })).toBe(false);
   expect(isStintLogEntry({ ...ended, checkpointCommit: 42 })).toBe(false);
+});
+
+test("optional handoff errors survive log indexing and summaries; older logs still work", () => {
+  const ended: StintLogEntry = {
+    type: "ended",
+    at: "2026-10-09T10:01:00Z",
+    status: "stopped",
+    handoff: null,
+    handoffError: "Agent was still settling the cancelled patch.",
+  };
+  expect(isStintLogEntry(ended)).toBe(true);
+  expect(isStintLogEntry({ ...ended, handoffError: 42 })).toBe(false);
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/board/spec.md": "# Board",
+      ".stintwork/local/stints/first.jsonl": [started, ended]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n"),
+    }),
+    { name: "Board" },
+  );
+  expect(snapshot.warnings).toEqual([]);
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({ handoffError: ended.handoffError });
+  const legacy = foldStintLog([started, { type: "ended", at: ended.at, status: "stopped" }]);
+  expect(legacy).not.toBeNull();
+  if (!legacy) throw new Error("Legacy stint log was not folded.");
+  expect(summarizeStint(legacy)).not.toHaveProperty("handoffError");
 });

@@ -1,6 +1,6 @@
 # 12 — Handoff after a stop during an edit
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -18,3 +18,7 @@ Found in the M2 exit test (ticket 09). A real Codex stint was stopped while Code
 - [ ] Server test: the ended entry and the stint summary carry the reason when there's no handoff.
 - [ ] Component test: the handoff card shows the reason.
 - [ ] All checks pass.
+
+## Comments
+
+**2026-10-10 · implemented by Codex, verified by coordinator.** All checks pass (336 tests). A handoff after a cancel now gets up to three attempts within the handoff timeout, and the reason is recorded as `handoffError` when none arrives. Real-Codex confirmation is part of the M2 exit test (ticket 09).

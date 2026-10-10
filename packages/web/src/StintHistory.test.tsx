@@ -11,6 +11,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { StintHistory } from "./StintHistory";
+import { HandoffCard } from "./HandoffCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 function stint(id: string, status: StintStatus = "finished", ticket: number | null = 1): Stint {
@@ -214,6 +215,19 @@ test("history loading failures are visible and can be retried; interrupted repla
 test("an empty history says no stints yet", () => {
   render(<StintHistory stints={[]} />);
   expect(screen.getByText("No stints yet.")).toBeInTheDocument();
+});
+
+test("the handoff card shows the recorded failure reason as text", () => {
+  const summary = {
+    ...summarizeStint(stint("stopped", "stopped")),
+    handoff: null,
+    handoffError: "Agent was still settling <script>the cancelled patch</script>.",
+  };
+  render(<HandoffCard stint={summary} />);
+  expect(screen.getByRole("article", { name: "Handoff" })).toHaveTextContent(
+    `No handoff was given: ${summary.handoffError}`,
+  );
+  expect(document.querySelector("script")).toBeNull();
 });
 
 test("a stale replay cannot show a finished stint as still running, and retry reads the ending", async () => {

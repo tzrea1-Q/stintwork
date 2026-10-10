@@ -27,7 +27,11 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
           ))}
         </dl>
       ) : (
-        <p className="muted">No handoff was given.</p>
+        <p className="muted">
+          {stint.handoffError
+            ? `No handoff was given: ${stint.handoffError}`
+            : "No handoff was given."}
+        </p>
       )}
       <p>
         {stint.checkpointCommit ? (

@@ -147,6 +147,41 @@ test("a clean fake-agent stint makes no commit and records the existing HEAD for
   expect((await entries(root, stint.id)).at(-1)).toMatchObject({ handoff: null });
 });
 
+test("a stopped stint records a failed handoff reason in its ended entry and summary", async () => {
+  const { root, project } = await fixture(
+    [
+      { type: "write", path: "partial.txt", content: "Recoverable edit" },
+      { type: "message", text: "Working" },
+      { type: "delay", milliseconds: 30_000 },
+    ],
+    [{ type: "error", message: "Agent was still settling the cancelled patch." }],
+    2000,
+  );
+  const started = await start(project);
+  await expect
+    .poll(async () => JSON.stringify(await entries(root, started.id)))
+    .toContain("Working");
+  expect(
+    (await project.app.request(`/api/stints/${started.id}/stop`, { method: "POST" })).status,
+  ).toBe(202);
+  const stint = await ended(project, started.id);
+  expect(stint).toMatchObject({
+    status: "stopped",
+    handoff: null,
+    handoffError: expect.stringContaining("Agent was still settling the cancelled patch."),
+  });
+  expect(stint).not.toHaveProperty("error");
+  expect((await entries(root, stint.id)).at(-1)).toMatchObject({
+    type: "ended",
+    status: "stopped",
+    handoff: null,
+    handoffError: stint.handoffError,
+  });
+  expect(git(started.worktree.path, "show", `${stint.checkpointCommit}:partial.txt`)).toBe(
+    "Recoverable edit",
+  );
+});
+
 test.each([
   [{ type: "delay", milliseconds: 30_000 }],
   [{ type: "message", text: "Not the required sections" }],

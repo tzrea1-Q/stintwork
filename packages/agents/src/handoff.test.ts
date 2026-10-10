@@ -76,7 +76,11 @@ test("a hanging handoff times out, keeps the original turn outcome, and cannot w
       { type: "write", path: "late.txt", content: "Must not be checkpointed late" },
     ],
   )({ agent: "codex", cwd, prompt: "Work", handoffTimeoutMs: 20, onEvent: () => {} });
-  expect(await stint.done).toEqual({ stopReason: "end_turn", handoff: null });
+  expect(await stint.done).toEqual({
+    stopReason: "end_turn",
+    handoff: null,
+    handoffError: "Handoff timed out.",
+  });
   await new Promise((resolve) => setTimeout(resolve, 250));
   await expect(readFile(join(cwd, "late.txt"))).rejects.toMatchObject({ code: "ENOENT" });
 });
@@ -92,7 +96,130 @@ test("a crashed handoff cannot turn a finished work turn into a failed stint", a
     handoffTimeoutMs: 500,
     onEvent: () => {},
   });
-  expect(await stint.done).toEqual({ stopReason: "end_turn", handoff: null });
+  expect(await stint.done).toMatchObject({
+    stopReason: "end_turn",
+    handoff: null,
+    handoffError: expect.stringMatching(/exited|transport|connection closed/i),
+  });
+});
+
+test.each([1, 2])("retries %i failed handoff prompts after a stop", async (handoffFailures) => {
+  const stint = createFakeAgentLauncher(
+    [
+      { type: "message", text: "Working" },
+      { type: "delay", milliseconds: 30_000 },
+    ],
+    [{ type: "message", text }],
+    { handoffFailures },
+  )({
+    agent: "codex",
+    cwd: await fixture(),
+    prompt: "Work",
+    handoffTimeoutMs: 3000,
+    onEvent: (event) => {
+      if ("text" in event && event.text === "Working") void stint.cancel();
+    },
+  });
+  expect(await stint.done).toEqual({ stopReason: "cancelled", handoff });
+});
+
+test("always-failing handoff prompts record the last failure within the timeout", async () => {
+  const stint = createFakeAgentLauncher(
+    [{ type: "end", stopReason: "cancelled" }],
+    [{ type: "message", text }],
+    { handoffFailures: 3 },
+  )({
+    agent: "codex",
+    cwd: await fixture(),
+    prompt: "Work",
+    handoffTimeoutMs: 2000,
+    onEvent: () => {},
+  });
+  await stint.ready;
+  const startedAt = performance.now();
+  expect(await stint.done).toMatchObject({
+    stopReason: "cancelled",
+    handoff: null,
+    handoffError: expect.stringContaining("Fake handoff prompt failed."),
+  });
+  expect(performance.now() - startedAt).toBeGreaterThanOrEqual(1400);
+  expect(performance.now() - startedAt).toBeLessThan(2000);
+});
+
+test("a retry shares the original timeout and cannot write after it expires", async () => {
+  const cwd = await fixture();
+  const stint = createFakeAgentLauncher(
+    [{ type: "end", stopReason: "cancelled" }],
+    [
+      { type: "message", text },
+      { type: "delay", milliseconds: 400 },
+      { type: "write", path: "late.txt", content: "Must not be checkpointed late" },
+    ],
+    { handoffFailures: 1 },
+  )({ agent: "codex", cwd, prompt: "Work", handoffTimeoutMs: 750, onEvent: () => {} });
+  await stint.ready;
+  const startedAt = performance.now();
+  expect(await stint.done).toEqual({
+    stopReason: "cancelled",
+    handoff: null,
+    handoffError: "Handoff timed out.",
+  });
+  expect(performance.now() - startedAt).toBeLessThan(1100);
+  await expect(readFile(join(cwd, "late.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("a failed handoff is not retried when the work turn was not cancelled", async () => {
+  const stint = createFakeAgentLauncher([{ type: "end" }], [{ type: "message", text }], {
+    handoffFailures: 1,
+  })({
+    agent: "codex",
+    cwd: await fixture(),
+    prompt: "Work",
+    handoffTimeoutMs: 2000,
+    onEvent: () => {},
+  });
+  expect(await stint.done).toMatchObject({
+    stopReason: "end_turn",
+    handoff: null,
+    handoffError: expect.stringContaining("Fake handoff prompt failed."),
+  });
+});
+
+test("a short budget does not start a retry that needs a longer backoff", async () => {
+  const stint = createFakeAgentLauncher(
+    [{ type: "end", stopReason: "cancelled" }],
+    [{ type: "message", text }],
+    { handoffFailures: 1 },
+  )({
+    agent: "codex",
+    cwd: await fixture(),
+    prompt: "Work",
+    handoffTimeoutMs: 100,
+    onEvent: () => {},
+  });
+  expect(await stint.done).toMatchObject({
+    stopReason: "cancelled",
+    handoff: null,
+    handoffError: expect.stringContaining("Fake handoff prompt failed."),
+  });
+});
+
+test("malformed handoffs record a reason without retrying", async () => {
+  const stint = createFakeAgentLauncher(
+    [{ type: "end", stopReason: "cancelled" }],
+    [{ type: "message", text: "Not the required sections" }],
+  )({
+    agent: "codex",
+    cwd: await fixture(),
+    prompt: "Work",
+    handoffTimeoutMs: 2000,
+    onEvent: () => {},
+  });
+  expect(await stint.done).toEqual({
+    stopReason: "cancelled",
+    handoff: null,
+    handoffError: "Handoff did not contain the required Markdown sections.",
+  });
 });
 
 test("an acknowledged cancellation still requests the handoff in the same ACP stint", async () => {
@@ -193,7 +320,11 @@ test("a pending handoff permission is cancelled and logged before the handoff ti
     onEvent: (event) => events.push(event),
     onPermission: () => new Promise(() => {}),
   });
-  expect(await stint.done).toEqual({ stopReason: "end_turn", handoff: null });
+  expect(await stint.done).toEqual({
+    stopReason: "end_turn",
+    handoff: null,
+    handoffError: "Handoff timed out.",
+  });
   expect(events).toMatchObject([
     { type: "permission_request", automatic: false },
     {

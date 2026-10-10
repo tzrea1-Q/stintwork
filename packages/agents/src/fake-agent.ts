@@ -72,7 +72,10 @@ new AgentSideConnection(
       const controller = new AbortController();
       turns.set(sessionId, controller);
       try {
-        for (const step of brief.prompts++ === 0 ? script : handoff) {
+        const turn = brief.prompts++;
+        if (turn > 0 && turn <= (options.handoffFailures ?? 0))
+          throw RequestError.internalError(undefined, "Fake handoff prompt failed.");
+        for (const step of turn === 0 ? script : handoff) {
           if (controller.signal.aborted) return { stopReason: "cancelled" };
           if (step.type === "delay")
             await delay(step.milliseconds, undefined, { signal: controller.signal });
