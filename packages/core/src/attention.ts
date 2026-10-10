@@ -55,11 +55,28 @@ export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems"> & Partial<Pick<ProjectSnapshot, "agents">>,
 ): AttentionItem[] {
   const workItemAttention = snapshot.workItems.flatMap<AttentionItem>((item) => {
+    // An unresolved handoff is answered by a later stint that started from it (same ticket,
+    // or same stage for stage-level stints); that later stint raises its own item if needed.
+    const stintsById = new Map(item.stints.map((stint) => [stint.id, stint]));
+    const supersededHandoffs = new Set(
+      item.stints.flatMap((later) => {
+        const earlier = later.lastHandoffStintId && stintsById.get(later.lastHandoffStintId);
+        return earlier &&
+          later.id !== earlier.id &&
+          later.workItem === earlier.workItem &&
+          later.ticket === earlier.ticket &&
+          (earlier.ticket !== null || later.stage === earlier.stage) &&
+          Date.parse(later.startedAt) >= Date.parse(earlier.endedAt ?? earlier.startedAt)
+          ? [earlier.id]
+          : [];
+      }),
+    );
     const handoffs: HandoffUnresolvedAttentionItem[] = item.stints
       .filter(
         (stint) =>
           stint.status !== "running" &&
           !stint.handoffAnswer &&
+          !supersededHandoffs.has(stint.id) &&
           stint.handoff &&
           hasUnresolvedHandoff(stint.handoff.unresolved),
       )
