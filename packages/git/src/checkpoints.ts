@@ -3,10 +3,7 @@ import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 
-async function commitWithIdentity(
-  git: (args: string[]) => Promise<string>,
-  args: string[],
-) {
+async function commitWithIdentity(git: (args: string[]) => Promise<string>, args: string[]) {
   const identity = await Promise.all(
     ["name", "email"].map((field) =>
       git(["config", "--get", `user.${field}`]).catch((error: { code?: number }) => {
@@ -34,21 +31,14 @@ export async function commitStintworkSetup(
   workItem: string,
   files: readonly string[],
 ): Promise<string | null> {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
-    throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem)) throw new Error("Invalid work item slug.");
   const allowed = new Set([".gitignore", `.scratch/${workItem}/workflow.yaml`]);
   if (files.some((file) => !allowed.has(file))) throw new Error("Invalid Stintwork setup file.");
   if (!files.length) return null;
 
   const git = async (args: string[]) =>
     (await execute("git", args, { cwd: worktree })).stdout.trim();
-  const changed = await git([
-    "status",
-    "--porcelain=v1",
-    "--untracked-files=all",
-    "--",
-    ...files,
-  ]);
+  const changed = await git(["status", "--porcelain=v1", "--untracked-files=all", "--", ...files]);
   if (!changed) return null;
   await git(["add", "--", ...files]);
   await commitWithIdentity(git, [

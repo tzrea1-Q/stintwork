@@ -160,10 +160,7 @@ test("commits Stintwork setup before the first stint and makes no setup commit o
     const head = git(cwd, "rev-parse", "HEAD");
     starts.push({
       head,
-      files: git(cwd, "show", "--format=", "--name-only", head)
-        .split("\n")
-        .filter(Boolean)
-        .sort(),
+      files: git(cwd, "show", "--format=", "--name-only", head).split("\n").filter(Boolean).sort(),
       status: git(cwd, "status", "--porcelain"),
       subject: git(cwd, "show", "--format=%s", "--no-patch", head),
     });
@@ -196,17 +193,12 @@ test("commits Stintwork setup before the first stint and makes no setup commit o
 
 test("the setup commit leaves unrelated staged and untracked work in the worktree", async () => {
   let finish: ((result: { stopReason: string }) => void) | undefined;
-  let started:
-    | { head: string; files: string[]; status: string }
-    | undefined;
+  let started: { head: string; files: string[]; status: string } | undefined;
   const launchAgent: AgentLauncher = ({ cwd }) => {
     const head = git(cwd, "rev-parse", "HEAD");
     started = {
       head,
-      files: git(cwd, "show", "--format=", "--name-only", head)
-        .split("\n")
-        .filter(Boolean)
-        .sort(),
+      files: git(cwd, "show", "--format=", "--name-only", head).split("\n").filter(Boolean).sort(),
       status: git(cwd, "status", "--porcelain"),
     };
     return {

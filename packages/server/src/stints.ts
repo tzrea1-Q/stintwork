@@ -140,14 +140,17 @@ export function addStintRoutes(
       let setupError: unknown;
       let setupFailed = false;
       try {
-        if (logs.ignoreAdded) setupMessages.push("Added .stintwork/local/ to the project's .gitignore.\n");
+        if (logs.ignoreAdded)
+          setupMessages.push("Added .stintwork/local/ to the project's .gitignore.\n");
         if (ensureLocalIgnore(worktree.path)) {
           setupFiles.push(".gitignore");
           setupMessages.push("Added .stintwork/local/ to the worktree's .gitignore.\n");
         }
         if (!workItem.stints.length && writeFirstStintWorkflow(worktree.path, workItem, stage.id)) {
           setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
-          setupMessages.push("Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n");
+          setupMessages.push(
+            "Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n",
+          );
         }
         await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
       } catch (error) {
