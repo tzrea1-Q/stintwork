@@ -17,6 +17,7 @@ Id: m3
 Status: active
 
 - needs-you
+- cli-help
 
 ## M4 · Review and ship
 Id: m4
