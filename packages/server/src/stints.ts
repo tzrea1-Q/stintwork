@@ -10,6 +10,7 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import {
+  commitStintworkSetup,
   createCheckpoint,
   ensureWorktree,
   installWorktreeDependencies,
@@ -205,6 +206,7 @@ export function addStintRoutes(
       }
       try {
         let setupMessage = 0;
+        const setupFiles: string[] = [];
         const progress = (text: string) =>
           append({
             type: "event",
@@ -212,10 +214,15 @@ export function addStintRoutes(
             event: { type: "message", id: `setup-${++setupMessage}`, text },
           });
         if (logs.ignoreAdded) progress("Added .stintwork/local/ to the project's .gitignore.\n");
-        if (ensureLocalIgnore(worktree.path))
+        if (ensureLocalIgnore(worktree.path)) {
+          setupFiles.push(".gitignore");
           progress("Added .stintwork/local/ to the worktree's .gitignore.\n");
-        if (!workItem.stints.length && writeFirstStintWorkflow(worktree.path, workItem, stage.id))
+        }
+        if (!workItem.stints.length && writeFirstStintWorkflow(worktree.path, workItem, stage.id)) {
+          setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
           progress("Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n");
+        }
+        await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
         const previous = workItem.stints[0];
         await installWorktreeDependencies(
           worktree.path,

@@ -3,6 +3,63 @@ import { promisify } from "node:util";
 
 const execute = promisify(execFile);
 
+async function commitWithIdentity(
+  git: (args: string[]) => Promise<string>,
+  args: string[],
+) {
+  const identity = await Promise.all(
+    ["name", "email"].map((field) =>
+      git(["config", "--get", `user.${field}`]).catch((error: { code?: number }) => {
+        if (error.code !== 1) throw error;
+        return "";
+      }),
+    ),
+  );
+  const name = identity[0] || "Stintwork";
+  const email = identity[1] || "stintwork@localhost";
+  await git([
+    "-c",
+    `user.name=${name}`,
+    "-c",
+    `user.email=${email}`,
+    "commit",
+    "--author",
+    `${name} <${email}>`,
+    ...args,
+  ]);
+}
+
+export async function commitStintworkSetup(
+  worktree: string,
+  workItem: string,
+  files: readonly string[],
+): Promise<string | null> {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
+    throw new Error("Invalid work item slug.");
+  const allowed = new Set([".gitignore", `.scratch/${workItem}/workflow.yaml`]);
+  if (files.some((file) => !allowed.has(file))) throw new Error("Invalid Stintwork setup file.");
+  if (!files.length) return null;
+
+  const git = async (args: string[]) =>
+    (await execute("git", args, { cwd: worktree })).stdout.trim();
+  const changed = await git([
+    "status",
+    "--porcelain=v1",
+    "--untracked-files=all",
+    "--",
+    ...files,
+  ]);
+  if (!changed) return null;
+  await commitWithIdentity(git, [
+    "--only",
+    "-m",
+    `Stintwork setup for work item ${workItem}`,
+    "--",
+    ...files,
+  ]);
+  return git(["rev-parse", "HEAD"]);
+}
+
 export async function createCheckpoint(
   worktree: string,
   stint: { id: string; workItem: string; ticket: number | null; status: string },
@@ -18,22 +75,7 @@ export async function createCheckpoint(
     },
   );
   if (changed) {
-    const identity = await Promise.all(
-      ["name", "email"].map((field) =>
-        git(["config", "--get", `user.${field}`]).catch((error: { code?: number }) => {
-          if (error.code !== 1) throw error;
-          return "";
-        }),
-      ),
-    );
-    await git([
-      "-c",
-      `user.name=${identity[0] || "Stintwork"}`,
-      "-c",
-      `user.email=${identity[1] || "stintwork@localhost"}`,
-      "commit",
-      "--author",
-      `${identity[0] || "Stintwork"} <${identity[1] || "stintwork@localhost"}>`,
+    await commitWithIdentity(git, [
       "-m",
       `Checkpoint: stint ${stint.id}; work item ${stint.workItem}; ticket ${stint.ticket ?? "none"}; ${stint.status}`,
     ]);

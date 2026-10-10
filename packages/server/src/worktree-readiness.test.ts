@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { createAgentLauncher, type AgentLauncher } from "@stintwork/agents";
 import { createFakeAgentLauncher } from "@stintwork/agents/testing";
+import { ensureWorktree } from "@stintwork/git";
 import {
   foldStintLog,
   type ProjectSnapshot,
@@ -151,6 +152,89 @@ test("ACP receives both git roots and the fake Codex commits its edits before th
     "Codex work",
   );
   expect(git(stint.worktree.path, "rev-list", "--count", `${stint.baseCommit}..HEAD`)).toBe("1");
+});
+
+test("commits Stintwork setup before the first stint and makes no setup commit on the second", async () => {
+  const starts: { head: string; files: string[]; status: string; subject: string }[] = [];
+  const launchAgent: AgentLauncher = ({ cwd }) => {
+    const head = git(cwd, "rev-parse", "HEAD");
+    starts.push({
+      head,
+      files: git(cwd, "show", "--format=", "--name-only", head)
+        .split("\n")
+        .filter(Boolean)
+        .sort(),
+      status: git(cwd, "status", "--porcelain"),
+      subject: git(cwd, "show", "--format=%s", "--no-patch", head),
+    });
+    return {
+      ready: Promise.resolve(),
+      done: Promise.resolve({ stopReason: "end_turn" }),
+      cancel: async () => {},
+    };
+  };
+  const { root, project } = await fixture(launchAgent);
+  const base = git(root, "rev-parse", "HEAD");
+
+  const first = await start(project);
+  expect(first.status).toBe(201);
+  await ended(root, (await first.json()).stint.id);
+  expect(starts[0]).toMatchObject({
+    files: [".gitignore", ".scratch/first/workflow.yaml"],
+    status: "",
+    subject: "Stintwork setup for work item first",
+  });
+  expect(git(root, "rev-list", "--count", `${base}..${starts[0].head}`)).toBe("1");
+
+  const second = await start(project);
+  expect(second.status).toBe(201);
+  await ended(root, (await second.json()).stint.id);
+  expect(starts).toHaveLength(2);
+  expect(starts[1].head).toBe(starts[0].head);
+  expect(git(root, "rev-list", "--count", `${base}..${starts[1].head}`)).toBe("1");
+});
+
+test("the setup commit leaves unrelated staged and untracked work in the worktree", async () => {
+  let finish: ((result: { stopReason: string }) => void) | undefined;
+  let started:
+    | { head: string; files: string[]; status: string }
+    | undefined;
+  const launchAgent: AgentLauncher = ({ cwd }) => {
+    const head = git(cwd, "rev-parse", "HEAD");
+    started = {
+      head,
+      files: git(cwd, "show", "--format=", "--name-only", head)
+        .split("\n")
+        .filter(Boolean)
+        .sort(),
+      status: git(cwd, "status", "--porcelain"),
+    };
+    return {
+      ready: Promise.resolve(),
+      done: new Promise((resolve) => {
+        finish = resolve;
+      }),
+      cancel: async () => finish?.({ stopReason: "cancelled" }),
+    };
+  };
+  const { root, project } = await fixture(launchAgent);
+  const worktree = await ensureWorktree(root, "first");
+  await writeFile(join(worktree.path, "staged.txt"), "Keep staged");
+  git(worktree.path, "add", "staged.txt");
+  await writeFile(join(worktree.path, "unrelated.txt"), "Keep untracked");
+
+  const response = await start(project);
+  expect(response.status).toBe(201);
+  const { stint }: { stint: Stint } = await response.json();
+  expect(started).toMatchObject({
+    files: [".gitignore", ".scratch/first/workflow.yaml"],
+    status: "A  staged.txt\n?? unrelated.txt",
+  });
+  expect(git(worktree.path, "diff", "--cached", "--name-only")).toBe("staged.txt");
+  expect(await readFile(join(worktree.path, "unrelated.txt"), "utf8")).toBe("Keep untracked");
+
+  await project.app.request(`/api/stints/${stint.id}/stop`, { method: "POST" });
+  await ended(root, stint.id);
 });
 
 test.each(["authentication", "missing adapter", "missing Codex"])(
