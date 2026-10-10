@@ -20,3 +20,7 @@ Ready gates appear as `gate-ready` attention items. A gate view in the drawer (a
 - [ ] Component tests: the gate view with evidence, approve, reopen, and the refusal message.
 - [ ] In the browser: approving `first-stint`'s Implement gate on this repo moves its card to Review. Reopening moves it back.
 - [ ] All checks pass.
+
+## Comments
+
+**2026-10-10 · implemented by Codex, verified by coordinator.** All checks pass alone (489 tests), and merged it merged cleanly into `main`. In the browser on this repo, Needs you showed "Implement ready to approve" for `first-stint`, with its evidence: 12/12 tickets listed, the last checkpoint and the last handoff. Approving from the queue wrote `stages.implement.approved` (by, at, commit) and `stage: review` to `.scratch/first-stint/workflow.yaml` in the main checkout (no worktree), and moved the card off Implement. M2 is shipped, so the card appears in the Shipped lane.
