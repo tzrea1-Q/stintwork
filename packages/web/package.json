@@ -19,6 +19,7 @@
     "remark-gfm": "4.0.1"
   },
   "devDependencies": {
+    "@stintwork/git": "workspace:0.0.0",
     "@tailwindcss/vite": "4.3.3",
     "@testing-library/dom": "10.4.0",
     "@testing-library/jest-dom": "6.6.3",

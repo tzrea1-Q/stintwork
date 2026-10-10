@@ -6,6 +6,13 @@ import { promisify } from "node:util";
 export { changedSince, commitStintworkSetup, createCheckpoint } from "./checkpoints.js";
 export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
 export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";
+export {
+  workItemDiff,
+  type WorkItemDiff,
+  type DiffFile,
+  type DiffHunk,
+  type DiffLine,
+} from "./work-item-diff.js";
 
 const execute = promisify(execFile);
 
