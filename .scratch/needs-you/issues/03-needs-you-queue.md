@@ -21,3 +21,14 @@ Permission items are answerable in the queue with the agent's real options. The 
 - [ ] Component tests: the queue panel, answering with each option, the decline-ends-turn note, card badges, the tab title count, and requesting notification permission only after the developer opts in.
 - [ ] In the browser on a real stint: a permission request shows in the queue and is answered from there.
 - [ ] All checks pass.
+
+## Comments
+
+**2026-10-10 · implemented by Codex, verified by coordinator.** All checks pass. Two socket tests that Codex couldn't run in its sandbox failed at first: they compared the raw logged request with the folded request, which adds `raisedAt`. Codex fixed the tests without weakening them. After merging with tickets 06 and 09, `main` has 461 tests.
+
+Real Codex on a throwaway repo:
+1. A ticket needing network access raised "Run command" (`curl -sI https://example.com | head -1 | tee status.txt`).
+2. It appeared in the Needs-you queue with the work item, ticket, stint, waiting time, the full command, "Declining ends Codex's turn", and Codex's three options. The tab title showed "(1)", and the card showed a Needs-you badge.
+3. Allow once, answered from the queue, was logged and reached Codex. `status.txt` = `HTTP/2 200`, the stint `finished`, and the ticket was resolved.
+
+Follow-up: the queue shows the tool call as raw JSON. Format the command and working directory (folded into ticket 10, which changes the same component).
