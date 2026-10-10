@@ -1,12 +1,13 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, expect, test } from "vitest";
+import { parseCliArguments } from "./arguments.js";
 import { listenOnAvailablePort } from "./port.js";
 import { findGitRoot } from "./project.js";
 
@@ -17,6 +18,29 @@ function temporaryDirectory() {
   const directory = realpathSync(mkdtempSync(join(tmpdir(), "stintwork-cli-")));
   directories.push(directory);
   return directory;
+}
+
+// Runs the CLI from a directory outside any Git repository, so starting the server would fail
+// with "Not inside a Git repository" and exit 1.
+function runCli(directory: string, args: string[]) {
+  const result = spawnSync(
+    process.execPath,
+    [
+      "--import",
+      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
+      "--conditions=development",
+      fileURLToPath(new URL("./bin.ts", import.meta.url)),
+      ...args,
+    ],
+    {
+      cwd: directory,
+      env: { ...process.env, INIT_CWD: directory },
+      encoding: "utf8",
+      timeout: 5000,
+    },
+  );
+  expect(result.error).toBeUndefined();
+  return result;
 }
 
 afterEach(async () => {
@@ -43,23 +67,7 @@ test("cli finds the git root from a nested directory", () => {
 test("cli exits non-zero outside a git repo", () => {
   const directory = temporaryDirectory();
   expect(() => findGitRoot(directory)).toThrow("Not inside a Git repository");
-  const result = spawnSync(
-    process.execPath,
-    [
-      "--import",
-      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
-      "--conditions=development",
-      fileURLToPath(new URL("./bin.ts", import.meta.url)),
-      "--no-open",
-    ],
-    {
-      cwd: directory,
-      env: { ...process.env, INIT_CWD: directory },
-      encoding: "utf8",
-      timeout: 5000,
-    },
-  );
-  expect(result.error).toBeUndefined();
+  const result = runCli(directory, ["--no-open"]);
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("Not inside a Git repository");
 });
@@ -95,4 +103,45 @@ test("cli rejects invalid preferred ports", async () => {
   for (const port of [0, -1, 65536, 4317.5, Number.NaN]) {
     await expect(listenOnAvailablePort(server, port)).rejects.toThrow("Port must be an integer");
   }
+});
+
+test("prints help and exits 0 without starting the server", () => {
+  expect(parseCliArguments(["-h"])).toEqual({ action: "help" });
+  const result = runCli(temporaryDirectory(), ["--help"]);
+  expect(result.status).toBe(0);
+  expect(result.stdout).toContain("Usage: stintwork [options]");
+  for (const option of ["--no-open", "-h, --help", "-v, --version"]) {
+    expect(result.stdout).toContain(option);
+  }
+  expect(result.stderr).toBe("");
+});
+
+test("prints the version and exits 0", () => {
+  expect(parseCliArguments(["-v"])).toEqual({ action: "version" });
+  const result = runCli(temporaryDirectory(), ["--version"]);
+  expect(result.status).toBe(0);
+  const { version } = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  ) as { version: string };
+  expect(version).toMatch(/^\d+\.\d+\.\d+/);
+  expect(result.stdout).toBe(`stintwork ${version}\n`);
+  expect(result.stderr).toBe("");
+});
+
+test("rejects an unknown option with usage on stderr and exit code 2", () => {
+  expect(parseCliArguments(["--no-opne"])).toEqual({ action: "unknown-option", option: "--no-opne" });
+  expect(parseCliArguments(["--help", "--bogus"])).toEqual({
+    action: "unknown-option",
+    option: "--bogus",
+  });
+  const result = runCli(temporaryDirectory(), ["--no-opne"]);
+  expect(result.status).toBe(2);
+  expect(result.stdout).toBe("");
+  expect(result.stderr).toContain("Unknown option: --no-opne\n");
+  expect(result.stderr).toContain("Usage: stintwork [options]");
+});
+
+test("--no-open still prevents opening the browser", () => {
+  expect(parseCliArguments(["--no-open"])).toEqual({ action: "start", open: false });
+  expect(parseCliArguments([])).toEqual({ action: "start", open: true });
 });

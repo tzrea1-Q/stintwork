@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 import { createProjectServer } from "@stintwork/server";
+import { parseCliArguments, usage } from "./arguments.js";
 import { listenOnAvailablePort } from "./port.js";
 import { findGitRoot } from "./project.js";
 
-try {
-  const args = process.argv.slice(2);
-  if (args.some((argument) => argument !== "--no-open")) {
-    throw new Error("Usage: stintwork [--no-open]");
-  }
-
+async function start(open: boolean) {
   const repoRoot = findGitRoot(process.env.INIT_CWD ?? process.cwd());
   const project = createProjectServer(repoRoot);
   let port: number;
@@ -33,7 +30,7 @@ try {
     });
   }
 
-  if (!args.includes("--no-open")) {
+  if (open) {
     const command =
       process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
     const openArgs = process.platform === "win32" ? ["/c", "start", "", url] : [url];
@@ -42,6 +39,24 @@ try {
     } catch {
       console.warn(`Could not open the browser. Open ${url} manually.`);
     }
+  }
+}
+
+// Set exitCode rather than calling process.exit(), so piped output is flushed before exit.
+try {
+  const cli = parseCliArguments(process.argv.slice(2));
+  if (cli.action === "unknown-option") {
+    process.stderr.write(`Unknown option: ${cli.option}\n\n${usage}`);
+    process.exitCode = 2;
+  } else if (cli.action === "help") {
+    process.stdout.write(usage);
+  } else if (cli.action === "version") {
+    // The CLI package root, from both src/bin.ts and dist/bin.js.
+    const packageJson = new URL("../package.json", import.meta.url);
+    const { version } = JSON.parse(readFileSync(packageJson, "utf8")) as { version: string };
+    process.stdout.write(`stintwork ${version}\n`);
+  } else {
+    await start(cli.open);
   }
 } catch (error) {
   console.error(`Stintwork: ${error instanceof Error ? error.message : String(error)}`);
