@@ -22,6 +22,20 @@ export function NeedsYouQueue({
   const titleId = useId();
   const [now, setNow] = useState(Date.now);
   const [answerError, setAnswerError] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+
+  async function refreshAvailability() {
+    setRefreshing(true);
+    setAnswerError("");
+    try {
+      const response = await fetch("/api/agents?refresh=true");
+      if (!response.ok) throw new Error("Could not refresh agent availability.");
+    } catch {
+      setAnswerError("Could not refresh agent availability. Try again.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
     const element = dialog.current;
@@ -81,6 +95,25 @@ export function NeedsYouQueue({
         )}
         {snapshot.attentionItems.map((item) => {
           const profile = snapshot.agents.find((agent) => agent.id === item.agent);
+          if (item.kind === "login-required")
+            return (
+              <article key={item.id} className="attention-item" aria-label={item.title}>
+                <p className="eyebrow">Login required · {profile?.displayName ?? item.agent}</p>
+                <h3>{item.title}</h3>
+                <p>{item.details}</p>
+                <pre>
+                  <code>{item.loginCommand}</code>
+                </pre>
+                <button
+                  type="button"
+                  className="top-button"
+                  disabled={refreshing}
+                  onClick={() => void refreshAvailability()}
+                >
+                  {refreshing ? "Checking login…" : "Refresh agent availability"}
+                </button>
+              </article>
+            );
           const workItem = snapshot.workItems.find((entry) => entry.slug === item.workItem);
           const minutes = Math.max(0, Math.floor((now - Date.parse(item.raisedAt)) / 60_000));
           return (

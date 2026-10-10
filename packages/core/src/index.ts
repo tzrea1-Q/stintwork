@@ -2,7 +2,12 @@ export type Health = {
   ok: true;
   repo: string;
 };
-export type { AgentCapabilityProfile, AgentPermissionOption, AgentProfile } from "./agents.js";
+export type {
+  AgentAvailability,
+  AgentCapabilityProfile,
+  AgentPermissionOption,
+  AgentProfile,
+} from "./agents.js";
 export { agentUnavailableReason } from "./agents.js";
 export { stageAgent, workflowStageAgent } from "./stage-agent.js";
 export {
@@ -10,6 +15,7 @@ export {
   type AttentionItem,
   type AttentionItemSource,
   type PermissionAttentionItem,
+  type LoginRequiredAttentionItem,
 } from "./attention.js";
 export type {
   RichStintEvent,

@@ -11,12 +11,18 @@ import { normalizeStintUpdate } from "./stint-events.js";
 import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
 import { createPermissionForwarding } from "./permission-forwarding.js";
 import { codexProfile } from "./profiles.js";
+import { AgentAuthenticationError } from "./authentication.js";
+
+export { AgentAuthenticationError } from "./authentication.js";
+export { createClaudeCodeAgent } from "./claude-code.js";
+export { claudeProfile } from "./profiles.js";
 
 export {
   type AgentRegistry,
   type RegisteredAgent,
   createAgentRegistry,
   describeAgents,
+  refreshAgentAvailability,
 } from "./registry.js";
 
 export type AgentStintOptions = {
@@ -366,14 +372,16 @@ export function createAgentLauncher(
       } catch (error) {
         if (cancelled) return { stopReason: "cancelled" };
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(
+        if (
           (error instanceof RequestError && error.code === RequestError.authRequired().code) ||
-            /auth(?:entication)?[ _-]required/i.test(message)
-            ? `${profile.displayName} authentication required. Sign in with ${profile.capabilities.authenticationRequired.loginCommand}, then start another stint.`
-            : /(?:ENOENT|not found)/i.test(message) &&
-                [profile.id, "spawn"].some((name) => message.toLowerCase().includes(name))
-              ? `${profile.displayName} not found. ${profile.installationHint}`
-              : message,
+          /auth(?:entication)?[ _-]required/i.test(message)
+        )
+          throw new AgentAuthenticationError(profile);
+        throw new Error(
+          /(?:ENOENT|not found)/i.test(message) &&
+            [profile.id, "spawn"].some((name) => message.toLowerCase().includes(name))
+            ? `${profile.displayName} not found. ${profile.installationHint}`
+            : message,
         );
       } finally {
         clearTimeout(timer);

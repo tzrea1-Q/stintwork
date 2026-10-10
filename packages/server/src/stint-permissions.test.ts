@@ -6,8 +6,17 @@ import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { createAgentLauncher, type AgentLauncher, type AgentStintOptions } from "@stintwork/agents";
-import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
+import {
+  createAgentLauncher,
+  createAgentRegistry,
+  type AgentLauncher,
+  type AgentStintOptions,
+} from "@stintwork/agents";
+import {
+  createFakeAgentLauncher,
+  fakeAgentProfiles,
+  type FakeAgentStep,
+} from "@stintwork/agents/testing";
 import type { Stint, StintLiveMessage, StintLogEntry, ProjectSnapshot } from "@stintwork/core";
 import { Hono } from "hono";
 import { afterEach, expect, test } from "vitest";
@@ -51,7 +60,9 @@ async function fixture(launchAgent: AgentLauncher) {
     ["-c", "user.name=Tests", "-c", "user.email=tests@example.invalid", "commit", "-qm", "Fixture"],
     { cwd: root },
   );
-  const project = createProjectServer(root, join(root, "web"), { launchAgent });
+  const project = createProjectServer(root, join(root, "web"), {
+    agentRegistry: createAgentRegistry([{ ...fakeAgentProfiles.codex, launch: launchAgent }]),
+  });
   const tracked = { parent, project, socket: undefined as WebSocket | undefined };
   fixtures.push(tracked);
   return { root, project, tracked };
@@ -173,7 +184,7 @@ test("Needs-you snapshots reach both tabs; a queue answer is logged, received by
       .poll(() => snapshots.every((messages) => messages.at(-1)?.attentionItems.length === 1))
       .toBe(true);
     const item = snapshots[0].at(-1)?.attentionItems[0];
-    if (!item) throw new Error("Expected an attention item.");
+    if (item?.kind !== "permission") throw new Error("Expected a permission attention item.");
     expect(item).toMatchObject({
       kind: "permission",
       workItem: "first",
@@ -226,7 +237,11 @@ test("restart rebuilds the queue from logs and never reoffers permissions from i
   const before: ProjectSnapshot = await (await project.app.request("/api/project")).json();
   expect(before.attentionItems).toMatchObject([{ stintId: stint.id, requestId }]);
   await project.stop();
-  const restarted = createProjectServer(root, join(root, "web"));
+  const restarted = createProjectServer(root, join(root, "web"), {
+    agentRegistry: createAgentRegistry([
+      { ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) },
+    ]),
+  });
   try {
     const after: ProjectSnapshot = await (await restarted.app.request("/api/project")).json();
     expect(after.attentionItems).toEqual([]);

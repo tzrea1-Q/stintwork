@@ -1,12 +1,38 @@
-import type { AgentProfile } from "@stintwork/core";
+import type { AgentAvailability, AgentProfile } from "@stintwork/core";
 import { type AgentLauncher, startAgentStint } from "./index.js";
 import { codexProfile } from "./profiles.js";
+import { createClaudeCodeAgent } from "./claude-code.js";
 
-export type RegisteredAgent = AgentProfile & { launch: AgentLauncher };
+export type RegisteredAgent = AgentProfile & {
+  launch: AgentLauncher;
+  detectAvailability?: () => Promise<AgentAvailability>;
+};
 export type AgentRegistry = ReadonlyMap<string, RegisteredAgent>;
+const availabilityChecks = new WeakMap<RegisteredAgent, Promise<void>>();
+
+export async function refreshAgentAvailability(
+  agent: RegisteredAgent,
+  refresh = false,
+): Promise<void> {
+  const pending = availabilityChecks.get(agent);
+  if (pending) return pending;
+  if (!agent.detectAvailability || (agent.availability && !refresh)) return;
+  const checking = agent.detectAvailability().then((availability) => {
+    agent.availability = availability;
+  });
+  availabilityChecks.set(agent, checking);
+  try {
+    await checking;
+  } finally {
+    availabilityChecks.delete(agent);
+  }
+}
 
 export function createAgentRegistry(
-  agents: readonly RegisteredAgent[] = [{ ...codexProfile, launch: startAgentStint }],
+  agents: readonly RegisteredAgent[] = [
+    { ...codexProfile, launch: startAgentStint },
+    createClaudeCodeAgent(),
+  ],
 ): AgentRegistry {
   const registry = new Map<string, RegisteredAgent>();
   for (const agent of agents) {
@@ -19,5 +45,7 @@ export function createAgentRegistry(
 }
 
 export function describeAgents(registry: AgentRegistry): AgentProfile[] {
-  return [...registry.values()].map(({ launch: _launch, ...profile }) => profile);
+  return [...registry.values()].map(
+    ({ launch: _launch, detectAvailability: _detect, ...profile }) => profile,
+  );
 }

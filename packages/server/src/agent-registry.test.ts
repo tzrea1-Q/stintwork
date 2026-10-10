@@ -19,7 +19,7 @@ const handoff =
   "## Where I stopped\nWrote greeting.\n## Unresolved\nNone\n## Suggested next\nReview it.";
 function secondAgentRegistry() {
   return createAgentRegistry([
-    ...createAgentRegistry().values(),
+    { ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) },
     {
       ...fakeAgentProfiles.claude,
       id: "fake-second",
@@ -87,8 +87,10 @@ function start(project: ReturnType<typeof createProjectServer>, agent: string) {
   });
 }
 
-test("the default registry is discoverable and refuses unregistered agents before creating files", async () => {
-  const { root, project } = await fixture();
+test("a configured Codex registry is discoverable and refuses unregistered agents before creating files", async () => {
+  const { root, project } = await fixture(
+    createAgentRegistry([{ ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) }]),
+  );
   const response = await project.app.request("/api/agents");
   expect(response.headers.get("Cache-Control")).toBe("no-store");
   expect(await response.json()).toEqual({ agents: [fakeAgentProfiles.codex] });
