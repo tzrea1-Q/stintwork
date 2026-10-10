@@ -60,11 +60,11 @@ test.each(
       expect(brief.changedPaths).toEqual([spec]);
       if (ticket && implementation) {
         expect(brief.prompt).toContain(`Finish this ticket only: ${ticket.path}.`);
-        expect(brief.prompt).toContain("Update the ticket Status");
+        expect(brief.prompt).toContain("Set the ticket's Status line to `resolved`");
       } else {
         expect(brief.prompt).toContain(`Work on the ${stage.name} stage`);
         expect(brief.prompt).toContain("Leave stage gate approval to the developer.");
-        expect(brief.prompt).not.toContain("Update the ticket Status");
+        expect(brief.prompt).not.toContain("Set the ticket's Status line to `resolved`");
         expect(brief.prompt).not.toContain("Finish this ticket");
       }
     }

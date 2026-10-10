@@ -101,7 +101,7 @@ function parseTicket(path: string, text: string, warnings: Warning[]): Ticket | 
     slug: filename[2],
     title,
     status: status ?? "",
-    resolved: /^(resolved|done|closed)$/i.test(status ?? ""),
+    resolved: /^(resolved|done|closed|complete|completed)$/i.test(status ?? ""),
     blockedBy: [...new Set(references)],
     blocked: false,
     comments: comments

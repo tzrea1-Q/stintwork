@@ -94,7 +94,7 @@ test("compiles real file pointers with reasons and the validated prompt order", 
       "\n- Work in the work item worktree on its branch, stintwork/first-stint." +
       `\n- Finish this ticket only: ${ticketPath}.` +
       "\n- Keep the project checks green." +
-      "\n- Update the ticket Status line and append under ## Comments." +
+      "\n- Set the ticket's Status line to `resolved` when it is done, and append under ## Comments." +
       `\n- Commit referencing the ticket (${ticketPath}); do not push.` +
       "\n- Record only checks actually run, with their results.",
   );

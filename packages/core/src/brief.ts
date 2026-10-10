@@ -128,7 +128,7 @@ export function compileBrief({
         ? [
             `- Finish this ticket only: ${ticket.path}.`,
             "- Keep the project checks green.",
-            "- Update the ticket Status line and append under ## Comments.",
+            "- Set the ticket's Status line to `resolved` when it is done, and append under ## Comments.",
             `- Commit referencing the ticket (${ticket.path}); do not push.`,
           ]
         : [

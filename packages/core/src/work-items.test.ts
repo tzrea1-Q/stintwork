@@ -79,14 +79,26 @@ test("orders tickets by dependency then number", () => {
   expect(workItems[0].tickets.map((ticket) => ticket.number)).toEqual([2, 3, 4, 1, 5]);
 });
 
-test("treats resolved, done and closed as resolved, case-insensitively", () => {
-  const statuses = ["resolved", "ReSoLvEd", "done", "DONE", "closed", "Closed", "in progress"];
+test("treats resolved, done, closed and complete(d) as resolved, case-insensitively", () => {
+  const statuses = [
+    "resolved",
+    "ReSoLvEd",
+    "done",
+    "DONE",
+    "closed",
+    "Closed",
+    "complete",
+    "Completed",
+    "in progress",
+  ];
   const { workItems, warnings } = indexTickets(
     ...statuses.map((status, index) => ticket(index + 1, status)),
   );
   expect(warnings).toEqual([]);
   expect(workItems[0].tickets.map((ticket) => ticket.status)).toEqual(statuses);
   expect(workItems[0].tickets.map((ticket) => ticket.resolved)).toEqual([
+    true,
+    true,
     true,
     true,
     true,
