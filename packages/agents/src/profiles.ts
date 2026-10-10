@@ -27,6 +27,21 @@ export const codexProfile: AgentProfile = {
   },
 };
 
+export const grokProfile: AgentProfile = {
+  id: "grok",
+  displayName: "Grok Build",
+  installationHint: "Install Grok Build and sign in with grok login.",
+  capabilities: {
+    modes: [],
+    defaultMode: null,
+    additionalDirectories: false,
+    permissionOptions: null,
+    declineEndsTurn: null,
+    authenticationRequired: { message: "Authentication required", loginCommand: "grok login" },
+    configOptions: ["model", "reasoning_effort"],
+  },
+};
+
 export const fakeAgentProfiles: Record<"codex" | "claude" | "grok", AgentProfile> = {
   codex: codexProfile,
   claude: {
@@ -49,18 +64,5 @@ export const fakeAgentProfiles: Record<"codex" | "claude" | "grok", AgentProfile
       configOptions: [],
     },
   },
-  grok: {
-    id: "grok",
-    displayName: "Grok Build",
-    installationHint: "Install Grok Build and sign in with grok.",
-    capabilities: {
-      modes: [],
-      defaultMode: null,
-      additionalDirectories: false,
-      permissionOptions: null,
-      declineEndsTurn: null,
-      authenticationRequired: { message: "Authentication required", loginCommand: "grok" },
-      configOptions: ["model", "reasoning_effort"],
-    },
-  },
+  grok: grokProfile,
 };

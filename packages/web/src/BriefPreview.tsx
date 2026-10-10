@@ -242,6 +242,13 @@ function BriefPreviewSheet({
                 : "No agents are registered."
               : "Reading registered agents…"}
           </p>
+          {(selectedAgent?.warnings ?? (agent === brief?.agent ? brief?.warnings : []) ?? []).map(
+            (warning) => (
+              <p key={warning} role="alert" className="warning">
+                {warning}
+              </p>
+            ),
+          )}
         </section>
         {error ? (
           <p role="alert" className="warning">

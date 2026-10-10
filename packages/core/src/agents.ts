@@ -12,6 +12,7 @@ export type AgentCapabilityProfile = {
   declineEndsTurn: boolean | null;
   authenticationRequired: { message: string; loginCommand: string };
   configOptions: readonly string[];
+  permissionMode?: string | null;
 };
 
 export type AgentProfile = {
@@ -19,7 +20,13 @@ export type AgentProfile = {
   displayName: string;
   capabilities: AgentCapabilityProfile;
   installationHint: string;
-  availability?: { available: boolean; reason?: string };
+  warnings?: readonly string[];
+  availability?: {
+    available: boolean;
+    reason?: string;
+    status?: "not-installed" | "login-required" | "error";
+    checkedAt?: string;
+  };
 };
 
 export function agentUnavailableReason(agent: AgentProfile): string | null {

@@ -17,7 +17,10 @@ export {
   type RegisteredAgent,
   createAgentRegistry,
   describeAgents,
+  refreshAgents,
 } from "./registry.js";
+export { createGrokAgent } from "./grok.js";
+export { grokProfile } from "./profiles.js";
 
 export type AgentStintOptions = {
   agent: string;
@@ -29,6 +32,7 @@ export type AgentStintOptions = {
     request: RequestPermissionRequest & { requestId: string; forwarded: Promise<void> },
   ) => Promise<RequestPermissionResponse>;
   handoffTimeoutMs?: number;
+  checkAvailability?: boolean;
 };
 export type AgentStint = {
   ready?: Promise<void>;
@@ -50,6 +54,7 @@ export function createAgentLauncher(
     onEvent,
     onPermission,
     handoffTimeoutMs,
+    checkAvailability = false,
   }) => {
     let resolveReady: () => void = () => {};
     let rejectReady: (error: unknown) => void = () => {};
@@ -299,6 +304,7 @@ export function createAgentLauncher(
         clearTimeout(timer);
         if (cancelled) return { stopReason: "cancelled" };
         resolveReady();
+        if (checkAvailability) return { stopReason: "end_turn" };
         workTurn = acp.prompt({
           sessionId: acpId as string,
           prompt: [{ type: "text", text: prompt }],

@@ -22,6 +22,22 @@ export function NeedsYouQueue({
   const titleId = useId();
   const [now, setNow] = useState(Date.now);
   const [answerError, setAnswerError] = useState("");
+  const [checkingLogin, setCheckingLogin] = useState(false);
+
+  async function checkLogin() {
+    setCheckingLogin(true);
+    setAnswerError("");
+    try {
+      const response = await fetch("/api/agents", { cache: "no-store" });
+      if (!response.ok) throw new Error("Could not refresh agent availability.");
+    } catch (error) {
+      setAnswerError(
+        error instanceof Error ? error.message : "Could not refresh agent availability.",
+      );
+    } finally {
+      setCheckingLogin(false);
+    }
+  }
 
   useEffect(() => {
     const element = dialog.current;
@@ -85,33 +101,55 @@ export function NeedsYouQueue({
           const minutes = Math.max(0, Math.floor((now - Date.parse(item.raisedAt)) / 60_000));
           return (
             <article key={item.id} className="attention-item" aria-label={item.title}>
-              <p className="eyebrow">Permission · {profile?.displayName ?? item.agent}</p>
-              <h3>{item.title}</h3>
-              <button
-                type="button"
-                className="attention-work-item"
-                onClick={() => {
-                  onClose();
-                  onOpenItem(item.workItem);
-                }}
-              >
-                {workItem?.title ?? item.workItem} · {item.workItem}
-              </button>
-              <p className="muted">
-                {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`} · Stint{" "}
-                <code>{item.stintId}</code>
+              <p className="eyebrow">
+                {item.kind === "permission" ? "Permission" : "Login required"} ·{" "}
+                {profile?.displayName ?? item.agent}
               </p>
+              <h3>{item.title}</h3>
+              {item.workItem && (
+                <button
+                  type="button"
+                  className="attention-work-item"
+                  onClick={() => {
+                    onClose();
+                    if (item.workItem) onOpenItem(item.workItem);
+                  }}
+                >
+                  {workItem?.title ?? item.workItem} · {item.workItem}
+                </button>
+              )}
+              {item.stintId && (
+                <p className="muted">
+                  {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`} · Stint{" "}
+                  <code>{item.stintId}</code>
+                </p>
+              )}
               <p className="muted">
                 <time dateTime={item.raisedAt} title={item.raisedAt}>
                   Waiting {minutes ? `${minutes} min` : "less than a minute"}
                 </time>
               </p>
-              <PermissionAnswer
-                stintId={item.stintId}
-                request={item}
-                profile={profile}
-                onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
-              />
+              {item.kind === "permission" ? (
+                <PermissionAnswer
+                  stintId={item.stintId}
+                  request={item}
+                  profile={profile}
+                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                />
+              ) : (
+                <>
+                  <p>{item.details}</p>
+                  <code>{item.loginCommand}</code>
+                  <button
+                    type="button"
+                    className="top-button"
+                    disabled={checkingLogin}
+                    onClick={() => void checkLogin()}
+                  >
+                    {checkingLogin ? "Checking login…" : "I’ve logged in — check again"}
+                  </button>
+                </>
+              )}
             </article>
           );
         })}

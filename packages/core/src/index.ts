@@ -10,6 +10,7 @@ export {
   type AttentionItem,
   type AttentionItemSource,
   type PermissionAttentionItem,
+  type LoginRequiredAttentionItem,
 } from "./attention.js";
 export type {
   RichStintEvent,

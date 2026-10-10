@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createAdaptorServer, type ServerType, upgradeWebSocket } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Health, indexProject, type Warning } from "@stintwork/core";
-import { createAgentRegistry, describeAgents } from "@stintwork/agents";
+import { createAgentRegistry, describeAgents, refreshAgents } from "@stintwork/agents";
 import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
@@ -125,11 +125,13 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(snapshot);
   });
-  app.get("/api/agents", (context) => {
+  app.get("/api/agents", async (context) => {
     context.header("Cache-Control", "no-store");
+    await refreshAgents(agentRegistry, root);
+    refresh();
     return context.json({ agents: describeAgents(agentRegistry) });
   });
-  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry);
+  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
   addStintHistoryRoute(app, files);
   const stopStints = addStintRoutes(
     app,

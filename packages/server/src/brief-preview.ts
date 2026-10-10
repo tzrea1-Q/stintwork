@@ -1,5 +1,5 @@
 import { briefUnavailableReason, compileBrief, indexProject, stageAgent } from "@stintwork/core";
-import type { AgentRegistry } from "@stintwork/agents";
+import { type AgentRegistry, refreshAgents } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince } from "@stintwork/git";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -9,6 +9,7 @@ export function addBriefPreviewRoute(
   readProjectFiles: ProjectFilesReader,
   root: string,
   registry: AgentRegistry,
+  refresh: () => void = () => {},
 ) {
   app.get("/api/work-items/:slug/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
@@ -19,6 +20,7 @@ export function addBriefPreviewRoute(
       root,
       registry,
     );
+    refresh();
     if ("reason" in result) return context.json({ reason: result.reason }, result.status);
     return context.json(result.brief);
   });
@@ -32,6 +34,7 @@ export function addBriefPreviewRoute(
       root,
       registry,
     );
+    refresh();
     if ("reason" in result) return context.json({ reason: result.reason }, result.status);
     return context.json(result.brief);
   });
@@ -43,6 +46,7 @@ export async function prepareStintBrief(
   number: number | null,
   root: string,
   registry: AgentRegistry,
+  chosenAgent?: string,
 ) {
   const project = readProjectFiles();
   const files = project.files;
@@ -60,6 +64,8 @@ export async function prepareStintBrief(
     (candidate) => candidate.id === workItem.stage,
   );
   if (!stage) return { reason: "Stage not found.", status: 409 as const };
+  const agent = chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()]);
+  await refreshAgents(registry, project.worktreePaths.get(slug) ?? root, [agent]);
   // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
   // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
   const ended = workItem.stints.filter((stint) => stint.status !== "running");
@@ -94,7 +100,8 @@ export async function prepareStintBrief(
         checkpointCommit,
         changedPaths,
       }),
-      agent: stageAgent(workItem, stage.id, [...registry.values()]),
+      agent,
+      warnings: registry.get(agent)?.warnings ?? [],
     },
   };
 }

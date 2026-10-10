@@ -1,6 +1,6 @@
 # 08 — Grok Build agent
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 03
 
 ## What to build

@@ -11,7 +11,7 @@ import {
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
-import { attentionSnapshot } from "./attention-test-fixtures";
+import { attentionProfile, attentionSnapshot } from "./attention-test-fixtures";
 
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
   name: "Stintwork",
@@ -61,6 +61,23 @@ test("reads the initial project and replaces it with live snapshots", async () =
   act(() => TestSocket.instances[0].sendSnapshot({ ...snapshot, branch: "changed" }));
   expect(result.current.snapshot?.branch).toBe("changed");
   expect(result.current.connection).toBe("live");
+});
+
+test("login-required attention survives HTTP loading and live snapshot validation, then clears after login", async () => {
+  const next = attentionSnapshot([], {
+    ...attentionProfile,
+    availability: { available: false, status: "login-required", checkedAt: "2026-10-09T10:00:00Z" },
+  });
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot?.attentionItems).toEqual(next.attentionItems));
+  const socket = TestSocket.instances[0];
+  act(() => socket.sendSnapshot(next));
+  expect(result.current.connection).toBe("live");
+  expect(result.current.snapshot?.attentionItems[0]?.kind).toBe("login-required");
+  act(() => socket.sendSnapshot({ ...next, attentionItems: [] }));
+  expect(result.current.snapshot?.attentionItems).toEqual([]);
+  expect(socket.close).not.toHaveBeenCalled();
 });
 
 test("stint messages share the snapshot connection, merge chunks and finish without reconnecting", async () => {

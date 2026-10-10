@@ -12,6 +12,7 @@ export type BriefHandoff = {
 };
 export type Brief = {
   agent?: string;
+  warnings?: readonly string[];
   skill: string | null;
   pointers: BriefPointer[];
   lastHandoff: BriefHandoff | null;

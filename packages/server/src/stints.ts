@@ -133,7 +133,9 @@ export function addStintRoutes(
       "ticket" in body ? (body.ticket as number | null) : null,
       root,
       registry,
+      "agent" in body ? (body.agent as string) : undefined,
     );
+    refresh();
     if ("reason" in result)
       return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
     const { workItem, ticket } = result;
@@ -174,6 +176,7 @@ export function addStintRoutes(
         ticket?.number ?? null,
         root,
         registry,
+        agent.id,
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
       const { stage } = prepared;

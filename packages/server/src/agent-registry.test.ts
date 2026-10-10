@@ -19,7 +19,7 @@ const handoff =
   "## Where I stopped\nWrote greeting.\n## Unresolved\nNone\n## Suggested next\nReview it.";
 function secondAgentRegistry() {
   return createAgentRegistry([
-    ...createAgentRegistry().values(),
+    { ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) },
     {
       ...fakeAgentProfiles.claude,
       id: "fake-second",
@@ -65,7 +65,9 @@ async function fixture(agentRegistry?: AgentRegistry) {
     { cwd: root },
   );
   const project = createProjectServer(root, join(root, "web"), {
-    agentRegistry,
+    agentRegistry:
+      agentRegistry ??
+      createAgentRegistry([{ ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) }]),
     handoffTimeoutMs: 1000,
   });
   const tracked = { parent, project, socket: undefined as WebSocket | undefined };
@@ -87,7 +89,7 @@ function start(project: ReturnType<typeof createProjectServer>, agent: string) {
   });
 }
 
-test("the default registry is discoverable and refuses unregistered agents before creating files", async () => {
+test("an injected registry is discoverable and refuses unregistered agents before creating files", async () => {
   const { root, project } = await fixture();
   const response = await project.app.request("/api/agents");
   expect(response.headers.get("Cache-Control")).toBe("no-store");

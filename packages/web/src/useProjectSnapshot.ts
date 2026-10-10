@@ -33,6 +33,17 @@ function isStintSummary(value: unknown) {
 }
 
 function isAttentionItem(value: unknown) {
+  if (isRecord(value) && value.kind === "login-required")
+    return (
+      ["id", "agent", "title", "details", "raisedAt", "loginCommand"].every(
+        (key) => typeof value[key] === "string",
+      ) &&
+      (value.workItem === null || typeof value.workItem === "string") &&
+      (value.stintId === null || typeof value.stintId === "string") &&
+      (value.ticket === null ||
+        (Number.isSafeInteger(value.ticket) && (value.ticket as number) > 0)) &&
+      !Number.isNaN(Date.parse(value.raisedAt as string))
+    );
   return (
     isRecord(value) &&
     value.kind === "permission" &&

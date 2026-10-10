@@ -22,10 +22,13 @@ afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((cwd) => rm(cwd, { recursive: true, force: true })));
 });
 
-test("the production registry offers only Codex and descriptions contain no launcher", () => {
+test("the production registry offers Codex and Grok without exposing launchers or refresh functions", () => {
   const descriptions = describeAgents(createAgentRegistry());
-  expect(descriptions).toEqual([fakeAgentProfiles.codex]);
-  expect(descriptions[0]).not.toHaveProperty("launch");
+  expect(descriptions).toEqual([fakeAgentProfiles.codex, fakeAgentProfiles.grok]);
+  for (const profile of descriptions) {
+    expect(profile).not.toHaveProperty("launch");
+    expect(profile).not.toHaveProperty("refresh");
+  }
   expect(descriptions[0].capabilities.defaultMode).toBe("workspace-write");
 });
 
