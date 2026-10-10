@@ -13,6 +13,7 @@ import { addBriefPreviewRoute } from "./brief-preview.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
 import { createProjectFiles } from "./work-item-files.js";
+import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -66,6 +67,7 @@ export function createProjectServer(
   let watcherReady = false;
   let watcherWarning: Warning | undefined;
   let debounce: ReturnType<typeof setTimeout> | undefined;
+  let settle: ReturnType<typeof setTimeout> | undefined;
   let metadataPoll: ReturnType<typeof setInterval> | undefined;
   const changedPaths = new Set<string>();
   let starting: Promise<ServerType> | undefined;
@@ -98,6 +100,19 @@ export function createProjectServer(
   }
 
   const app = new Hono();
+  let initialization: Promise<void> | undefined;
+  function initialize() {
+    initialization ??= recoverInterruptedStints(root, files).then(() => refresh());
+    return initialization;
+  }
+  app.use("/api/*", async (context, next) => {
+    try {
+      await initialize();
+    } catch (error) {
+      return context.json({ reason: `Stint recovery failed: ${String(error)}` }, 503);
+    }
+    await next();
+  });
   const health: Health = { ok: true, repo: name };
   app.get("/api/health", (context) => context.json(health));
   app.get("/api/project", (context) => {
@@ -105,6 +120,7 @@ export function createProjectServer(
     return context.json(snapshot);
   });
   addBriefPreviewRoute(app, readProjectFiles, root);
+  addStintHistoryRoute(app, files);
   const stopStints = addStintRoutes(
     app,
     root,
@@ -135,6 +151,7 @@ export function createProjectServer(
   function start(): Promise<ServerType> {
     if (stopping) return Promise.reject(new Error("Project server is stopped"));
     starting ??= (async () => {
+      await initialize();
       watcher = watch([...watchedPaths], {
         ignoreInitial: false,
         followSymlinks: false,
@@ -158,6 +175,13 @@ export function createProjectServer(
           const paths = [...changedPaths];
           changedPaths.clear();
           refresh(paths);
+          // A save can arrive as a truncate and a write that the OS reports as one event, so
+          // the refresh above may have read a half-written file. Re-read once more shortly
+          // after; refresh() only broadcasts if the snapshot actually changed.
+          clearTimeout(settle);
+          settle = setTimeout(() => {
+            if (!stopping) refresh(paths);
+          }, 400);
         }, 150);
       });
       watcher.on("error", (error) => {
@@ -185,6 +209,7 @@ export function createProjectServer(
     stopping ??= (async () => {
       lifetime.abort();
       clearTimeout(debounce);
+      clearTimeout(settle);
       clearInterval(metadataPoll);
       await stopStints();
       for (const client of websocket.clients) client.terminate();

@@ -5,8 +5,20 @@ import { promisify } from "node:util";
 
 export { changedSince, createCheckpoint } from "./checkpoints.js";
 export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
+export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";
 
 const execute = promisify(execFile);
+
+/**
+ * `git worktree add` and `git config` take locks on files shared by the whole repository, so
+ * concurrent stints on different work items must not create worktrees at the same time.
+ */
+const repoLocks = new Map<string, Promise<unknown>>();
+function withRepoLock<T>(root: string, task: () => Promise<T>): Promise<T> {
+  const run = (repoLocks.get(root) ?? Promise.resolve()).catch(() => {}).then(task);
+  repoLocks.set(root, run);
+  return run;
+}
 
 export async function ensureWorktree(
   repoRoot: string,
@@ -15,6 +27,13 @@ export async function ensureWorktree(
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItemSlug))
     throw new Error("Invalid work item slug.");
   const root = await realpath(resolve(repoRoot));
+  return withRepoLock(root, () => ensureWorktreeLocked(root, workItemSlug));
+}
+
+async function ensureWorktreeLocked(
+  root: string,
+  workItemSlug: string,
+): Promise<{ path: string; branch: string }> {
   const path = join(dirname(root), `${basename(root)}-worktrees`, workItemSlug);
   const branch = `stintwork/${workItemSlug}`;
   await execute("git", ["check-ref-format", `refs/heads/${branch}`], { cwd: root });

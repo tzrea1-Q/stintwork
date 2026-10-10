@@ -5,7 +5,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
-import { HandoffCard } from "./HandoffCard";
+import { StopStint } from "./StopStint";
+import { StintHistory } from "./StintHistory";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 function Markdown({ text }: { text: string }) {
@@ -204,6 +205,7 @@ export function WorkItemDrawer({
               {item.activeStint.agent} · Ticket {item.activeStint.ticket} ·{" "}
               {item.activeStint.status}
             </p>
+            <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
             <StintStream key={item.activeStint.id} stint={item.activeStint} />
           </section>
         )}
@@ -211,34 +213,7 @@ export function WorkItemDrawer({
           <h3 id="drawer-stint-history-title" className="drawer-section-heading">
             Stint history
           </h3>
-          {item.stints.length ? (
-            <ol aria-label="Stint history">
-              {item.stints.map((stint) => (
-                <li key={stint.id}>
-                  <p>
-                    {stint.agent} · Ticket {stint.ticket} · <strong>{stint.status}</strong>
-                  </p>
-                  <p className="muted">
-                    Started <time dateTime={stint.startedAt}>{stint.startedAt}</time>
-                    {stint.endedAt && (
-                      <>
-                        {" "}
-                        · Ended <time dateTime={stint.endedAt}>{stint.endedAt}</time>
-                      </>
-                    )}
-                  </p>
-                  {stint.error && (
-                    <p className="warning" role="alert">
-                      {stint.error}
-                    </p>
-                  )}
-                  {stint.status !== "running" && <HandoffCard stint={stint} />}
-                </li>
-              ))}
-            </ol>
-          ) : (
-            <p className="muted">No stints yet.</p>
-          )}
+          <StintHistory stints={item.stints} />
         </section>
       </div>
       <footer className="drawer-footer">

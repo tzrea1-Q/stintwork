@@ -96,3 +96,19 @@ test("discovery does not follow a replaced worktree parent symlink", async () =>
   await symlink(join(parent, "moved"), directory);
   expect(() => listWorkItemWorktrees(root)).toThrow("symlink");
 });
+
+test("concurrent ensureWorktree calls for different work items both succeed", async () => {
+  const root = await mkdtemp(join(tmpdir(), "stintwork-concurrent-"));
+  const run = (args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" });
+  run(["init", "-q", "-b", "main"]);
+  run(["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init"]);
+  const results = await Promise.all(
+    ["alpha", "beta", "gamma", "delta"].map((slug) => ensureWorktree(root, slug)),
+  );
+  expect(results.map((result) => result.branch)).toEqual([
+    "stintwork/alpha",
+    "stintwork/beta",
+    "stintwork/gamma",
+    "stintwork/delta",
+  ]);
+});

@@ -1,6 +1,6 @@
 # 10 — A work item's files come from its worktree
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -21,3 +21,15 @@ Per ADR 0009: once a work item has a worktree, the board, the brief and "changed
 - [ ] Server test: editing the spec in the main checkout while a worktree exists produces a divergence warning naming the worktree path.
 - [ ] Core tests: index composition picks worktree files for active work items and main-checkout files for the rest.
 - [ ] Component test: the drawer shows the worktree path for a work item with a worktree.
+
+## Comments
+
+**2026-10-10 · implemented by Codex, finished by coordinator.** Codex built the worktree-aware reads, the watcher scopes, divergence warnings and the drawer path, and resolved the merge with tickets 05, 07 and 08. Its first two latency fixes didn't make the live-update tests reliable (it can't run file watchers in its sandbox). Changes:
+
+- Codex: git discovery and divergence are cached. Git internals are probed with `stat` rather than watched. A full refresh now takes 8 ms instead of 357 ms.
+- Coordinator: snapshots are broadcast only when they changed.
+- Coordinator: a 400 ms re-read follows each changed-file refresh, so a save reported as truncate-then-write isn't left half-read.
+- Coordinator: a per-repo lock serializes `ensureWorktree`. Concurrent stints on different work items collided on git's lock files. Regression test added.
+- Coordinator, test harness: server test files run one at a time, after the other projects, and `expect.poll` defaults to 5 s for setup waits. Product deadlines (1-second live update) keep their explicit timers.
+
+Result: 6/6 consecutive full-suite runs, 326 tests.

@@ -4,7 +4,13 @@ import { mkdir, mkdtemp, readFile, rename, rm, symlink, utimes, writeFile } from
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
-import { indexProject, type Brief, type ProjectSnapshot, type Stint } from "@stintwork/core";
+import {
+  indexProject,
+  type Brief,
+  type ProjectSnapshot,
+  type Stint,
+  type StintLogEntry,
+} from "@stintwork/core";
 import { createCheckpoint, ensureWorktree, listWorkItemWorktrees } from "@stintwork/git";
 import { afterEach, expect, test } from "vitest";
 import { WebSocket } from "ws";
@@ -115,11 +121,19 @@ async function start(project: ReturnType<typeof createProjectServer>): Promise<S
     .toBe("finished");
   return stint;
 }
-function nextSnapshot(socket: WebSocket, predicate: (value: ProjectSnapshot) => boolean) {
+/**
+ * Ticket status changes must reach the board within 1 second (the spec's live-update bound).
+ * Divergence warnings carry no such bound and run git, so their tests pass a longer deadline.
+ */
+function nextSnapshot(
+  socket: WebSocket,
+  predicate: (value: ProjectSnapshot) => boolean,
+  deadlineMs = 1000,
+) {
   return new Promise<ProjectSnapshot>((resolve, reject) => {
     const timeout = setTimeout(
-      () => finish(new Error("No matching snapshot within 1 second")),
-      1000,
+      () => finish(new Error(`No matching snapshot within ${deadlineMs} ms`)),
+      deadlineMs,
     );
     function finish(error?: Error, value?: ProjectSnapshot) {
       clearTimeout(timeout);
@@ -202,6 +216,65 @@ test("server restart uses existing worktrees and warns about main edits against 
     path: ".scratch/first/",
     message: expect.stringContaining(join(stint.worktree.path, ".scratch/first")),
   });
+});
+
+test("startup recovery checkpoints worktree files before indexing and compiling the next brief", async () => {
+  const { root, project, worktree } = await fixture([], true);
+  if (!worktree) throw new Error("Expected a worktree");
+  const started: StintLogEntry = {
+    type: "started",
+    at: new Date().toISOString(),
+    stint: {
+      id: "interrupted-worktree",
+      workItem: "first",
+      ticket: 1,
+      stage: "implement",
+      agent: "codex",
+      worktree,
+      baseCommit: execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: worktree.path,
+        encoding: "utf8",
+      }).trim(),
+      brief: { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Work" },
+    },
+  };
+  await write(
+    root,
+    ".stintwork/local/stints/interrupted-worktree.jsonl",
+    `${JSON.stringify(started)}\n`,
+  );
+  await write(worktree.path, specPath, "# Recovered work");
+  await project.start();
+  const value = await snapshot(project);
+  const item = value.workItems.find((candidate) => candidate.slug === "first");
+  expect(item).toMatchObject({
+    title: "Recovered work",
+    worktreePath: worktree.path,
+    activeStint: null,
+    stints: [
+      expect.objectContaining({
+        status: "interrupted",
+        checkpointCommit: expect.stringMatching(/^[a-f\d]{40}$/),
+      }),
+    ],
+  });
+  const response = await project.app.request("/api/stints/interrupted-worktree");
+  expect(response.status).toBe(200);
+  const { stint }: { stint: Stint } = await response.json();
+  expect(stint.status).toBe("interrupted");
+  expect(
+    execFileSync("git", ["show", `${stint.checkpointCommit}:${specPath}`], {
+      cwd: worktree.path,
+      encoding: "utf8",
+    }),
+  ).toBe("# Recovered work");
+  await write(worktree.path, specPath, "# Edited after recovery");
+  const preview = await project.app.request("/api/work-items/first/tickets/1/brief-preview");
+  expect(preview.status).toBe(200);
+  const brief: Brief = await preview.json();
+  expect(brief.checkpointCommit).toBe(stint.checkpointCommit);
+  expect(brief.changedPaths).toEqual([specPath]);
+  expect(await readFile(join(root, specPath), "utf8")).toBe("# First");
 });
 
 test("the watcher reindexes worktree files and main-only work items without an HTTP listener", async () => {
@@ -325,8 +398,10 @@ test.each([true, false])(
 test("main spec edits push a divergence warning naming the worktree, and restoring them clears it", async () => {
   const { root, project, tracked, worktree } = await fixture([], true);
   const socket = await live(project, tracked);
-  const warning = nextSnapshot(socket, (value) =>
-    value.warnings.some((entry) => entry.path === ".scratch/first/"),
+  const warning = nextSnapshot(
+    socket,
+    (value) => value.warnings.some((entry) => entry.path === ".scratch/first/"),
+    3000,
   );
   await write(root, specPath, "# Wrong checkout");
   expect((await warning).warnings).toContainEqual({
@@ -336,6 +411,7 @@ test("main spec edits push a divergence warning naming the worktree, and restori
   const cleared = nextSnapshot(
     socket,
     (value) => !value.warnings.some((entry) => entry.path === ".scratch/first/"),
+    3000,
   );
   await write(root, specPath, "# First");
   expect((await cleared).workItems.find((item) => item.slug === "first")?.spec?.text).toBe(
