@@ -116,7 +116,7 @@ test("prints help and exits 0 without starting the server", () => {
   expect(result.stderr).toBe("");
 });
 
-test("prints the version and exits 0", () => {
+test("prints only the version and exits 0", () => {
   expect(parseCliArguments(["-v"])).toEqual({ action: "version" });
   const result = runCli(temporaryDirectory(), ["--version"]);
   expect(result.status).toBe(0);
@@ -124,12 +124,15 @@ test("prints the version and exits 0", () => {
     readFileSync(new URL("../package.json", import.meta.url), "utf8"),
   ) as { version: string };
   expect(version).toMatch(/^\d+\.\d+\.\d+/);
-  expect(result.stdout).toBe(`stintwork ${version}\n`);
+  expect(result.stdout).toBe(`${version}\n`);
   expect(result.stderr).toBe("");
 });
 
 test("rejects an unknown option with usage on stderr and exit code 2", () => {
-  expect(parseCliArguments(["--no-opne"])).toEqual({ action: "unknown-option", option: "--no-opne" });
+  expect(parseCliArguments(["--no-opne"])).toEqual({
+    action: "unknown-option",
+    option: "--no-opne",
+  });
   expect(parseCliArguments(["--help", "--bogus"])).toEqual({
     action: "unknown-option",
     option: "--bogus",

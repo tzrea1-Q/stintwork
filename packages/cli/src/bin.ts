@@ -54,7 +54,7 @@ try {
     // The CLI package root, from both src/bin.ts and dist/bin.js.
     const packageJson = new URL("../package.json", import.meta.url);
     const { version } = JSON.parse(readFileSync(packageJson, "utf8")) as { version: string };
-    process.stdout.write(`stintwork ${version}\n`);
+    process.stdout.write(`${version}\n`);
   } else {
     await start(cli.open);
   }
