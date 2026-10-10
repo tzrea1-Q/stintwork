@@ -1,7 +1,7 @@
 # 11 — M3 exit
 
 Status: ready-for-agent
-Blocked by: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10
+Blocked by: 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 12
 
 ## What to build
 
