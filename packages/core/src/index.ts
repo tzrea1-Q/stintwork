@@ -10,7 +10,9 @@ export {
   type AttentionItem,
   type AttentionItemSource,
   type PermissionAttentionItem,
+  type GateAttentionItem,
 } from "./attention.js";
+export { gateReadiness, workflowGate, type GateRecord, type GateWorkItem } from "./gates.js";
 export type {
   RichStintEvent,
   StintToolContent,

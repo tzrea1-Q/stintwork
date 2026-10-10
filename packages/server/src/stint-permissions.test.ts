@@ -173,7 +173,7 @@ test("Needs-you snapshots reach both tabs; a queue answer is logged, received by
       .poll(() => snapshots.every((messages) => messages.at(-1)?.attentionItems.length === 1))
       .toBe(true);
     const item = snapshots[0].at(-1)?.attentionItems[0];
-    if (!item) throw new Error("Expected an attention item.");
+    if (item?.kind !== "permission") throw new Error("Expected a permission attention item.");
     expect(item).toMatchObject({
       kind: "permission",
       workItem: "first",
