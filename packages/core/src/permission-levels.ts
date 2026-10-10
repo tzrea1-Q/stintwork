@@ -1,5 +1,6 @@
 import { parse, stringify } from "yaml";
 import type { AgentProfile } from "./agents.js";
+import { readProjectConfig } from "./project-config.js";
 
 export const permissionLevels = ["ask", "edit-freely", "autonomous"] as const;
 export type PermissionLevel = (typeof permissionLevels)[number];
@@ -42,14 +43,7 @@ export function permissionPolicy(profile: AgentProfile, level: PermissionLevel) 
 }
 
 export function projectPermissionLevel(text?: string): PermissionLevel {
-  if (text === undefined) return defaultPermissionLevel;
-  const config = parse(text);
-  if (!config || typeof config !== "object" || Array.isArray(config))
-    throw new Error(".stintwork/config must contain a mapping.");
-  if (config.permissionLevel === undefined) return defaultPermissionLevel;
-  if (!isPermissionLevel(config.permissionLevel))
-    throw new Error("Invalid project permission level.");
-  return config.permissionLevel;
+  return readProjectConfig(text).permissionLevel;
 }
 
 export function updateProjectPermissionLevel(text: string | undefined, level: PermissionLevel) {

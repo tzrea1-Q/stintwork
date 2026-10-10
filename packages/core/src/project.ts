@@ -8,6 +8,7 @@ import { deriveAttentionItems, type AttentionItem } from "./attention.js";
 import type { AgentProfile } from "./agents.js";
 import { parseReviewDecisions, type ReviewDecision } from "./review-decisions.js";
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
+import type { CheckExecution, CheckResult } from "./checks.js";
 import {
   defaultPermissionLevel,
   projectPermissionLevel,
@@ -29,6 +30,9 @@ export type ProjectSnapshot = {
     worktreePath?: string;
     reviewDecisions?: ReviewDecision[];
     memoryProposals?: MemoryProposalAttentionItem[];
+    headCommit?: string;
+    checks?: CheckResult[];
+    checkExecution?: CheckExecution | null;
   })[];
   setup: SetupReport;
   warnings: Warning[];

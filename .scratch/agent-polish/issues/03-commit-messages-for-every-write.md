@@ -1,6 +1,6 @@
 # 03 — Commit messages for every Stintwork write
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -9,5 +9,9 @@ Approving `cli-help`'s Implement gate in the M3 exit test committed `workflow.ya
 
 ## Acceptance criteria
 
-- [ ] Server tests assert the commit subject for setup, gate approval, gate reopening and agent choice.
-- [ ] All checks pass.
+- [x] Server tests assert the commit subject for setup, gate approval, gate reopening and agent choice.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-10:** Built by Codex. Every write path now commits with its own subject: setup, "Approve <stage> gate for <slug>", "Reopen <stage> gate for <slug>", "Set <stage> agent to <agent> for <slug>", plus "Record <kind> <id> as <status> for <slug>" for review decisions. Server tests assert each subject. verify.sh passed (757 tests).

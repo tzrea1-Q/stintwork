@@ -13,7 +13,7 @@ export async function saveWorkItemReview(
     worktree,
     slug,
     recordReviewDecision(existing, decision),
-    decision.id,
+    `Record ${decision.kind} ${decision.id} as ${decision.status} for ${slug}`,
     rejection,
   );
 }

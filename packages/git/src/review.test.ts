@@ -72,18 +72,19 @@ test("accept commits only the review; reject commits the whole file's base and r
   const checkpoint = commit(root);
   writeFileSync(join(root, "unrelated.txt"), "Preserve staged work");
   git(root, "add", "unrelated.txt");
-  await commitWorkItemReview(root, "first", "decisions: []\n", "accepted-proposal");
+  await commitWorkItemReview(root, "first", "decisions: []\n", "Accept proposal for first");
+  expect(git(root, "log", "-1", "--format=%s")).toBe("Accept proposal for first");
   expect(git(root, "diff", "--name-only", checkpoint, "HEAD")).toBe(review);
   expect(readFileSync(join(root, "GLOSSARY.md"), "utf8")).toBe("Proposal\n");
   const rejected = await commitWorkItemReview(
     root,
     "first",
     "decisions: [{id: rejected-proposal}]\n",
-    "rejected-proposal",
+    "Reject proposal for first",
     { path: "GLOSSARY.md", baseCommit: base },
   );
   expect(git(root, "show", `${rejected}:GLOSSARY.md`)).toBe("Original");
-  expect(git(root, "log", "-1", "--format=%s")).toBe("Reject memory proposal: rejected-proposal");
+  expect(git(root, "log", "-1", "--format=%s")).toBe("Reject proposal for first");
   expect(git(root, "diff", "--cached", "--name-only")).toBe("unrelated.txt");
   expect(git(root, "ls-tree", "HEAD", "unrelated.txt")).toBe("");
 });

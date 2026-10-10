@@ -75,6 +75,7 @@ export function addStintRoutes(
   options: StintServerOptions,
   broadcast: (message: StintLiveMessage) => void,
   refresh: () => void,
+  isChecking: (slug: string) => boolean = () => false,
 ) {
   const registry = options.agentRegistry ?? createAgentRegistry();
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
@@ -172,6 +173,8 @@ export function addStintRoutes(
     await refreshAgentAvailability(agent);
     const unavailable = agentUnavailableReason(agent);
     if (unavailable) return context.json({ reason: unavailable }, 409);
+    if (isChecking(workItem.slug))
+      return context.json({ reason: "Cancel or finish checks before starting a stint." }, 409);
     if (active.has(workItem.slug) || stageAgents.isWriting(workItem.slug))
       return context.json({ reason: "A stint is already active for this work item." }, 409);
     if (
@@ -460,16 +463,19 @@ export function addStintRoutes(
       prepared();
     }
   });
-  return async () => {
-    closing = true;
-    permissions.clear();
-    await Promise.all(
-      [...active.values()].map(async (state) => {
-        state.setupCancellation?.abort();
-        await state.preparation;
-        await state.handle?.cancel();
-        await state.completion;
-      }),
-    );
-  };
+  return Object.assign(
+    async () => {
+      closing = true;
+      permissions.clear();
+      await Promise.all(
+        [...active.values()].map(async (state) => {
+          state.setupCancellation?.abort();
+          await state.preparation;
+          await state.handle?.cancel();
+          await state.completion;
+        }),
+      );
+    },
+    { isActive: (slug: string) => active.has(slug) },
+  );
 }

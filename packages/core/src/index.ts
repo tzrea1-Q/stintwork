@@ -10,6 +10,21 @@ export {
   type ReviewFinding,
   type ReviewFindings,
 } from "./findings.js";
+export {
+  readProjectConfig,
+  defaultCheckCommands,
+  type CheckCommand,
+  type ProjectConfig,
+} from "./project-config.js";
+export {
+  isCheckExecution,
+  latestCheckResults,
+  type CheckStatus,
+  type CheckResult,
+  type CheckExecution,
+  type CheckLiveMessage,
+  type WorkItemChecks,
+} from "./checks.js";
 export type {
   AgentAvailability,
   AgentCapabilityProfile,

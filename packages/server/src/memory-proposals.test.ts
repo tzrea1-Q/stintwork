@@ -137,6 +137,9 @@ test.each(["accepted", "rejected"] as const)(
     const response = await decide(restarted, proposal, status, "Developer reviewed");
     expect(response.status).toBe(200);
     const { decision, commit } = await response.json();
+    expect(git(root, "show", "--format=%s", "--no-patch", commit)).toBe(
+      `Record memory-proposal ${proposal.id} as ${status} for first`,
+    );
     expect(decision).toMatchObject({
       id: proposal.id,
       kind: "memory-proposal",
@@ -158,8 +161,6 @@ test.each(["accepted", "rejected"] as const)(
     expect(
       (await snapshot(restarted)).attentionItems.some((item) => item.kind === "memory-proposal"),
     ).toBe(false);
-    if (status === "rejected")
-      expect(git(root, "log", "-1", "--format=%s", started.worktree.branch)).toContain(proposal.id);
     await restarted.stop();
     const final = open();
     expect((await snapshot(final)).workItems[0]).toMatchObject({

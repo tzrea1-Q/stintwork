@@ -72,7 +72,7 @@ export async function commitWorkItemReview(
   worktree: string,
   slug: string,
   text: string,
-  proposalId: string,
+  message: string,
   rejection?: { path: string; baseCommit: string },
 ): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
@@ -133,13 +133,7 @@ export async function commitWorkItemReview(
     }
     writeFileSync(join(worktree, review), text, { flag: existing === undefined ? "wx" : "w" });
     await git(["add", "--all", "--", ...paths]);
-    await commitWithIdentity(git, [
-      "--only",
-      "-m",
-      `${rejection ? "Reject memory proposal" : "Review decision"}: ${proposalId}`,
-      "--",
-      ...paths,
-    ]);
+    await commitWithIdentity(git, ["--only", "-m", message, "--", ...paths]);
     return await git(["rev-parse", "HEAD"]);
   } catch (error) {
     if (gitText(worktree, ["rev-parse", "HEAD"]).trim() === head) {

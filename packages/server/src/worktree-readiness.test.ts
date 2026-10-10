@@ -175,7 +175,9 @@ test("commits Stintwork setup before the first stint and makes no setup commit o
 
   const first = await start(project);
   expect(first.status).toBe(201);
-  await ended(root, (await first.json()).stint.id);
+  const { stint: firstStint }: { stint: Stint } = await first.json();
+  await ended(root, firstStint.id);
+  expect(starts[0].head).toBe(firstStint.baseCommit);
   expect(starts[0]).toMatchObject({
     files: [".gitignore", ".scratch/first/workflow.yaml"],
     status: "",

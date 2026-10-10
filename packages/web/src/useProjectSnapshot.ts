@@ -7,6 +7,7 @@ import {
   isReviewFindings,
   summarizeStint,
   deriveAttentionItems,
+  isCheckExecution,
   type ProjectSnapshot,
   type WorkflowStage,
 } from "@stintwork/core";
@@ -251,6 +252,34 @@ export function useProjectSnapshot() {
         socket.onmessage = (event) => {
           try {
             const message: unknown = JSON.parse(event.data);
+            if (isRecord(message) && message.type === "checks") {
+              if (!isCheckExecution(message.execution)) throw new Error("Invalid check evidence.");
+              const execution = message.execution;
+              version++;
+              setSnapshot((current) =>
+                current
+                  ? {
+                      ...current,
+                      workItems: current.workItems.map((item) =>
+                        item.slug !== execution.workItem
+                          ? item
+                          : {
+                              ...item,
+                              checks: [
+                                ...(item.checks ?? []).filter(
+                                  (check) =>
+                                    !execution.results.some((result) => result.name === check.name),
+                                ),
+                                ...execution.results,
+                              ],
+                              checkExecution: execution,
+                            },
+                      ),
+                    }
+                  : current,
+              );
+              return;
+            }
             if (isRecord(message) && message.type === "stint") {
               if (
                 typeof message.stintId !== "string" ||
