@@ -35,6 +35,7 @@ export function createFakeAgentLauncher(
     additionalDirectories?: boolean;
     verifyGitDirectories?: boolean;
     handoffFailures?: number;
+    afterTurnRequests?: readonly (readonly FakeAgentStep[])[];
     profile?: keyof typeof fakeAgentProfiles;
     agentId?: string;
   } = {},

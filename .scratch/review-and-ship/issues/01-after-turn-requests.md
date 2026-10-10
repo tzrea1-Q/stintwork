@@ -1,6 +1,6 @@
 # 01 — After-turn requests
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build

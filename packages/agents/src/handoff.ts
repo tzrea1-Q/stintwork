@@ -1,4 +1,5 @@
 import type { BriefHandoff } from "@stintwork/core";
+import type { AfterTurnRequest } from "./after-turn.js";
 
 export type AgentHandoff = Pick<BriefHandoff, "stoppedAt" | "unresolved" | "nextStep">;
 
@@ -7,6 +8,15 @@ export const handoffPrompt = `The stint's work turn has ended. Give a handoff fo
 ## Unresolved
 ## Suggested next
 Write a nonempty account under each heading; use "None" when nothing is unresolved.`;
+
+export const handoffRequest: AfterTurnRequest = {
+  name: "Handoff",
+  prompt: handoffPrompt,
+  parse: parseHandoff,
+  resultField: "handoff",
+  errorField: "handoffError",
+  parseError: "Handoff did not contain the required Markdown sections.",
+};
 
 export function parseHandoff(text: string): AgentHandoff | null {
   const sections: { heading: string; lines: string[] }[] = [];
