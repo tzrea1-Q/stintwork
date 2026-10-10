@@ -31,6 +31,7 @@ export async function saveWorkItemWorkflow(
   slug: string,
   update: (existing: string | undefined) => string,
   commit: boolean,
+  message: string,
 ) {
   const relative = `.scratch/${slug}/workflow.yaml`;
   const path = join(root, relative);
@@ -52,7 +53,7 @@ export async function saveWorkItemWorkflow(
   });
   if (!commit) return null;
   try {
-    return await commitStintworkSetup(root, slug, [relative]);
+    return await commitStintworkSetup(root, slug, [relative], message);
   } catch (error) {
     if (changed && readFileSync(path, "utf8") === written) {
       if (existing === undefined) rmSync(path);

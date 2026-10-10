@@ -88,6 +88,7 @@ export function addGateRoutes(
           slug,
           (text) => workflowGate(text, item, stage.id, action, record),
           !!worktree,
+          `${action === "approve" ? "Approve" : "Reopen"} ${stage.id} gate for ${slug}`,
         );
         refresh();
         return context.json({

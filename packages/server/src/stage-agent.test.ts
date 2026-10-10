@@ -108,6 +108,9 @@ test("an active worktree receives the choice and a workflow-only commit, leaving
   expect(response.status).toBe(200);
   const result = await response.json();
   expect(result.commit).toBe(git(worktree.path, "rev-parse", "HEAD"));
+  expect(git(worktree.path, "show", "--format=%s", "--no-patch", result.commit)).toBe(
+    "Set review agent to claude for first",
+  );
   expect(git(worktree.path, "show", `HEAD:${workflowPath}`)).toContain("agent: claude");
   expect(git(worktree.path, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")).toBe(
     workflowPath,

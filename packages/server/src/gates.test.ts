@@ -130,6 +130,9 @@ test("worktree gate actions commit only workflow.yaml and leave main and unrelat
   expect(result.record.commit).toBe(before);
   expect(result.commit).toBe(git(worktree.path, "rev-parse", "HEAD"));
   expect(result.commit).not.toBe(before);
+  expect(git(worktree.path, "show", "--format=%s", "--no-patch", result.commit)).toBe(
+    "Approve implement gate for first",
+  );
   expect(git(worktree.path, "show", "--format=", "--name-only", "HEAD")).toBe(workflowPath);
   expect(git(worktree.path, "diff", "--cached", "--name-only")).toBe("unrelated.txt");
   expect(await readFile(join(root, workflowPath), "utf8")).toBe(workflow);
@@ -139,7 +142,11 @@ test("worktree gate actions commit only workflow.yaml and leave main and unrelat
   });
   const reopen = await action(project, "implement", "reopen");
   expect(reopen.status).toBe(200);
-  expect((await reopen.json()).commit).not.toBe(result.commit);
+  const reopened = await reopen.json();
+  expect(reopened.commit).not.toBe(result.commit);
+  expect(git(worktree.path, "show", "--format=%s", "--no-patch", reopened.commit)).toBe(
+    "Reopen implement gate for first",
+  );
   expect((await snapshot(project)).workItems[0].stage).toBe("implement");
   expect(await readFile(join(root, workflowPath), "utf8")).toBe(workflow);
 });
@@ -185,6 +192,7 @@ test("an inferred stage gets workflow.yaml on its first approval", async () => {
   expect((await action(project, "review")).status).toBe(200);
   expect(await readFile(join(worktree.path, workflowPath), "utf8")).toContain("stage: ship");
   expect(git(worktree.path, "show", `HEAD:${workflowPath}`)).toContain("approved:");
+  expect(git(worktree.path, "log", "-1", "--format=%s")).toBe("Approve review gate for first");
   expect((await snapshot(project)).workItems[0].inferred).toBe(false);
   await expect(readFile(join(root, workflowPath))).rejects.toMatchObject({ code: "ENOENT" });
 });
