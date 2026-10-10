@@ -1,5 +1,7 @@
 import type { ProjectSnapshot } from "./project.js";
 import type { StintEvent } from "./stints.js";
+import type { StageId } from "./workflows.js";
+import { deriveGateAttentionItems } from "./gates.js";
 
 export type AttentionItemSource = {
   id: string;
@@ -20,13 +22,14 @@ export type PermissionAttentionItem = AttentionItemSource & {
   options: Extract<StintEvent, { type: "permission_request" }>["options"];
 };
 
-export type AttentionItem = PermissionAttentionItem;
+export type GateAttentionItem = AttentionItemSource & { kind: "gate-ready"; stage: StageId };
+export type AttentionItem = PermissionAttentionItem | GateAttentionItem;
 
 export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems">,
 ): AttentionItem[] {
   return snapshot.workItems
-    .flatMap((item) => {
+    .flatMap((item): AttentionItem[] => {
       const stint = item.activeStint;
       if (stint?.status !== "running") return [];
       const answered = new Set(
@@ -57,6 +60,7 @@ export function deriveAttentionItems(
           }),
         );
     })
+    .concat(deriveGateAttentionItems(snapshot))
     .sort(
       (first, second) =>
         first.raisedAt.localeCompare(second.raisedAt) || first.id.localeCompare(second.id),
