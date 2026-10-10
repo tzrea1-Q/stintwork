@@ -130,7 +130,7 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
   expect(fetch).toHaveBeenCalledTimes(2);
 });
 
-test("blocked and resolved tickets show disabled reasons, and non-implementation stages cannot start", () => {
+test("blocked and resolved implementation tickets show disabled reasons, and Ship cannot start", () => {
   const fetch = vi.fn();
   vi.stubGlobal("fetch", fetch);
   const { rerender } = render(
@@ -153,11 +153,11 @@ test("blocked and resolved tickets show disabled reasons, and non-implementation
   expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(
     "This ticket is resolved.",
   );
-  rerender(<WorkItemDrawer item={{ ...item, stage: "review" }} onClose={vi.fn()} />);
-  expect(screen.getByRole("button", { name: "Start stint" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(
-    "Stints are available only in Implement, Fix or Do.",
-  );
+  rerender(<WorkItemDrawer item={{ ...item, stage: "ship" }} onClose={vi.fn()} />);
+  for (const action of screen.getAllByRole("button", { name: "Start stint" })) {
+    expect(action).toBeDisabled();
+    expect(action).toHaveAccessibleDescription("This stage has no stint skill.");
+  }
   expect(fetch).not.toHaveBeenCalled();
 });
 

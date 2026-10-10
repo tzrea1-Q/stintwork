@@ -106,13 +106,16 @@ export function addStintRoutes(
       typeof body !== "object" ||
       !("workItem" in body) ||
       typeof body.workItem !== "string" ||
-      !("ticket" in body) ||
-      !Number.isSafeInteger(body.ticket) ||
+      ("ticket" in body &&
+        body.ticket !== null &&
+        (!Number.isSafeInteger(body.ticket) || (body.ticket as number) <= 0)) ||
       !("agent" in body) ||
       typeof body.agent !== "string"
     ) {
       return context.json(
-        { reason: "Choose a work item, ticket number and registered agent." },
+        {
+          reason: "Choose a work item, an optional positive ticket number and a registered agent.",
+        },
         400,
       );
     }
@@ -122,7 +125,7 @@ export function addStintRoutes(
     const result = await prepareStintBrief(
       readProjectFiles,
       body.workItem,
-      body.ticket as number,
+      "ticket" in body ? (body.ticket as number | null) : null,
       root,
     );
     if ("reason" in result)
@@ -142,7 +145,7 @@ export function addStintRoutes(
       const prepared = await prepareStintBrief(
         readProjectFiles,
         workItem.slug,
-        ticket.number,
+        ticket?.number ?? null,
         root,
       );
       if ("reason" in prepared) throw new Error(prepared.reason);
@@ -187,7 +190,7 @@ export function addStintRoutes(
           id,
           workItem: workItem.slug,
           stage: stage.id,
-          ticket: ticket.number,
+          ticket: ticket?.number ?? null,
           agent: agent.id,
           worktree,
           baseCommit,
@@ -225,7 +228,7 @@ export function addStintRoutes(
           checkpointCommit = await createCheckpoint(worktree.path, {
             id,
             workItem: workItem.slug,
-            ticket: ticket.number,
+            ticket: ticket?.number ?? null,
             status,
           });
         } catch (error) {
