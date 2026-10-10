@@ -12,6 +12,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { addBriefPreviewRoute } from "./brief-preview.js";
 import { createNodeRepoFiles, projectPaths } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
+import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -73,6 +74,19 @@ export function createProjectServer(
   }
 
   const app = new Hono();
+  let initialization: Promise<void> | undefined;
+  function initialize() {
+    initialization ??= recoverInterruptedStints(root, files).then(refresh);
+    return initialization;
+  }
+  app.use("/api/*", async (context, next) => {
+    try {
+      await initialize();
+    } catch (error) {
+      return context.json({ reason: `Stint recovery failed: ${String(error)}` }, 503);
+    }
+    await next();
+  });
   const health: Health = { ok: true, repo: name };
   app.get("/api/health", (context) => context.json(health));
   app.get("/api/project", (context) => {
@@ -80,6 +94,7 @@ export function createProjectServer(
     return context.json(snapshot);
   });
   addBriefPreviewRoute(app, files, root);
+  addStintHistoryRoute(app, files);
   const stopStints = addStintRoutes(
     app,
     root,
@@ -110,6 +125,7 @@ export function createProjectServer(
   function start(): Promise<ServerType> {
     if (stopping) return Promise.reject(new Error("Project server is stopped"));
     starting ??= (async () => {
+      await initialize();
       watcher = watch(root, {
         ignoreInitial: true,
         followSymlinks: false,
