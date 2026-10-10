@@ -61,7 +61,7 @@ export type StintSummary = Pick<
   | "handoff"
   | "handoffError"
   | "handoffAnswer"
->;
+> & { lastHandoffStintId?: string };
 export type StintLogEntry =
   | {
       type: "started";
@@ -197,6 +197,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     endedAt,
     checkpointCommit: stint.checkpointCommit,
     handoff: stint.handoff,
+    ...(stint.brief.lastHandoff ? { lastHandoffStintId: stint.brief.lastHandoff.stint } : {}),
     ...(stint.handoffAnswer ? { handoffAnswer: stint.handoffAnswer } : {}),
     ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),
     ...(error ? { error } : {}),
