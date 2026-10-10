@@ -15,6 +15,8 @@ Read before any change:
 
 Local Markdown under `.scratch/`; Stintwork dogfoods this format. See `docs/agents/issue-tracker.md`.
 
+Tests that read this repo's own `.scratch/` must assert only properties that stay true as the plan grows: tickets parse, there are no warnings, and tickets are in dependency order. Put exact statuses and ticket counts in fixtures.
+
 ### Domain docs
 
 Single context: `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.

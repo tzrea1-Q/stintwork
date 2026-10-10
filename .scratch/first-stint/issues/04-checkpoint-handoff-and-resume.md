@@ -17,3 +17,7 @@ How a stint ends, and how the next one starts (spec user stories 19–24, 35; AD
 - [ ] Server test: the handoff is requested, stored and returned. A fake agent that never answers times out, and the stint ends with "no handoff".
 - [ ] Server test: after editing the spec on the main branch, the next brief preview includes the handoff and lists the spec under "changed since".
 - [ ] Component test: the handoff card renders all three sections and the checkpoint commit.
+
+## Comments
+
+**2026-10-09 · implemented by Codex, verified by coordinator.** All checks pass alone (225 tests) and merged with ticket 06 (248 tests). Real Codex stint on a throwaway repo: the stint ended `finished` (`end_turn`), the same-session handoff came back parsed into its three sections, and the clean worktree recorded Codex's own commit `a44e698` as the checkpoint. The real two-ticket resume test then found that a work item's files were being read from the main checkout rather than its worktree. That became ADR 0009 and ticket 10.
