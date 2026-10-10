@@ -1,14 +1,16 @@
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
-import type { Brief, ProjectSnapshot, Stint } from "@stintwork/core";
-import { ensureWorktree } from "@stintwork/git";
+import { indexProject, type Brief, type ProjectSnapshot, type Stint } from "@stintwork/core";
+import { createCheckpoint, ensureWorktree, listWorkItemWorktrees } from "@stintwork/git";
 import { afterEach, expect, test } from "vitest";
 import { WebSocket } from "ws";
 import { createProjectServer } from "./index.js";
+import { projectPaths } from "./repo-files.js";
+import { createProjectFiles } from "./work-item-files.js";
 
 const specPath = ".scratch/first/spec.md";
 const ticketPath = ".scratch/first/issues/01-first.md";
@@ -22,6 +24,26 @@ const fixtures: {
 async function write(root: string, path: string, text: string) {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), text);
+}
+async function traceGit(root: string, action: () => void | Promise<void>) {
+  const tracePath = join(root, "git-trace.jsonl");
+  const previousTrace = process.env.GIT_TRACE2_EVENT;
+  process.env.GIT_TRACE2_EVENT = tracePath;
+  try {
+    await action();
+    const trace = await readFile(tracePath, "utf8").catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return "";
+    });
+    return trace
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line) as { event: string; argv: string[] })
+      .filter((entry) => entry.event === "start");
+  } finally {
+    if (previousTrace === undefined) delete process.env.GIT_TRACE2_EVENT;
+    else process.env.GIT_TRACE2_EVENT = previousTrace;
+  }
 }
 async function fixture(script: FakeAgentStep[] = [], withWorktree = false) {
   const parent = await mkdtemp(join(tmpdir(), "stintwork-project-files-"));
@@ -227,6 +249,54 @@ test("the watcher discovers a newly registered worktree and falls back to main w
 });
 
 test.each([true, false])(
+  "main file watching discovers new work within 1 second without an HTTP listener (scratch exists: %s)",
+  async (scratchExists) => {
+    const { root, project } = await fixture();
+    if (!scratchExists) await rm(join(root, ".scratch"), { recursive: true });
+    await project.start();
+    const began = performance.now();
+    await write(root, ".scratch/new-work/spec.md", "# New work");
+    await expect
+      .poll(
+        async () =>
+          (await snapshot(project)).workItems.find((item) => item.slug === "new-work")?.title,
+        { timeout: 1000 },
+      )
+      .toBe("New work");
+    const elapsed = performance.now() - began;
+    expect(elapsed).toBeLessThan(1000);
+    console.log(`New work item (scratch exists: ${scratchExists}): ${elapsed.toFixed(1)} ms`);
+  },
+);
+
+test("main file watching includes roadmap, workflow and setup edits within 1 second without an HTTP listener", async () => {
+  const { root, project } = await fixture();
+  await project.start();
+  const began = performance.now();
+  await write(root, ".stintwork/roadmap.md", "## First\nId: m1\nStatus: active\n- first");
+  await write(root, ".scratch/first/workflow.yaml", "workflow: feature\nstage: review");
+  await write(root, "CLAUDE.md", "See AGENTS.md");
+  await write(root, "docs/adr/0001-files.md", "# Files");
+  await expect
+    .poll(
+      async () => {
+        const value = await snapshot(project);
+        return {
+          hasClaude: value.setup.hasClaude,
+          hasAdrs: value.setup.hasAdrs,
+          stage: value.workItems.find((item) => item.slug === "first")?.stage,
+          milestone: value.workItems.find((item) => item.slug === "first")?.milestone,
+        };
+      },
+      { timeout: 1000 },
+    )
+    .toEqual({ hasClaude: true, hasAdrs: true, stage: "review", milestone: "m1" });
+  const elapsed = performance.now() - began;
+  expect(elapsed).toBeLessThan(1000);
+  console.log(`Shared file edits: ${elapsed.toFixed(1)} ms`);
+});
+
+test.each([true, false])(
   "worktree ticket edits push a snapshot within 1 second (exists at startup: %s)",
   async (withWorktree) => {
     const { root, project, tracked, worktree } = await fixture([], withWorktree);
@@ -271,4 +341,140 @@ test("main spec edits push a divergence warning naming the worktree, and restori
   expect((await cleared).workItems.find((item) => item.slug === "first")?.spec?.text).toBe(
     "# First",
   );
+});
+
+test("ordinary file refreshes do not spawn Git again after discovery", async () => {
+  const { root, worktree } = await fixture([], true);
+  if (!worktree) throw new Error("Expected a worktree");
+  const readProjectFiles = createProjectFiles(root);
+  readProjectFiles();
+  await write(worktree.path, ticketPath, ticket("resolved"));
+  await write(root, ".scratch/inactive/spec.md", "# Updated inactive");
+  const began = performance.now();
+  const starts = await traceGit(root, () => {
+    for (let index = 0; index < 10; index++) {
+      const files = readProjectFiles([
+        join(worktree.path, ticketPath),
+        join(root, ".scratch/inactive/spec.md"),
+        join(root, "AGENTS.md"),
+      ]).files;
+      const value = indexProject(files, { name: "Fixture" });
+      expect(value.workItems.find((item) => item.slug === "first")?.tickets[0].resolved).toBe(true);
+      expect(value.workItems.find((item) => item.slug === "first")?.tickets[1].blocked).toBe(false);
+      expect(value.workItems.find((item) => item.slug === "inactive")?.spec?.text).toBe(
+        "# Updated inactive",
+      );
+    }
+  });
+  console.log(
+    `Ten indexed file refreshes: ${(performance.now() - began).toFixed(1)} ms; ${starts.length} Git processes`,
+  );
+  expect(starts).toHaveLength(0);
+});
+
+test("file watching covers only project files and the work item's files, never Git internals", async () => {
+  const { root } = await fixture();
+  const readProjectFiles = createProjectFiles(root);
+  const mainPaths = projectPaths.map((path) => join(root, path));
+  expect(readProjectFiles().watchPaths).toEqual(mainPaths);
+  const worktree = await ensureWorktree(root, "first");
+  expect(readProjectFiles([]).watchPaths).toEqual([
+    ...mainPaths,
+    join(worktree.path, ".scratch", "first"),
+  ]);
+});
+
+test("metadata probes ignore main Git operations and a worktree's index and HEAD log", async () => {
+  const { root, worktree } = await fixture([], true);
+  if (!worktree) throw new Error("Expected a worktree");
+  const { registryPath } = listWorkItemWorktrees(root);
+  const readProjectFiles = createProjectFiles(root);
+  readProjectFiles();
+  await write(root, "unrelated.txt", "Main changes");
+  await createCheckpoint(root, { id: "fixture", workItem: "first", ticket: 1, status: "finished" });
+  await write(worktree.path, ticketPath, ticket("resolved"));
+  execFileSync("git", ["add", ticketPath], { cwd: worktree.path });
+  const now = new Date();
+  await utimes(join(registryPath, "first", "logs", "HEAD"), now, now);
+  const starts = await traceGit(root, () => {
+    for (let index = 0; index < 20; index++) {
+      expect(readProjectFiles.metadataChanged()).toBe(false);
+      expect(readProjectFiles([]).files.read(ticketPath)).toBe(ticket("resolved"));
+    }
+  });
+  expect(starts).toHaveLength(0);
+});
+
+test("main file changes only recheck that active work item and reuse its creation base", async () => {
+  const { root } = await fixture([], true);
+  await ensureWorktree(root, "inactive");
+  const readProjectFiles = createProjectFiles(root);
+  readProjectFiles();
+  const starts = await traceGit(root, async () => {
+    await write(root, specPath, "# Edited in main");
+    expect(readProjectFiles([join(root, specPath)]).warnings).toEqual([
+      expect.objectContaining({ path: ".scratch/first/" }),
+    ]);
+    await write(root, specPath, "# First");
+    expect(readProjectFiles([join(root, specPath)]).warnings).toEqual([]);
+  });
+  expect(starts).toHaveLength(3);
+  expect(starts.every((entry) => entry.argv.includes(".scratch/first/"))).toBe(true);
+});
+
+test("registry changes invalidate discovery and unhinted reads remain immediately fresh", async () => {
+  const { root } = await fixture();
+  const readProjectFiles = createProjectFiles(root);
+  readProjectFiles();
+  const worktree = await ensureWorktree(root, "first");
+  expect(readProjectFiles([]).worktreePaths.get("first")).toBe(worktree.path);
+  execFileSync("git", ["switch", "--quiet", "-c", "other"], { cwd: worktree.path });
+  expect(readProjectFiles([]).worktreePaths.size).toBe(0);
+  execFileSync("git", ["switch", "--quiet", "stintwork/first"], { cwd: worktree.path });
+  expect(readProjectFiles().worktreePaths.get("first")).toBe(worktree.path);
+  await write(root, specPath, "# Edited in main");
+  expect(readProjectFiles().warnings).toEqual([
+    expect.objectContaining({ path: ".scratch/first/" }),
+  ]);
+  await rm(worktree.path, { recursive: true });
+  expect(readProjectFiles([]).worktreePaths.size).toBe(0);
+});
+
+test("ref and base config changes invalidate caches without treating a checkpoint as the base", async () => {
+  const { root, worktree } = await fixture([], true);
+  if (!worktree) throw new Error("Expected a worktree");
+  const readProjectFiles = createProjectFiles(root);
+  readProjectFiles();
+  const stint = { id: "fixture", workItem: "first", ticket: 1, status: "finished" };
+  await write(worktree.path, specPath, "# Checkpoint spec");
+  await createCheckpoint(worktree.path, stint);
+  const starts = await traceGit(root, () => {
+    expect(readProjectFiles([]).warnings).toEqual([]);
+  });
+  expect(starts.some((entry) => entry.argv.includes("worktree"))).toBe(true);
+  expect(starts.some((entry) => entry.argv.includes("branch.stintwork/first.stintwork-base"))).toBe(
+    true,
+  );
+  await write(root, specPath, "# Edited in main");
+  expect(readProjectFiles([join(root, specPath)]).warnings).toHaveLength(1);
+  const newBase = await createCheckpoint(root, stint);
+  execFileSync("git", ["config", "branch.stintwork/first.stintwork-base", newBase], { cwd: root });
+  const updated = readProjectFiles([]);
+  expect(updated.warnings).toEqual([]);
+  expect(updated.files.read(specPath)).toBe("# Checkpoint spec");
+});
+
+test("failed discovery does not reuse a worktree whose parent became a symlink", async () => {
+  const { root, worktree } = await fixture([], true);
+  if (!worktree) throw new Error("Expected a worktree");
+  const readProjectFiles = createProjectFiles(root);
+  readProjectFiles();
+  const parent = dirname(worktree.path);
+  await rename(parent, `${parent}-moved`);
+  await symlink(`${parent}-moved`, parent);
+  const value = readProjectFiles([]);
+  expect(value.worktreePaths.size).toBe(0);
+  expect(value.warnings).toEqual([
+    expect.objectContaining({ message: expect.stringContaining("must not be a symlink") }),
+  ]);
 });

@@ -6,7 +6,6 @@ import { type AgentLauncher, type AgentStint, startAgentStint } from "@stintwork
 import {
   foldStintLog,
   type BriefHandoff,
-  type RepoFiles,
   type StintLiveMessage,
   type StintLogEntry,
 } from "@stintwork/core";
@@ -14,6 +13,7 @@ import { createCheckpoint, ensureWorktree } from "@stintwork/git";
 import type { Hono } from "hono";
 import { prepareStintBrief } from "./brief-preview.js";
 import { addStintPermissionRoute } from "./stint-permissions.js";
+import type { ProjectFilesReader } from "./work-item-files.js";
 
 export type StintServerOptions = { launchAgent?: AgentLauncher; handoffTimeoutMs?: number };
 
@@ -47,7 +47,7 @@ function prepareLogs(root: string) {
 export function addStintRoutes(
   app: Hono,
   root: string,
-  files: RepoFiles,
+  readProjectFiles: ProjectFilesReader,
   options: StintServerOptions,
   broadcast: (message: StintLiveMessage) => void,
   refresh: () => void,
@@ -85,7 +85,12 @@ export function addStintRoutes(
       return context.json({ reason: "Choose a work item, ticket number and Codex." }, 400);
     }
     if (closing) return context.json({ reason: "The project server is stopping." }, 503);
-    const result = await prepareStintBrief(files, body.workItem, body.ticket as number, root);
+    const result = await prepareStintBrief(
+      readProjectFiles,
+      body.workItem,
+      body.ticket as number,
+      root,
+    );
     if ("reason" in result)
       return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
     const { workItem, ticket } = result;
@@ -96,7 +101,12 @@ export function addStintRoutes(
     try {
       const worktree = await ensureWorktree(root, workItem.slug);
       if (closing) throw new Error("The project server is stopping.");
-      const prepared = await prepareStintBrief(files, workItem.slug, ticket.number, root);
+      const prepared = await prepareStintBrief(
+        readProjectFiles,
+        workItem.slug,
+        ticket.number,
+        root,
+      );
       if ("reason" in prepared) throw new Error(prepared.reason);
       const { brief, stage } = prepared;
       const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], {

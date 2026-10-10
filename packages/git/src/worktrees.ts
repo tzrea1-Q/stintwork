@@ -14,10 +14,8 @@ function git(root: string, args: string[]) {
 export function listWorkItemWorktrees(repoRoot: string) {
   const root = realpathSync(repoRoot);
   const parent = join(dirname(root), `${basename(root)}-worktrees`);
-  const registryPath = join(
-    resolve(root, git(root, ["rev-parse", "--git-common-dir"]).trim()),
-    "worktrees",
-  );
+  const commonDir = resolve(root, git(root, ["rev-parse", "--git-common-dir"]).trim());
+  const registryPath = join(commonDir, "worktrees");
   if (lstatSync(parent, { throwIfNoEntry: false })?.isSymbolicLink())
     throw new Error("Worktree directory must not be a symlink.");
   const worktrees = new Map<string, { path: string; branch: string }>();
@@ -35,11 +33,17 @@ export function listWorkItemWorktrees(repoRoot: string) {
     )
       worktrees.set(slug, { path, branch: `stintwork/${slug}` });
   }
-  return { worktrees, registryPath };
+  return {
+    worktrees,
+    registryPath,
+    gitPaths: ["config", "packed-refs", "refs/heads/stintwork", "logs/refs/heads/stintwork"].map(
+      (path) => join(commonDir, path),
+    ),
+  };
 }
 
 /** New worktrees retain their creation base in Git config; older ones use the branch reflog. */
-export function workItemFilesDiverged(root: string, slug: string): boolean {
+export function workItemBaseCommit(root: string, slug: string): string {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
   const branch = `stintwork/${slug}`;
   let base: string;
@@ -57,6 +61,16 @@ export function workItemFilesDiverged(root: string, slug: string): boolean {
   }
   if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(base))
     throw new Error("Cannot determine the worktree's creation base commit.");
+  return base;
+}
+
+export function workItemFilesDiverged(
+  root: string,
+  slug: string,
+  base = workItemBaseCommit(root, slug),
+): boolean {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(base)) throw new Error("Invalid base commit.");
   const scope = `.scratch/${slug}/`;
   try {
     git(root, ["--literal-pathspecs", "diff", "--quiet", base, "--", scope]);

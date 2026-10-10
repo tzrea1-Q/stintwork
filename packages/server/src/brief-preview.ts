@@ -1,19 +1,18 @@
-import {
-  briefUnavailableReason,
-  compileBrief,
-  indexProject,
-  type RepoFiles,
-} from "@stintwork/core";
+import { briefUnavailableReason, compileBrief, indexProject } from "@stintwork/core";
 import type { Hono } from "hono";
 import { changedSince } from "@stintwork/git";
-import { readProjectFiles } from "./work-item-files.js";
+import type { ProjectFilesReader } from "./work-item-files.js";
 
-export function addBriefPreviewRoute(app: Hono, files: RepoFiles, root: string) {
+export function addBriefPreviewRoute(
+  app: Hono,
+  readProjectFiles: ProjectFilesReader,
+  root: string,
+) {
   app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
     const number = context.req.param("ticket");
     const result = await prepareStintBrief(
-      files,
+      readProjectFiles,
       context.req.param("slug"),
       /^\d+$/.test(number) ? Number(number) : NaN,
       root,
@@ -24,13 +23,13 @@ export function addBriefPreviewRoute(app: Hono, files: RepoFiles, root: string) 
 }
 
 export async function prepareStintBrief(
-  files: RepoFiles,
+  readProjectFiles: ProjectFilesReader,
   slug: string,
   number: number,
   root: string,
 ) {
-  const project = readProjectFiles(root, files);
-  files = project.files;
+  const project = readProjectFiles();
+  const files = project.files;
   const snapshot = indexProject(files, { name: "" });
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
   if (!workItem) return { reason: "Work item not found.", status: 404 as const };

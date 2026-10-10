@@ -4,7 +4,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 export { changedSince, createCheckpoint } from "./checkpoints.js";
-export { listWorkItemWorktrees, workItemFilesDiverged } from "./worktrees.js";
+export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
 
 const execute = promisify(execFile);
 

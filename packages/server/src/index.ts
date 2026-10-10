@@ -12,7 +12,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import { addBriefPreviewRoute } from "./brief-preview.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
-import { readProjectFiles } from "./work-item-files.js";
+import { createProjectFiles } from "./work-item-files.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -32,9 +32,10 @@ export function createProjectServer(
 
   const root = resolve(repoRoot);
   const files = createNodeRepoFiles(root);
+  const readProjectFiles = createProjectFiles(root, files);
   const name = basename(root);
   let watchedPaths = new Set<string>();
-  function readSnapshot() {
+  function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
     let branchWarning: Warning | undefined;
     try {
@@ -47,7 +48,7 @@ export function createProjectServer(
     } catch (error) {
       branchWarning = { path: ".git", message: `Cannot read project branch: ${String(error)}` };
     }
-    const project = readProjectFiles(root, files);
+    const project = readProjectFiles(changedPaths);
     watchedPaths = new Set(project.watchPaths);
     const snapshot = indexProject(project.files, { name, ...(branch ? { branch } : {}) });
     for (const item of snapshot.workItems) {
@@ -60,9 +61,13 @@ export function createProjectServer(
   }
 
   let snapshot = readSnapshot();
+  let lastBroadcast = JSON.stringify(snapshot);
   let watcher: FSWatcher | undefined;
+  let watcherReady = false;
   let watcherWarning: Warning | undefined;
   let debounce: ReturnType<typeof setTimeout> | undefined;
+  let metadataPoll: ReturnType<typeof setInterval> | undefined;
+  const changedPaths = new Set<string>();
   let starting: Promise<ServerType> | undefined;
   let stopping: Promise<void> | undefined;
   const lifetime = new AbortController();
@@ -72,9 +77,9 @@ export function createProjectServer(
     socket.send(JSON.stringify(snapshot));
   });
 
-  function refresh() {
+  function refresh(paths?: readonly string[]) {
     const previousPaths = watchedPaths;
-    snapshot = readSnapshot();
+    snapshot = readSnapshot(paths);
     for (const path of watchedPaths) {
       if (!previousPaths.has(path)) watcher?.add(path);
     }
@@ -83,6 +88,10 @@ export function createProjectServer(
     }
     if (watcherWarning) snapshot.warnings.push(watcherWarning);
     const message = JSON.stringify(snapshot);
+    // Refreshes can be triggered by events that change nothing visible (new watches reporting
+    // their files, metadata probes); clients only hear about snapshots that actually changed.
+    if (message === lastBroadcast) return;
+    lastBroadcast = message;
     for (const client of websocket.clients) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }
@@ -95,11 +104,11 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(snapshot);
   });
-  addBriefPreviewRoute(app, files, root);
+  addBriefPreviewRoute(app, readProjectFiles, root);
   const stopStints = addStintRoutes(
     app,
     root,
-    files,
+    readProjectFiles,
     options,
     (message) => {
       for (const client of websocket.clients) {
@@ -127,7 +136,7 @@ export function createProjectServer(
     if (stopping) return Promise.reject(new Error("Project server is stopped"));
     starting ??= (async () => {
       watcher = watch([...watchedPaths], {
-        ignoreInitial: true,
+        ignoreInitial: false,
         followSymlinks: false,
         ignored: (path, stat) => {
           if (stat?.isSymbolicLink()) return true;
@@ -140,20 +149,29 @@ export function createProjectServer(
         },
       });
       watcher.on("all", (_event, path) => {
-        if (stopping) return;
+        if (stopping || !watcherReady) return;
         if (![...watchedPaths].some((scope) => path === scope || path.startsWith(`${scope}${sep}`)))
           return;
         clearTimeout(debounce);
-        debounce = setTimeout(refresh, 150);
+        changedPaths.add(path);
+        debounce = setTimeout(() => {
+          const paths = [...changedPaths];
+          changedPaths.clear();
+          refresh(paths);
+        }, 150);
       });
       watcher.on("error", (error) => {
         if (stopping) return;
         watcherWarning = { path: "", message: `File watcher error: ${String(error)}` };
-        refresh();
+        refresh([]);
       });
       try {
         await once(watcher, "ready", { signal: lifetime.signal });
+        watcherReady = true;
         refresh();
+        metadataPoll = setInterval(() => {
+          if (!stopping && readProjectFiles.metadataChanged()) refresh([]);
+        }, 150).unref();
         return server;
       } catch (error) {
         await stop();
@@ -167,6 +185,7 @@ export function createProjectServer(
     stopping ??= (async () => {
       lifetime.abort();
       clearTimeout(debounce);
+      clearInterval(metadataPoll);
       await stopStints();
       for (const client of websocket.clients) client.terminate();
       await Promise.all([
