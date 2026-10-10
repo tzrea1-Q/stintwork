@@ -85,7 +85,8 @@ export function createAgentLauncher(
     let chunk: { type: "message_delta" | "thought_delta"; id: string } | undefined;
     let nextMessage = 0;
     const toolKinds = new Map<string, string>();
-    let handoffText: string | undefined;
+    // Each agent message of the handoff turn; agents may write a preamble or call tools first.
+    let handoffMessages: string[] | undefined;
     let workTurn: Promise<{ stopReason: string }> | undefined;
     const writes = new Set<Promise<void>>();
 
@@ -156,8 +157,10 @@ export function createAgentLauncher(
                 (kind === "agent_message_chunk" || kind === "agent_thought_chunk") &&
                 update.content.type === "text"
               ) {
-                if (kind === "agent_message_chunk" && handoffText !== undefined)
-                  handoffText += update.content.text;
+                if (kind === "agent_message_chunk" && handoffMessages !== undefined) {
+                  if (chunk?.type !== "message_delta") handoffMessages.push("");
+                  handoffMessages[handoffMessages.length - 1] += update.content.text;
+                }
                 const type = kind === "agent_message_chunk" ? "message_delta" : "thought_delta";
                 chunk = chunk?.type === type ? chunk : { type, id: String(++nextMessage) };
                 onEvent({ ...chunk, text: update.content.text });
@@ -330,7 +333,7 @@ export function createAgentLauncher(
           for (let attempt = 0; attempt < 3; attempt++) {
             if (performance.now() >= deadline) throw new Error("Handoff timed out.");
             chunk = undefined;
-            handoffText = "";
+            handoffMessages = [];
             try {
               await Promise.race([
                 acp.prompt({
@@ -340,7 +343,19 @@ export function createAgentLauncher(
                 failure,
                 handoffTimeout,
               ]);
-              handoff = parseHandoff(handoffText);
+              // Rejoin the turn's messages verbatim. A message that starts with a heading begins
+              // on a new line, so a preamble message ("Let me check first.") can't swallow it.
+              handoff = parseHandoff(
+                handoffMessages
+                  .map((message, index) =>
+                    index > 0 &&
+                    message.startsWith("#") &&
+                    !handoffMessages?.[index - 1].endsWith("\n")
+                      ? `\n${message}`
+                      : message,
+                  )
+                  .join(""),
+              );
               if (!handoff)
                 handoffError = "Handoff did not contain the required Markdown sections.";
               break;

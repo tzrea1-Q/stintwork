@@ -26,10 +26,35 @@ test("parses exactly three Markdown sections, preserving body Markdown and CRLF"
     "```md\n## Example\n```",
   );
 });
+test("ignores a preamble before the handoff sections", () => {
+  expect(parseHandoff(`I'll check the worktree first.\n${text}`)).toEqual(handoff);
+});
+
+test("a handoff turn with a preamble message and a tool call still yields the handoff (Grok)", async () => {
+  const cwd = await fixture();
+  const stint = createFakeAgentLauncher(
+    [{ type: "message", text: "Done." }],
+    [
+      { type: "message", text: "I'll check the worktree once so the handoff matches." },
+      {
+        type: "update",
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "status",
+          title: "git status",
+          kind: "execute",
+          status: "completed",
+        },
+      },
+      { type: "message", text },
+    ],
+  )({ agent: "codex", cwd, prompt: "Work", onEvent: () => {}, handoffTimeoutMs: 2000 });
+  expect((await stint.done).handoff).toEqual(handoff);
+});
+
 test.each([
   "",
   "Plain handoff",
-  `Preamble\n${text}`,
   text.replace("## Unresolved", "## Unknown"),
   text.replace("Tests.", ""),
   `${text}\n## Extra\nMore`,

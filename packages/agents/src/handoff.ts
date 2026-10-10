@@ -14,9 +14,11 @@ export function parseHandoff(text: string): AgentHandoff | null {
   for (const line of text.replace(/\r\n?/g, "\n").split("\n")) {
     const marker = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
     const heading = !fence && /^## (.+?)\s*$/.exec(line)?.[1];
+    // A preamble before the handoff ("Let me check the worktree first.") is ignored.
+    if (heading === "Where I stopped") sections.length = 0;
     if (heading) sections.push({ heading, lines: [] });
     else if (sections.length) sections.at(-1)?.lines.push(line);
-    else if (line.trim()) return null;
+    else if (line.trim()) continue;
     if (marker) {
       if (!fence) fence = marker;
       else if (marker[0] === fence[0] && marker.length >= fence.length) fence = "";
