@@ -6,10 +6,18 @@ import {
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import "./checks-panel.css";
+import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
 
 type ChecksItem = Pick<
   ProjectSnapshot["workItems"][number],
-  "slug" | "headCommit" | "checks" | "checkExecution" | "evidenceChangedPaths" | "merged"
+  | "slug"
+  | "headCommit"
+  | "checks"
+  | "checkExecution"
+  | "evidenceChangedPaths"
+  | "merged"
+  | "pullRequest"
+  | "pullRequestChecks"
 >;
 
 export function ChecksPanel({ item }: { item: ChecksItem }) {
@@ -80,6 +88,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
 
   return (
     <div className="checks-panel">
+      <PullRequestChecksPanel item={item} />
       <p className="muted">
         {item.merged
           ? "Recorded check evidence for this shipped work item."

@@ -1,6 +1,6 @@
 # 09 — Pull requests via gh
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 05, 08
 
 ## What to build
@@ -11,8 +11,12 @@ Shipping through GitHub when the repo has a GitHub remote (spec user stories 22,
 
 ## Acceptance criteria
 
-- [ ] Server tests with the fake `gh`: no push or PR without confirmation; push and create after confirmation with the generated body; CI checks recorded with the PR head commit; merge refused until CI passes; merge then cleanup and shipped state.
-- [ ] Core tests: PR body generation.
-- [ ] Component tests: the push confirmation, PR state and CI checks in the panel, and merge.
+- [x] Server tests with the fake `gh`: no push or PR without confirmation; push and create after confirmation with the generated body; CI checks recorded with the PR head commit; merge refused until CI passes; merge then cleanup and shipped state.
+- [x] Core tests: PR body generation.
+- [x] Component tests: the push confirmation, PR state and CI checks in the panel, and merge.
 - [ ] Manual (only on a GitHub repo the developer chooses): open and merge a real PR.
-- [ ] All checks pass.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-10:** Built by Codex; the coordinator changed the PR body's empty-checks text from "No local checks configured." to "No local check results recorded." (it showed even with checks configured but not yet run). verify.sh passed (1223 tests). Browser and API check in a throwaway repo with a local bare repository as origin and the fake gh first on PATH: Open pull request showed the confirmation (remote, branch, head commit, title, generated body with spec, tickets, review and checks). Before confirming, the remote had only main and gh had been asked only for repo view. After confirming, stintwork/feature was pushed and gh pr create got the generated body; the panel showed "Pull request #12". merge-pr with pending CI returned 409 ("Every pull request CI check must pass…") without calling gh pr merge. After CI passed, merge-pr ran `gh pr merge 12 --merge --match-head-commit <head>` (no --admin), fast-forwarded main, committed "Record merge of feature" with merged { at, commit, pr: 12, method: merge }, and removed the worktree and branch. A repeated merge-pr returned the same record with no duplicate commit. Still open: the manual criterion, opening and merging a real PR on a GitHub repo the developer chooses (to be done in the M4 exit, with the developer's permission, because it publishes code).

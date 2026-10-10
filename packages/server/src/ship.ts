@@ -5,6 +5,10 @@ import {
   indexProject,
   workflowGate,
   workflowMerge,
+  workflowPullRequest,
+  pullRequestText,
+  evidenceStale,
+  type PullRequestPreview,
   type MergeRecord,
 } from "@stintwork/core";
 import {
@@ -12,6 +16,8 @@ import {
   mergeLocalWorkItem,
   LocalMergeRefusal,
   withRepoLock,
+  cleanupMergedWorkItem,
+  updateMainAfterPullRequest,
 } from "@stintwork/git";
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -19,6 +25,16 @@ import type { ReviewEvidenceReader } from "./review-evidence.js";
 import { saveWorkItemWorkflow } from "./workflow-writes.js";
 import { saveWorkItemReview } from "./review-writes.js";
 import { createNodeRepoFiles } from "./repo-files.js";
+import { readEvidenceChangedPaths } from "./review-evidence.js";
+import {
+  githubRepository,
+  shipGit,
+  createPullRequest,
+  findPullRequest,
+  fetchPullRequestChecks,
+  viewPullRequest,
+  mergePullRequest,
+} from "./pull-requests.js";
 
 export function addShipRoutes(
   app: Hono,
@@ -30,7 +46,15 @@ export function addShipRoutes(
   isChecking: (slug: string) => boolean,
   readReviewEvidence?: ReviewEvidenceReader,
 ) {
-  for (const action of ["merge-local", "send-back"] as const) {
+  const previews = new Map<string, { preview: PullRequestPreview; expires: number }>();
+  for (const action of [
+    "merge-local",
+    "send-back",
+    "preview-pr",
+    "open-pr",
+    "pr-checks",
+    "merge-pr",
+  ] as const) {
     app.post(`/api/work-items/:slug/ship/${action}`, async (context) => {
       const origin = context.req.header("origin");
       if (origin && origin !== new URL(context.req.url).origin)
@@ -40,8 +64,9 @@ export function addShipRoutes(
         "application/json"
       )
         return context.json({ reason: "A JSON Ship action is required." }, 400);
+      let body: Record<string, unknown>;
       try {
-        const body: unknown = await context.req.json();
+        body = await context.req.json();
         if (!body || typeof body !== "object" || Array.isArray(body))
           return context.json({ reason: "A JSON Ship action is required." }, 400);
       } catch {
@@ -67,7 +92,7 @@ export function addShipRoutes(
         readReviewEvidence?.(project, snapshot);
         const item = snapshot.workItems.find((item) => item.slug === slug);
         if (!item) throw new LocalMergeRefusal("Work item not found.");
-        if (item.stage !== "ship")
+        if (item.stage !== "ship" && action !== "pr-checks")
           throw new LocalMergeRefusal("Merge locally requires the Ship stage.");
         if (
           item.activeStint ||
@@ -93,6 +118,10 @@ export function addShipRoutes(
           throw new LocalMergeRefusal(
             "Accept or reject every open memory proposal before shipping.",
           );
+        if (action === "merge-local" && item.pullRequest)
+          throw new LocalMergeRefusal(
+            "Use Merge pull request and passing CI for this work item's pull request.",
+          );
         merged =
           item.merged ??
           indexProject(createNodeRepoFiles(root), { name: "" }).workItems.find(
@@ -101,6 +130,249 @@ export function addShipRoutes(
         return { project, item };
       }
       try {
+        if (["preview-pr", "open-pr", "pr-checks", "merge-pr"].includes(action)) {
+          return await withRepoLock(root, async () => {
+            const { project, item } = locate();
+            const worktree = project.worktreePaths.get(slug);
+            if (action === "pr-checks") {
+              if (!item.pullRequest)
+                throw new LocalMergeRefusal("This work item has no pull request.");
+              const checks = await fetchPullRequestChecks(root, item.pullRequest);
+              refresh();
+              return context.json({ checks });
+            }
+            if (!worktree && !merged)
+              throw new LocalMergeRefusal("The work item's worktree is unavailable.");
+            const checkout = worktree ?? root;
+            let head = await shipGit(checkout, ["rev-parse", "HEAD"]);
+            const approval = item.stages.review?.approved;
+            const approvedCommit =
+              approval &&
+              typeof approval === "object" &&
+              "commit" in approval &&
+              typeof approval.commit === "string"
+                ? approval.commit
+                : undefined;
+            if (
+              !approvedCommit ||
+              evidenceStale(
+                {
+                  slug,
+                  headCommit: head,
+                  evidenceChangedPaths: readEvidenceChangedPaths(worktree ?? root, head, [
+                    approvedCommit,
+                  ]),
+                },
+                approvedCommit,
+              )
+            )
+              throw new LocalMergeRefusal(
+                "Approve the Review gate on current evidence before shipping through GitHub.",
+              );
+            if (
+              worktree &&
+              (await shipGit(worktree, ["status", "--porcelain", "--untracked-files=all"]))
+            )
+              throw new LocalMergeRefusal(
+                "Commit worktree changes before shipping through GitHub.",
+              );
+            const repository = await githubRepository(root);
+            if (action === "preview-pr" || action === "open-pr") {
+              if (item.pullRequest)
+                throw new LocalMergeRefusal("This work item already has a pull request.");
+              if (!worktree) throw new LocalMergeRefusal("This work item is already shipped.");
+              const branch = await shipGit(checkout, ["symbolic-ref", "--short", "HEAD"]);
+              const report = await dryRunLocalMerge(root, slug);
+              const base = report.mainBranch;
+              if (report.conflicts.length)
+                throw new LocalMergeRefusal(
+                  "Merge conflicts with the main branch. Send back to resolve them.",
+                  report.conflicts,
+                );
+              if (branch !== `stintwork/${slug}`)
+                throw new LocalMergeRefusal(
+                  "Shipping requires the work item branch and the main checkout.",
+                );
+              const details = {
+                repo: repository.repo,
+                remote: repository.remote,
+                remoteUrl: repository.remoteUrl,
+                branch,
+                base,
+                headCommit: head,
+                ...pullRequestText(item),
+              };
+              if (action === "preview-pr") {
+                const preview = { ...details, confirmation: randomUUID() };
+                previews.set(slug, { preview, expires: Date.now() + 10 * 60_000 });
+                return context.json({ preview });
+              }
+              const saved = previews.get(slug);
+              const expected = saved
+                ? { ...details, confirmation: saved.preview.confirmation }
+                : undefined;
+              if (
+                !saved ||
+                saved.expires < Date.now() ||
+                body.confirmation !== saved.preview.confirmation ||
+                JSON.stringify(expected) !== JSON.stringify(saved.preview)
+              )
+                throw new LocalMergeRefusal(
+                  "Explicit push confirmation for this exact preview is required. Preview again if the head or remote changed.",
+                );
+              previews.delete(slug);
+              const existing = await findPullRequest(checkout, details.repo, branch);
+              if (
+                existing &&
+                (existing.headRefOid !== head ||
+                  existing.headRefName !== branch ||
+                  existing.baseRefName !== base ||
+                  existing.state !== "OPEN")
+              )
+                throw new LocalMergeRefusal(
+                  "An existing pull request does not match the confirmed branch and head. Worktree retained; reconcile it before retrying.",
+                );
+              if (!existing)
+                await shipGit(checkout, [
+                  "push",
+                  "-u",
+                  repository.remote,
+                  `${head}:refs/heads/${branch}`,
+                ]);
+              await shipGit(checkout, ["config", `branch.${branch}.remote`, repository.remote]);
+              await shipGit(checkout, ["config", `branch.${branch}.merge`, `refs/heads/${branch}`]);
+              const opened = existing ?? (await createPullRequest(checkout, details));
+              if (
+                opened.headRefOid !== head ||
+                opened.headRefName !== branch ||
+                opened.baseRefName !== base ||
+                opened.state !== "OPEN"
+              )
+                throw new LocalMergeRefusal(
+                  "The created pull request does not match the confirmed head and branches. Worktree retained.",
+                );
+              const { title: _title, body: _body, ...identity } = details;
+              const pullRequest = { ...identity, number: opened.number, url: opened.url };
+              await saveWorkItemWorkflow(
+                checkout,
+                slug,
+                (text) => workflowPullRequest(text, pullRequest),
+                true,
+                `Record pull request #${opened.number} for ${slug}`,
+              );
+              refresh();
+              return context.json({ pullRequest });
+            }
+            let pr = item.pullRequest;
+            if (!pr) throw new LocalMergeRefusal("This work item has no pull request.");
+            if (
+              pr.repo !== repository.repo ||
+              pr.remote !== repository.remote ||
+              pr.remoteUrl !== repository.remoteUrl
+            )
+              throw new LocalMergeRefusal(
+                "The GitHub remote changed since the pull request was opened.",
+              );
+            if (merged) {
+              await shipGit(root, ["merge-base", "--is-ancestor", merged.commit, "HEAD"]);
+              await cleanupMergedWorkItem(root, slug, merged.commit, pr.headCommit);
+              refresh();
+              return context.json({ merged });
+            }
+            const checks = await fetchPullRequestChecks(root, pr);
+            if (!checks.checks.length || checks.checks.some((check) => check.bucket !== "pass"))
+              throw new LocalMergeRefusal(
+                "Every pull request CI check must pass before merging; missing, pending, skipped and cancelled checks do not pass.",
+              );
+            if (
+              checks.headCommit !== pr.headCommit ||
+              evidenceStale(
+                {
+                  slug,
+                  headCommit: head,
+                  evidenceChangedPaths: readEvidenceChangedPaths(checkout, head, [
+                    checks.headCommit,
+                  ]),
+                },
+                checks.headCommit,
+              )
+            )
+              throw new LocalMergeRefusal(
+                "The PR head differs from the confirmed, reviewed work. Send back and review again.",
+              );
+            let remote = await viewPullRequest(root, pr, String(pr.number));
+            if (
+              remote.headRefOid !== checks.headCommit ||
+              remote.baseRefName !== pr.base ||
+              remote.headRefName !== pr.branch
+            )
+              throw new LocalMergeRefusal(
+                "The pull request changed after reading CI. Refresh again.",
+              );
+            if (remote.state === "OPEN") {
+              const report = await dryRunLocalMerge(root, slug);
+              if (report.conflicts.length)
+                throw new LocalMergeRefusal(
+                  "Merge conflicts with the main branch. Send back to resolve them.",
+                  report.conflicts,
+                );
+              const requested = { ...pr, mergeMethod: repository.method };
+              pr = requested;
+              await saveWorkItemWorkflow(
+                checkout,
+                slug,
+                (text) => workflowPullRequest(text, requested),
+                true,
+                `Record merge method for pull request #${pr.number} for ${slug}`,
+              );
+              head = await shipGit(checkout, ["rev-parse", "HEAD"]);
+              await mergePullRequest(root, pr, checks.headCommit, repository.method);
+              remote = await viewPullRequest(root, pr, String(pr.number));
+            }
+            if (
+              remote.state !== "MERGED" ||
+              remote.number !== pr.number ||
+              remote.headRefOid !== checks.headCommit ||
+              remote.baseRefName !== pr.base ||
+              remote.headRefName !== pr.branch ||
+              !remote.mergeCommit?.oid ||
+              !/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(remote.mergeCommit.oid) ||
+              !remote.mergedAt ||
+              !Number.isFinite(Date.parse(remote.mergedAt))
+            )
+              throw new LocalMergeRefusal(
+                "GitHub has not completed the merge (it may be queued). Worktree and branch retained; retry after it merges.",
+              );
+            const localWorkflow = `.scratch/${slug}/workflow.yaml`;
+            for (const options of [[], ["--cached"]])
+              if (await shipGit(root, ["diff", ...options, "--name-only", "--", localWorkflow]))
+                throw new LocalMergeRefusal(
+                  "The PR is merged remotely, but main has uncommitted workflow changes. Worktree and branch retained.",
+                );
+            await updateMainAfterPullRequest(root, pr.remote, pr.base, remote.mergeCommit.oid);
+            const record: MergeRecord = {
+              at: remote.mergedAt,
+              commit: remote.mergeCommit.oid,
+              pr: String(pr.number),
+              ...(pr.mergeMethod ? { method: pr.mergeMethod } : {}),
+            };
+            merged = record;
+            await saveWorkItemWorkflow(
+              root,
+              slug,
+              (text) => workflowMerge(workflowPullRequest(text, pr), record),
+              true,
+              `Record merge of ${slug}`,
+            );
+            if ((await shipGit(checkout, ["rev-parse", "HEAD"])) !== head)
+              throw new LocalMergeRefusal(
+                "The work item changed during the remote merge. Merge recorded; worktree and branch retained.",
+              );
+            await cleanupMergedWorkItem(root, slug, merged.commit, pr.headCommit);
+            refresh();
+            return context.json({ merged });
+          });
+        }
         if (action === "merge-local") {
           const commit = await mergeLocalWorkItem(
             root,

@@ -10,6 +10,7 @@ import { parseReviewDecisions, type ReviewDecision } from "./review-decisions.js
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 import type { CheckExecution, CheckResult } from "./checks.js";
 import type { CheckCommand } from "./project-config.js";
+import type { PullRequestChecks } from "./pull-requests.js";
 import {
   defaultPermissionLevel,
   projectPermissionLevel,
@@ -33,6 +34,7 @@ export type ProjectSnapshot = {
     memoryProposals?: MemoryProposalAttentionItem[];
     headCommit?: string;
     checks?: CheckResult[];
+    pullRequestChecks?: PullRequestChecks;
     checkExecution?: CheckExecution | null;
     checkCommands?: CheckCommand[];
     evidenceChangedPaths?: Record<string, string[] | null>;

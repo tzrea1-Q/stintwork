@@ -238,12 +238,85 @@ export async function mergeLocalWorkItem(
         );
       }
     }
-    try {
-      await git(["worktree", "remove", worktree.path]);
-      await git(["branch", "-d", worktree.branch]);
-    } catch (error) {
-      throw new Error(`Merge recorded at ${commit}, but cleanup failed. ${String(error)}`);
-    }
+    await cleanupMergedWorkItem(root, slug, commit);
     return commit;
   });
+}
+
+export async function cleanupMergedWorkItem(
+  root: string,
+  slug: string,
+  commit: string,
+  remoteHead?: string,
+) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  const git = gitAt(root);
+  const worktree = listWorkItemWorktrees(root).worktrees.get(slug);
+  try {
+    const branch = `stintwork/${slug}`;
+    const exists = (await git(["branch", "--list", branch])).trim();
+    const head = exists ? (await git(["rev-parse", `refs/heads/${branch}`])).trim() : undefined;
+    if (remoteHead && head) {
+      const changed = (
+        await git(["diff", "--name-only", "--no-renames", "-z", remoteHead, head, "--"])
+      )
+        .split("\0")
+        .filter(Boolean)
+        .filter(
+          (path) =>
+            path !== `.scratch/${slug}/workflow.yaml` && path !== `.scratch/${slug}/review.yaml`,
+        );
+      if (changed.length)
+        throw new LocalMergeRefusal(
+          "The work item branch contains unpublished changes; worktree and branch retained.",
+          [],
+          changed,
+        );
+    }
+    if (worktree) await git(["worktree", "remove", worktree.path]);
+    if (head) {
+      if (remoteHead) {
+        await git(["update-ref", "-d", `refs/heads/${branch}`, head]);
+        await git(["config", "--remove-section", `branch.${branch}`]).catch(
+          (error: { code?: number }) => {
+            if (error.code !== 1) throw error;
+          },
+        );
+      } else await git(["branch", "-d", branch]);
+    }
+  } catch (error) {
+    throw new Error(`Merge recorded at ${commit}, but cleanup failed. ${String(error)}`);
+  }
+}
+
+export async function updateMainAfterPullRequest(
+  root: string,
+  remote: string,
+  base: string,
+  commit: string,
+) {
+  const git = gitAt(root);
+  if ((await mainCheckoutBranch(root)) !== base)
+    throw new LocalMergeRefusal("The pull request base must match the main checkout's branch.");
+  await git(["fetch", "--no-tags", remote, `refs/heads/${base}`]);
+  const target = (await git(["rev-parse", "FETCH_HEAD^{commit}"])).trim();
+  await git(["merge-base", "--is-ancestor", commit, target]);
+  const fastForward = await git(["merge-base", "--is-ancestor", "HEAD", target]).then(
+    () => true,
+    (error: { code?: number }) => {
+      if (error.code !== 1) throw error;
+      return false;
+    },
+  );
+  if (!fastForward)
+    throw new LocalMergeRefusal(
+      "The pull request is merged remotely, but local main has diverged. Worktree and branch retained; reconcile main and retry.",
+    );
+  try {
+    await git(["merge", "--ff-only", "--no-overwrite-ignore", target]);
+  } catch (error) {
+    throw new LocalMergeRefusal(
+      `The pull request is merged remotely, but local main could not fast-forward (check uncommitted changes and pending Git operations). Worktree and branch retained. ${String(error)}`,
+    );
+  }
 }

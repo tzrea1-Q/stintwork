@@ -139,3 +139,4 @@ export {
   briefUnavailableReason,
   compileBrief,
 } from "./brief.js";
+export * from "./pull-requests.js";
