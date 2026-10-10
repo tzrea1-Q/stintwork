@@ -71,7 +71,7 @@ export function addStintRoutes(
       return context.json({ reason: "This stint is no longer running." }, 409);
     if (!state.stopRequested) {
       state.stopRequested = true;
-      permissions.clear(id);
+      permissions.clear(id, false);
       state.setupCancellation?.abort();
       await state.handle?.cancel();
     }
@@ -256,8 +256,6 @@ export function addStintRoutes(
           prompt: brief.prompt,
           handoffTimeoutMs,
           onEvent: (event) => {
-            if (event.type === "permission" && event.requestId)
-              permissions.clearRequest(event.requestId);
             append({ type: "event", at: new Date().toISOString(), event });
             if (event.type === "permission_request" || event.type === "permission") refresh();
           },
