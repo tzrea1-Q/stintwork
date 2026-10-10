@@ -1,6 +1,6 @@
 # 12 — Superseded unresolved handoffs
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
