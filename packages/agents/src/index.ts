@@ -9,6 +9,7 @@ import type { AgentProfile, StintEvent, StintLogEvent } from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
 import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
+import { createPermissionForwarding } from "./permission-forwarding.js";
 import { codexProfile } from "./profiles.js";
 
 export {
@@ -25,7 +26,7 @@ export type AgentStintOptions = {
   prompt: string;
   onEvent: (event: StintLogEvent) => void;
   onPermission?: (
-    request: RequestPermissionRequest & { requestId: string },
+    request: RequestPermissionRequest & { requestId: string; forwarded: Promise<void> },
   ) => Promise<RequestPermissionResponse>;
   handoffTimeoutMs?: number;
 };
@@ -111,8 +112,14 @@ export function createAgentLauncher(
       );
       if (cancelled) return { stopReason: "cancelled" };
       child = launchAdapter(cwd);
+      const forwarding = createPermissionForwarding(
+        ndJsonStream(Writable.toWeb(child.stdin), toAcpReadable(child.stdout)),
+      );
       const fail = (error: Error) => {
-        if (!settled) rejectFailure(error);
+        if (!settled) {
+          forwarding.close(error);
+          rejectFailure(error);
+        }
       };
       child.on("error", (error: NodeJS.ErrnoException) =>
         fail(
@@ -153,8 +160,10 @@ export function createAgentLauncher(
             }
           },
           async requestPermission(request) {
+            if (settled) throw new Error("The stint has ended.");
             chunk = undefined;
             const requestId = randomUUID();
+            const receipt = forwarding.prepare();
             const event: Extract<StintEvent, { type: "permission" }> = {
               type: "permission",
               requestId,
@@ -166,6 +175,10 @@ export function createAgentLauncher(
             };
             let response: RequestPermissionResponse;
             try {
+              const answer = onPermission
+                ? onPermission({ ...request, requestId, forwarded: receipt.forwarded })
+                : permissionCancelled;
+              void answer.catch(() => {});
               onEvent({
                 type: "permission_request",
                 requestId,
@@ -179,30 +192,30 @@ export function createAgentLauncher(
                   kind,
                 })),
               });
-              response = await Promise.race([
-                onPermission ? onPermission({ ...request, requestId }) : permissionCancelled,
-                permissionCancelled,
-                failure,
-              ]);
+              const selectedResponse = await Promise.race([answer, permissionCancelled, failure]);
+              response = { outcome: { ...selectedResponse.outcome } };
               if (response.outcome.outcome === "selected") {
                 const optionId = response.outcome.optionId;
                 const selected = request.options.find((option) => option.optionId === optionId);
                 if (!selected)
                   throw new Error("Permission decision must select an offered option.");
                 event.decision = { outcome: "selected", optionId, kind: selected.kind };
-              } else event.decision = { outcome: "cancelled" };
+              } else {
+                event.decision = { outcome: "cancelled" };
+                receipt.failed(new Error("Permission request was cancelled."));
+              }
+              onEvent(event);
+              receipt.respond(response);
             } catch (error) {
               const failure = error instanceof Error ? error : new Error(String(error));
+              receipt.failed(failure);
               event.decision = { outcome: "failed", reason: failure.message };
-              onEvent(event);
-              fail(failure);
+              try {
+                onEvent(event);
+              } finally {
+                fail(failure);
+              }
               throw failure;
-            }
-            try {
-              onEvent(event);
-            } catch (error) {
-              fail(error instanceof Error ? error : new Error(String(error)));
-              throw error;
             }
             return response;
           },
@@ -236,7 +249,7 @@ export function createAgentLauncher(
             return {};
           },
         }),
-        ndJsonStream(Writable.toWeb(child.stdin), toAcpReadable(child.stdout)),
+        forwarding.stream,
       );
       connection = acp;
       void acp.closed.then(
@@ -364,6 +377,7 @@ export function createAgentLauncher(
       } finally {
         clearTimeout(timer);
         settled = true;
+        forwarding.close(new Error("The stint ended before the permission was forwarded."));
         const exited = new Promise<void>((resolveExit) => {
           if (!child?.pid || child.exitCode !== null || child.signalCode !== null) resolveExit();
           else child.once("exit", () => resolveExit());

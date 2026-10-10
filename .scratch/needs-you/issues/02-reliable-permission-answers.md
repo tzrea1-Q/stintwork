@@ -1,6 +1,6 @@
 # 02 — Reliable permission answers
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
