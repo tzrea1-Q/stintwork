@@ -19,6 +19,7 @@ import {
 import type { Hono } from "hono";
 import { prepareStintBrief } from "./brief-preview.js";
 import { addStintPermissionRoute } from "./stint-permissions.js";
+import { activeStintIds } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 
 export type StintServerOptions = { launchAgent?: AgentLauncher; handoffTimeoutMs?: number };
@@ -140,6 +141,7 @@ export function addStintRoutes(
         },
       };
       writeFileSync(path, `${JSON.stringify(started)}\n`, { flag: "wx" });
+      activeStintIds.add(id);
       let sequence = 1;
       broadcast({ type: "stint", stintId: id, workItem: workItem.slug, sequence, entry: started });
       refresh();
@@ -176,6 +178,7 @@ export function addStintRoutes(
             .filter(Boolean)
             .join("\n");
         }
+        activeStintIds.delete(id);
         append({
           type: "ended",
           at: new Date().toISOString(),

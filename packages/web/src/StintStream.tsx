@@ -16,9 +16,11 @@ function toolOutput(content: StintToolContent): string {
 function PermissionPrompt({
   stint,
   event,
+  replay,
 }: {
   stint: Stint;
   event: Extract<StintEvent, { type: "permission_request" }>;
+  replay: boolean;
 }) {
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -26,7 +28,7 @@ function PermissionPrompt({
   const decision = stint.events.find(
     (entry) => entry.type === "permission" && entry.requestId === event.requestId,
   );
-  const pending = !decision && stint.status === "running";
+  const pending = !replay && !decision && stint.status === "running";
 
   async function answer(optionId: string) {
     setSending(true);
@@ -54,7 +56,10 @@ function PermissionPrompt({
     }
   }
 
-  let outcome = "This request is no longer pending.";
+  let outcome =
+    replay && stint.status === "running"
+      ? "No answer recorded."
+      : "This request is no longer pending.";
   if (decision?.type === "permission") {
     if (decision.decision.outcome === "selected") {
       const optionId = decision.decision.optionId;
@@ -109,7 +114,7 @@ function PermissionPrompt({
   );
 }
 
-export function StintStream({ stint }: { stint: Stint }) {
+export function StintStream({ stint, replay = false }: { stint: Stint; replay?: boolean }) {
   const waitingForPermission = stint.events.some(
     (event) =>
       event.type === "permission_request" &&
@@ -224,7 +229,7 @@ export function StintStream({ stint }: { stint: Stint }) {
                 </div>
               )}
               {event.type === "permission_request" && (
-                <PermissionPrompt stint={stint} event={event} />
+                <PermissionPrompt stint={stint} event={event} replay={replay} />
               )}
               {event.type === "permission" && (
                 <p>
@@ -250,7 +255,7 @@ export function StintStream({ stint }: { stint: Stint }) {
         )}
       </div>
       <p className="stint-stream-status" role="status">
-        {stint.status === "running"
+        {stint.status === "running" && !replay
           ? waitingForPermission
             ? "Waiting for your permission answer"
             : "Streaming live · Agent is working"
