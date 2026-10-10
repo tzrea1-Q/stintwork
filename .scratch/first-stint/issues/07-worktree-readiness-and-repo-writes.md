@@ -1,6 +1,6 @@
 # 07 — Worktree readiness and repo writes
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## What to build

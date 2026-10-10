@@ -13,6 +13,7 @@ import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
 export type AgentStintOptions = {
   agent: string;
   cwd: string;
+  additionalDirectories?: string[];
   prompt: string;
   onEvent: (event: StintLogEvent) => void;
   onPermission?: (
@@ -21,6 +22,7 @@ export type AgentStintOptions = {
   handoffTimeoutMs?: number;
 };
 export type AgentStint = {
+  ready?: Promise<void>;
   done: Promise<{ stopReason: string; handoff?: AgentHandoff | null }>;
   cancel: () => Promise<void>;
 };
@@ -28,7 +30,22 @@ export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (cwd: string) => ChildProcessWithoutNullStreams;
 
 export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLauncher {
-  return ({ agent, cwd, prompt, onEvent, onPermission, handoffTimeoutMs }) => {
+  return ({
+    agent,
+    cwd,
+    additionalDirectories = [],
+    prompt,
+    onEvent,
+    onPermission,
+    handoffTimeoutMs,
+  }) => {
+    let resolveReady: () => void = () => {};
+    let rejectReady: (error: unknown) => void = () => {};
+    const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
+      rejectReady = reject;
+    });
+    void ready.catch(() => {});
     let child: ChildProcessWithoutNullStreams | undefined;
     let connection: import("@agentclientprotocol/sdk").ClientSideConnection | undefined;
     let acpId: string | undefined;
@@ -52,7 +69,6 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
 
     async function safePath(path: string) {
       if (!isAbsolute(path)) throw new Error("Agent file paths must be absolute.");
-      const root = await realpath(cwd);
       const target = resolve(path);
       let existing = target;
       while (
@@ -62,20 +78,23 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
         }))
       )
         existing = dirname(existing);
-      for (const [base, candidate] of [
-        [resolve(cwd), target],
-        [root, await realpath(existing)],
-      ]) {
-        const inside = relative(base, candidate);
-        if (inside === ".." || inside.startsWith("../") || isAbsolute(inside))
-          throw new Error("Agent file path is outside the worktree.");
+      const realExisting = await realpath(existing);
+      for (const directory of [cwd, ...additionalDirectories]) {
+        const inside = relative(resolve(directory), target);
+        const realInside = relative(await realpath(directory), realExisting);
+        if (
+          [inside, realInside].every(
+            (part) => part !== ".." && !part.startsWith("../") && !isAbsolute(part),
+          )
+        )
+          return target;
       }
-      return target;
+      throw new Error("Agent file path is outside the worktree and its additional directories.");
     }
 
     const done = (async () => {
       if (agent !== "codex") throw new Error("Only Codex is available in M2.");
-      const { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } = await import(
+      const { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION, RequestError } = await import(
         "@agentclientprotocol/sdk"
       );
       if (cancelled) return { stopReason: "cancelled" };
@@ -214,8 +233,8 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       );
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        const ready = (async () => {
-          await acp.initialize({
+        const initialize = (async () => {
+          const initialized = await acp.initialize({
             protocolVersion: PROTOCOL_VERSION,
             clientCapabilities: {
               fs: { readTextFile: true, writeTextFile: true },
@@ -223,7 +242,18 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
             },
             clientInfo: { name: "stintwork", version: "0.0.0" },
           });
-          const opened = await acp.newSession({ cwd, mcpServers: [] });
+          if (
+            additionalDirectories.length &&
+            initialized.agentCapabilities?.sessionCapabilities?.additionalDirectories == null
+          )
+            throw new Error(
+              "Codex does not support additional writable directories. Install @agentclientprotocol/codex-acp@2.1.1 before starting a stint.",
+            );
+          const opened = await acp.newSession({
+            cwd,
+            mcpServers: [],
+            ...(additionalDirectories.length ? { additionalDirectories } : {}),
+          });
           acpId = opened.sessionId;
           await acp.setSessionMode({ sessionId: acpId, modeId: "workspace-write" });
         })();
@@ -233,9 +263,10 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
             15_000,
           );
         });
-        await Promise.race([ready, failure, timeout]);
+        await Promise.race([initialize, failure, timeout]);
         clearTimeout(timer);
         if (cancelled) return { stopReason: "cancelled" };
+        resolveReady();
         workTurn = acp.prompt({
           sessionId: acpId as string,
           prompt: [{ type: "text", text: prompt }],
@@ -273,9 +304,12 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
         if (cancelled) return { stopReason: "cancelled" };
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(
-          message.includes("Authentication required")
+          (error instanceof RequestError && error.code === RequestError.authRequired().code) ||
+            /auth(?:entication)?[ _-]required/i.test(message)
             ? "Codex authentication required. Sign in with codex login, then start another stint."
-            : message,
+            : /(?:codex|spawn).*?(?:ENOENT|not found)/i.test(message)
+              ? "Codex not found. Install Codex and sign in with codex login, then start another stint."
+              : message,
         );
       } finally {
         clearTimeout(timer);
@@ -294,7 +328,12 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
         await Promise.allSettled(writes);
       }
     })();
+    void done.then(
+      () => rejectReady(new Error("Stint ended before Codex became ready.")),
+      rejectReady,
+    );
     return {
+      ready,
       done,
       async cancel() {
         cancelled = true;
