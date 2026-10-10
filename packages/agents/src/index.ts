@@ -5,10 +5,18 @@ import { isAbsolute, dirname, relative, resolve, delimiter } from "node:path";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
-import type { StintEvent, StintLogEvent } from "@stintwork/core";
+import type { AgentProfile, StintEvent, StintLogEvent } from "@stintwork/core";
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
 import { type AgentHandoff, handoffPrompt, parseHandoff } from "./handoff.js";
+import { codexProfile } from "./profiles.js";
+
+export {
+  type AgentRegistry,
+  type RegisteredAgent,
+  createAgentRegistry,
+  describeAgents,
+} from "./registry.js";
 
 export type AgentStintOptions = {
   agent: string;
@@ -29,7 +37,10 @@ export type AgentStint = {
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (cwd: string) => ChildProcessWithoutNullStreams;
 
-export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLauncher {
+export function createAgentLauncher(
+  launchAdapter: AdapterLauncher,
+  profile: AgentProfile = codexProfile,
+): AgentLauncher {
   return ({
     agent,
     cwd,
@@ -93,7 +104,8 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
     }
 
     const done = (async () => {
-      if (agent !== "codex") throw new Error("Only Codex is available in M2.");
+      if (agent !== profile.id)
+        throw new Error(`This launcher supports ${profile.displayName}, not agent ${agent}.`);
       const { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION, RequestError } = await import(
         "@agentclientprotocol/sdk"
       );
@@ -105,14 +117,14 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       child.on("error", (error: NodeJS.ErrnoException) =>
         fail(
           error.code === "ENOENT"
-            ? new Error(
-                "Codex adapter not found. Install @agentclientprotocol/codex-acp@2.1.1 and sign in with codex login.",
-              )
+            ? new Error(`${profile.displayName} adapter not found. ${profile.installationHint}`)
             : error,
         ),
       );
       child.on("exit", (code, signal) =>
-        fail(new Error(`Codex exited before the stint ended (${code ?? signal}).`)),
+        fail(
+          new Error(`${profile.displayName} exited before the stint ended (${code ?? signal}).`),
+        ),
       );
       child.stdin.on("error", fail);
       child.stdout.on("error", fail);
@@ -228,7 +240,8 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       );
       connection = acp;
       void acp.closed.then(
-        () => fail(new Error("Codex ACP transport closed before the stint ended.")),
+        () =>
+          fail(new Error(`${profile.displayName} ACP transport closed before the stint ended.`)),
         fail,
       );
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -247,7 +260,7 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
             initialized.agentCapabilities?.sessionCapabilities?.additionalDirectories == null
           )
             throw new Error(
-              "Codex does not support additional writable directories. Install @agentclientprotocol/codex-acp@2.1.1 before starting a stint.",
+              `${profile.displayName} does not support additional writable directories. ${profile.installationHint}`,
             );
           const opened = await acp.newSession({
             cwd,
@@ -255,11 +268,16 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
           });
           acpId = opened.sessionId;
-          await acp.setSessionMode({ sessionId: acpId, modeId: "workspace-write" });
+          if (profile.capabilities.defaultMode !== null)
+            await acp.setSessionMode({
+              sessionId: acpId,
+              modeId: profile.capabilities.defaultMode,
+            });
         })();
         const timeout = new Promise<never>((_resolve, reject) => {
           timer = setTimeout(
-            () => reject(new Error("Codex did not become ready within 15 seconds.")),
+            () =>
+              reject(new Error(`${profile.displayName} did not become ready within 15 seconds.`)),
             15_000,
           );
         });
@@ -337,9 +355,10 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
         throw new Error(
           (error instanceof RequestError && error.code === RequestError.authRequired().code) ||
             /auth(?:entication)?[ _-]required/i.test(message)
-            ? "Codex authentication required. Sign in with codex login, then start another stint."
-            : /(?:codex|spawn).*?(?:ENOENT|not found)/i.test(message)
-              ? "Codex not found. Install Codex and sign in with codex login, then start another stint."
+            ? `${profile.displayName} authentication required. Sign in with ${profile.capabilities.authenticationRequired.loginCommand}, then start another stint.`
+            : /(?:ENOENT|not found)/i.test(message) &&
+                [profile.id, "spawn"].some((name) => message.toLowerCase().includes(name))
+              ? `${profile.displayName} not found. ${profile.installationHint}`
               : message,
         );
       } finally {
@@ -360,7 +379,7 @@ export function createAgentLauncher(launchAdapter: AdapterLauncher): AgentLaunch
       }
     })();
     void done.then(
-      () => rejectReady(new Error("Stint ended before Codex became ready.")),
+      () => rejectReady(new Error(`Stint ended before ${profile.displayName} became ready.`)),
       rejectReady,
     );
     return {

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createAdaptorServer, type ServerType, upgradeWebSocket } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { type Health, indexProject, type Warning } from "@stintwork/core";
+import { createAgentRegistry, describeAgents } from "@stintwork/agents";
 import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
 import { WebSocket, WebSocketServer } from "ws";
@@ -35,6 +36,7 @@ export function createProjectServer(
   const files = createNodeRepoFiles(root);
   const readProjectFiles = createProjectFiles(root, files);
   const name = basename(root);
+  const agentRegistry = options.agentRegistry ?? createAgentRegistry();
   let watchedPaths = new Set<string>();
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
@@ -119,13 +121,17 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(snapshot);
   });
+  app.get("/api/agents", (context) => {
+    context.header("Cache-Control", "no-store");
+    return context.json({ agents: describeAgents(agentRegistry) });
+  });
   addBriefPreviewRoute(app, readProjectFiles, root);
   addStintHistoryRoute(app, files);
   const stopStints = addStintRoutes(
     app,
     root,
     readProjectFiles,
-    options,
+    { ...options, agentRegistry },
     (message) => {
       for (const client of websocket.clients) {
         if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(message));

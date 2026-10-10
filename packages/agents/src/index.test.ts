@@ -279,5 +279,5 @@ test("unsupported agents fail before launching a child", async () => {
   });
   await expect(
     launcher({ agent: "other", cwd: await fixture(), prompt: "Work", onEvent: () => {} }).done,
-  ).rejects.toThrow("Only Codex");
+  ).rejects.toThrow("This launcher supports Codex, not agent other.");
 });

@@ -42,6 +42,74 @@ const started: StintLogEntry = {
 };
 afterEach(() => vi.unstubAllGlobals());
 
+test("the picker renders registry names and posts the selected registered agent id", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            agents: [
+              { id: "first-agent", displayName: "First agent" },
+              { id: "second-agent", displayName: "Second agent" },
+            ],
+          }),
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ stint: { agent: "second-agent" } }), { status: 201 }),
+      ),
+  );
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  await user.click(screen.getByRole("button", { name: "Start stint" }));
+  const picker = await screen.findByRole("combobox", { name: "Agent" });
+  await screen.findByRole("option", { name: "Second agent" });
+  expect(picker).toHaveValue("first-agent");
+  expect(screen.queryByRole("option", { name: "Codex" })).not.toBeInTheDocument();
+  await user.selectOptions(picker, "second-agent");
+  await user.click(screen.getByRole("button", { name: "Start" }));
+  expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "second-agent" }),
+  });
+});
+
+test("an empty registry explains why starting a stint is unavailable", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ agents: [] }))),
+  );
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Start stint" }));
+  await screen.findByText("No agents are registered.");
+  expect(screen.getByRole("combobox", { name: "Agent" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+});
+
+test("a failed registry lookup refuses to fall back to a hardcoded agent", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ reason: "Agent registry unavailable." }), { status: 503 }),
+      ),
+  );
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Start stint" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Agent registry unavailable.");
+  expect(screen.getByRole("button", { name: "Start" })).toBeDisabled();
+  expect(screen.queryByRole("option", { name: "Codex" })).not.toBeInTheDocument();
+});
+
 test("Start posts ticket selection, closes the preview, and the drawer streams cumulative messages then finished history", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(
@@ -49,6 +117,9 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
     vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ agents: [{ id: "codex", displayName: "Codex" }] })),
+      )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ stint: applyStintLogEntry(null, started) }), { status: 201 }),
       ),
@@ -133,6 +204,9 @@ test("a rejected start retains the copyable brief and displays the reason", asyn
     vi
       .fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(brief)))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ agents: [{ id: "codex", displayName: "Codex" }] })),
+      )
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ reason: "A stint is already active for this work item." }), {
           status: 409,

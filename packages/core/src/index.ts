@@ -2,6 +2,7 @@ export type Health = {
   ok: true;
   repo: string;
 };
+export type { AgentCapabilityProfile, AgentPermissionOption, AgentProfile } from "./agents.js";
 export type {
   RichStintEvent,
   StintToolContent,

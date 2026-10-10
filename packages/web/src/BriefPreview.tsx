@@ -1,4 +1,9 @@
-import { type Brief, briefUnavailableReason, type Ticket } from "@stintwork/core";
+import {
+  type AgentProfile,
+  type Brief,
+  briefUnavailableReason,
+  type Ticket,
+} from "@stintwork/core";
 import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
@@ -61,6 +66,8 @@ function BriefPreviewSheet({
   const titleId = useId();
   const agentAvailabilityId = useId();
   const [brief, setBrief] = useState<Brief | null>(null);
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [agent, setAgent] = useState("");
   const [error, setError] = useState("");
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
@@ -77,16 +84,28 @@ function BriefPreviewSheet({
     const request = new AbortController();
     async function load() {
       try {
-        const response = await fetch(
-          `/api/work-items/${encodeURIComponent(slug)}/tickets/${ticketNumber}/brief-preview`,
-          { signal: request.signal, cache: "no-store" },
-        );
+        const [response, registryResponse] = await Promise.all([
+          fetch(
+            `/api/work-items/${encodeURIComponent(slug)}/tickets/${ticketNumber}/brief-preview`,
+            { signal: request.signal, cache: "no-store" },
+          ),
+          fetch("/api/agents", { signal: request.signal, cache: "no-store" }),
+        ]);
         if (!response.ok) {
           const failure: { reason?: string } = await response.json();
           throw new Error(failure.reason ?? "Could not load the brief preview.");
         }
+        if (!registryResponse.ok) {
+          const failure: { reason?: string } = await registryResponse.json();
+          throw new Error(failure.reason ?? "Could not load registered agents.");
+        }
         const preview: Brief = await response.json();
-        if (!request.signal.aborted) setBrief(preview);
+        const registry: { agents: AgentProfile[] } = await registryResponse.json();
+        if (!request.signal.aborted) {
+          setBrief(preview);
+          setAgents(registry.agents);
+          setAgent(registry.agents[0]?.id ?? "");
+        }
       } catch (cause) {
         if (!request.signal.aborted) {
           setError(cause instanceof Error ? cause.message : "Could not load the brief preview.");
@@ -108,14 +127,14 @@ function BriefPreviewSheet({
   }
 
   async function start() {
-    if (!brief || starting) return;
+    if (!brief || !agent || starting) return;
     setStarting(true);
     setStartError("");
     try {
       const response = await fetch("/api/stints", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent: "codex" }),
+        body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent }),
       });
       if (!response.ok) {
         const failure: { reason?: string } = await response.json();
@@ -171,18 +190,25 @@ function BriefPreviewSheet({
           <h3>Agent</h3>
           <label>
             <span className="sr-only">Agent</span>
-            <select defaultValue="codex" aria-describedby={agentAvailabilityId}>
-              <option value="codex">Codex</option>
-              <option value="claude" disabled>
-                Claude Code — coming in M3
-              </option>
-              <option value="grok" disabled>
-                Grok Build — coming in M3
-              </option>
+            <select
+              value={agent}
+              onChange={(event) => setAgent(event.target.value)}
+              aria-describedby={agentAvailabilityId}
+              disabled={!agents.length || starting}
+            >
+              {agents.map(({ id, displayName }) => (
+                <option key={id} value={id}>
+                  {displayName}
+                </option>
+              ))}
             </select>
           </label>
           <p id={agentAvailabilityId} className="muted">
-            Codex is available. Claude Code and Grok Build are coming in M3.
+            {brief
+              ? agents.length
+                ? "Choose an agent for this stint."
+                : "No agents are registered."
+              : "Reading registered agents…"}
           </p>
         </section>
         {error ? (
@@ -272,7 +298,7 @@ function BriefPreviewSheet({
         <button
           type="button"
           className="top-button"
-          disabled={!brief || starting || !!error}
+          disabled={!brief || !agent || starting || !!error}
           onClick={() => void start()}
         >
           {starting ? "Starting…" : "Start"}

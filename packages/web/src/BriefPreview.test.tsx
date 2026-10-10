@@ -20,12 +20,20 @@ const files = createMemoryRepoFiles({
 });
 const item = indexProject(files, { name: "Stintwork" }).workItems[0];
 const ticket = item.tickets[0];
+const agents = [{ id: "codex", displayName: "Codex" }];
 const brief = compileBrief({
   files,
   workItem: item,
   stage: builtInWorkflows.feature.stages[3],
   ticket,
 });
+
+function previewFetch(preview = brief) {
+  return vi.fn(
+    async (url: string) =>
+      new Response(JSON.stringify(url === "/api/agents" ? { agents } : preview)),
+  );
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -48,7 +56,7 @@ test("resume preview shows the checkpoint alongside the handoff and changed spec
     },
     changedPaths: [specPath],
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(resumed))));
+  vi.stubGlobal("fetch", previewFetch(resumed));
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Start stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
@@ -69,7 +77,7 @@ test("resume preview shows the checkpoint alongside the handoff and changed spec
 test("opens the drawer's brief sheet, shows every section and copies the exact prompt", async () => {
   const user = userEvent.setup();
   const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
-  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(brief)));
+  const fetch = previewFetch();
   vi.stubGlobal("fetch", fetch);
   render(<WorkItemDrawer item={item} onClose={vi.fn()} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
@@ -103,8 +111,7 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
   ).toBeInTheDocument();
   expect(preview.getByRole("combobox", { name: "Agent" })).toHaveValue("codex");
   expect(preview.getByRole("option", { name: "Codex" })).toBeEnabled();
-  expect(preview.getByRole("option", { name: "Claude Code — coming in M3" })).toBeDisabled();
-  expect(preview.getByRole("option", { name: "Grok Build — coming in M3" })).toBeDisabled();
+  expect(preview.getAllByRole("option")).toHaveLength(1);
   expect(preview.getByRole("button", { name: "Start" })).toBeEnabled();
   expect(preview.getByText(/Working instructions:/, { selector: "pre" }).textContent).toBe(
     brief.prompt,
@@ -116,7 +123,11 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
     "/api/work-items/first-stint/tickets/2/brief-preview",
     expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
   );
-  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/agents",
+    expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
 });
 
 test("blocked and resolved tickets show disabled reasons, and non-implementation stages cannot start", () => {
@@ -152,7 +163,7 @@ test("blocked and resolved tickets show disabled reasons, and non-implementation
 
 test("Escape closes only the preview and returns focus to Start stint", async () => {
   const user = userEvent.setup();
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(brief))));
+  vi.stubGlobal("fetch", previewFetch());
   const closeDrawer = vi.fn();
   render(<WorkItemDrawer item={item} onClose={closeDrawer} />);
   const start = screen.getByRole("button", { name: "Start stint" });
@@ -193,6 +204,7 @@ test("closing during loading cancels the preview request, and a live resolved ti
     within(screen.getByRole("dialog", { name: "Brief preview" })).getByRole("status"),
   ).toHaveTextContent("Reading the brief…");
   const signal: AbortSignal = fetch.mock.calls[0][1].signal;
+  expect(fetch.mock.calls[1][1].signal).toBe(signal);
   fireEvent.click(screen.getByRole("button", { name: "Close brief preview" }));
   expect(signal.aborted).toBe(true);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
@@ -212,7 +224,7 @@ test("closing during loading cancels the preview request, and a live resolved ti
 test("clipboard failure keeps the full prompt available for manual copying", async () => {
   const user = userEvent.setup();
   vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("Clipboard denied"));
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(brief))));
+  vi.stubGlobal("fetch", previewFetch());
   render(<WorkItemDrawer item={item} onClose={vi.fn()} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   await user.click(await screen.findByRole("button", { name: "Copy prompt" }));
@@ -242,7 +254,7 @@ test("future handoff and changed-path inputs render as structured brief sections
     },
     changedPaths: [specPath],
   });
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(resumed))));
+  vi.stubGlobal("fetch", previewFetch(resumed));
   render(<WorkItemDrawer item={item} onClose={vi.fn()} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   expect(

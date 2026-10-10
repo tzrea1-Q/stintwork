@@ -13,16 +13,21 @@ import {
 } from "@agentclientprotocol/sdk";
 import type { FakeAgentStep } from "./testing.js";
 import { toAcpReadable } from "./stdio.js";
+import { fakeAgentProfiles } from "./profiles.js";
 
 const script: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_SCRIPT ?? "[]");
 const handoff: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_HANDOFF ?? "[]");
 const options = JSON.parse(process.env.STINTWORK_FAKE_OPTIONS ?? "{}");
+const profile = fakeAgentProfiles[(options.profile ?? "codex") as keyof typeof fakeAgentProfiles];
 const briefs = new Map<string, { cwd: string; prompts: number }>();
 const turns = new Map<string, AbortController>();
-const modes = {
-  currentModeId: "workspace-write",
-  availableModes: [{ id: "workspace-write", name: "Workspace access" }],
-};
+const modes =
+  profile.capabilities.defaultMode === null
+    ? undefined
+    : {
+        currentModeId: profile.capabilities.defaultMode,
+        availableModes: profile.capabilities.modes.map((id) => ({ id, name: id })),
+      };
 
 new AgentSideConnection(
   (client) => ({
@@ -30,10 +35,11 @@ new AgentSideConnection(
       assert.equal(request.protocolVersion, PROTOCOL_VERSION);
       return {
         protocolVersion: PROTOCOL_VERSION,
-        agentCapabilities:
-          options.additionalDirectories === false
-            ? {}
-            : { sessionCapabilities: { additionalDirectories: {} } },
+        agentCapabilities: !(
+          options.additionalDirectories ?? profile.capabilities.additionalDirectories
+        )
+          ? {}
+          : { sessionCapabilities: { additionalDirectories: {} } },
         authMethods: [],
         agentInfo: { name: "scriptable-fake", version: "1.0.0" },
       };
@@ -59,10 +65,20 @@ new AgentSideConnection(
       }
       const id = randomUUID();
       briefs.set(id, { cwd, prompts: 0 });
-      return { sessionId: id, modes };
+      return {
+        sessionId: id,
+        ...(modes ? { modes } : {}),
+        configOptions: profile.capabilities.configOptions.map((id) => ({
+          id,
+          name: id,
+          type: "select" as const,
+          currentValue: "fake",
+          options: [{ value: "fake", name: "Fake value" }],
+        })),
+      };
     },
     async setSessionMode({ modeId }) {
-      assert.equal(modeId, "workspace-write");
+      assert.ok(profile.capabilities.modes.includes(modeId), "Agent must offer the selected mode.");
       return {};
     },
     async prompt({ sessionId, prompt }) {
@@ -112,7 +128,7 @@ new AgentSideConnection(
               "git",
               [
                 "-c",
-                "user.name=Fake Codex",
+                `user.name=Fake ${profile.displayName}`,
                 "-c",
                 "user.email=fake@example.invalid",
                 "commit",
@@ -123,17 +139,20 @@ new AgentSideConnection(
               { cwd: brief.cwd },
             );
           } else if (step.type === "permission") {
+            const permissionOptions = step.options ?? profile.capabilities.permissionOptions;
+            assert.ok(permissionOptions?.length, "This profile needs explicit permission options.");
             const response = await client.requestPermission({
               sessionId,
               toolCall: step.toolCall,
-              options: step.options,
+              options: [...permissionOptions],
             });
             if (response.outcome.outcome === "cancelled") return { stopReason: "cancelled" };
             const optionId = response.outcome.optionId;
-            const option = step.options.find((option) => option.optionId === optionId);
+            const option = permissionOptions.find((option) => option.optionId === optionId);
             assert.ok(option);
             if (step.expectedOptionId !== undefined) assert.equal(optionId, step.expectedOptionId);
-            if (option.kind.startsWith("reject")) return { stopReason: "cancelled" };
+            if (option.kind.startsWith("reject") && profile.capabilities.declineEndsTurn !== false)
+              return { stopReason: "cancelled" };
           } else
             await client.sessionUpdate({
               sessionId,
