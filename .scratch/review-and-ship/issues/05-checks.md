@@ -1,6 +1,6 @@
 # 05 — Checks
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -9,6 +9,10 @@ Evidence instead of claims (spec user stories 18–21). `.stintwork/config` gain
 
 ## Acceptance criteria
 
-- [ ] Server tests: default and configured commands. Results are tied to the commit, output streams, cancellation works, a failing check is recorded as failed, and the log survives a restart.
-- [ ] Component tests: the checks panel (running, passed, failed, cancelled).
-- [ ] All checks pass.
+- [x] Server tests: default and configured commands. Results are tied to the commit, output streams, cancellation works, a failing check is recorded as failed, and the log survives a restart.
+- [x] Component tests: the checks panel (running, passed, failed, cancelled).
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-10:** Built by Codex. verify.sh passed (783 tests). Browser check on a throwaway repo (root package.json scripts test: sleep 3, lint: ok, build: exit 1, no checks: in config, so the defaults were used): Run checks in the review overlay streamed test's output live with a Cancel button, then recorded test passed (3177 ms), lint passed and build failed, each with the worktree's commit a5689d2. A new commit on stintwork/demo marked all three Stale within about two seconds without a reload. Check commands are read from the main checkout's .stintwork/config, never from the worktree.
