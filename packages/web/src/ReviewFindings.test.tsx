@@ -369,6 +369,58 @@ test("findings for an unchanged file still render when the committed diff is emp
   );
 });
 
+test("findings share core freshness, showing stale commit evidence only after non-bookkeeping changes", async () => {
+  const reviewed = item([{ commit: "old", findings: [finding] }]);
+  reviewed.headCommit = diff.headCommit;
+  reviewed.evidenceChangedPaths = {
+    old: [".scratch/example/review.yaml", ".scratch/example/workflow.yaml"],
+  };
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => diff }));
+  const view = render(<ReviewOverlay item={reviewed} onClose={() => {}} />);
+  const card = await screen.findByRole("article", { name: finding.title });
+  await screen.findByText(diff.headCommit, { selector: ".review-range code" });
+  expect(card).not.toHaveTextContent("Stale");
+  view.rerender(
+    <ReviewOverlay
+      item={{ ...reviewed, evidenceChangedPaths: { old: [finding.path] } }}
+      onClose={() => {}}
+    />,
+  );
+  expect(card).toHaveTextContent("Reviewed commit old · Stale");
+  const rail = screen.getByRole("region", { name: "Findings" });
+  expect(rail).toHaveTextContent("Reviewed commit old · Stale");
+});
+
+test.each(["open", "sent-back"] as const)(
+  "a new no-findings Review leaves older %s findings as history without decision actions",
+  async (status) => {
+    const reviewed = item(
+      [
+        { commit: "old", findings: [finding] },
+        { commit: diff.headCommit, findings: [] },
+      ],
+      [
+        {
+          id: finding.id,
+          kind: "finding",
+          status,
+          reason: "",
+          by: "You",
+          at: "2026-10-10T10:01:00Z",
+        },
+      ],
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => diff }));
+    render(<ReviewOverlay item={reviewed} onClose={() => {}} />);
+    const card = await screen.findByRole("article", { name: finding.title });
+    expect(card).toHaveTextContent(status);
+    expect(card).toHaveTextContent("History — not gate evidence");
+    expect(within(card).queryByRole("button", { name: "Resolve" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Findings" })).toHaveTextContent("No findings");
+    expect(screen.getByRole("button", { name: "Send back" })).toBeDisabled();
+  },
+);
+
 test.each(["renamed", "added"] as const)(
   "metadata-only %s files keep findings at the file top",
   async (status) => {

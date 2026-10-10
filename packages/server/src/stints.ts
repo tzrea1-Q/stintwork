@@ -40,6 +40,7 @@ import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
+import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export type StintServerOptions = {
   launchAgent?: AgentLauncher;
@@ -77,6 +78,7 @@ export function addStintRoutes(
   broadcast: (message: StintLiveMessage) => void,
   refresh: () => void,
   isChecking: (slug: string) => boolean = () => false,
+  readReviewEvidence?: ReviewEvidenceReader,
 ) {
   const registry = options.agentRegistry ?? createAgentRegistry();
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
@@ -93,7 +95,15 @@ export function addStintRoutes(
     (slug) => active.has(slug),
     workflowWrites,
   );
-  addGateRoutes(app, readProjectFiles, root, refresh, (slug) => active.has(slug), workflowWrites);
+  addGateRoutes(
+    app,
+    readProjectFiles,
+    root,
+    refresh,
+    (slug) => active.has(slug) || isChecking(slug),
+    workflowWrites,
+    readReviewEvidence,
+  );
   addFindingDecisionRoutes(
     app,
     readProjectFiles,

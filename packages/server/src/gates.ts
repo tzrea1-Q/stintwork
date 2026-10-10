@@ -3,6 +3,7 @@ import { gateReadiness, indexProject, workflowGate, type GateRecord } from "@sti
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveWorkItemWorkflow } from "./workflow-writes.js";
+import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export function addGateRoutes(
   app: Hono,
@@ -11,6 +12,7 @@ export function addGateRoutes(
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
   writing: Set<string>,
+  readReviewEvidence?: ReviewEvidenceReader,
 ) {
   for (const action of ["approve", "reopen"] as const) {
     app.post(`/api/work-items/:slug/gates/:stage/${action}`, async (context) => {
@@ -50,15 +52,21 @@ export function addGateRoutes(
         return context.json({ reason: "workflow.yaml must be valid before changing a gate." }, 409);
       if (item.activeStint || isStintActive(slug) || writing.has(slug))
         return context.json(
-          { reason: "A stint or workflow write is active for this work item." },
+          { reason: "A stint, check or workflow write is active for this work item." },
           409,
         );
+      if (action === "approve" && item.stage === "review") readReviewEvidence?.(project, snapshot);
       const gate = gateReadiness(item);
-      if (action === "approve" && (item.stage !== stage.id || !gate.ready))
+      if (action === "approve" && (item.stage !== stage.id || !gate.ready)) {
+        refresh();
         return context.json(
-          { reason: item.stage !== stage.id ? "This is not the current stage." : gate.reason },
+          {
+            reason: item.stage !== stage.id ? "This is not the current stage." : gate.reason,
+            conditions: gate.conditions,
+          },
           409,
         );
+      }
       if (
         action === "reopen" &&
         (position >= stages.findIndex(({ id }) => id === item.stage) ||

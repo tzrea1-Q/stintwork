@@ -3,6 +3,7 @@ import type { GateAttentionItem } from "./attention.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { StagedWorkItem } from "./stages.js";
 import { builtInWorkflows, type StageId } from "./workflows.js";
+import { reviewGateConditions } from "./review-evidence.js";
 
 export type GateRecord = { by: string; at: string; commit: string };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
@@ -38,7 +39,9 @@ export function gateReadiness(item: GateWorkItem) {
     else if (item.stage !== "review" && !stageStint.handoff)
       reason = "The finished stage stint needs a handoff before approving.";
   }
-  return { ready: reason === null, reason, nextStage, stageStint: stageStint ?? null };
+  const conditions = item.stage === "review" ? reviewGateConditions(item, reason) : [];
+  reason ??= conditions.find((condition) => !condition.ready)?.action ?? null;
+  return { ready: reason === null, reason, nextStage, stageStint: stageStint ?? null, conditions };
 }
 
 export function deriveGateAttentionItems(snapshot: Pick<ProjectSnapshot, "workItems">) {

@@ -1,6 +1,11 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { indexProject, workflowGate, type ReviewDecision } from "@stintwork/core";
+import {
+  indexProject,
+  latestReviewStint,
+  workflowGate,
+  type ReviewDecision,
+} from "@stintwork/core";
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -72,7 +77,10 @@ export function addFindingDecisionRoutes(
           { reason: "Review and workflow files must be valid before changing findings." },
           409,
         );
-      const findings = item.stints.flatMap((stint) => stint.findings?.findings ?? []);
+      const findings =
+        action === "send-back"
+          ? (latestReviewStint(item.stints)?.findings?.findings ?? [])
+          : item.stints.flatMap((stint) => stint.findings?.findings ?? []);
       const selected =
         action === "decision"
           ? findings.filter((finding) => finding.id === request.id)

@@ -19,8 +19,8 @@ import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.
 import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availability.js";
 import { addHandoffAnswerRoute } from "./handoff-answers.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
-import { createMemoryProposalReader } from "./memory-proposals.js";
 import { addCheckRoutes, createChecks } from "./checks.js";
+import { createReviewEvidenceReader } from "./review-evidence.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -41,7 +41,6 @@ export function createProjectServer(
   const root = resolve(repoRoot);
   const files = createNodeRepoFiles(root);
   const readProjectFiles = createProjectFiles(root, files);
-  const readMemoryProposals = createMemoryProposalReader(root);
   const name = basename(root);
   const agentRegistry = options.agentRegistry ?? createAgentRegistry();
   const checks = createChecks(
@@ -53,6 +52,7 @@ export function createProjectServer(
     },
     () => refresh(),
   );
+  const readReviewEvidence = createReviewEvidenceReader(root, checks);
   let watchedPaths = new Set<string>();
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
@@ -74,22 +74,7 @@ export function createProjectServer(
       agents: describeAgents(agentRegistry),
       ...(branch ? { branch } : {}),
     });
-    readMemoryProposals(project.files, snapshot);
-    for (const item of snapshot.workItems) {
-      const path = project.worktreePaths.get(item.slug);
-      if (path) item.worktreePath = path;
-      try {
-        Object.assign(item, checks.evidence(item.slug));
-        if (path)
-          item.headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-            cwd: path,
-            encoding: "utf8",
-            stdio: ["ignore", "pipe", "pipe"],
-          }).trim();
-      } catch (error) {
-        snapshot.warnings.push({ path: ".stintwork/local/checks/", message: String(error) });
-      }
-    }
+    readReviewEvidence(project, snapshot);
     snapshot.warnings.push(...project.warnings);
     if (branchWarning) snapshot.warnings.push(branchWarning);
     return snapshot;
@@ -175,6 +160,7 @@ export function createProjectServer(
     },
     refresh,
     checks.isActive,
+    readReviewEvidence,
   );
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
   const live = upgradeWebSocket(() => ({}));

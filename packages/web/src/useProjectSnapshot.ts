@@ -67,6 +67,10 @@ function isAttentionItem(value: unknown) {
           (typeof value.stintId === "string" &&
             typeof value.agent === "string" &&
             (value.kind === "handoff-unresolved" ||
+              (value.kind === "memory-proposal" &&
+                ["path", "diff", "baseCommit", "checkpointCommit"].every(
+                  (key) => typeof value[key] === "string",
+                )) ||
               (value.kind === "permission" &&
                 typeof value.requestId === "string" &&
                 Array.isArray(value.options) &&
@@ -138,6 +142,24 @@ function readSnapshot(value: unknown): ProjectSnapshot {
         (item.column === undefined || stages.some((stage) => stage.column === item.column)) &&
         (item.stage === undefined || stages.some((stage) => stage.id === item.stage)) &&
         (item.milestone === undefined || typeof item.milestone === "string") &&
+        (item.headCommit === undefined || typeof item.headCommit === "string") &&
+        (item.reviewEvidenceError === undefined || typeof item.reviewEvidenceError === "string") &&
+        (item.checkCommands === undefined ||
+          (Array.isArray(item.checkCommands) &&
+            item.checkCommands.every(
+              (command: unknown) =>
+                isRecord(command) &&
+                typeof command.name === "string" &&
+                typeof command.command === "string",
+            ))) &&
+        (item.evidenceChangedPaths === undefined ||
+          (isRecord(item.evidenceChangedPaths) &&
+            !Array.isArray(item.evidenceChangedPaths) &&
+            Object.values(item.evidenceChangedPaths).every(
+              (paths) =>
+                paths === null ||
+                (Array.isArray(paths) && paths.every((path) => typeof path === "string")),
+            ))) &&
         Array.isArray(item.stints) &&
         item.stints.every(isStintSummary) &&
         (item.activeStint === null ||

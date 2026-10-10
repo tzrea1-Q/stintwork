@@ -183,6 +183,7 @@ test("an inferred stage gets workflow.yaml on its first approval", async () => {
         at: "2026-10-09T10:01:00Z",
         status: "finished",
         checkpointCommit: git(worktree.path, "rev-parse", "HEAD"),
+        findings: { commit: git(worktree.path, "rev-parse", "HEAD"), findings: [] },
       },
     ]
       .map((entry) => JSON.stringify(entry))

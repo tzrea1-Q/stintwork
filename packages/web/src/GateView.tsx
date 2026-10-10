@@ -46,6 +46,16 @@ export function GateView({ item, warnings = [] }: { item: BoardWorkItem; warning
     <section aria-label={`${current.name} gate`} className="handoff-card">
       <h3 className="drawer-section-heading">{current.name} gate</h3>
       <p role="status">{gate.ready ? "Ready to approve" : gate.reason}</p>
+      {gate.conditions.length > 0 && (
+        <ul aria-label="Review gate conditions">
+          {gate.conditions.map((condition) => (
+            <li key={condition.id}>
+              <strong>{condition.label}</strong> · {condition.ready ? "Ready" : "Blocked"}
+              <p>{condition.ready ? "No action needed." : condition.action}</p>
+            </li>
+          ))}
+        </ul>
+      )}
       <p>
         {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length} tickets
         resolved

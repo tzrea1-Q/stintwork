@@ -24,6 +24,81 @@ const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": 
   name: "Stintwork",
 });
 
+test("Review evidence and open memory proposals survive HTTP and live snapshots, blocking the gate", async () => {
+  const next = structuredClone(snapshot);
+  const item = next.workItems[0];
+  item.stage = "review";
+  item.column = "review";
+  item.headCommit = "head";
+  item.checkCommands = [];
+  item.evidenceChangedPaths = { reviewed: [".scratch/board/review.yaml"] };
+  item.stints = [
+    {
+      id: "review",
+      workItem: "board",
+      stage: "review",
+      ticket: null,
+      agent: "codex",
+      status: "finished",
+      startedAt: "2026-10-10T10:00:00Z",
+      endedAt: "2026-10-10T10:01:00Z",
+      checkpointCommit: "head",
+      handoff: null,
+      findings: { commit: "reviewed", findings: [] },
+    },
+  ];
+  const proposal = {
+    kind: "memory-proposal" as const,
+    id: "proposal",
+    workItem: "board",
+    ticket: null,
+    stintId: "review",
+    agent: "codex",
+    title: "Memory proposal",
+    details: "Decide",
+    raisedAt: "2026-10-10T10:01:00Z",
+    path: "GLOSSARY.md",
+    diff: "diff",
+    baseCommit: "base",
+    checkpointCommit: "head",
+  };
+  item.memoryProposals = [proposal];
+  next.attentionItems = deriveAttentionItems(next);
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  expect(result.current.snapshot?.attentionItems).toEqual([proposal]);
+  const accepted = structuredClone(next);
+  accepted.workItems[0].memoryProposals = [];
+  accepted.attentionItems = deriveAttentionItems(accepted);
+  act(() => TestSocket.instances[0].sendSnapshot(accepted));
+  expect(result.current.snapshot).toEqual(accepted);
+  expect(result.current.snapshot?.attentionItems).toContainEqual(
+    expect.objectContaining({ kind: "gate-ready", stage: "review" }),
+  );
+});
+
+test.each([
+  { evidenceChangedPaths: { reviewed: "not paths" } },
+  { evidenceChangedPaths: { reviewed: [1] } },
+  { evidenceChangedPaths: [] },
+  { checkCommands: [{ name: "Test", command: 1 }] },
+  { reviewEvidenceError: 1 },
+])(
+  "rejects malformed Review evidence fields without replacing the snapshot: %j",
+  async (fields) => {
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({ ...snapshot, workItems: [{ ...snapshot.workItems[0], ...fields }] }),
+      }),
+    );
+    expect(result.current.snapshot).toEqual(snapshot);
+    expect(result.current.connection).toBe("reconnecting");
+  },
+);
+
 test.each<ReviewFindings>([
   { commit: "reviewed", findings: [] },
   {
