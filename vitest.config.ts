@@ -5,6 +5,7 @@ export default defineConfig({
     conditions: ["development"],
   },
   test: {
+    reporters: ["default"],
     // expect.poll waits for setup (child processes, git, file events) under a loaded test run.
     // Product deadlines such as the 1-second live update use explicit timers in their tests.
     expect: { poll: { timeout: 5000 } },
@@ -14,6 +15,7 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
+          setupFiles: ["packages/agents/test/setup.ts"],
           include: ["packages/**/*.test.ts"],
           exclude: [...configDefaults.exclude, "packages/web/**", "packages/server/**"],
           testTimeout: 10_000,
@@ -28,7 +30,7 @@ export default defineConfig({
           name: "server",
           environment: "node",
           include: ["packages/server/**/*.test.ts"],
-          setupFiles: ["packages/server/test/setup.ts"],
+          setupFiles: ["packages/agents/test/setup.ts", "packages/server/test/setup.ts"],
           testTimeout: 10_000,
           fileParallelism: false,
           // Run after the other projects so wall-clock assertions don't compete with them.

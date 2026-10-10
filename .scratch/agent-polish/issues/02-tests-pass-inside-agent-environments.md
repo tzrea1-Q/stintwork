@@ -1,6 +1,6 @@
 # 02 — Tests pass inside agent environments
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
