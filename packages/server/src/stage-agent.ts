@@ -82,6 +82,7 @@ export function addStageAgentRoute(
         slug,
         (text) => workflowStageAgent(text, item, stage.id, agent.id),
         !!worktree,
+        `Set ${stage.id} agent to ${agent.id} for ${slug}`,
       );
       refresh();
       return context.json({ stage: stage.id, agent: agent.id, commit });

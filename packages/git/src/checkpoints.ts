@@ -30,6 +30,7 @@ export async function commitStintworkSetup(
   worktree: string,
   workItem: string,
   files: readonly string[],
+  message = `Stintwork setup for work item ${workItem}`,
 ): Promise<string | null> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem)) throw new Error("Invalid work item slug.");
   const allowed = new Set([".gitignore", `.scratch/${workItem}/workflow.yaml`]);
@@ -41,13 +42,7 @@ export async function commitStintworkSetup(
   const changed = await git(["status", "--porcelain=v1", "--untracked-files=all", "--", ...files]);
   if (!changed) return null;
   await git(["add", "--", ...files]);
-  await commitWithIdentity(git, [
-    "--only",
-    "-m",
-    `Stintwork setup for work item ${workItem}`,
-    "--",
-    ...files,
-  ]);
+  await commitWithIdentity(git, ["--only", "-m", message, "--", ...files]);
   return git(["rev-parse", "HEAD"]);
 }
 
