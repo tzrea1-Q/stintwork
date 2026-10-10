@@ -1,6 +1,6 @@
 # 04 — Gates: approve and reopen
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## What to build

@@ -271,6 +271,7 @@ export function Board({
       )}
       {openItem && (
         <WorkItemDrawer
+          warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}
           agents={snapshot.agents}

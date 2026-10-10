@@ -28,26 +28,50 @@ function isStintSummary(value: unknown) {
     (value.endedAt === null || typeof value.endedAt === "string") &&
     (value.error === undefined || typeof value.error === "string") &&
     (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&
-    (value.handoff == null || isBriefHandoff(value.handoff))
+    (value.handoff == null || isBriefHandoff(value.handoff)) &&
+    (value.handoffAnswer === undefined ||
+      (isRecord(value.handoffAnswer) &&
+        typeof value.handoffAnswer.at === "string" &&
+        !Number.isNaN(Date.parse(value.handoffAnswer.at)) &&
+        (value.handoffAnswer.note === null ||
+          (typeof value.handoffAnswer.note === "string" &&
+            value.handoffAnswer.note.trim().length > 0))))
   );
 }
 
 function isAttentionItem(value: unknown) {
   return (
     isRecord(value) &&
-    value.kind === "permission" &&
-    ["id", "workItem", "stintId", "agent", "requestId", "title", "details", "raisedAt"].every(
-      (key) => typeof value[key] === "string",
-    ) &&
+    ["id", "title", "details", "raisedAt"].every((key) => typeof value[key] === "string") &&
     (value.ticket === null ||
       (Number.isSafeInteger(value.ticket) && (value.ticket as number) > 0)) &&
     !Number.isNaN(Date.parse(value.raisedAt as string)) &&
-    Array.isArray(value.options) &&
-    value.options.every(
-      (option) =>
-        isRecord(option) &&
-        ["optionId", "name", "kind"].every((key) => typeof option[key] === "string"),
-    )
+    ((value.kind === "login-required" &&
+      value.workItem === null &&
+      value.ticket === null &&
+      value.stintId === null &&
+      typeof value.agent === "string" &&
+      typeof value.loginCommand === "string" &&
+      value.loginCommand.trim().length > 0) ||
+      (typeof value.workItem === "string" &&
+        ((value.kind === "gate-ready" &&
+          value.ticket === null &&
+          (value.stintId === null || typeof value.stintId === "string") &&
+          (value.agent === null || typeof value.agent === "string") &&
+          Object.values(builtInWorkflows).some((workflow) =>
+            workflow.stages.some((stage) => stage.id === value.stage),
+          )) ||
+          (typeof value.stintId === "string" &&
+            typeof value.agent === "string" &&
+            (value.kind === "handoff-unresolved" ||
+              (value.kind === "permission" &&
+                typeof value.requestId === "string" &&
+                Array.isArray(value.options) &&
+                value.options.every(
+                  (option) =>
+                    isRecord(option) &&
+                    ["optionId", "name", "kind"].every((key) => typeof option[key] === "string"),
+                )))))))
   );
 }
 

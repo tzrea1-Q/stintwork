@@ -193,6 +193,7 @@ test("Needs-you snapshots reach both tabs; a queue answer is logged, received by
       agent: "codex",
       options: permission.options,
     });
+    if (item.kind !== "permission") throw new Error("Expected a permission attention item");
     expect(item.details).toContain(command);
     expect(item.details).toContain("/full/path/to/file.ts");
     expect(snapshots[1].at(-1)?.attentionItems[0]).toEqual(item);

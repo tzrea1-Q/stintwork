@@ -1,6 +1,6 @@
 # 05 — Unresolved handoffs and developer notes
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## What to build

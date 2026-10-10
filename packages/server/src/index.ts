@@ -16,6 +16,7 @@ import { addStintRoutes, type StintServerOptions } from "./stints.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.js";
 import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availability.js";
+import { addHandoffAnswerRoute } from "./handoff-answers.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -132,6 +133,7 @@ export function createProjectServer(
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry);
   addStintHistoryRoute(app, files);
+  addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   const stopStints = addStintRoutes(
     app,
     root,

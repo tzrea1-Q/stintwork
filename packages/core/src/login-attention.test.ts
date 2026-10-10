@@ -28,44 +28,66 @@ const profile: AgentProfile = {
   },
 };
 
-test("login attention is agent-wide, stable across snapshot rebuilds, and disappears after login", () => {
-  const snapshot = indexProject(createMemoryRepoFiles({}), { name: "Project", agents: [profile] });
-  expect(snapshot.attentionItems).toEqual([
-    {
-      kind: "login-required",
-      id: 'login-required:"claude"',
-      agent: "claude",
-      workItem: null,
-      ticket: null,
-      stintId: null,
-      title: "Claude Code needs a login",
-      details: "Sign in with claude auth login.",
-      raisedAt: "2026-10-09T10:00:00Z",
-      loginCommand: "claude auth login",
+test.each([
+  profile,
+  {
+    ...profile,
+    id: "other-agent",
+    displayName: "Other Agent",
+    capabilities: {
+      ...profile.capabilities,
+      authenticationRequired: { message: "Authentication required", loginCommand: "other login" },
     },
-  ]);
-  expect(deriveAttentionItems(snapshot)).toEqual(snapshot.attentionItems);
-  expect(
-    deriveAttentionItems({
-      ...snapshot,
-      agents: [{ ...profile, availability: { available: true } }],
-    }),
-  ).toEqual([]);
-  const later = deriveAttentionItems({
-    ...snapshot,
-    agents: [
+    availability: {
+      ...profile.availability,
+      available: false,
+      reason: "Sign in with other login.",
+    },
+  },
+])(
+  "$id login attention is agent-wide, stable across snapshot rebuilds, and disappears after login",
+  (profile) => {
+    const snapshot = indexProject(createMemoryRepoFiles({}), {
+      name: "Project",
+      agents: [profile],
+    });
+    expect(snapshot.attentionItems).toEqual([
       {
-        ...profile,
-        availability: {
-          available: false,
-          kind: "login-required",
-          checkedAt: "2026-10-09T11:00:00Z",
-        },
+        kind: "login-required",
+        id: `login-required:${JSON.stringify(profile.id)}`,
+        agent: profile.id,
+        workItem: null,
+        ticket: null,
+        stintId: null,
+        title: `${profile.displayName} needs a login`,
+        details: profile.availability?.reason,
+        raisedAt: "2026-10-09T10:00:00Z",
+        loginCommand: profile.capabilities.authenticationRequired.loginCommand,
       },
-    ],
-  });
-  expect(later[0].id).toBe(snapshot.attentionItems[0].id);
-});
+    ]);
+    expect(deriveAttentionItems(snapshot)).toEqual(snapshot.attentionItems);
+    expect(
+      deriveAttentionItems({
+        ...snapshot,
+        agents: [{ ...profile, availability: { available: true } }],
+      }),
+    ).toEqual([]);
+    const later = deriveAttentionItems({
+      ...snapshot,
+      agents: [
+        {
+          ...profile,
+          availability: {
+            available: false,
+            kind: "login-required",
+            checkedAt: "2026-10-09T11:00:00Z",
+          },
+        },
+      ],
+    });
+    expect(later[0].id).toBe(snapshot.attentionItems[0].id);
+  },
+);
 
 test.each([
   undefined,
