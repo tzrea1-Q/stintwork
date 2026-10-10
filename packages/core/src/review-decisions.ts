@@ -1,4 +1,5 @@
 import { parseDocument } from "yaml";
+import type { DeveloperNote } from "./developer-notes.js";
 
 export type ReviewDecision = {
   id: string;
@@ -42,7 +43,37 @@ function reviewDocument(text: string | undefined) {
       .size !== value.decisions.length
   )
     throw new Error("review.yaml needs unique decisions with id, kind, status, reason, by and at.");
-  return { document, decisions: value.decisions as ReviewDecision[] };
+  const developerNotes: unknown = value.developerNotes === undefined ? [] : value.developerNotes;
+  if (
+    !Array.isArray(developerNotes) ||
+    !developerNotes.every(isReviewNote) ||
+    new Set(developerNotes.map((note) => note.id)).size !== developerNotes.length
+  )
+    throw new Error("review.yaml needs unique review developer notes with id, at and text.");
+  return { document, decisions: value.decisions as ReviewDecision[], developerNotes };
+}
+
+function isReviewNote(value: unknown): value is DeveloperNote {
+  if (!value || typeof value !== "object") return false;
+  const note = value as Record<string, unknown>;
+  return (
+    note.source === "review" &&
+    ["id", "at", "text"].every((key) => typeof note[key] === "string" && !!note[key].trim()) &&
+    Number.isFinite(Date.parse(note.at as string))
+  );
+}
+
+export function parseReviewDeveloperNotes(text: string | undefined): DeveloperNote[] {
+  return reviewDocument(text).developerNotes;
+}
+
+export function recordReviewDeveloperNote(text: string, note: DeveloperNote): string {
+  if (!isReviewNote(note)) throw new Error("Invalid review developer note.");
+  const { document, developerNotes } = reviewDocument(text);
+  if (developerNotes.some((previous) => previous.id === note.id))
+    throw new Error("This review developer note already exists.");
+  document.set("developerNotes", [...developerNotes, note]);
+  return document.toString();
 }
 
 export function parseReviewDecisions(text: string | undefined): ReviewDecision[] {

@@ -3,6 +3,8 @@ import {
   parseReviewDecisions,
   recordReviewDecision,
   type ReviewDecision,
+  parseReviewDeveloperNotes,
+  recordReviewDeveloperNote,
 } from "./review-decisions.js";
 import { createMemoryRepoFiles } from "./work-items.js";
 import { indexProject } from "./project.js";
@@ -89,4 +91,34 @@ test("snapshot exposes decisions and reports invalid review files", () => {
   expect(snapshot.warnings).toContainEqual(
     expect.objectContaining({ path: ".scratch/first/review.yaml" }),
   );
+});
+
+test("review-origin notes round-trip alongside both kinds of decisions", () => {
+  const note = {
+    id: "review:feedback",
+    at: memory.at,
+    source: "review" as const,
+    text: "## Review findings\nFix input validation.",
+  };
+  const text = recordReviewDeveloperNote(recordReviewDecision(undefined, finding), note);
+  const updated = recordReviewDecision(text, memory);
+  expect(parseReviewDecisions(updated)).toEqual([finding, memory]);
+  expect(parseReviewDeveloperNotes(updated)).toEqual([note]);
+  expect(parseReviewDeveloperNotes(undefined)).toEqual([]);
+  expect(() => recordReviewDeveloperNote(updated, note)).toThrow("already exists");
+  expect(() => parseReviewDecisions("decisions: []\ndeveloperNotes: null")).toThrow(/review.yaml/);
+  expect(() =>
+    parseReviewDecisions(
+      `decisions: []\ndeveloperNotes: [${JSON.stringify(note)}, ${JSON.stringify(note)}]`,
+    ),
+  ).toThrow(/review.yaml/);
+  for (const invalid of [
+    { ...note, source: "agent" },
+    { ...note, text: " " },
+    { ...note, at: "invalid" },
+  ]) {
+    expect(() =>
+      parseReviewDecisions(`decisions: []\ndeveloperNotes: [${JSON.stringify(invalid)}]`),
+    ).toThrow(/review.yaml/);
+  }
 });

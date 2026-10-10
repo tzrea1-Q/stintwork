@@ -290,7 +290,8 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
           (note) =>
             note &&
             typeof note === "object" &&
-            ["id", "at", "text"].every((key) => typeof note[key] === "string"),
+            ["id", "at", "text"].every((key) => typeof note[key] === "string") &&
+            (note.source === undefined || note.source === "review"),
         ))) &&
     (brief.checkpointCommit == null || typeof brief.checkpointCommit === "string") &&
     (brief.skill === null || typeof brief.skill === "string") &&

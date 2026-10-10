@@ -74,12 +74,14 @@ export async function commitWorkItemReview(
   text: string,
   message: string,
   rejection?: { path: string; baseCommit: string },
+  workflow?: string,
 ): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
   if (gitText(worktree, ["symbolic-ref", "--short", "HEAD"]).trim() !== `stintwork/${slug}`)
     throw new Error("The worktree is not on the work item's branch.");
   const review = `.scratch/${slug}/review.yaml`;
   const paths = [review];
+  if (workflow !== undefined) paths.push(`.scratch/${slug}/workflow.yaml`);
   if (rejection) {
     if (
       !/^(?:GLOSSARY\.md|AGENTS\.md|CLAUDE\.md|docs\/(?:adr|agents)\/.+)$/.test(rejection.path) ||
@@ -132,6 +134,8 @@ export async function commitWorkItemReview(
       } else rmSync(join(worktree, rejection.path), { force: true });
     }
     writeFileSync(join(worktree, review), text, { flag: existing === undefined ? "wx" : "w" });
+    if (workflow !== undefined)
+      writeFileSync(join(worktree, `.scratch/${slug}/workflow.yaml`), workflow);
     await git(["add", "--all", "--", ...paths]);
     await commitWithIdentity(git, ["--only", "-m", message, "--", ...paths]);
     return await git(["rev-parse", "HEAD"]);

@@ -95,6 +95,130 @@ function show(reports: ReviewFindings[], decisions: ReviewDecision[] = [], files
 }
 afterEach(() => vi.unstubAllGlobals());
 
+function actions(status: ReviewDecision["status"] = "open", failure?: string) {
+  const decision: ReviewDecision = {
+    kind: "finding",
+    id: finding.id,
+    status,
+    reason: "Previously reviewed",
+    by: "Developer",
+    at: "2026-10-10T10:00:00Z",
+  };
+  const fetch = vi.fn(async (_url: string, options?: RequestInit) => {
+    if (!options?.method) return { ok: true, json: async () => diff };
+    if (failure) return { ok: false, json: async () => ({ reason: failure }) };
+    const body = JSON.parse(String(options.body));
+    return {
+      ok: true,
+      json: async () =>
+        _url.endsWith("send-back")
+          ? { decisions: [{ ...decision, status: "sent-back" }], stage: "implement" }
+          : { decision: { ...decision, ...body } },
+    };
+  });
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <ReviewOverlay
+      item={item(
+        [{ commit: "reviewed", findings: [finding] }],
+        status === "open" ? [] : [decision],
+      )}
+      onClose={() => {}}
+    />,
+  );
+  return fetch;
+}
+
+test.each([
+  ["Resolve", "open", "resolved"],
+  ["Reopen", "resolved", "open"],
+  ["Reopen", "accepted", "open"],
+  ["Reopen", "sent-back", "open"],
+] as const)("%s records %s as %s from its pinned finding", async (button, initial, status) => {
+  const user = userEvent.setup();
+  const fetch = actions(initial);
+  const card = await screen.findByRole("article", { name: finding.title });
+  await user.click(within(card).getByRole("button", { name: button }));
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/work-items/example/findings/decision",
+    expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({ id: finding.id, status, reason: "" }),
+    }),
+  );
+  expect(within(card).getByText(`Standards · major · ${status}`)).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Changed files" })).toBeInTheDocument();
+});
+
+test("accept requires a nonblank reason, stores it, and updates the pinned finding and rail", async () => {
+  const user = userEvent.setup();
+  const fetch = actions();
+  const card = await screen.findByRole("article", { name: finding.title });
+  await user.click(within(card).getByRole("button", { name: "Accept with reason" }));
+  const save = within(card).getByRole("button", { name: "Save acceptance" });
+  expect(save).toBeDisabled();
+  await user.type(
+    within(card).getByRole("textbox", { name: "Acceptance reason" }),
+    "  Compatibility requires it.  ",
+  );
+  await user.click(save);
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/work-items/example/findings/decision",
+    expect.objectContaining({
+      body: JSON.stringify({
+        id: finding.id,
+        status: "accepted",
+        reason: "Compatibility requires it.",
+      }),
+    }),
+  );
+  expect(within(card).getByText("Reason: Compatibility requires it.")).toBeInTheDocument();
+  expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByRole("combobox", { name: "Status" }), "accepted");
+  expect(screen.getByRole("link", { name: finding.title })).toBeInTheDocument();
+});
+
+test("send back posts the open findings action and confirms the next implement brief", async () => {
+  const user = userEvent.setup();
+  const fetch = actions();
+  await screen.findByRole("article", { name: finding.title });
+  const sendBack = screen.getByRole("button", { name: "Send back" });
+  await user.click(sendBack);
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/work-items/example/findings/send-back",
+    expect.objectContaining({ method: "POST", body: "{}" }),
+  );
+  expect(screen.getByText(/Implement reopened/)).toHaveTextContent("next implement brief");
+  expect(sendBack).toBeDisabled();
+  expect(
+    within(screen.getByRole("article", { name: finding.title })).getByText(
+      "Standards · major · sent-back",
+    ),
+  ).toBeInTheDocument();
+});
+
+test("send back is unavailable when no findings are open", async () => {
+  actions("resolved");
+  await screen.findByRole("article", { name: finding.title });
+  expect(screen.getByRole("button", { name: "Send back" })).toBeDisabled();
+});
+
+test.each(["Resolve", "Send back"])(
+  "%s failures remain visible without changing finding status",
+  async (button) => {
+    const user = userEvent.setup();
+    actions("open", "A stint is active.");
+    await screen.findByRole("article", { name: finding.title });
+    await user.click(screen.getByRole("button", { name: button }));
+    expect(screen.getByRole("alert")).toHaveTextContent("A stint is active.");
+    expect(
+      within(screen.getByRole("article", { name: finding.title })).getByText(
+        "Standards · major · open",
+      ),
+    ).toBeInTheDocument();
+  },
+);
+
 test.each(["open", "resolved", "accepted", "sent-back"] as const)(
   "filters %s finding decisions",
   async (status) => {

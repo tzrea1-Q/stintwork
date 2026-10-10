@@ -41,6 +41,7 @@ export {
   recordReviewDecision,
   type ReviewDecision,
 } from "./review-decisions.js";
+export { parseReviewDeveloperNotes, recordReviewDeveloperNote } from "./review-decisions.js";
 export { agentUnavailableReason } from "./agents.js";
 export {
   defaultPermissionLevel,

@@ -34,11 +34,21 @@ export function FindingCard({
   finding,
   anchor,
   headCommit,
+  onDecision,
+  saving = false,
 }: {
   finding: DisplayFinding;
   anchor: string;
   headCommit?: string;
+  onDecision?: (
+    id: string,
+    status: "open" | "resolved" | "accepted",
+    reason?: string,
+  ) => Promise<boolean>;
+  saving?: boolean;
 }) {
+  const [accepting, setAccepting] = useState(false);
+  const [reason, setReason] = useState("");
   return (
     <article className="review-finding" id={anchor} aria-label={finding.title}>
       <h4>{finding.title}</h4>
@@ -56,6 +66,69 @@ export function FindingCard({
         Reviewed commit <code>{finding.commit}</code>
         {headCommit && headCommit !== finding.commit && " · Stale"}
       </p>
+      {onDecision && (
+        <div className="review-finding-actions">
+          {finding.status !== "resolved" && (
+            <button
+              type="button"
+              className="top-button"
+              disabled={saving}
+              onClick={() => void onDecision(finding.id, "resolved")}
+            >
+              Resolve
+            </button>
+          )}
+          {finding.status !== "accepted" && (
+            <button
+              type="button"
+              className="top-button"
+              disabled={saving}
+              onClick={() => setAccepting(true)}
+            >
+              Accept with reason
+            </button>
+          )}
+          {finding.status !== "open" && (
+            <button
+              type="button"
+              className="top-button"
+              disabled={saving}
+              onClick={() => void onDecision(finding.id, "open")}
+            >
+              Reopen
+            </button>
+          )}
+          {accepting && (
+            <form
+              onSubmit={async (event) => {
+                event.preventDefault();
+                if (reason.trim() && (await onDecision(finding.id, "accepted", reason.trim())))
+                  setAccepting(false);
+              }}
+            >
+              <label>
+                Acceptance reason
+                <textarea
+                  required
+                  value={reason}
+                  onChange={(event) => setReason(event.target.value)}
+                />
+              </label>
+              <button type="submit" className="top-button" disabled={saving || !reason.trim()}>
+                Save acceptance
+              </button>
+              <button
+                type="button"
+                className="top-button"
+                disabled={saving}
+                onClick={() => setAccepting(false)}
+              >
+                Cancel
+              </button>
+            </form>
+          )}
+        </div>
+      )}
     </article>
   );
 }

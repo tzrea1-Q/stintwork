@@ -109,7 +109,10 @@ export function compileBrief({
     handoff
       ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
       : "Last handoff: none — start from the project conventions and work item scope.",
-    ...developerNotes.map((note) => `Developer note (${note.at}):\n${note.text}`),
+    ...developerNotes.map(
+      (note) =>
+        `${note.source === "review" ? "Review" : "Developer"} note (${note.at}):\n${note.text}`,
+    ),
     ...(checkpointCommit ? [`Checkpoint commit: ${checkpointCommit}`] : []),
     [
       "Changed since the last handoff:",
