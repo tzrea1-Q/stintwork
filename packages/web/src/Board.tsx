@@ -219,6 +219,7 @@ export function Board({
                   <div className="auxiliary-items">
                     {unstaged.map((item) => (
                       <WorkItemCard
+                        workflowName={snapshot.workflows[item.workflow]?.name}
                         key={item.slug}
                         item={item}
                         attentionCount={
@@ -245,6 +246,7 @@ export function Board({
               <div className="auxiliary-items mt-3" data-card-column="shipped">
                 {shipped.map((item) => (
                   <WorkItemCard
+                    workflowName={snapshot.workflows[item.workflow]?.name}
                     key={item.slug}
                     item={item}
                     attentionCount={
@@ -271,6 +273,7 @@ export function Board({
       )}
       {openItem && (
         <WorkItemDrawer
+          workflows={snapshot.workflows}
           warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}

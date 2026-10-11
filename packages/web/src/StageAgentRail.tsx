@@ -4,13 +4,20 @@ import {
   builtInWorkflows,
   stageAgent,
   type StageId,
+  type WorkflowDefinitions,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./stage-agent-rail.css";
 
-export function StageAgentRail({ item }: { item: BoardWorkItem }) {
-  const workflow = builtInWorkflows[item.workflow];
+export function StageAgentRail({
+  item,
+  workflows = builtInWorkflows,
+}: {
+  item: BoardWorkItem;
+  workflows?: WorkflowDefinitions;
+}) {
+  const workflow = workflows[item.workflow];
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [choices, setChoices] = useState<{
     source: BoardWorkItem["stages"];
@@ -43,7 +50,7 @@ export function StageAgentRail({ item }: { item: BoardWorkItem }) {
     setError("");
     try {
       const response = await fetch(
-        `/api/work-items/${encodeURIComponent(item.slug)}/stages/${stage}/agent`,
+        `/api/work-items/${encodeURIComponent(item.slug)}/stages/${encodeURIComponent(stage)}/agent`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -72,7 +79,7 @@ export function StageAgentRail({ item }: { item: BoardWorkItem }) {
         {workflow.stages.map((stage) => {
           const chosen =
             (choices.source === item.stages ? choices.agents[stage.id] : undefined) ??
-            stageAgent(item, stage.id, agents);
+            stageAgent(item, stage.id, agents, workflows);
           return (
             <li key={stage.id} aria-current={stage.id === item.stage ? "step" : undefined}>
               <span>{stage.name}</span>

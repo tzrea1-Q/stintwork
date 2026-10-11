@@ -1,4 +1,10 @@
-import { builtInWorkflows, type Milestone, type AgentProfile, type Warning } from "@stintwork/core";
+import {
+  builtInWorkflows,
+  type WorkflowDefinitions,
+  type Milestone,
+  type AgentProfile,
+  type Warning,
+} from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -56,20 +62,24 @@ export function WorkItemDrawer({
   onClose,
   agents = [],
   warnings = [],
+  workflows = builtInWorkflows,
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
   onClose: () => void;
   agents?: AgentProfile[];
   warnings?: Warning[];
+  workflows?: WorkflowDefinitions;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [reviewOpen, setReviewOpen] = useState(false);
-  const workflow = builtInWorkflows[item.workflow];
+  const workflow = workflows[item.workflow];
+  const stage = workflow.stages.find(({ id }) => id === item.stage);
   const type = item.type === "effort" ? "Effort" : workflow.name;
-  const archived = reviewFindings(item.stints, item.reviewDecisions, item);
+  const reviewStageId = workflow.stages.find(({ gate }) => gate === "evidence")?.id;
+  const archived = reviewFindings(item.stints, item.reviewDecisions, item, reviewStageId);
 
   useEffect(() => {
     const element = dialog.current;
@@ -127,7 +137,7 @@ export function WorkItemDrawer({
         )}
       </header>
       {item.stage && !item.merged ? (
-        <StageAgentRail key={item.slug} item={item} />
+        <StageAgentRail key={item.slug} item={item} workflows={workflows} />
       ) : !item.merged ? (
         <p className="drawer-stage-note muted">No stage declared for this work item.</p>
       ) : null}
@@ -138,20 +148,23 @@ export function WorkItemDrawer({
         </a>
       </nav>
       <div className="drawer-content">
-        <ShipActions item={item} />
+        <ShipActions item={item} workflows={workflows} />
         {!item.merged && (
-          <GateView key={`${item.slug}:${item.stage}`} item={item} warnings={warnings} />
+          <GateView
+            key={`${item.slug}:${item.stage}`}
+            item={item}
+            warnings={warnings}
+            workflows={workflows}
+          />
         )}
-        {item.stage &&
-          !item.merged &&
-          (!item.tickets.length || !["implement", "fix", "do"].includes(item.stage)) && (
-            <section aria-label="Stage stint">
-              <h3 className="drawer-section-heading">
-                {workflow.stages.find((stage) => stage.id === item.stage)?.name} stint
-              </h3>
-              <StageBriefPreview item={item} />
-            </section>
-          )}
+        {item.stage && !item.merged && (!item.tickets.length || stage?.column !== "implement") && (
+          <section aria-label="Stage stint">
+            <h3 className="drawer-section-heading">
+              {workflow.stages.find((stage) => stage.id === item.stage)?.name} stint
+            </h3>
+            <StageBriefPreview item={item} workflows={workflows} />
+          </section>
+        )}
         <section id="drawer-spec" aria-labelledby="drawer-spec-title">
           <h3 id="drawer-spec-title" className="drawer-section-heading">
             Spec
@@ -209,7 +222,9 @@ export function WorkItemDrawer({
                       <Markdown text={ticket.body} />
                     </details>
                     <FilePath path={ticket.path} />
-                    {!item.merged && <TicketBriefPreview item={item} ticket={ticket} />}
+                    {!item.merged && (
+                      <TicketBriefPreview item={item} ticket={ticket} workflows={workflows} />
+                    )}
                   </li>
                 );
               })}
@@ -265,6 +280,7 @@ export function WorkItemDrawer({
       </footer>
       {reviewOpen && (
         <ReviewOverlay
+          reviewStageId={reviewStageId}
           item={item}
           onClose={() => setReviewOpen(false)}
           checks={<ChecksPanel item={item} />}

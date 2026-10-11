@@ -1,8 +1,20 @@
 import { useState } from "react";
-import { evidenceStale, type MergeMethod, type PullRequestPreview } from "@stintwork/core";
+import {
+  builtInWorkflows,
+  evidenceStale,
+  type WorkflowDefinitions,
+  type MergeMethod,
+  type PullRequestPreview,
+} from "@stintwork/core";
 import type { BoardWorkItem } from "./WorkItemCard";
 
-export function ShipActions({ item }: { item: BoardWorkItem }) {
+export function ShipActions({
+  item,
+  workflows = builtInWorkflows,
+}: {
+  item: BoardWorkItem;
+  workflows?: WorkflowDefinitions;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [paths, setPaths] = useState<string[]>([]);
@@ -13,13 +25,15 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
   const [opened, setOpened] = useState(item.pullRequest);
   const pullRequest = item.pullRequest ?? opened;
   const ci = item.pullRequestChecks;
+  const stages = workflows[item.workflow].stages;
+  const reviewStage = stages.find(({ gate }) => gate === "evidence");
   const mergeReady =
-    !!item.stages.review?.approved &&
+    !!item.stages[reviewStage?.id ?? "review"]?.approved &&
     !!ci &&
     ci.checks.length > 0 &&
     ci.checks.every((check) => check.bucket === "pass") &&
     !evidenceStale(item, ci.headCommit);
-  if (item.stage !== "ship" && !item.merged) return null;
+  if (stages.find(({ id }) => id === item.stage)?.gate !== "merge" && !item.merged) return null;
   const blockers = [
     ...(item.activeStint || item.stints.some(({ status }) => status === "running")
       ? ["Finish or stop the running stint before shipping."]

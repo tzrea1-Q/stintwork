@@ -8,8 +8,8 @@ export type EvidenceContext = {
 };
 
 /** Only the latest Review stint supplies current evidence; older stints remain history. */
-export function latestReviewStint(stints: readonly StintSummary[]) {
-  return stints.find(({ stage }) => stage === "review") ?? null;
+export function latestReviewStint(stints: readonly StintSummary[], stageId = "review") {
+  return stints.find(({ stage }) => stage === stageId) ?? null;
 }
 
 /** Unknown comparisons fail closed. Only this work item's bookkeeping is exempt. */
@@ -37,8 +37,9 @@ export type ReviewGateCondition = {
 export function reviewGateConditions(
   item: ProjectSnapshot["workItems"][number],
   stageReason: string | null,
+  stageId = "review",
 ): ReviewGateCondition[] {
-  const report = latestReviewStint(item.stints)?.findings;
+  const report = latestReviewStint(item.stints, stageId)?.findings;
   const checks = (item.checkCommands ?? []).map((command) =>
     item.checks?.find(
       (result) => result.name === command.name && result.command === command.command,
