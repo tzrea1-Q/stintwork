@@ -2,9 +2,8 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { isAbsolute, dirname, relative, resolve, delimiter } from "node:path";
+import { isAbsolute, dirname, relative, resolve } from "node:path";
 import { Writable } from "node:stream";
-import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import {
   permissionPaths,
@@ -26,6 +25,7 @@ import {
 import { createPermissionForwarding } from "./permission-forwarding.js";
 import { codexProfile } from "./profiles.js";
 import { AgentAuthenticationError } from "./authentication.js";
+import { adapterEntry } from "./adapter-entry.js";
 
 export { AgentAuthenticationError } from "./authentication.js";
 export { createClaudeCodeAgent } from "./claude-code.js";
@@ -464,12 +464,9 @@ export function createAgentLauncher(
 }
 
 export const startAgentStint: AgentLauncher = createAgentLauncher((cwd) =>
-  spawn("codex-acp", [], {
+  spawn(process.execPath, [adapterEntry("codex-acp")], {
     cwd,
     stdio: "pipe",
-    env: {
-      ...process.env,
-      PATH: `${fileURLToPath(new URL("../node_modules/.bin", import.meta.url))}${delimiter}${process.env.PATH ?? ""}`,
-    },
+    env: process.env,
   }),
 );

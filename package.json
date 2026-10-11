@@ -1,8 +1,17 @@
 {
-  "name": "stintwork-workspace",
-  "version": "0.0.0",
-  "private": true,
+  "name": "stintwork",
+  "version": "0.1.0",
+  "description": "A local workbench for handing software work between coding agents in stints",
+  "license": "Apache-2.0",
   "type": "module",
+  "bin": {
+    "stintwork": "./dist/bin.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "packageManager": "pnpm@11.21.0",
   "engines": {
     "node": ">=22.12.0"
@@ -15,11 +24,24 @@
     "lint": "node scripts/check-licence-headers.mjs && biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "build": "pnpm -r build"
+    "build": "pnpm --config.verify-deps-before-run=false -r build && node scripts/build-package.mjs",
+    "prepack": "pnpm --config.verify-deps-before-run=false build",
+    "smoke:package": "node scripts/package-smoke.mjs"
+  },
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.88.0",
+    "@agentclientprotocol/codex-acp": "2.1.1",
+    "@agentclientprotocol/sdk": "1.7.0",
+    "@hono/node-server": "2.1.3",
+    "chokidar": "4.0.3",
+    "hono": "4.13.13",
+    "ws": "8.22.0",
+    "yaml": "2.9.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
     "@types/node": "22.10.2",
+    "esbuild": "0.28.2",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
     "vitest": "4.1.11"
