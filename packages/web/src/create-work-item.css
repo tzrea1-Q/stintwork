@@ -40,3 +40,11 @@
   justify-content: flex-end;
   gap: 12px;
 }
+.customise-workflow pre {
+  max-height: 50vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 12px;
+}

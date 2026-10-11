@@ -1,6 +1,6 @@
 # 07 — Customise a workflow
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 05
 
 ## What to build
@@ -9,6 +9,10 @@ A built-in workflow can be customised without writing YAML from scratch (spec us
 
 ## Acceptance criteria
 
-- [ ] Server tests: the copy and its commit, refusals for an existing or dirty file, and a new id offered when creating.
-- [ ] Component tests: the preview and confirmation, and a custom workflow in the create dialog.
-- [ ] All checks pass.
+- [x] Server tests: the copy and its commit, refusals for an existing or dirty file, and a new id offered when creating.
+- [x] Component tests: the preview and confirmation, and a custom workflow in the create dialog.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Built by Codex. verify.sh passed (1596 tests; a first run timed out once in the unrelated review-gate scenario under machine load ~20, then passed three times alone and on a full rerun). Throwaway-repo check: preview returned the bundled Bug YAML; confirming wrote `.stintwork/workflows/bug.yaml` and committed "Customise workflow bug"; a second copy returned 409 (already exists); customising the repo's own `lean` id returned 400 (only built-ins).

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ProjectSnapshot } from "@stintwork/core";
+import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { Command } from "cmdk";
 import { Check, Search, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
@@ -10,6 +10,7 @@ export function CommandPalette({
   onMilestoneChange,
   onOpenItem,
   onCreateItem,
+  onCustomiseWorkflow,
   onClose,
 }: {
   snapshot: ProjectSnapshot;
@@ -17,6 +18,7 @@ export function CommandPalette({
   onMilestoneChange: (milestone: string) => void;
   onOpenItem: (slug: string) => void;
   onCreateItem: () => void;
+  onCustomiseWorkflow: (id: string) => void;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -86,6 +88,19 @@ export function CommandPalette({
             >
               Create work item
             </Command.Item>
+            {Object.values(builtInWorkflows).map((workflow) => (
+              <Command.Item
+                key={workflow.id}
+                value={`Customise ${workflow.name} workflow`}
+                keywords={[workflow.id]}
+                onSelect={() => {
+                  onClose();
+                  onCustomiseWorkflow(workflow.id);
+                }}
+              >
+                Customise {workflow.name} workflow
+              </Command.Item>
+            ))}
           </Command.Group>
           <Command.Group heading="Work items">
             {snapshot.workItems.map((item) => (

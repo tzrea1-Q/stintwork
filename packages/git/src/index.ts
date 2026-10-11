@@ -16,6 +16,11 @@ export {
   createCheckpoint,
 } from "./checkpoints.js";
 export { commitRoadmap, RoadmapWriteRefusal } from "./roadmap.js";
+export {
+  checkWorkflowCustomisation,
+  commitWorkflowCustomisation,
+  WorkflowCustomisationRefusal,
+} from "./customise-workflow.js";
 export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
 export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";
 export {
