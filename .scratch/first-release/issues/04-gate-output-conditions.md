@@ -1,6 +1,6 @@
 # 04 — Gate output conditions
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -9,7 +9,11 @@ Gates check that a stage left its output (spec user stories 23, 25, 27, 28, 22).
 
 ## Acceptance criteria
 
-- [ ] Core tests: readiness for each gate kind with and without its output.
-- [ ] Server tests: Spec and Tickets approvals refused without valid output and accepted with it; Clarify refused while a memory proposal is open.
-- [ ] Component test: the gate view shows the output condition and its action.
-- [ ] All checks pass.
+- [x] Core tests: readiness for each gate kind with and without its output.
+- [x] Server tests: Spec and Tickets approvals refused without valid output and accepted with it; Clarify refused while a memory proposal is open.
+- [x] Component test: the gate view shows the output condition and its action.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Built by Codex. verify.sh passed (1447 tests). Throwaway-repo API check: Clarify lists "Developer approval; no file output required" plus "No open memory proposals"; Spec lists "spec.md exists and parses" with the action naming the work item's exact spec path. Approvals there also needed a finished stint (M3 rule), so the refusal paths rest on the fake-agent server tests; ticket 06 checks them with real agents.

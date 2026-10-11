@@ -12,6 +12,7 @@ function item(stage: StageId, workflow: WorkflowId = "feature") {
   const workItem = indexProject(
     createMemoryRepoFiles({
       ".scratch/first/workflow.yaml": `workflow: ${workflow}\nstage: ${stage}`,
+      ".scratch/first/spec.md": "# First",
       ".scratch/first/issues/01-first.md": "# First\nStatus: resolved\nBlocked by: none",
     }),
     { name: "Test" },

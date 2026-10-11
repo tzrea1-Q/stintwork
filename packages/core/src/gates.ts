@@ -5,6 +5,7 @@ import type { ProjectSnapshot } from "./project.js";
 import type { StagedWorkItem } from "./stages.js";
 import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
 import { reviewGateConditions } from "./review-evidence.js";
+import { outputGateConditions, type GateCondition } from "./gate-output.js";
 
 export type GateRecord = { by: string; at: string; commit: string };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
@@ -23,7 +24,7 @@ export function gateReadiness(
     reason = "This stage has no approval gate.";
   else if (item.activeStint || item.stints.some(({ status }) => status === "running"))
     reason = "A stint is running on this work item. Finish or stop it before approving.";
-  else if (stages[position].column === "implement" && stages[position].gate !== "evidence") {
+  else if (stages[position].column === "implement" && stages[position].gate === "manual") {
     if (!item.tickets.every(({ resolved }) => resolved))
       reason = "Every ticket must be resolved before approving.";
   } else {
@@ -48,8 +49,13 @@ export function gateReadiness(
     else if (stages[position].gate !== "evidence" && !stageStint.handoff)
       reason = "The finished stage stint needs a handoff before approving.";
   }
-  const conditions =
-    stages[position]?.gate === "evidence" ? reviewGateConditions(item, reason, item.stage) : [];
+  const stage = stages[position];
+  const conditions: GateCondition[] =
+    stage?.gate === "evidence"
+      ? reviewGateConditions(item, reason, item.stage)
+      : stage && stage.gate !== "merge"
+        ? outputGateConditions(item, stage)
+        : [];
   reason ??= conditions.find((condition) => !condition.ready)?.action ?? null;
   return { ready: reason === null, reason, nextStage, stageStint: stageStint ?? null, conditions };
 }

@@ -70,6 +70,7 @@ export {
   type DeveloperNote,
 } from "./developer-notes.js";
 export { gateReadiness, workflowGate, type GateRecord, type GateWorkItem } from "./gates.js";
+export type { GateCondition } from "./gate-output.js";
 export {
   evidenceStale,
   latestReviewStint,

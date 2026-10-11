@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   createMemoryRepoFiles,
+  deriveAttentionItems,
   indexProject,
   type ProjectSnapshot,
   type StintSummary,
@@ -264,4 +265,59 @@ test("approval and reopen snapshots move the board card between Implement and Re
   expect(card().closest("[data-card-column]")).toHaveAttribute("data-card-column", "review");
   rerender(<Board snapshot={snapshot} />);
   expect(card().closest("[data-card-column]")).toHaveAttribute("data-card-column", "implement");
+});
+
+test.each([
+  ["spec", "Spec", "spec.md exists and parses", ".scratch/first/spec.md"],
+  [
+    "tickets",
+    "Tickets",
+    "At least one ticket, no ticket warnings, valid dependency order",
+    ".scratch/first/issues/",
+  ],
+])(
+  "%s lists its output condition, state and action alongside the stage evidence",
+  (stage, name, label, path) => {
+    const snapshot = project(stage);
+    const item = snapshot.workItems[0];
+    item.stints = [{ ...stint, stage, ticket: null }];
+    const valid = { ...item };
+    if (stage === "spec") item.spec = null;
+    else item.tickets = [];
+    const { rerender } = render(<GateView item={item} />);
+    const conditions = within(screen.getByRole("list", { name: `${name} gate conditions` }));
+    expect(conditions.getByText(label).closest("li")).toHaveTextContent("Blocked");
+    expect(
+      conditions.getByText(new RegExp(`Write or ${stage === "spec" ? "edit" : "fix"}`)),
+    ).toHaveTextContent(path);
+    expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
+    rerender(<GateView item={valid} />);
+    expect(conditions.getByText(label).closest("li")).toHaveTextContent("Ready");
+    expect(conditions.getByText("No action needed.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeEnabled();
+  },
+);
+
+test("the Needs-you gate uses the workflow's customised gate kind", async () => {
+  const snapshot = project("implement");
+  const definition = snapshot.workflows.feature;
+  snapshot.workflows = {
+    ...snapshot.workflows,
+    feature: {
+      ...definition,
+      stages: definition.stages.map((stage) =>
+        stage.id === "implement" ? { ...stage, gate: "spec" as const } : stage,
+      ),
+    },
+  };
+  snapshot.workItems[0].stints = [
+    { ...stint, handoff: stint.handoff ? { ...stint.handoff, unresolved: "None" } : null },
+  ];
+  snapshot.workItems[0].tickets[0].resolved = false;
+  snapshot.attentionItems = deriveAttentionItems(snapshot);
+  render(<Board snapshot={snapshot} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Needs you 1" }));
+  const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
+  expect(queue.getByText("spec.md exists and parses").closest("li")).toHaveTextContent("Ready");
+  expect(queue.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
 });
