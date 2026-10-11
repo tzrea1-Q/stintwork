@@ -156,7 +156,15 @@ export async function fetchPullRequestChecks(
       root,
       ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket,link"],
       true,
-    ),
+    ).catch((error: { code?: number; stderr?: string; stdout?: string }) => {
+      // Real gh exits 1 with plain text when no CI has reported; record no checks, which never pass.
+      if (
+        error.code === 1 &&
+        /no checks reported/i.test(`${error.stderr ?? ""}\n${error.stdout ?? ""}`)
+      )
+        return "[]";
+      throw error;
+    }),
   );
   if (
     !Array.isArray(checks) ||

@@ -234,6 +234,27 @@ test("on-demand CI evidence is persisted with the remote PR head, not the newer 
   expect(snapshot.workItems[0].pullRequestChecks.headCommit).toBe(head);
 });
 
+test("a PR with no reported CI records no checks and refuses merge, as real gh reports it", async () => {
+  const { open, post, script, fake } = await fixture();
+  await open();
+  // Real gh exits 1 and prints plain text on stderr, not JSON, when no CI has reported.
+  await fake.script({
+    ...script,
+    "pr checks": {
+      stdout: "",
+      code: 1,
+      effect: "process.stderr.write(\"no checks reported on the 'stintwork/first' branch\\n\");",
+    },
+  });
+  const response = await post("pr-checks");
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await response.json()).checks).toMatchObject({ checks: [] });
+  const merge = await post("merge-pr");
+  expect(merge.status).toBe(409);
+  expect((await merge.json()).reason).toContain("Every pull request CI check");
+  expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+});
+
 test.each(["fail", "pending", "skipping", "cancel", "empty"])(
   "merge refuses %s CI, without gh merge or cleanup",
   async (bucket) => {
