@@ -70,12 +70,33 @@ function parseHunks(patch: string): DiffHunk[] {
   return hunks;
 }
 
+/** The repository's main branch: `main` if it exists, otherwise `master`, otherwise null. */
+export async function defaultMainBranch(repoRoot: string): Promise<string | null> {
+  for (const candidate of ["main", "master"]) {
+    const exists = await execute(
+      "git",
+      ["show-ref", "--verify", "--quiet", `refs/heads/${candidate}`],
+      { cwd: repoRoot },
+    ).then(
+      () => true,
+      (error: { code?: number }) => {
+        if (error.code !== 1) throw error;
+        return false;
+      },
+    );
+    if (exists) return candidate;
+  }
+  return null;
+}
+
 export async function workItemDiff(
   repoRoot: string,
   slug: string,
-  mainBranch = "main",
+  requestedMainBranch?: string,
 ): Promise<WorkItemDiff> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  const mainBranch = requestedMainBranch ?? (await defaultMainBranch(repoRoot));
+  if (!mainBranch) throw new Error("Cannot find the main branch: neither main nor master exists.");
   const git = async (args: string[]) =>
     (
       await execute("git", args, {

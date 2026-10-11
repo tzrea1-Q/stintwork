@@ -3,6 +3,7 @@ import { lstat, realpath } from "node:fs/promises";
 import { promisify } from "node:util";
 import { withRepoLock } from "./index.js";
 import { withGitIdentity } from "./checkpoints.js";
+import { defaultMainBranch } from "./work-item-diff.js";
 import { listWorkItemWorktrees } from "./worktrees.js";
 
 const execute = promisify(execFile);
@@ -13,20 +14,7 @@ async function mainCheckoutBranch(root: string) {
   const git = gitAt(root);
   const branch = (await git(["symbolic-ref", "--short", "HEAD"])).trim();
   const registry = (await git(["worktree", "list", "--porcelain", "-z"])).split("\0")[0];
-  let target = branch;
-  for (const candidate of ["main", "master"]) {
-    const exists = await git(["show-ref", "--verify", "--quiet", `refs/heads/${candidate}`]).then(
-      () => true,
-      (error: { code?: number }) => {
-        if (error.code !== 1) throw error;
-        return false;
-      },
-    );
-    if (exists) {
-      target = candidate;
-      break;
-    }
-  }
+  const target = (await defaultMainBranch(root)) ?? branch;
   if (
     registry !== `worktree ${await realpath(root)}` ||
     branch.startsWith("stintwork/") ||

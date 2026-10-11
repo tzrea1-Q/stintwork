@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { ensureWorktree, workItemDiff } from "./index.js";
+import { defaultMainBranch, ensureWorktree, workItemDiff } from "./index.js";
 
 const fixtures: string[] = [];
 function git(root: string, ...args: string[]) {
@@ -22,11 +22,11 @@ function commit(root: string) {
   git(root, "commit", "--quiet", "-m", "Fixture change");
   return git(root, "rev-parse", "HEAD");
 }
-async function fixture() {
+async function fixture(initialBranch = "main") {
   const parent = await mkdtemp(join(tmpdir(), "stintwork-diff-"));
   fixtures.push(parent);
   const root = join(parent, "project");
-  execFileSync("git", ["init", "--quiet", "--initial-branch=main", root]);
+  execFileSync("git", ["init", "--quiet", `--initial-branch=${initialBranch}`, root]);
   git(root, "config", "user.name", "Developer");
   git(root, "config", "user.email", "developer@example.invalid");
   await write(root, "changed.txt", "one\ntwo\nthree\n");
@@ -269,4 +269,23 @@ test("invalid refs and missing branches fail rather than falling back to unrelat
   await expect(workItemDiff(root, "missing")).rejects.toThrow();
   git(root, "branch", "-m", "main", "trunk");
   expect((await workItemDiff(root, "first", "trunk")).mainBranch).toBe("trunk");
+});
+
+test("a repository whose main branch is master diffs against master", async () => {
+  const { root, worktree, base } = await fixture("master");
+  await write(worktree, "added.txt", "new line\n");
+  const head = commit(worktree);
+  expect(await defaultMainBranch(root)).toBe("master");
+  expect(await workItemDiff(root, "first")).toMatchObject({
+    mainBranch: "master",
+    mergeBase: base,
+    headCommit: head,
+    files: [{ path: "added.txt" }],
+  });
+});
+
+test("a repository with neither main nor master refuses the diff with a reason", async () => {
+  const { root } = await fixture("trunk");
+  expect(await defaultMainBranch(root)).toBeNull();
+  await expect(workItemDiff(root, "first")).rejects.toThrow("neither main nor master");
 });

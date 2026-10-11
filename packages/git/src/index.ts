@@ -7,6 +7,7 @@ export { changedSince, commitStintworkSetup, createCheckpoint } from "./checkpoi
 export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
 export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";
 export {
+  defaultMainBranch,
   workItemDiff,
   type WorkItemDiff,
   type DiffFile,
