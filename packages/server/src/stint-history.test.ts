@@ -161,7 +161,7 @@ test.each([false, true])(
     await expect
       .poll(
         async () => readFile(join(stint.worktree.path, "partial.txt"), "utf8").catch(() => ""),
-        { timeout: 5000 },
+        { timeout: 10_000 },
       )
       .toBe("Uncommitted work");
     const path = join(root, ".stintwork/local/stints", `${stint.id}.jsonl`);

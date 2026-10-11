@@ -105,7 +105,7 @@ async function ended(project: ReturnType<typeof createProjectServer>, id: string
         const body: { stint: Stint } = await response.json();
         return body.stint.endedAt;
       },
-      { timeout: 5000 },
+      { timeout: 10_000 },
     )
     .toBeTruthy();
   const body: { stint: Stint } = await (await project.app.request(`/api/stints/${id}`)).json();

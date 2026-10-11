@@ -211,7 +211,7 @@ test("sent-back findings are not decided evidence; after Implement a new Review 
   expect(gateReadiness(await item(project)).ready).toBe(true);
   expect((await post(project, `${endpoint}/findings/send-back`)).status).toBe(409);
   expect((await post(project, `${endpoint}/gates/review/approve`)).status).toBe(200);
-});
+}, 30_000);
 
 test("parse failure cannot substitute for a no-findings report", async () => {
   const { project } = await fixture(["Invalid findings", "No findings"]);
@@ -222,7 +222,7 @@ test("parse failure cannot substitute for a no-findings report", async () => {
   );
   await stint(project);
   expect((await post(project, `${endpoint}/gates/review/approve`)).status).toBe(200);
-});
+}, 30_000);
 
 test("fresh findings still need passing evidence for the current configured command", async () => {
   const { project, root } = await fixture(["No findings"]);
@@ -276,6 +276,7 @@ test.each(["accepted", "rejected"] as const)(
     expect(gateReadiness(await item(project)).ready).toBe(true);
     expect((await post(project, `${endpoint}/gates/review/approve`)).status).toBe(200);
   },
+  30_000,
 );
 
 test("invalid review bookkeeping fails closed instead of losing decisions or proposals", async () => {

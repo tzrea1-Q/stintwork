@@ -16,7 +16,8 @@ import {
   listWorkItemWorktrees,
   withRepoLock,
 } from "@stintwork/git";
-import { afterEach, expect, test } from "vitest";
+import * as gitOperations from "@stintwork/git";
+import { afterEach, expect, test, vi } from "vitest";
 import { createProjectServer } from "./index.js";
 
 const fixtures: { parent: string; project: ReturnType<typeof createProjectServer> }[] = [];
@@ -375,13 +376,15 @@ test("shipping excludes simultaneous checks, gate writes and another shipping ac
     await pause;
   });
   await started;
+  const merge = vi.spyOn(gitOperations, "mergeLocalWorkItem");
   const merging = post(project, `${endpoint}/ship/merge-local`);
   try {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await expect.poll(() => merge.mock.calls.length).toBe(1);
     expect((await post(project, `${endpoint}/checks`)).status).toBe(409);
     expect((await post(project, `${endpoint}/gates/review/reopen`)).status).toBe(409);
     expect((await post(project, `${endpoint}/ship/merge-local`)).status).toBe(409);
   } finally {
+    merge.mockRestore();
     release();
     await held;
     const response = await merging;
