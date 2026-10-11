@@ -185,6 +185,62 @@ test("every built-in stage declares its skill, with no invocation for Ship or Do
   }
 });
 
+test.each([
+  builtInWorkflows.feature.stages[0],
+  builtInWorkflows.feature.stages[1],
+  builtInWorkflows.feature.stages[2],
+  builtInWorkflows.bug.stages[0],
+  builtInWorkflows.quick.stages[0],
+])("$name briefs constrain planning output to the existing work item", (stage) => {
+  for (const slug of ["first-stint", "another-item"]) {
+    const brief = compileBrief({
+      ...input(),
+      workItem: { slug, spec: null },
+      stage,
+      ticket: null,
+    });
+    expect(brief.prompt).toContain(`Write the spec to \`.scratch/${slug}/spec.md\``);
+    expect(brief.prompt).toContain(
+      `Write tickets to \`.scratch/${slug}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line`,
+    );
+    expect(brief.prompt).toContain("Do not create another work item folder.");
+    if (stage.gate === "spec") expect(brief.prompt).toContain("\n- Write the spec to");
+    else expect(brief.prompt).toContain("If this stage produces a spec:");
+    if (stage.gate === "tickets") expect(brief.prompt).toContain("\n- Write tickets to");
+    else expect(brief.prompt).toContain("If this stage produces tickets:");
+  }
+});
+
+test.each(["spec", "tickets"] as const)(
+  "custom %s gates keep output instructions when their stage name and column change",
+  (gate) => {
+    const brief = compileBrief({
+      ...input(),
+      stage: { id: "draft", name: "Draft", column: "implement", skill: "/draft", gate },
+      ticket: null,
+    });
+    expect(brief.prompt).toContain(
+      gate === "spec"
+        ? `\n- Write the spec to \`${specPath}\``
+        : "\n- Write tickets to `.scratch/first-stint/issues/`",
+    );
+    expect(brief.prompt).toContain("Do not create another work item folder.");
+  },
+);
+
+test.each(["evidence", "merge"] as const)(
+  "custom %s gates never receive planning-write instructions, even in the Clarify column",
+  (gate) => {
+    const brief = compileBrief({
+      ...input(),
+      stage: { id: "do", name: "Check", column: "clarify", skill: null, gate },
+      ticket: null,
+    });
+    expect(brief.prompt).not.toContain("Write the spec to");
+    expect(brief.prompt).not.toContain("Write tickets to");
+  },
+);
+
 test("implementation tickets must be unblocked and unresolved; skill stages can use tickets", () => {
   const ticket = { resolved: false, blocked: false, blockedBy: [] };
   for (const stage of ["implement", "fix", "do"] as const) {

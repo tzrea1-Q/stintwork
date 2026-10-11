@@ -142,17 +142,27 @@ test.each([
   "%s output at %s cannot satisfy the gate when invalid or in the wrong folder",
   async (stage, path, content) => {
     const { project, stint } = await fixture(stage, [{ type: "write", path, content }]);
+    const expectedPath = stage === "spec" ? specPath : `${folder}/issues/`;
     expect(git(stint.worktree.path, "show", `${stint.checkpointCommit}:${path}`)).toContain(
       content,
     );
     const response = await approve(project, stage);
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({
-      conditions: [expect.objectContaining({ id: "output", ready: false })],
+      reason: expect.stringContaining(expectedPath),
+      conditions: [
+        expect.objectContaining({
+          id: "output",
+          ready: false,
+          action: expect.stringContaining(expectedPath),
+        }),
+      ],
     });
-    const item = (await snapshot(project)).workItems.find(({ slug }) => slug === "planning");
+    const current = await snapshot(project);
+    const item = current.workItems.find(({ slug }) => slug === "planning");
     expect(item?.stage).toBe(stage);
     expect(item && gateReadiness(item).ready).toBe(false);
+    expect(current.attentionItems.some(({ kind }) => kind === "gate-ready")).toBe(false);
   },
 );
 
@@ -162,13 +172,38 @@ test.each([
 ])(
   "a fake-agent %s stint checkpoints valid output and makes its gate ready",
   async (stage, path, content, nextStage) => {
-    const { root, project, stint } = await fixture(stage, [{ type: "write", path, content }]);
+    const instruction =
+      stage === "spec"
+        ? `Write the spec to \`${specPath}\``
+        : `Write tickets to \`${folder}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line`;
+    const secondTicket = `${folder}/issues/02-second.md`;
+    const { root, project, stint } = await fixture(stage, [
+      { type: "expect-prompt", includes: instruction },
+      { type: "expect-prompt", includes: "Do not create another work item folder." },
+      { type: "write", path, content },
+      ...(stage === "tickets"
+        ? [{ type: "write" as const, path: secondTicket, content: ticket.replace("none", "01") }]
+        : []),
+    ]);
     expect(git(root, "ls-tree", "HEAD", "--", path)).toBe("");
     expect(git(stint.worktree.path, "show", `${stint.checkpointCommit}:${path}`)).toContain(
       content,
     );
     const current = (await snapshot(project)).workItems.find(({ slug }) => slug === "planning");
     expect(current && gateReadiness(current).ready).toBe(true);
+    if (stage === "tickets") {
+      expect(
+        current?.tickets.map(({ number, status, blockedBy }) => ({ number, status, blockedBy })),
+      ).toEqual([
+        { number: 1, status: "ready-for-agent", blockedBy: [] },
+        { number: 2, status: "ready-for-agent", blockedBy: [1] },
+      ]);
+      expect(current?.outputWarnings).toEqual([]);
+      expect(
+        git(stint.worktree.path, "show", `${stint.checkpointCommit}:${secondTicket}`),
+      ).toContain("Blocked by: 01");
+      expect(git(root, "ls-tree", "HEAD", "--", secondTicket)).toBe("");
+    }
     const response = await approve(project, stage);
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ stage: nextStage });
