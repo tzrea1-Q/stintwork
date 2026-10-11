@@ -4,7 +4,8 @@ import type { AgentProfile } from "@stintwork/core";
 export const codexProfile: AgentProfile = {
   id: "codex",
   displayName: "Codex",
-  installationHint: "Install @agentclientprotocol/codex-acp@2.1.1 and sign in with codex login.",
+  installationHint:
+    "Install Codex and sign in with codex login. Stintwork includes @agentclientprotocol/codex-acp@2.1.1.",
   capabilities: {
     modes: ["read-only", "workspace-write", "agent", "agent-full-access"],
     defaultMode: "workspace-write",
@@ -32,7 +33,7 @@ export const claudeProfile: AgentProfile = {
   id: "claude",
   displayName: "Claude Code",
   installationHint:
-    "Install Claude Code and @agentclientprotocol/claude-agent-acp@0.88.0, then sign in with claude auth login.",
+    "Install Claude Code and sign in with claude auth login. Stintwork includes @agentclientprotocol/claude-agent-acp@0.88.0.",
   capabilities: {
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
     defaultMode: "default",
