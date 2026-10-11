@@ -21,6 +21,9 @@ export function createMemoryProposalReader(root: string) {
     const stints = indexStints(files).stints;
     for (const item of snapshot.workItems) {
       item.memoryProposals = [];
+      item.memoryProposalError = snapshot.warnings.find(
+        ({ path }) => path === `.scratch/${item.slug}/review.yaml`,
+      )?.message;
       for (const stint of stints) {
         if (stint.workItem !== item.slug || stint.status === "running" || !stint.checkpointCommit)
           continue;
@@ -43,9 +46,10 @@ export function createMemoryProposalReader(root: string) {
           }
           item.memoryProposals.push(...deriveMemoryProposals(stint, diff, item.reviewDecisions));
         } catch (error) {
+          item.memoryProposalError = `Cannot derive memory proposals: ${String(error)}`;
           snapshot.warnings.push({
             path: `.stintwork/local/stints/${stint.id}.jsonl`,
-            message: `Cannot derive memory proposals: ${String(error)}`,
+            message: item.memoryProposalError,
           });
         }
       }

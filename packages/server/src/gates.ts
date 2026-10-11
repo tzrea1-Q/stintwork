@@ -5,6 +5,7 @@ import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveWorkItemWorkflow } from "./workflow-writes.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
+import { createMemoryProposalReader } from "./memory-proposals.js";
 
 export function addGateRoutes(
   app: Hono,
@@ -15,6 +16,7 @@ export function addGateRoutes(
   writing: Set<string>,
   readReviewEvidence?: ReviewEvidenceReader,
 ) {
+  const readMemoryProposals = createMemoryProposalReader(root);
   for (const action of ["approve", "reopen"] as const) {
     app.post(`/api/work-items/:slug/gates/:stage/${action}`, async (context) => {
       const origin = context.req.header("origin");
@@ -59,6 +61,8 @@ export function addGateRoutes(
         );
       if (action === "approve" && stage.gate === "evidence")
         readReviewEvidence?.(project, snapshot);
+      else if (action === "approve" && stage.column === "clarify")
+        readMemoryProposals(project.files, snapshot);
       const gate = gateReadiness(item, snapshot.workflows);
       if (action === "approve" && (item.stage !== stage.id || !gate.ready)) {
         refresh();

@@ -33,6 +33,8 @@ export type ProjectSnapshot = {
     worktreePath?: string;
     reviewDecisions?: ReviewDecision[];
     memoryProposals?: MemoryProposalAttentionItem[];
+    memoryProposalError?: string;
+    outputWarnings?: Warning[];
     headCommit?: string;
     checks?: CheckResult[];
     pullRequestChecks?: PullRequestChecks;
@@ -93,6 +95,11 @@ export function indexProject(
         activeStint: stints.find((stint) => stint.status === "running") ?? null,
         reviewDecisions,
         memoryProposals: [],
+        outputWarnings: staged.warnings.filter(
+          ({ path }) =>
+            path === `.scratch/${item.slug}/spec.md` ||
+            path.startsWith(`.scratch/${item.slug}/issues/`),
+        ),
       };
     }),
     setup,

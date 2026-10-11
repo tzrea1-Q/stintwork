@@ -62,7 +62,7 @@ export function GateView({
       <h3 className="drawer-section-heading">{current.name} gate</h3>
       <p role="status">{gate.ready ? "Ready to approve" : gate.reason}</p>
       {gate.conditions.length > 0 && (
-        <ul aria-label="Review gate conditions">
+        <ul aria-label={`${current.name} gate conditions`}>
           {gate.conditions.map((condition) => (
             <li key={condition.id}>
               <strong>{condition.label}</strong> · {condition.ready ? "Ready" : "Blocked"}

@@ -180,7 +180,11 @@ export function NeedsYouQueue({
                 />
               )}
               {item.kind === "gate-ready" && workItem && (
-                <GateView item={workItem} warnings={snapshot.warnings} />
+                <GateView
+                  item={workItem}
+                  warnings={snapshot.warnings}
+                  workflows={snapshot.workflows}
+                />
               )}
             </article>
           );
