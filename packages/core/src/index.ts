@@ -115,6 +115,7 @@ export {
   type WorkflowStage,
 } from "./workflows.js";
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
+export { editRoadmap, serializeRoadmap, type RoadmapChange } from "./roadmap-editing.js";
 export { detectSetup, type SetupReport } from "./setup.js";
 export { indexProject, type ProjectSnapshot } from "./project.js";
 export { composeWorkItemFiles } from "./work-item-files.js";

@@ -9,6 +9,7 @@ import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { useAttentionAlerts } from "./useAttentionAlerts";
+import { RoadmapEditor } from "./RoadmapEditor";
 
 export function Board({
   snapshot,
@@ -153,8 +154,9 @@ export function Board({
             {selected?.name ?? "All milestones"}
           </span>
           <span>
-            {active.length} active · {shipped.length} shipped · Read-only
+            {active.length} active · {shipped.length} shipped
           </span>
+          <RoadmapEditor snapshot={snapshot} />
           <nav className="stage-navigation" aria-label="Stage navigation">
             <button
               type="button"
