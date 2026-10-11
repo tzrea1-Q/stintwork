@@ -9,7 +9,12 @@ import { lstat, mkdir, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
-export { changedSince, commitStintworkSetup, createCheckpoint } from "./checkpoints.js";
+export {
+  changedSince,
+  commitStintworkSetup,
+  commitWithIdentity,
+  createCheckpoint,
+} from "./checkpoints.js";
 export { commitRoadmap, RoadmapWriteRefusal } from "./roadmap.js";
 export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
 export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";

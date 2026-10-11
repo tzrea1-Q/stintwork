@@ -23,6 +23,13 @@ export type AgentProfile = {
   installationHint: string;
   warnings?: readonly string[];
   availability?: AgentAvailability;
+  skillLocations?: readonly AgentSkillLocation[];
+};
+
+export type AgentSkillLocation = {
+  base: "home" | "project";
+  path: string;
+  kind: "skills" | "prompts";
 };
 
 export type AgentAvailability = {
