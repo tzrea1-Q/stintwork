@@ -1,0 +1,34 @@
+id: feature
+name: Feature
+defaultAgent: codex
+stages:
+  - id: clarify
+    name: Clarify
+    column: clarify
+    skill: /grill-with-docs
+    gate: manual
+  - id: spec
+    name: Spec
+    column: spec
+    skill: /to-spec
+    gate: spec
+  - id: tickets
+    name: Tickets
+    column: tickets
+    skill: /to-tickets
+    gate: tickets
+  - id: implement
+    name: Implement
+    column: implement
+    skill: /implement
+    gate: manual
+  - id: review
+    name: Review
+    column: review
+    skill: /code-review
+    gate: evidence
+  - id: ship
+    name: Ship
+    column: ship
+    skill: null
+    gate: merge

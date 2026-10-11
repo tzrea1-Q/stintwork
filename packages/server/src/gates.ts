@@ -56,8 +56,9 @@ export function addGateRoutes(
           { reason: "A stint, check or workflow write is active for this work item." },
           409,
         );
-      if (action === "approve" && item.stage === "review") readReviewEvidence?.(project, snapshot);
-      const gate = gateReadiness(item);
+      if (action === "approve" && stage.gate === "evidence")
+        readReviewEvidence?.(project, snapshot);
+      const gate = gateReadiness(item, snapshot.workflows);
       if (action === "approve" && (item.stage !== stage.id || !gate.ready)) {
         refresh();
         return context.json(
@@ -95,7 +96,7 @@ export function addGateRoutes(
         const workflowCommit = await saveWorkItemWorkflow(
           directory,
           slug,
-          (text) => workflowGate(text, item, stage.id, action, record),
+          (text) => workflowGate(text, item, stage.id, action, record, snapshot.workflows),
           !!worktree,
           `${action === "approve" ? "Approve" : "Reopen"} ${stage.id} gate for ${slug}`,
         );

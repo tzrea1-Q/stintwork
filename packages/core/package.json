@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "build": "tsc -p tsconfig.build.json"
+    "build": "node scripts/bundle-workflows.mjs && tsc -p tsconfig.build.json"
   },
   "dependencies": {
     "yaml": "2.9.0"

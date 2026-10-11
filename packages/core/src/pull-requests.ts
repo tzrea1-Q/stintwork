@@ -1,5 +1,6 @@
 import type { GateWorkItem } from "./gates.js";
 import { parseDocument } from "yaml";
+import { builtInWorkflows, type WorkflowDefinitions, type WorkflowId } from "./workflows.js";
 
 export type MergeMethod = "merge" | "squash" | "rebase";
 export type PullRequest = {
@@ -26,8 +27,14 @@ export type PullRequestPreview = Omit<PullRequest, "number" | "url"> & {
   confirmation: string;
 };
 
-export function pullRequestText(item: GateWorkItem) {
-  const review = item.stints.find((stint) => stint.stage === "review")?.findings;
+export function pullRequestText(
+  item: GateWorkItem,
+  workflows: WorkflowDefinitions = builtInWorkflows,
+) {
+  const reviewStages = workflows[item.workflow].stages.filter(({ gate }) => gate === "evidence");
+  const review = item.stints.find((stint) =>
+    reviewStages.some(({ id }) => id === stint.stage),
+  )?.findings;
   return {
     title: item.title,
     body: [
@@ -39,10 +46,21 @@ export function pullRequestText(item: GateWorkItem) {
   };
 }
 
-export function workflowPullRequest(text: string | undefined, pullRequest: PullRequest) {
+export function workflowPullRequest(
+  text: string | undefined,
+  pullRequest: PullRequest,
+  workflows: WorkflowDefinitions = builtInWorkflows,
+  effectiveWorkflow?: WorkflowId,
+) {
   const document = parseDocument(text ?? "");
-  if (document.errors.length || document.warnings.length || document.get("stage") !== "ship")
+  const workflow = effectiveWorkflow ?? document.get("workflow");
+  const stage =
+    typeof workflow === "string" && Object.hasOwn(workflows, workflow)
+      ? workflows[workflow].stages.find(({ id }) => id === document.get("stage"))
+      : undefined;
+  if (document.errors.length || document.warnings.length || stage?.gate !== "merge")
     throw new Error("A valid Ship workflow is required before recording a pull request.");
+  if (document.get("workflow") !== workflow) document.set("workflow", workflow);
   document.set("pullRequest", pullRequest);
   return document.toString();
 }

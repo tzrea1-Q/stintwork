@@ -54,7 +54,8 @@ export type AttentionItem =
   | LoginRequiredAttentionItem;
 
 export function deriveAttentionItems(
-  snapshot: Pick<ProjectSnapshot, "workItems"> & Partial<Pick<ProjectSnapshot, "agents">>,
+  snapshot: Pick<ProjectSnapshot, "workItems"> &
+    Partial<Pick<ProjectSnapshot, "agents" | "workflows">>,
 ): AttentionItem[] {
   const workItemAttention = snapshot.workItems.flatMap<AttentionItem>((item) => {
     if (item.merged) return [];
