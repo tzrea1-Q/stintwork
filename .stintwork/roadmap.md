@@ -2,7 +2,7 @@
 
 ## M1 · The board
 Id: m1
-Status: active
+Status: shipped
 
 - board
 

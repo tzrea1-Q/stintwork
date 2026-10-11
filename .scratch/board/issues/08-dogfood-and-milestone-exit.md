@@ -37,3 +37,5 @@ New features beyond the spec.
 10. **Partly:** `format:check`, `lint`, `typecheck`, `test` (115) and `build` all pass locally. `.github/workflows/ci.yml` exists, but the repo has no remote yet, so GitHub CI has not run.
 
 No defects were found that needed new tickets. M1 stays `active` in the roadmap until criterion 10 runs in CI.
+
+**Coordinator, 2026-10-11:** Criterion 10 now passes. The repository was pushed to the private GitHub repo `tzrea1-Q/stintwork`. The first CI run (38104187318) failed one server test because CI's git names new repositories `master`; that exposed a real defect (review diffs assumed `main`), fixed in `62ec2cd`. The run on that commit (38105201650) passed format:check, lint, typecheck, test and build. M1 is set to `shipped` in `.stintwork/roadmap.md`.
