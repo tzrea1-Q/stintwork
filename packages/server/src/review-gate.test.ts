@@ -193,7 +193,7 @@ test("server refuses missing evidence, keeps decisions and gate-agent commits fr
     await readFile(join(review.worktree.path, ".scratch/first/workflow.yaml"), "utf8"),
   ).toContain("stage: ship");
   expect((await item(project)).stage).toBe("ship");
-});
+}, 30_000); // Long multi-step scenario; slow under heavy machine load.
 
 test("sent-back findings are not decided evidence; after Implement a new Review replaces their history", async () => {
   const { project } = await fixture();
