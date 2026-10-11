@@ -2,7 +2,6 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import {
-  builtInWorkflows,
   indexProject,
   workflowGate,
   workflowMerge,
@@ -95,7 +94,11 @@ export function addShipRoutes(
         readReviewEvidence?.(project, snapshot);
         const item = snapshot.workItems.find((item) => item.slug === slug);
         if (!item) throw new LocalMergeRefusal("Work item not found.");
-        if (item.stage !== "ship" && action !== "pr-checks")
+        if (
+          snapshot.workflows[item.workflow].stages.find(({ id }) => id === item.stage)?.gate !==
+            "merge" &&
+          action !== "pr-checks"
+        )
           throw new LocalMergeRefusal("Merge locally requires the Ship stage.");
         if (
           item.activeStint ||
@@ -130,14 +133,14 @@ export function addShipRoutes(
           indexProject(createNodeRepoFiles(root), { name: "" }).workItems.find(
             (item) => item.slug === slug,
           )?.merged;
-        return { project, item };
+        return { project, item, workflows: snapshot.workflows };
       }
       try {
         if (
           ["preview-pr", "open-pr", "pr-checks", "preview-merge-pr", "merge-pr"].includes(action)
         ) {
           return await withRepoLock(root, async () => {
-            const { project, item } = locate();
+            const { project, item, workflows } = locate();
             const worktree = project.worktreePaths.get(slug);
             if (action === "pr-checks") {
               if (!item.pullRequest)
@@ -150,7 +153,10 @@ export function addShipRoutes(
               throw new LocalMergeRefusal("The work item's worktree is unavailable.");
             const checkout = worktree ?? root;
             let head = await shipGit(checkout, ["rev-parse", "HEAD"]);
-            const approval = item.stages.review?.approved;
+            const reviewStage = workflows[item.workflow].stages.find(
+              ({ gate }) => gate === "evidence",
+            );
+            const approval = item.stages[reviewStage?.id ?? "review"]?.approved;
             const approvedCommit =
               approval &&
               typeof approval === "object" &&
@@ -205,7 +211,7 @@ export function addShipRoutes(
                 branch,
                 base,
                 headCommit: head,
-                ...pullRequestText(item),
+                ...pullRequestText(item, workflows),
               };
               if (action === "preview-pr") {
                 const preview = { ...details, confirmation: randomUUID() };
@@ -261,7 +267,7 @@ export function addShipRoutes(
               await saveWorkItemWorkflow(
                 checkout,
                 slug,
-                (text) => workflowPullRequest(text, pullRequest),
+                (text) => workflowPullRequest(text, pullRequest, workflows, item.workflow),
                 true,
                 `Record pull request #${opened.number} for ${slug}`,
               );
@@ -334,7 +340,7 @@ export function addShipRoutes(
               await saveWorkItemWorkflow(
                 checkout,
                 slug,
-                (text) => workflowPullRequest(text, requested),
+                (text) => workflowPullRequest(text, requested, workflows, item.workflow),
                 true,
                 `Record merge method for pull request #${pr.number} for ${slug}`,
               );
@@ -375,7 +381,13 @@ export function addShipRoutes(
             await saveWorkItemWorkflow(
               root,
               slug,
-              (text) => workflowMerge(workflowPullRequest(text, pr), record),
+              (text) =>
+                workflowMerge(
+                  workflowPullRequest(text, pr, workflows, item.workflow),
+                  record,
+                  workflows,
+                  item.workflow,
+                ),
               true,
               `Record merge of ${slug}`,
             );
@@ -389,6 +401,7 @@ export function addShipRoutes(
           });
         }
         if (action === "merge-local") {
+          const { workflows, item } = locate();
           const commit = await mergeLocalWorkItem(
             root,
             slug,
@@ -397,7 +410,7 @@ export function addShipRoutes(
               await saveWorkItemWorkflow(
                 root,
                 slug,
-                (text) => workflowMerge(text, merged as MergeRecord),
+                (text) => workflowMerge(text, merged as MergeRecord, workflows, item.workflow),
                 true,
                 `Record merge of ${slug}`,
               );
@@ -411,12 +424,12 @@ export function addShipRoutes(
           return context.json({ merged, commit });
         }
         return await withRepoLock(root, async () => {
-          const { project, item } = locate();
+          const { project, item, workflows } = locate();
           if (item.merged) throw new LocalMergeRefusal("This work item is shipped.");
           const report = await dryRunLocalMerge(root, slug);
           if (!report.conflicts.length)
             throw new LocalMergeRefusal("There are no merge conflicts to send back.");
-          const implementation = builtInWorkflows[item.workflow].stages.find(
+          const implementation = workflows[item.workflow].stages.find(
             (stage) => stage.column === "implement",
           );
           const worktree = project.worktreePaths.get(slug);
@@ -441,6 +454,7 @@ export function addShipRoutes(
               implementation.id,
               "reopen",
               record,
+              workflows,
             ),
             note: {
               id: `review:${randomUUID()}`,

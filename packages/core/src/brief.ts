@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { StagedWorkItem } from "./stages.js";
 import type { RepoFiles, Ticket, WorkItem } from "./work-items.js";
-import { builtInWorkflows, type WorkflowStage } from "./workflows.js";
+import { builtInWorkflows, type WorkflowStage, type WorkflowDefinitions } from "./workflows.js";
 import type { DeveloperNote } from "./developer-notes.js";
 import type { PermissionLevel } from "./permission-levels.js";
 
@@ -41,13 +41,17 @@ export function briefUnavailableReason(
   workItem: Pick<StagedWorkItem, "type" | "stage"> &
     Partial<Pick<StagedWorkItem, "workflow" | "merged">>,
   ticket?: Pick<Ticket, "resolved" | "blocked" | "blockedBy"> | null,
+  workflows: WorkflowDefinitions = builtInWorkflows,
 ): string | null {
   if (workItem.merged) return "This work item is shipped.";
   if (workItem.type === "effort" || !workItem.stage) return "This work item has no stint stage.";
-  if (!ticket || !["implement", "fix", "do"].includes(workItem.stage)) {
-    const stage = builtInWorkflows[workItem.workflow ?? "feature"].stages.find(
-      (candidate) => candidate.id === workItem.stage,
-    );
+  const stage = workflows[workItem.workflow ?? "feature"]?.stages.find(
+    (candidate) => candidate.id === workItem.stage,
+  );
+  const implementation =
+    stage?.column === "implement" ||
+    (workItem.workflow === undefined && ["implement", "fix", "do"].includes(workItem.stage));
+  if (!ticket || !implementation) {
     return stage?.skill ? null : "This stage has no stint skill.";
   }
   if (ticket.resolved) return "This ticket is resolved.";
@@ -83,7 +87,7 @@ export function compileBrief({
   }
   if (workItem.spec) addPointer(workItem.spec.path, "Work item scope and acceptance criteria");
   if (ticket) addPointer(ticket.path, "This ticket's scope, status, blockers and comments");
-  if (stage.id === "review") {
+  if (stage.gate === "evidence") {
     for (const path of [...files.list(`.scratch/${workItem.slug}/issues/`)].sort()) {
       if (path.endsWith(".md") && path !== ticket?.path)
         addPointer(path, "Review against this ticket's scope and acceptance criteria");
@@ -92,7 +96,7 @@ export function compileBrief({
 
   const changed = [...new Set(changedPaths)].sort();
   const handoff = lastHandoff ? { ...lastHandoff } : null;
-  const ticketScoped = ticket && ["implement", "fix", "do"].includes(stage.id);
+  const ticketScoped = ticket && stage.column === "implement";
   const prompt = [
     ...(stage.skill ? [`${stage.skill} ${ticket?.path ?? `.scratch/${workItem.slug}/`}`] : []),
     ...(!ticketScoped
@@ -102,11 +106,11 @@ export function compileBrief({
         ]
       : []),
     ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason}`)].join("\n"),
-    ...(stage.id === "review"
+    ...(stage.gate === "evidence"
       ? [
           `Review diff range: ${reviewRange ? `${reviewRange.mergeBase}...${reviewRange.headCommit}` : `main...stintwork/${workItem.slug}`} (merge base to reviewed commit).`,
           ...(reviewRange ? [`Reviewed commit: ${reviewRange.headCommit}`] : []),
-          "Review both Standards and Spec with /code-review. Do not implement fixes or change project files. Findings will be requested after the handoff.",
+          `Review both Standards and Spec${stage.skill ? ` with ${stage.skill}` : ""}. Do not implement fixes or change project files. Findings will be requested after the handoff.`,
         ]
       : []),
     handoff

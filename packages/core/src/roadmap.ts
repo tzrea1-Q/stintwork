@@ -66,6 +66,7 @@ export function parseRoadmap(
       const bullet = /^[-*+][\t ]+(.*)$/.exec(line);
       if (!bullet) continue;
       const slug = bullet[1].trim();
+      if (slug && !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) continue;
       if (!slug || slugs.has(slug)) {
         warnings.push({
           path,

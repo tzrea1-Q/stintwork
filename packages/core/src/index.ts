@@ -105,16 +105,23 @@ export {
 export {
   type BoardColumn,
   builtInWorkflows,
+  loadWorkflows,
+  parseWorkflowDefinition,
+  type GateKind,
+  type WorkflowDefinitions,
+  type WorkflowIndex,
   type StageId,
   type WorkflowDefinition,
   type WorkflowId,
   type WorkflowStage,
 } from "./workflows.js";
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
+export { editRoadmap, serializeRoadmap, type RoadmapChange } from "./roadmap-editing.js";
 export { detectSetup, type SetupReport } from "./setup.js";
 export { indexProject, type ProjectSnapshot } from "./project.js";
 export { composeWorkItemFiles } from "./work-item-files.js";
 export { firstStintWorkflow } from "./first-stint-workflow.js";
+export { bundledWorkflowYaml as builtInWorkflowYaml } from "./bundled-workflows.js";
 export {
   applyStintLogEntry,
   foldStintLog,

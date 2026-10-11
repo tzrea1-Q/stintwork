@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   applyStintLogEntry,
-  builtInWorkflows,
+  parseWorkflowDefinition,
   isStintLogEntry,
   isStintEvent,
   isBriefHandoff,
@@ -43,7 +43,7 @@ function isStintSummary(value: unknown) {
   );
 }
 
-function isAttentionItem(value: unknown) {
+function isAttentionItem(value: unknown, stages: readonly WorkflowStage[]) {
   return (
     isRecord(value) &&
     ["id", "title", "details", "raisedAt"].every((key) => typeof value[key] === "string") &&
@@ -62,9 +62,7 @@ function isAttentionItem(value: unknown) {
           value.ticket === null &&
           (value.stintId === null || typeof value.stintId === "string") &&
           (value.agent === null || typeof value.agent === "string") &&
-          Object.values(builtInWorkflows).some((workflow) =>
-            workflow.stages.some((stage) => stage.id === value.stage),
-          )) ||
+          stages.some((stage) => stage.id === value.stage)) ||
           (typeof value.stintId === "string" &&
             typeof value.agent === "string" &&
             (value.kind === "handoff-unresolved" ||
@@ -84,9 +82,16 @@ function isAttentionItem(value: unknown) {
 }
 
 function readSnapshot(value: unknown): ProjectSnapshot {
-  const stages = Object.values(builtInWorkflows).flatMap<WorkflowStage>(
-    (workflow) => workflow.stages,
+  if (!isRecord(value) || !isRecord(value.workflows) || Array.isArray(value.workflows))
+    throw new Error("Invalid project workflows.");
+  const workflows = Object.fromEntries(
+    Object.entries(value.workflows).map(([id, definition]) => {
+      const workflow = parseWorkflowDefinition(JSON.stringify(definition));
+      if (workflow.id !== id) throw new Error("Invalid project workflow id.");
+      return [id, workflow];
+    }),
   );
+  const stages = Object.values(workflows).flatMap((workflow) => workflow.stages);
   const warningsValid = (warnings: unknown) =>
     Array.isArray(warnings) &&
     warnings.every(
@@ -99,7 +104,7 @@ function readSnapshot(value: unknown): ProjectSnapshot {
     !isRecord(value) ||
     typeof value.name !== "string" ||
     !Array.isArray(value.attentionItems) ||
-    !value.attentionItems.every(isAttentionItem) ||
+    !value.attentionItems.every((item) => isAttentionItem(item, stages)) ||
     !Array.isArray(value.agents) ||
     !value.agents.every(
       (agent) =>
@@ -138,10 +143,14 @@ function readSnapshot(value: unknown): ProjectSnapshot {
         typeof item.slug === "string" &&
         typeof item.title === "string" &&
         ["feature", "effort"].includes(String(item.type)) &&
-        Object.hasOwn(builtInWorkflows, String(item.workflow)) &&
+        typeof item.workflow === "string" &&
+        Object.hasOwn(workflows, item.workflow) &&
         typeof item.inferred === "boolean" &&
         (item.column === undefined || stages.some((stage) => stage.column === item.column)) &&
-        (item.stage === undefined || stages.some((stage) => stage.id === item.stage)) &&
+        (item.stage === undefined ||
+          workflows[item.workflow].stages.some(
+            (stage) => stage.id === item.stage && stage.column === item.column,
+          )) &&
         (item.milestone === undefined || typeof item.milestone === "string") &&
         (item.headCommit === undefined || typeof item.headCommit === "string") &&
         (item.reviewEvidenceError === undefined || typeof item.reviewEvidenceError === "string") &&

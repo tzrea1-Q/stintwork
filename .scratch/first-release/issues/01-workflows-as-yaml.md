@@ -1,6 +1,6 @@
 # 01 — Workflows as YAML
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -9,7 +9,11 @@ The built-in Feature, Bug and Quick task workflows move from code into YAML file
 
 ## Acceptance criteria
 
-- [ ] Core tests: loading built-ins from YAML, overriding by id, adding a new id, and each validation failure falling back with a warning.
-- [ ] Server test: a repo workflow file changes a work item's stages on the board, and an invalid one produces a warning without hiding the work item.
-- [ ] Existing workflow, gate and stage tests pass unchanged.
-- [ ] All checks pass.
+- [x] Core tests: loading built-ins from YAML, overriding by id, adding a new id, and each validation failure falling back with a warning.
+- [x] Server test: a repo workflow file changes a work item's stages on the board, and an invalid one produces a warning without hiding the work item.
+- [x] Existing workflow, gate and stage tests pass unchanged.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Built by Codex; the coordinator removed a doubled "Error:" prefix from the invalid-workflow warning. verify.sh passed (1296 tests). Throwaway-repo check: a project workflow `.stintwork/workflows/lean.yaml` (Build → Review → Ship) put work item `beta` (workflow: lean, stage: build) in the Implement column; `alpha` with no workflow.yaml stayed on the built-in Feature at Spec; an invalid `broken.yaml` produced one warning naming the file and the fallback, without hiding any work item.

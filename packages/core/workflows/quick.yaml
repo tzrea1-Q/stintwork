@@ -1,0 +1,19 @@
+id: quick
+name: Quick
+defaultAgent: codex
+stages:
+  - id: do
+    name: Do
+    column: implement
+    skill: null
+    gate: manual
+  - id: review
+    name: Review
+    column: review
+    skill: /code-review
+    gate: evidence
+  - id: ship
+    name: Ship
+    column: ship
+    skill: null
+    gate: merge

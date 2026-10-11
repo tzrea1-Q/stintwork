@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 export { changedSince, commitStintworkSetup, createCheckpoint } from "./checkpoints.js";
+export { commitRoadmap, RoadmapWriteRefusal } from "./roadmap.js";
 export { listWorkItemWorktrees, workItemBaseCommit, workItemFilesDiverged } from "./worktrees.js";
 export { installWorktreeDependencies, worktreeGitDirectories } from "./worktree-readiness.js";
 export {

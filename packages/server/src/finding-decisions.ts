@@ -80,7 +80,11 @@ export function addFindingDecisionRoutes(
         );
       const findings =
         action === "send-back"
-          ? (latestReviewStint(item.stints)?.findings?.findings ?? [])
+          ? (latestReviewStint(
+              item.stints,
+              snapshot.workflows[item.workflow].stages.find((stage) => stage.gate === "evidence")
+                ?.id,
+            )?.findings?.findings ?? [])
           : item.stints.flatMap((stint) => stint.findings?.findings ?? []);
       const selected =
         action === "decision"
@@ -105,7 +109,12 @@ export function addFindingDecisionRoutes(
       const implementation = snapshot.workflows[item.workflow].stages.find(
         (stage) => stage.column === "implement",
       );
-      if (action === "send-back" && (item.stage !== "review" || !implementation))
+      if (
+        action === "send-back" &&
+        (snapshot.workflows[item.workflow].stages.find(({ id }) => id === item.stage)?.gate !==
+          "evidence" ||
+          !implementation)
+      )
         return context.json(
           { reason: "Send back requires Review and an implementation stage." },
           409,
@@ -160,6 +169,7 @@ export function addFindingDecisionRoutes(
                   implementation.id,
                   "reopen",
                   record,
+                  snapshot.workflows,
                 ),
                 note: {
                   id: `review:${randomUUID()}`,

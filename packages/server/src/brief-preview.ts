@@ -70,7 +70,7 @@ export async function prepareStintBrief(
   const ticket =
     number === null ? null : workItem.tickets.find((candidate) => candidate.number === number);
   if (ticket === undefined) return { reason: "Ticket not found.", status: 404 as const };
-  const reason = briefUnavailableReason(workItem, ticket);
+  const reason = briefUnavailableReason(workItem, ticket, snapshot.workflows);
   if (reason) return { reason, status: 409 as const };
   if (workItem.activeStint)
     return { reason: "A stint is already active for this work item.", status: 409 as const };
@@ -78,7 +78,8 @@ export async function prepareStintBrief(
     (candidate) => candidate.id === workItem.stage,
   );
   if (!stage) return { reason: "Stage not found.", status: 409 as const };
-  const agent = chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()]);
+  const agent =
+    chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()], snapshot.workflows);
   const registered = registry.get(agent);
   if (registered) await refreshAgentAvailability(registered);
   let permissionLevel: PermissionLevel;
@@ -96,7 +97,7 @@ export async function prepareStintBrief(
   let changedPaths: string[] = [];
   let reviewRange: { mergeBase: string; headCommit: string } | undefined;
   try {
-    if (stage.id === "review" && project.worktreePaths.has(slug))
+    if (stage.gate === "evidence" && project.worktreePaths.has(slug))
       reviewRange = await workItemDiff(root, slug);
     if (checkpointCommit)
       changedPaths = await changedSince(
@@ -106,7 +107,7 @@ export async function prepareStintBrief(
       );
   } catch (error) {
     return {
-      reason: `${stage.id === "review" ? "Could not prepare the Review diff" : "Could not compare the last checkpoint"}: ${error instanceof Error ? error.message : String(error)}`,
+      reason: `${stage.gate === "evidence" ? "Could not prepare the Review diff" : "Could not compare the last checkpoint"}: ${error instanceof Error ? error.message : String(error)}`,
       status: 503 as const,
     };
   }
@@ -137,14 +138,15 @@ export async function prepareStintBrief(
     workItem,
     ticket,
     stage,
+    workflows: snapshot.workflows,
     brief: {
       ...brief,
       agent,
       permissionLevel,
       warnings: registered ? permissionPolicy(registered, permissionLevel).warnings : [],
-      ...(stage.id === "review"
+      ...(stage.gate === "evidence"
         ? {
-            prompt: `${brief.prompt}\n\nAfter-turn findings format for /code-review:\n${findingsFormat}`,
+            prompt: `${brief.prompt}\n\nAfter-turn findings format for ${stage.skill}:\n${findingsFormat}`,
           }
         : {}),
     },

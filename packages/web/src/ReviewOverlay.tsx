@@ -166,6 +166,7 @@ export function ReviewOverlay({
   lineFindings,
   fileFindings,
   outsideDiff,
+  reviewStageId = "review",
 }: {
   item: EvidenceContext & {
     slug: string;
@@ -175,6 +176,7 @@ export function ReviewOverlay({
     stage?: string | null;
   };
   onClose: () => void;
+  reviewStageId?: string;
 } & ReviewSlots) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -189,11 +191,16 @@ export function ReviewOverlay({
   const [sentBack, setSentBack] = useState(false);
   const request = useRef<AbortController | null>(null);
   useEffect(() => setDecisions(item.reviewDecisions ?? []), [item.reviewDecisions]);
-  const evidence = reviewFindings(item.stints, decisions, {
-    slug: item.slug,
-    headCommit: item.headCommit ?? diff?.headCommit,
-    evidenceChangedPaths: item.evidenceChangedPaths,
-  });
+  const evidence = reviewFindings(
+    item.stints,
+    decisions,
+    {
+      slug: item.slug,
+      headCommit: item.headCommit ?? diff?.headCommit,
+      evidenceChangedPaths: item.evidenceChangedPaths,
+    },
+    reviewStageId,
+  );
   async function act(action: "decision" | "send-back", body: object) {
     setSaving(true);
     setActionError("");
@@ -353,7 +360,7 @@ export function ReviewOverlay({
             disabled={
               saving ||
               sentBack ||
-              item.stage !== "review" ||
+              item.stage !== reviewStageId ||
               !evidence.findings.some((finding) => !finding.historical && finding.status === "open")
             }
             onClick={() => void act("send-back", {})}

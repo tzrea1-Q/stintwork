@@ -169,6 +169,35 @@ function response(next = snapshot) {
   return new Response(JSON.stringify(next));
 }
 
+test("HTTP and live snapshots accept project workflow ids, stages and gate attention", async () => {
+  const next = indexProject(
+    createMemoryRepoFiles({
+      ".stintwork/workflows/team.yaml": JSON.stringify({
+        id: "team",
+        name: "Team",
+        defaultAgent: "codex",
+        stages: [
+          { id: "build", name: "Build", column: "implement", skill: "/implement", gate: "manual" },
+          { id: "deliver", name: "Deliver", column: "ship", skill: null, gate: "merge" },
+        ],
+      }),
+      ".scratch/example/spec.md": "# Example",
+      ".scratch/example/workflow.yaml": "workflow: team\nstage: build\n",
+    }),
+    { name: "Fixture" },
+  );
+  vi.mocked(fetch).mockResolvedValueOnce(response(next));
+  const { result } = renderHook(() => useProjectSnapshot());
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  expect(next.attentionItems[0]).toMatchObject({ kind: "gate-ready", stage: "build" });
+  const shippedStage = structuredClone(next);
+  shippedStage.workItems[0].stage = "deliver";
+  shippedStage.workItems[0].column = "ship";
+  shippedStage.attentionItems = [];
+  act(() => TestSocket.instances.at(-1)?.sendSnapshot(shippedStage));
+  expect(result.current.snapshot).toEqual(shippedStage);
+});
+
 beforeEach(() => {
   TestSocket.instances = [];
   vi.stubGlobal("WebSocket", TestSocket);

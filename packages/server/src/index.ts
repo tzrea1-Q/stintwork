@@ -22,6 +22,7 @@ import { addHandoffAnswerRoute } from "./handoff-answers.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
 import { addCheckRoutes, createChecks } from "./checks.js";
 import { createReviewEvidenceReader } from "./review-evidence.js";
+import { addRoadmapRoute } from "./roadmap.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -149,6 +150,7 @@ export function createProjectServer(
   addStintHistoryRoute(app, files);
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles);
+  addRoadmapRoute(app, root, readProjectFiles, refresh);
   const stopStints = addStintRoutes(
     app,
     root,

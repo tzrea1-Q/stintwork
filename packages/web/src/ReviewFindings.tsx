@@ -22,8 +22,9 @@ export function reviewFindings(
   stints: readonly StintSummary[] = [],
   decisions: readonly ReviewDecision[] = [],
   context: EvidenceContext,
+  stageId = "review",
 ) {
-  const latest = latestReviewStint(stints);
+  const latest = latestReviewStint(stints, stageId);
   const reports = stints.flatMap((stint) =>
     stint.findings
       ? [

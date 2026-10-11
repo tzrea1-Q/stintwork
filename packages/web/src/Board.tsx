@@ -10,6 +10,7 @@ import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { useAttentionAlerts } from "./useAttentionAlerts";
+import { RoadmapEditor } from "./RoadmapEditor";
 
 export function Board({
   snapshot,
@@ -154,8 +155,9 @@ export function Board({
             {selected?.name ?? "All milestones"}
           </span>
           <span>
-            {active.length} active · {shipped.length} shipped · Read-only
+            {active.length} active · {shipped.length} shipped
           </span>
+          <RoadmapEditor snapshot={snapshot} />
           <nav className="stage-navigation" aria-label="Stage navigation">
             <button
               type="button"
@@ -218,6 +220,7 @@ export function Board({
                   <div className="auxiliary-items">
                     {unstaged.map((item) => (
                       <WorkItemCard
+                        workflowName={snapshot.workflows[item.workflow]?.name}
                         key={item.slug}
                         item={item}
                         attentionCount={
@@ -244,6 +247,7 @@ export function Board({
               <div className="auxiliary-items mt-3" data-card-column="shipped">
                 {shipped.map((item) => (
                   <WorkItemCard
+                    workflowName={snapshot.workflows[item.workflow]?.name}
                     key={item.slug}
                     item={item}
                     attentionCount={
@@ -270,6 +274,7 @@ export function Board({
       )}
       {openItem && (
         <WorkItemDrawer
+          workflows={snapshot.workflows}
           warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}

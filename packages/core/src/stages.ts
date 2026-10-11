@@ -2,14 +2,33 @@
 import { parseDocument } from "yaml";
 import { isPullRequest, type PullRequest, type MergeMethod } from "./pull-requests.js";
 import type { RepoFiles, Warning, WorkItem, WorkItemIndex } from "./work-items.js";
-import { type BoardColumn, builtInWorkflows, type StageId, type WorkflowId } from "./workflows.js";
+import {
+  type BoardColumn,
+  builtInWorkflows,
+  loadWorkflows,
+  type StageId,
+  type WorkflowId,
+  type WorkflowIndex,
+  type WorkflowDefinitions,
+} from "./workflows.js";
 
 export type StageRecords = Record<string, Record<string, unknown>>;
 export type MergeRecord = { at: string; commit: string; pr?: string; method?: MergeMethod };
-export function workflowMerge(text: string | undefined, merged: MergeRecord): string {
+export function workflowMerge(
+  text: string | undefined,
+  merged: MergeRecord,
+  workflows: WorkflowDefinitions = builtInWorkflows,
+  effectiveWorkflow?: WorkflowId,
+): string {
   const document = parseDocument(text ?? "");
-  if (document.errors.length || document.warnings.length || document.get("stage") !== "ship")
+  const workflow = effectiveWorkflow ?? document.get("workflow");
+  const stage =
+    typeof workflow === "string" && Object.hasOwn(workflows, workflow)
+      ? workflows[workflow].stages.find(({ id }) => id === document.get("stage"))
+      : undefined;
+  if (document.errors.length || document.warnings.length || stage?.gate !== "merge")
     throw new Error("A valid Ship workflow is required before recording a merge.");
+  if (document.get("workflow") !== workflow) document.set("workflow", workflow);
   document.set("merged", merged);
   return document.toString();
 }
@@ -42,6 +61,7 @@ function readWorkflow(
   files: RepoFiles,
   path: string,
   warnings: Warning[],
+  loaded: WorkflowIndex,
 ): DeclaredWorkflow | undefined {
   const invalid = (message: string) => {
     warnings.push({
@@ -61,11 +81,20 @@ function readWorkflow(
     if (problems.length) return invalid(problems.map((problem) => problem.message).join("; "));
     const data: unknown = document.toJS();
     if (!isRecord(data)) return invalid("Expected a mapping");
-    if (typeof data.workflow !== "string" || !Object.hasOwn(builtInWorkflows, data.workflow)) {
+    if (typeof data.workflow !== "string") {
       return invalid("Unknown workflow");
     }
-    const workflow = data.workflow as WorkflowId;
-    const stage = builtInWorkflows[workflow].stages.find((stage) => stage.id === data.stage);
+    const fallback = loaded.fallbackIds.includes(data.workflow);
+    const definition = Object.hasOwn(loaded.workflows, data.workflow)
+      ? loaded.workflows[data.workflow]
+      : fallback
+        ? loaded.workflows.feature
+        : undefined;
+    if (!definition) return invalid("Unknown workflow");
+    const workflow = definition.id;
+    const stage =
+      definition.stages.find((stage) => stage.id === data.stage) ??
+      (fallback ? definition.stages[0] : undefined);
     if (!stage) return invalid(`Stage is not in the ${workflow} workflow`);
     if (
       data.stages !== undefined &&
@@ -119,10 +148,19 @@ function readWorkflow(
   }
 }
 
-export function resolveStages(index: WorkItemIndex, files: RepoFiles): StagedIndex {
-  const warnings = [...index.warnings];
+export function resolveStages(
+  index: WorkItemIndex,
+  files: RepoFiles,
+  loaded = loadWorkflows(files),
+): StagedIndex {
+  const warnings = [...index.warnings, ...loaded.warnings];
   const workItems = index.workItems.map((workItem): StagedWorkItem => {
-    const declared = readWorkflow(files, `.scratch/${workItem.slug}/workflow.yaml`, warnings);
+    const declared = readWorkflow(
+      files,
+      `.scratch/${workItem.slug}/workflow.yaml`,
+      warnings,
+      loaded,
+    );
     const workflow =
       declared?.workflow ?? (/^(bug-|fix-|b-)/.test(workItem.slug) ? "bug" : "feature");
     let stage: StageId | undefined;
@@ -141,13 +179,20 @@ export function resolveStages(index: WorkItemIndex, files: RepoFiles): StagedInd
               ? "spec"
               : "clarify";
       }
+      const definition = loaded.workflows[workflow];
+      if (!definition.stages.some((candidate) => candidate.id === stage)) {
+        const column = stage === "diagnose" ? "clarify" : stage === "fix" ? "implement" : stage;
+        stage =
+          definition.stages.find((candidate) => candidate.column === column)?.id ??
+          definition.stages[0].id;
+      }
     }
     return {
       ...workItem,
       workflow,
       stage,
       inferred: workItem.type !== "effort" && declared === undefined,
-      column: builtInWorkflows[workflow].stages.find((candidate) => candidate.id === stage)?.column,
+      column: loaded.workflows[workflow].stages.find((candidate) => candidate.id === stage)?.column,
       stages: declared?.stages ?? {},
       ...(declared?.merged ? { merged: declared.merged } : {}),
       ...(declared?.pullRequest ? { pullRequest: declared.pullRequest } : {}),

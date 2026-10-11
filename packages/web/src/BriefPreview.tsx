@@ -10,33 +10,57 @@ import {
   permissionPolicy,
   permissionLevels,
   type PermissionLevel,
+  type WorkflowDefinitions,
 } from "@stintwork/core";
 import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./brief-preview.css";
 
-export function TicketBriefPreview({ item, ticket }: { item: BoardWorkItem; ticket: Ticket }) {
+export function TicketBriefPreview({
+  item,
+  ticket,
+  workflows,
+}: {
+  item: BoardWorkItem;
+  ticket: Ticket;
+  workflows?: WorkflowDefinitions;
+}) {
   return (
     <StintBriefAction
       key={`${item.slug}:${item.stage}:${ticket.number}`}
       item={item}
       ticket={ticket}
+      workflows={workflows}
     />
   );
 }
 
-export function StageBriefPreview({ item }: { item: BoardWorkItem }) {
-  return <StintBriefAction key={`${item.slug}:${item.stage}`} item={item} />;
+export function StageBriefPreview({
+  item,
+  workflows,
+}: {
+  item: BoardWorkItem;
+  workflows?: WorkflowDefinitions;
+}) {
+  return <StintBriefAction key={`${item.slug}:${item.stage}`} item={item} workflows={workflows} />;
 }
 
-function StintBriefAction({ item, ticket }: { item: BoardWorkItem; ticket?: Ticket }) {
+function StintBriefAction({
+  item,
+  ticket,
+  workflows,
+}: {
+  item: BoardWorkItem;
+  ticket?: Ticket;
+  workflows?: WorkflowDefinitions;
+}) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
   const reason = item.activeStint
     ? "A stint is already active for this work item."
-    : briefUnavailableReason(item, ticket);
+    : briefUnavailableReason(item, ticket, workflows);
 
   useEffect(() => {
     if (reason) setOpen(false);

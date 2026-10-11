@@ -4,7 +4,7 @@ import { detectSetup, type SetupReport } from "./setup.js";
 import { resolveStages, type StagedWorkItem } from "./stages.js";
 import { indexStints, type Stint, type StintSummary, summarizeStint } from "./stints.js";
 import { indexWorkItems, type RepoFiles, type Warning } from "./work-items.js";
-import { builtInWorkflows } from "./workflows.js";
+import { loadWorkflows, type WorkflowDefinitions } from "./workflows.js";
 import { deriveAttentionItems, type AttentionItem } from "./attention.js";
 import type { AgentProfile } from "./agents.js";
 import { parseReviewDecisions, type ReviewDecision } from "./review-decisions.js";
@@ -24,7 +24,7 @@ export type ProjectSnapshot = {
   agents: AgentProfile[];
   attentionItems: AttentionItem[];
   branch?: string;
-  workflows: typeof builtInWorkflows;
+  workflows: WorkflowDefinitions;
   milestones: Milestone[];
   workItems: (StagedWorkItem & {
     milestone?: string;
@@ -49,7 +49,8 @@ export function indexProject(
   files: RepoFiles,
   meta: { name: string; branch?: string; agents?: AgentProfile[] },
 ): ProjectSnapshot {
-  const staged = resolveStages(indexWorkItems(files), files);
+  const loaded = loadWorkflows(files);
+  const staged = resolveStages(indexWorkItems(files), files, loaded);
   const warnings = [...staged.warnings];
   let permissionLevel = defaultPermissionLevel;
   try {
@@ -73,7 +74,7 @@ export function indexProject(
     permissionLevel,
     agents: meta.agents ?? [],
     attentionItems: [],
-    workflows: builtInWorkflows,
+    workflows: loaded.workflows,
     milestones: roadmap.milestones,
     workItems: staged.workItems.map((item) => {
       const milestone = assigned.assignments.get(item.slug);

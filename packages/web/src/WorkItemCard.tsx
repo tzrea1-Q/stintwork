@@ -11,21 +11,33 @@ export function WorkItemCard({
   milestone,
   onOpen,
   attentionCount = 0,
+  workflowName,
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
   onOpen: (slug: string) => void;
   attentionCount?: number;
+  workflowName?: string;
 }) {
   const tooltipId = useId();
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
   const open = item.tickets.filter((ticket) => !ticket.resolved);
   const blocked = open.length > 0 && open.every((ticket) => ticket.blocked);
   const type = item.type === "effort" ? "effort" : item.workflow;
-  const TypeIcon = { feature: Sparkles, bug: Bug, quick: Zap, effort: Layers3 }[type];
-  const typeName = { feature: "Feature", bug: "Bug", quick: "Quick work item", effort: "Effort" }[
-    type
-  ];
+  const icons: Record<string, typeof Sparkles> = {
+    feature: Sparkles,
+    bug: Bug,
+    quick: Zap,
+    effort: Layers3,
+  };
+  const labels: Record<string, string> = {
+    feature: "Feature",
+    bug: "Bug",
+    quick: "Quick work item",
+    effort: "Effort",
+  };
+  const TypeIcon = Object.hasOwn(icons, type) ? icons[type] : Sparkles;
+  const typeName = Object.hasOwn(labels, type) ? labels[type] : (workflowName ?? item.workflow);
   const reason = item.tickets.length
     ? open.length
       ? "Some tickets are open."
