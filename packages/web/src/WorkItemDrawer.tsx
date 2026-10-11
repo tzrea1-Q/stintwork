@@ -64,6 +64,7 @@ export function WorkItemDrawer({
   agents = [],
   warnings = [],
   workflows = builtInWorkflows,
+  onCustomiseWorkflow,
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
@@ -71,6 +72,7 @@ export function WorkItemDrawer({
   agents?: AgentProfile[];
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
+  onCustomiseWorkflow?: (id: string) => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -126,6 +128,18 @@ export function WorkItemDrawer({
         </h2>
         <p className="mt-3 text-xs muted">
           Milestone: {milestone?.name ?? item.milestone ?? "No milestone"}
+        </p>
+        <p className="mt-3 text-xs muted">
+          Workflow: {workflow.name}{" "}
+          {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
+            <button
+              type="button"
+              className="top-button"
+              onClick={() => onCustomiseWorkflow(item.workflow)}
+            >
+              Customise
+            </button>
+          )}
         </p>
         {item.worktreePath && (
           <div className="mt-3">

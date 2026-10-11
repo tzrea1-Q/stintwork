@@ -12,6 +12,7 @@ import { NeedsYouQueue } from "./NeedsYouQueue";
 import { useAttentionAlerts } from "./useAttentionAlerts";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { CreateWorkItem } from "./CreateWorkItem";
+import { CustomiseWorkflow } from "./CustomiseWorkflow";
 
 export function Board({
   snapshot,
@@ -28,6 +29,7 @@ export function Board({
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [customiseId, setCustomiseId] = useState<string | null>(null);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
   const alerts = useAttentionAlerts(snapshot.attentionItems, snapshot.name);
   const previousItem = useRef<string | null>(null);
@@ -75,7 +77,7 @@ export function Board({
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
-      if (createOpen) return;
+      if (createOpen || customiseId) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((open) => !open);
@@ -127,7 +129,7 @@ export function Board({
       document.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("popstate", handlePopstate);
     };
-  }, [openItem, paletteOpen, needsYouOpen, createOpen]);
+  }, [openItem, paletteOpen, needsYouOpen, createOpen, customiseId]);
 
   return (
     <div className="pipeline-app">
@@ -303,11 +305,13 @@ export function Board({
           agents={snapshot.agents}
           milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
           onClose={() => setOpenSlug(null)}
+          onCustomiseWorkflow={setCustomiseId}
         />
       )}
       {paletteOpen && (
         <CommandPalette
           onCreateItem={() => setCreateOpen(true)}
+          onCustomiseWorkflow={setCustomiseId}
           snapshot={snapshot}
           milestone={milestone}
           onMilestoneChange={setSelectedMilestone}
@@ -323,6 +327,13 @@ export function Board({
             setSelectedMilestone("");
             setCreateOpen(false);
           }}
+        />
+      )}
+      {customiseId && (
+        <CustomiseWorkflow
+          key={customiseId}
+          id={customiseId}
+          onClose={() => setCustomiseId(null)}
         />
       )}
     </div>

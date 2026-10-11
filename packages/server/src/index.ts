@@ -25,6 +25,7 @@ import { createReviewEvidenceReader } from "./review-evidence.js";
 import { addRoadmapRoute } from "./roadmap.js";
 import { addWorkItemCreationRoutes } from "./create-work-item.js";
 import { addSetupRoutes } from "./setup.js";
+import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
@@ -154,6 +155,7 @@ export function createProjectServer(
   addWorkItemDiffRoute(app, root, readProjectFiles);
   addRoadmapRoute(app, root, readProjectFiles, refresh);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
+  addWorkflowCustomisationRoutes(app, root, refresh);
   addSetupRoutes(app, root, files, agentRegistry, refresh);
   const stopStints = addStintRoutes(
     app,

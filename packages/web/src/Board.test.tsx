@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
@@ -342,7 +342,10 @@ test("command palette filters milestones and restores focus on Esc", async () =>
   await user.click(trigger);
   const palette = within(screen.getByRole("dialog", { name: "Command palette" }));
   expect(palette.getAllByRole("option")).toHaveLength(
-    snapshot.workItems.length + snapshot.milestones.length + 2,
+    snapshot.workItems.length +
+      snapshot.milestones.length +
+      Object.keys(builtInWorkflows).length +
+      2,
   );
   await user.click(palette.getByRole("option", { name: "M2 · Next" }));
   expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveValue("m2");
