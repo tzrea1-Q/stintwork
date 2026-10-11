@@ -6,23 +6,13 @@ Take a first Feature work item through Clarify, Spec, Tickets, Implement, Review
 
 You need Node.js 22.12 or newer, Git and at least one installed agent CLI on PATH. Start from the project's main checkout and main branch. Commit the project files you want the agent to see before its first stint.
 
-Stintwork's intended entry point is:
+Start Stintwork in your project's git repository:
 
 ```bash
 npx stintwork
 ```
 
-The v0.1 package is not yet published to npm. Until it is, build a local Stintwork checkout with pnpm:
-
-```bash
-cd /path/to/stintwork
-pnpm install
-pnpm build
-cd /path/to/your/project
-node /path/to/stintwork/dist/bin.js
-```
-
-Use absolute paths in place of the examples. The CLI finds the git repository containing the current directory. It prints a local address and opens the browser. Leave the terminal open while you use the board.
+The CLI finds the git repository containing the current directory. It prints a local address and opens the browser. Leave the terminal open while you use the board.
 
 Add `--no-open` to start without opening a browser; open the printed address yourself. `--help` lists the options and `--version` prints the package version. Ctrl+C stops the server.
 

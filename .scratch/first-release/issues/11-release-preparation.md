@@ -1,6 +1,6 @@
 # 11 — Release preparation
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 03, 06, 07, 09, 10
 
 ## What to build
@@ -12,7 +12,7 @@ v0.1.0 is ready to publish with one deliberate step (spec user stories 67, 68). 
 - [x] Changelog and release notes for 0.1.0.
 - [x] The full manual run is recorded step by step in Comments.
 - [x] The ACP probe results for the bundled adapters are recorded.
-- [ ] Publishing and visibility changes happen only with the maintainer's explicit confirmation, recorded in Comments.
+- [x] Publishing and visibility changes happen only with the maintainer's explicit confirmation, recorded in Comments.
 - [x] All checks pass.
 
 ## Comments
@@ -36,3 +36,5 @@ v0.1.0 is ready to publish with one deliberate step (spec user stories 67, 68). 
 - **Defects found in M5 release checks, all fixed:** stage briefs inviting Clarify to write the spec (06), Codex skills in `~/.agents/skills` reported missing (08), a cold npm install exceeding the smoke test's 180 s install timeout (09, now 300 s), and CI's git defaulting to `master` (review diff, fixed before M5).
 
 **Waiting on the maintainer:** publishing `stintwork@0.1.0` to npm, and making `tzrea1-Q/stintwork` public. Neither has been done.
+
+**Coordinator, 2026-10-11 (release):** The maintainer chose to publish and to keep the GitHub repository private. After the maintainer ran `npm login`, the coordinator rebuilt `dist/` from a clean state on `71a2825`, reran the packed-tarball smoke test and ran `npm publish --dry-run` (stintwork@0.1.0, 10 files, 261.3 kB). The publish itself needed a one-time password, so the maintainer ran `npm publish --registry https://registry.npmjs.org --access public`; npm accepted it (HTTP 202). `npm view stintwork@0.1.0` shows version 0.1.0, Apache-2.0, `engines.node >=22.12.0`, and shasum `ddfc91c4691fc26f06031b6a0c56172bd83257c5`, matching the locally built tarball. `npx stintwork@0.1.0 --no-open` from the registry started in an empty git repo, `/api/health` answered and the board loaded. Codex then updated README.md, docs/getting-started.md, CHANGELOG.md (dated 2026-10-11) and the release notes. The README inside the published package still says "not yet published"; that is fixed in the repository for the next release. Tag `v0.1.0` marks `71a2825`.

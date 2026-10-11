@@ -1,9 +1,8 @@
 # Changelog
 
 All notable changes to Stintwork are recorded here, in Keep a Changelog style.
-The maintainer fills in the release date when publishing.
 
-## 0.1.0 — unreleased
+## 0.1.0 — 2026-10-11
 
 ### Added
 
@@ -57,10 +56,10 @@ The maintainer fills in the release date when publishing.
 
 #### Packaging
 
-- A prepared single npm package containing the CLI, server, web app and workflow YAML, with the Claude Code and Codex ACP adapters as dependencies. It requires Node.js 22.12 or newer and has no native dependencies.
+- A single npm package containing the CLI, server, web app and workflow YAML, with the Claude Code and Codex ACP adapters as dependencies. It requires Node.js 22.12 or newer and has no native dependencies.
 - CLI options `--no-open`, `--help` and `--version`.
 - Packed-tarball smoke tests passed locally and in CI on `ubuntu-latest` and `macos-latest` on 2026-10-11. Installation used 128 packages with no native modules.
 - A full installed-tarball run on a fresh project covered guided setup, work item creation, real Codex stints, review, checks and a local merge to Shipped.
 - Apache-2.0 licensing with source-header checks.
 
-See the [release notes](docs/release-notes/0.1.0.md) for starting instructions, verification limits and deferred work. The package is not yet published to npm.
+See the [release notes](docs/release-notes/0.1.0.md) for starting instructions, verification limits and deferred work. The package is published on npm.
