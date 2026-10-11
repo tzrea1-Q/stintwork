@@ -87,19 +87,20 @@ Grok Build's end-to-end check (`.scratch/agent-polish/issues/04`) is deferred to
 
 ### M5 · v0.1 release · M
 
-Someone else can use it.
+Someone else can use it. Spec: `.scratch/first-release/spec.md`.
 
 - The first stages write files: create a work item, then Clarify, Spec and Tickets stints produce `spec.md` and tickets in `.scratch/`.
 - Built-in workflows (Feature, Bug, Quick task) as YAML in `.stintwork/workflows/`, customisable by copying.
 - Guided setup for a repo without mattpocock's layout. It writes the tracker config and an AGENTS.md pointer, with confirmation.
-- Roadmap editing for milestones. The terminal fallback for agents without ACP.
-- Packaging: the npm package `stintwork`, CI, Apache-2.0 headers, README, and a short getting-started guide.
+- Roadmap editing for milestones.
+- Packaging: the npm package `stintwork` (no native dependencies), CI with a packed-tarball smoke test, Apache-2.0 headers, README, and a short getting-started guide. Publishing and making the repository public each need the maintainer's confirmation.
 
 **Exit test:** 3–5 developers outside the project install it and start a real task in their own repo within a minute, without help. Afterwards they say whether they'd keep using it.
 
 ### Later (not in v0.1)
 
 - Grok Build verified end to end: the ACP probe and a real stint with a parsed handoff (deferred from M4, agent-polish 04). It is registered but unverified until then.
+- The terminal fallback for agents without ACP (moved from M5: it needs a native module, `node-pty`, that would make `npx` installs fragile, and every v0.1 agent works over ACP). Revisit if Claude's ACP billing risk materialises.
 - The Lists and Cockpit views.
 - Reading GitHub Issues.
 - More ACP agents (e.g. Gemini CLI).
@@ -113,7 +114,7 @@ Someone else can use it.
 | Risk | Mitigation |
 |---|---|
 | ACP adapters change or regress | Pin adapter versions; run the probe as a contract test before each release (ADR 0002) |
-| Provider rules on subscription use change again | Use only the developer's own CLIs and logins (ADR 0003); support API-key login; the terminal fallback keeps every agent usable |
+| Provider rules on subscription use change again | Use only the developer's own CLIs and logins (ADR 0003); support API-key login; the terminal fallback (now Later) would keep every agent usable |
 | State drifts after crashes or restarts | Derive state from files and git; checkpoints on every stop; stint logs as an append-only record |
 | Scope creep toward a "platform" | The "Later" list and brief §12 are explicit no's; each milestone has one exit test |
 | One maintainer's bandwidth | Agents implement tickets via Stintwork itself from M2; Codex delegation for parallel work |

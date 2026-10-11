@@ -28,4 +28,6 @@ Status: shipped
 
 ## M5 · v0.1 release
 Id: m5
-Status: planned
+Status: active
+
+- first-release
