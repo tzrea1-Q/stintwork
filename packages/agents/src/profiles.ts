@@ -11,7 +11,8 @@ export const codexProfile: AgentProfile = {
     { base: "project", path: ".agents/skills", kind: "skills" },
     { base: "home", path: ".codex/prompts", kind: "prompts" },
   ],
-  installationHint: "Install @agentclientprotocol/codex-acp@2.1.1 and sign in with codex login.",
+  installationHint:
+    "Install Codex and sign in with codex login. Stintwork includes @agentclientprotocol/codex-acp@2.1.1.",
   capabilities: {
     modes: ["read-only", "workspace-write", "agent", "agent-full-access"],
     defaultMode: "workspace-write",
@@ -43,7 +44,7 @@ export const claudeProfile: AgentProfile = {
     { base: "project", path: ".claude/skills", kind: "skills" },
   ],
   installationHint:
-    "Install Claude Code and @agentclientprotocol/claude-agent-acp@0.88.0, then sign in with claude auth login.",
+    "Install Claude Code and sign in with claude auth login. Stintwork includes @agentclientprotocol/claude-agent-acp@0.88.0.",
   capabilities: {
     modes: ["default", "acceptEdits", "plan", "auto", "bypassPermissions"],
     defaultMode: "default",

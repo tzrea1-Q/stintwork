@@ -2,13 +2,13 @@
 import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, isAbsolute, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { AgentAvailability } from "@stintwork/core";
 import { AgentAuthenticationError } from "./authentication.js";
 import { createAgentLauncher } from "./index.js";
 import { claudeProfile } from "./profiles.js";
 import type { RegisteredAgent } from "./registry.js";
+import { adapterEntry } from "./adapter-entry.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -35,19 +35,14 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
     launch: createAgentLauncher((cwd) => {
       const executable = claudeExecutable(env);
       if (!executable) throw new Error(`Claude Code not found. ${claudeProfile.installationHint}`);
-      return spawn(
-        fileURLToPath(new URL("../node_modules/.bin/claude-agent-acp", import.meta.url)),
-        [],
-        {
-          cwd,
-          stdio: "pipe",
-          env: {
-            ...env,
-            CLAUDE_CODE_EXECUTABLE: executable,
-            PATH: `${fileURLToPath(new URL("../node_modules/.bin", import.meta.url))}${delimiter}${env.PATH ?? ""}`,
-          },
+      return spawn(process.execPath, [adapterEntry("claude-agent-acp")], {
+        cwd,
+        stdio: "pipe",
+        env: {
+          ...env,
+          CLAUDE_CODE_EXECUTABLE: executable,
         },
-      );
+      });
     }, claudeProfile),
     async detectAvailability(): Promise<AgentAvailability> {
       const checkedAt = new Date().toISOString();
