@@ -199,15 +199,17 @@ test.each([
       stage,
       ticket: null,
     });
-    expect(brief.prompt).toContain(`Write the spec to \`.scratch/${slug}/spec.md\``);
-    expect(brief.prompt).toContain(
-      `Write tickets to \`.scratch/${slug}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line`,
-    );
+    const specLine = `\n- Write the spec to \`.scratch/${slug}/spec.md\`.`;
+    const ticketsLine = `\n- Write tickets to \`.scratch/${slug}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line.`;
     expect(brief.prompt).toContain("Do not create another work item folder.");
-    if (stage.gate === "spec") expect(brief.prompt).toContain("\n- Write the spec to");
-    else expect(brief.prompt).toContain("If this stage produces a spec:");
-    if (stage.gate === "tickets") expect(brief.prompt).toContain("\n- Write tickets to");
-    else expect(brief.prompt).toContain("If this stage produces tickets:");
+    // Only the stage that owns an output is told to write it.
+    if (stage.gate === "spec") expect(brief.prompt).toContain(specLine);
+    else expect(brief.prompt).not.toContain("Write the spec to");
+    if (stage.gate === "tickets") expect(brief.prompt).toContain(ticketsLine);
+    else expect(brief.prompt).not.toContain("Write tickets to");
+    if (stage.id === "clarify")
+      expect(brief.prompt).toContain("Do not write the spec or tickets; later stages do.");
+    expect(brief.prompt).not.toContain("If this stage produces");
   }
 });
 

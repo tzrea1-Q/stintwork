@@ -136,8 +136,20 @@ export function compileBrief({
       `- Work in the work item worktree on its branch, stintwork/${workItem.slug}.`,
       ...(planningOutput
         ? [
-            `- ${stage.gate === "spec" ? "" : "If this stage produces a spec: "}Write the spec to \`.scratch/${workItem.slug}/spec.md\`.`,
-            `- ${stage.gate === "tickets" ? "" : "If this stage produces tickets: "}Write tickets to \`.scratch/${workItem.slug}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line.`,
+            // Only the stage that owns an output is told to write it; a real Clarify stint
+            // planned to write the spec when every planning stage got conditional lines.
+            ...(stage.gate === "spec"
+              ? [`- Write the spec to \`.scratch/${workItem.slug}/spec.md\`.`]
+              : stage.gate === "tickets"
+                ? [
+                    `- Write tickets to \`.scratch/${workItem.slug}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line.`,
+                  ]
+                : stage.column === "clarify" && stage.id === "clarify"
+                  ? [
+                      "- Settle open questions; record agreed terms in GLOSSARY.md and decisions in docs/adr/.",
+                      "- Do not write the spec or tickets; later stages do.",
+                    ]
+                  : []),
             "- Do not create another work item folder.",
           ]
         : []),
