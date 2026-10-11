@@ -66,7 +66,39 @@ export async function githubRepository(root: string, remote = "origin") {
       : "";
   const method = allowed.find((method) => method === preferred) ?? allowed[0];
   if (!method) throw new Error("The repository has no allowed pull request merge method.");
-  return { repo: info.nameWithOwner as string, remote, remoteUrl, method };
+  return { repo: info.nameWithOwner as string, remote, remoteUrl, method, allowedMethods: allowed };
+}
+
+export async function pullRequestMergeMethod(
+  root: string,
+  pr: Pick<PullRequest, "repo" | "base">,
+  repository: Awaited<ReturnType<typeof githubRepository>>,
+): Promise<MergeMethod> {
+  const protection = JSON.parse(
+    await gh(root, [
+      "api",
+      `repos/${pr.repo}/branches/${encodeURIComponent(pr.base)}/protection`,
+    ]).catch((error: { code?: number; stderr?: string }) => {
+      if (error.code === 1 && /\(HTTP (?:403|404)\)/.test(error.stderr ?? "")) return "{}";
+      throw error;
+    }),
+  );
+  if (
+    !protection ||
+    typeof protection !== "object" ||
+    Array.isArray(protection) ||
+    (protection.required_linear_history !== undefined &&
+      typeof protection.required_linear_history?.enabled !== "boolean")
+  )
+    throw new Error("Cannot read the base branch's required linear history rule.");
+  if (protection.required_linear_history?.enabled !== true) return repository.method;
+  const allowed = repository.allowedMethods.filter((method) => method !== "merge");
+  const method = allowed.find((method) => method === repository.method) ?? allowed[0];
+  if (!method)
+    throw new Error(
+      `The base branch ${pr.base} requires linear history (required_linear_history), but the repository allows neither squash nor rebase.`,
+    );
+  return method;
 }
 
 export async function viewPullRequest(

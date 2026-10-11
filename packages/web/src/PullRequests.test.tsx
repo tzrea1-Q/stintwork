@@ -100,6 +100,7 @@ test("merge refusal is visible; retry reports the PR merge commit", async () => 
         status: 409,
       }),
     )
+    .mockResolvedValueOnce(new Response(JSON.stringify({ mergeMethod: "squash" })))
     .mockResolvedValueOnce(
       new Response(
         JSON.stringify({
@@ -130,13 +131,85 @@ test("merge refusal is visible; retry reports the PR merge commit", async () => 
     "Every pull request CI check must pass",
   );
   await user.click(screen.getByRole("button", { name: "Merge pull request" }));
+  expect(
+    await screen.findByRole("dialog", { name: "Confirm pull request merge" }),
+  ).toHaveTextContent("Merge method: squash");
+  await user.click(screen.getByRole("button", { name: "Confirm squash merge" }));
   expect(await screen.findByRole("status")).toHaveTextContent(
     `Shipped through pull request #12 at ${"b".repeat(40)}`,
   );
   expect(fetch).toHaveBeenLastCalledWith(
     "/api/work-items/first/ship/merge-pr",
-    expect.objectContaining({ method: "POST", body: "{}" }),
+    expect.objectContaining({ method: "POST", body: JSON.stringify({ mergeMethod: "squash" }) }),
   );
+});
+
+test.each(["merge", "squash", "rebase"])(
+  "Ship confirms the server-selected %s method; cancelling does not merge",
+  async (mergeMethod) => {
+    const user = userEvent.setup();
+    const fetch = vi
+      .fn()
+      .mockImplementation(async () => new Response(JSON.stringify({ mergeMethod })));
+    vi.stubGlobal("fetch", fetch);
+    const ready = item();
+    ready.stages.review = { approved: { commit: pr.headCommit } };
+    render(
+      <ShipActions
+        item={{
+          ...ready,
+          headCommit: pr.headCommit,
+          pullRequest: { ...pr, mergeMethod: "merge" },
+          pullRequestChecks: { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] },
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Merge pull request" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm pull request merge" });
+    expect(dialog).toHaveTextContent(`Merge method: ${mergeMethod}`);
+    expect(dialog).toHaveTextContent("main");
+    expect(
+      within(dialog).getByRole("button", { name: `Confirm ${mergeMethod} merge` }),
+    ).toBeEnabled();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/work-items/first/ship/preview-merge-pr",
+      expect.objectContaining({ method: "POST", body: "{}" }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("Ship displays the linear-history refusal without offering confirmation", async () => {
+  const user = userEvent.setup();
+  const fetch = vi.fn().mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({ reason: "main requires linear history (required_linear_history)" }),
+        {
+          status: 409,
+        },
+      ),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const ready = item();
+  ready.stages.review = { approved: { commit: pr.headCommit } };
+  render(
+    <ShipActions
+      item={{
+        ...ready,
+        headCommit: pr.headCommit,
+        pullRequest: pr,
+        pullRequestChecks: { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] },
+      }}
+    />,
+  );
+  await user.click(screen.getByRole("button", { name: "Merge pull request" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("required_linear_history");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(fetch).toHaveBeenCalledTimes(1);
 });
 
 test("merge is disabled for missing, nonpassing or stale PR CI even with an approved gate", () => {
