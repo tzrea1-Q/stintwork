@@ -4,6 +4,13 @@ import type { AgentProfile } from "@stintwork/core";
 export const codexProfile: AgentProfile = {
   id: "codex",
   displayName: "Codex",
+  skillLocations: [
+    { base: "home", path: ".codex/skills", kind: "skills" },
+    // Codex also loads skills from the shared agent-skills locations.
+    { base: "home", path: ".agents/skills", kind: "skills" },
+    { base: "project", path: ".agents/skills", kind: "skills" },
+    { base: "home", path: ".codex/prompts", kind: "prompts" },
+  ],
   installationHint: "Install @agentclientprotocol/codex-acp@2.1.1 and sign in with codex login.",
   capabilities: {
     modes: ["read-only", "workspace-write", "agent", "agent-full-access"],
@@ -31,6 +38,10 @@ export const codexProfile: AgentProfile = {
 export const claudeProfile: AgentProfile = {
   id: "claude",
   displayName: "Claude Code",
+  skillLocations: [
+    { base: "home", path: ".claude/skills", kind: "skills" },
+    { base: "project", path: ".claude/skills", kind: "skills" },
+  ],
   installationHint:
     "Install Claude Code and @agentclientprotocol/claude-agent-acp@0.88.0, then sign in with claude auth login.",
   capabilities: {
@@ -53,6 +64,7 @@ export const claudeProfile: AgentProfile = {
 export const grokProfile: AgentProfile = {
   id: "grok",
   displayName: "Grok Build",
+  skillLocations: [],
   installationHint: "Install Grok Build and sign in with grok login.",
   capabilities: {
     modes: [],

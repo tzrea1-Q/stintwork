@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import type { RepoFiles } from "@stintwork/core";
 
 const directories = [".scratch", ".stintwork", "docs/agents", "docs/adr"];
-const rootFiles = ["AGENTS.md", "CLAUDE.md", "GLOSSARY.md"];
+const rootFiles = ["AGENTS.md", "CLAUDE.md", "GLOSSARY.md", ".gitignore"];
 export const projectPaths = [...directories, ...rootFiles];
 
 export function createNodeRepoFiles(repoRoot: string): RepoFiles {

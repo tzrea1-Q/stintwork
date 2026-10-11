@@ -31,6 +31,7 @@ export type {
   AgentCapabilityProfile,
   AgentPermissionOption,
   AgentProfile,
+  AgentSkillLocation,
 } from "./agents.js";
 export {
   deriveMemoryProposals,
@@ -118,6 +119,13 @@ export {
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
 export { editRoadmap, serializeRoadmap, type RoadmapChange } from "./roadmap-editing.js";
 export { detectSetup, type SetupReport } from "./setup.js";
+export { planSetup, setupPaths, type SetupChange, type SetupPlan } from "./setup-plan.js";
+export {
+  skillAvailability,
+  knownSkillLocation,
+  type StageSkillAvailability,
+  type AgentSkillAvailability,
+} from "./skill-availability.js";
 export { indexProject, type ProjectSnapshot } from "./project.js";
 export { composeWorkItemFiles } from "./work-item-files.js";
 export { firstStintWorkflow } from "./first-stint-workflow.js";

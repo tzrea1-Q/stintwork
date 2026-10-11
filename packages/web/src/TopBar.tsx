@@ -11,6 +11,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { SetupGuide } from "./SetupGuide";
 
 export function TopBar({
   snapshot,
@@ -192,9 +193,13 @@ export function TopBar({
                   ))}
                 </ul>
               )}
-              <p className="mt-4 border-t border-(--border) pt-3 text-[10px] muted">
-                Read-only · No files are changed.
-              </p>
+              {panel === "setup" ? (
+                <SetupGuide />
+              ) : (
+                <p className="mt-4 border-t border-(--border) pt-3 text-[10px] muted">
+                  Read-only · No files are changed.
+                </p>
+              )}
             </section>
           )}
         </div>

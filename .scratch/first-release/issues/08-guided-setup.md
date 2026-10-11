@@ -1,6 +1,6 @@
 # 08 — Guided setup
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -16,8 +16,12 @@ The Setup chip opens a guide listing them. The developer selects which to apply.
 
 ## Acceptance criteria
 
-- [ ] Core tests: the plan for a bare repo, a partly set-up repo and a fully set-up repo; skill classification from fixture directory listings.
-- [ ] Server tests: selective apply, the single commit, refusal on dirty targets, AGENTS.md appended without rewriting.
-- [ ] Component tests: the guide's diffs, selection, confirmation and skill report.
-- [ ] Manual (coordinator): guided setup on a throwaway repo without mattpocock's layout.
-- [ ] All checks pass.
+- [x] Core tests: the plan for a bare repo, a partly set-up repo and a fully set-up repo; skill classification from fixture directory listings.
+- [x] Server tests: selective apply, the single commit, refusal on dirty targets, AGENTS.md appended without rewriting.
+- [x] Component tests: the guide's diffs, selection, confirmation and skill report.
+- [x] Manual (coordinator): guided setup on a throwaway repo without mattpocock's layout.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Built by Codex; the coordinator fixed the skill report. Codex also loads skills from the shared `~/.agents/skills` and `<project>/.agents/skills`, so on the developer's machine every Codex stage skill was wrongly reported missing. Those locations are now declared and allowed, with a server test. verify.sh passed (1451 tests before the fix). Real check on a bare repo with its own AGENTS.md: the plan listed five changes; the skill report matched the developer's real skill folders (Claude Code and Codex: all found; Grok: can't tell). In the browser, deselecting the roadmap and confirming made one commit "Set up Stintwork" with four files; AGENTS.md kept its content with the Agent skills block appended; CLAUDE.md is `@AGENTS.md`; the roadmap was not written; the worktree is clean.
