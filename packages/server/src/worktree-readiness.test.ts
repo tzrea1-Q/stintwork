@@ -83,7 +83,7 @@ async function ended(root: string, id: string) {
         .split("\n")
         .map((line) => JSON.parse(line)),
     ) as Stint;
-  await expect.poll(async () => (await read()).status, { timeout: 8000 }).not.toBe("running");
+  await expect.poll(async () => (await read()).status, { timeout: 10_000 }).not.toBe("running");
   return read();
 }
 
@@ -130,7 +130,7 @@ test("installs a tiny pnpm dependency offline before Codex opens its work turn a
         event.type === "message" && event.text.includes("Installing worktree dependencies"),
     ),
   ).toBe(false);
-}, 20_000);
+}, 30_000);
 
 test("ACP receives both git roots and the fake Codex commits its edits before the checkpoint", async () => {
   const { root, project } = await fixture(
@@ -412,7 +412,7 @@ test("Stop during dependency setup refuses the pending start and never launches 
         id = paths[0].replace(".jsonl", "");
         return (await readFile(join(directory, paths[0]), "utf8")).includes("installer waiting");
       },
-      { timeout: 5000 },
+      { timeout: 10_000 },
     ) // waits for the fake installer to start; not a product deadline
     .toBe(true);
   expect((await project.app.request(`/api/stints/${id}/stop`, { method: "POST" })).status).toBe(

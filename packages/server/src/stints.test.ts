@@ -93,7 +93,7 @@ async function finished(project: ReturnType<typeof createProjectServer>, id: str
         const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
         return snapshot.workItems[0].stints.find((stint) => stint.id === id)?.status;
       },
-      { timeout: 5000 },
+      { timeout: 10_000 },
     )
     .toBe("finished");
 }

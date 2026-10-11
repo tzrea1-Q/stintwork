@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import type { ProjectSnapshot } from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
-import { type RawData, WebSocket } from "ws";
+import { WebSocket } from "ws";
+import { liveUpdateLimitMs, nextSnapshot } from "../test/snapshots.js";
 import { createProjectServer } from "./index.js";
 
 const ticket = (status: string) => `# 01 — First\nStatus: ${status}\nBlocked by: none\n`;
@@ -58,42 +59,6 @@ async function servingFixture(contents: Record<string, string> = defaultFiles) {
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Expected a TCP address");
   return { ...result, server, url: `http://127.0.0.1:${address.port}` };
-}
-
-function nextSnapshot(
-  socket: WebSocket,
-  predicate: (snapshot: ProjectSnapshot) => boolean = () => true,
-): Promise<ProjectSnapshot> {
-  return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => fail(new Error("No matching snapshot within 1 second")), 1000);
-    function cleanup() {
-      clearTimeout(timeout);
-      socket.off("message", message);
-      socket.off("error", fail);
-      socket.off("close", closed);
-    }
-    function fail(error: Error) {
-      cleanup();
-      reject(error);
-    }
-    function closed() {
-      fail(new Error("WebSocket closed before a matching snapshot"));
-    }
-    function message(data: RawData) {
-      try {
-        const snapshot = JSON.parse(data.toString()) as ProjectSnapshot;
-        if (predicate(snapshot)) {
-          cleanup();
-          resolve(snapshot);
-        }
-      } catch (error) {
-        fail(error instanceof Error ? error : new Error(String(error)));
-      }
-    }
-    socket.on("message", message);
-    socket.on("error", fail);
-    socket.on("close", closed);
-  });
 }
 
 async function connectLive(url: string) {
@@ -168,8 +133,12 @@ test("editing a ticket Status line pushes a new snapshot over WebSocket within 1
   const second = await connectLive(url);
   expect(first.snapshot).toEqual(await (await fetch(`${url}/api/project`)).json());
   expect(second.snapshot).toEqual(first.snapshot);
-  const changed = (snapshot: ProjectSnapshot) =>
-    snapshot.workItems[0]?.tickets[0]?.resolved === true;
+  const receivedAt: number[] = [];
+  const changed = (snapshot: ProjectSnapshot) => {
+    if (snapshot.workItems[0]?.tickets[0]?.resolved !== true) return false;
+    receivedAt.push(performance.now());
+    return true;
+  };
   const updates = Promise.all([
     nextSnapshot(first.socket, changed),
     nextSnapshot(second.socket, changed),
@@ -177,7 +146,8 @@ test("editing a ticket Status line pushes a new snapshot over WebSocket within 1
   const began = performance.now();
   await write(root, ".scratch/board/issues/01-first.md", ticket("resolved"));
   const [snapshot, secondSnapshot] = await updates;
-  expect(performance.now() - began).toBeLessThan(1000);
+  expect(receivedAt).toHaveLength(2);
+  for (const arrival of receivedAt) expect(arrival - began).toBeLessThan(liveUpdateLimitMs);
   expect(snapshot.workItems[0]).toMatchObject({
     stage: "review",
     tickets: [{ status: "resolved", resolved: true }],
@@ -263,13 +233,17 @@ test("atomic ticket replacement and file or work-item deletion update the snapsh
 test("files outside the project paths are not indexed or watched", async () => {
   const { root, url } = await servingFixture();
   const { socket, snapshot } = await connectLive(url);
-  const updates: RawData[] = [];
-  socket.on("message", (data) => updates.push(data));
+  const updates: ProjectSnapshot[] = [];
+  socket.on("message", (data) => updates.push(JSON.parse(data.toString())));
   await write(root, "docs/brief.md", "Not a setup file");
   await write(root, ".scratch-other/spec.md", "# Not a work item");
-  await new Promise((resolve) => setTimeout(resolve, 350));
-  expect(updates).toEqual([]);
   expect(await (await fetch(`${url}/api/project`)).json()).toEqual(snapshot);
+  const refreshed = nextSnapshot(socket, (value) => value.setup.hasAgents);
+  await write(root, "AGENTS.md", "# Agents");
+  const expected = { ...snapshot, setup: { ...snapshot.setup, hasAgents: true } };
+  expect(await refreshed).toEqual(expected);
+  expect(updates).toEqual([expected]);
+  expect(await (await fetch(`${url}/api/project`)).json()).toEqual(expected);
 });
 
 test("the project app can be queried without opening a socket", async () => {

@@ -99,12 +99,16 @@ async function waitForEvent(root: string, id: string, type: string) {
     .poll(
       async () =>
         foldStintLog(await entries(root, id))?.events.some((event) => event.type === type),
-      { timeout: 5000, interval: 20 },
+      { timeout: 10_000, interval: 20 },
     )
     .toBe(true);
 }
 
-async function ended(project: ReturnType<typeof createProjectServer>, id: string, timeout = 5000) {
+async function ended(
+  project: ReturnType<typeof createProjectServer>,
+  id: string,
+  timeout = 10_000,
+) {
   let stint: StintSummary | undefined;
   await expect
     .poll(

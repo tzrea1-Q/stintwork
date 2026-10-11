@@ -167,7 +167,7 @@ async function ended(app: Hono, id: string) {
         ({ stint } = await (await app.request(`/api/stints/${id}`)).json());
         return stint.status;
       },
-      { timeout: 5000 },
+      { timeout: 10_000 },
     )
     .not.toBe("running");
   return (await (await app.request(`/api/stints/${id}`)).json()).stint as Stint;

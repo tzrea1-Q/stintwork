@@ -104,7 +104,7 @@ async function ended(
         stint = snapshot.workItems[0].stints.find((candidate) => candidate.id === id);
         return stint?.endedAt;
       },
-      { timeout: 5000 },
+      { timeout: 10_000 },
     )
     .toBeTruthy();
   return stint as StintSummary;

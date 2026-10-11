@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -7,7 +8,7 @@ export default defineConfig({
   test: {
     reporters: ["default"],
     // expect.poll waits for setup (child processes, git, file events) under a loaded test run.
-    // Product deadlines such as the 1-second live update use explicit timers in their tests.
+    // Product deadlines such as the 1-second live update are measured separately in their tests.
     expect: { poll: { timeout: 5000 } },
     projects: [
       {
@@ -31,7 +32,9 @@ export default defineConfig({
           environment: "node",
           include: ["packages/server/**/*.test.ts"],
           setupFiles: ["packages/agents/test/setup.ts", "packages/server/test/setup.ts"],
-          testTimeout: 10_000,
+          // Leave room for fixture setup and a 10-second observation deadline, not slower work.
+          testTimeout: 30_000,
+          expect: { poll: { timeout: 10_000 } },
           fileParallelism: false,
           // Run after the other projects so wall-clock assertions don't compete with them.
           sequence: { groupOrder: 1 },
