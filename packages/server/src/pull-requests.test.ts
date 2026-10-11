@@ -7,6 +7,7 @@ import { ensureWorktree, listWorkItemWorktrees } from "@stintwork/git";
 import type { PullRequestPreview, ProjectSnapshot } from "@stintwork/core";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
+import { githubRepository, pullRequestMergeMethod } from "./pull-requests.js";
 
 const fixtures: { directory: string; project: ReturnType<typeof createProjectServer> }[] = [];
 const endpoint = "/api/work-items/first/ship";
@@ -73,6 +74,9 @@ async function fixture(method = "merge") {
     isCrossRepository: false,
   };
   const script = {
+    "api repos/example/project/branches/main/protection": {
+      stdout: { required_linear_history: { enabled: false } },
+    },
     "repo view": {
       stdout: {
         nameWithOwner: "example/project",
@@ -312,6 +316,163 @@ test.each(["merge", "squash", "rebase"])(
   },
 );
 
+test.each([
+  { linear: true, preferred: "MERGE", allowed: ["merge", "squash", "rebase"], method: "squash" },
+  { linear: true, preferred: "MERGE", allowed: ["merge", "rebase"], method: "rebase" },
+  { linear: true, preferred: "SQUASH", allowed: ["merge", "squash", "rebase"], method: "squash" },
+  { linear: true, preferred: "REBASE", allowed: ["merge", "squash", "rebase"], method: "rebase" },
+  { linear: true, preferred: "REBASE", allowed: ["merge", "squash"], method: "squash" },
+  { linear: false, preferred: "MERGE", allowed: ["merge", "squash", "rebase"], method: "merge" },
+  { linear: true, preferred: "", allowed: ["merge", "squash", "rebase"], method: "squash" },
+])(
+  "linear=$linear with default $preferred and allowed $allowed previews and uses $method",
+  async ({ linear, preferred, allowed, method }) => {
+    const { open, post, fake, script, worktree } = await fixture(method);
+    await open();
+    await fake.script({
+      ...script,
+      "repo view": {
+        stdout: {
+          ...script["repo view"].stdout,
+          viewerDefaultMergeMethod: preferred,
+          mergeCommitAllowed: allowed.includes("merge"),
+          squashMergeAllowed: allowed.includes("squash"),
+          rebaseMergeAllowed: allowed.includes("rebase"),
+        },
+      },
+      "api repos/example/project/branches/main/protection": {
+        stdout: { required_linear_history: { enabled: linear } },
+      },
+    });
+    const head = git(worktree.path, "rev-parse", "HEAD");
+    const preview = await post("preview-merge-pr");
+    expect(preview.status, await preview.clone().text()).toBe(200);
+    expect(await preview.json()).toEqual({ mergeMethod: method });
+    expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
+    expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+    const response = await post("merge-pr", { mergeMethod: method });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await response.json()).merged.method).toBe(method);
+    const calls = await fake.calls();
+    const mergeIndex = calls.findIndex(({ args }) => args[1] === "merge");
+    expect(calls[mergeIndex].args).toContain(`--${method}`);
+    expect(calls.slice(0, mergeIndex).filter(({ args }) => args[0] === "api")).toHaveLength(2);
+  },
+);
+
+test.each([
+  { stderr: "gh: Not Found (HTTP 404)", method: "merge" },
+  { stderr: "Branch not protected (HTTP 404)", method: "squash" },
+  { stderr: "gh: Resource not accessible by integration (HTTP 403)", method: "rebase" },
+])("unreadable protection ($stderr) keeps the $method default", async ({ stderr, method }) => {
+  const { open, post, fake, script } = await fixture(method);
+  await open();
+  await fake.script({
+    ...script,
+    "repo view": {
+      stdout: {
+        ...script["repo view"].stdout,
+        mergeCommitAllowed: true,
+        squashMergeAllowed: true,
+        rebaseMergeAllowed: true,
+        viewerDefaultMergeMethod: method.toUpperCase(),
+      },
+    },
+    "api repos/example/project/branches/main/protection": {
+      stdout: "",
+      code: 1,
+      effect: `process.stderr.write(${JSON.stringify(`${stderr}\n`)});`,
+    },
+  });
+  const response = await post("merge-pr");
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await response.json()).merged.method).toBe(method);
+  expect((await fake.calls()).find(({ args }) => args[1] === "merge")?.args).toContain(
+    `--${method}`,
+  );
+});
+
+test("linear history with only merge allowed refuses preview and merge without changing the worktree", async () => {
+  const { open, post, fake, script, worktree, root } = await fixture();
+  await open();
+  await fake.script({
+    ...script,
+    "api repos/example/project/branches/main/protection": {
+      stdout: { required_linear_history: { enabled: true } },
+    },
+  });
+  const head = git(worktree.path, "rev-parse", "HEAD");
+  for (const action of ["preview-merge-pr", "merge-pr"]) {
+    const response = await post(action);
+    expect(response.status).toBe(409);
+    expect((await response.json()).reason).toContain("required_linear_history");
+  }
+  expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+  expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
+  expect(listWorkItemWorktrees(root).worktrees.size).toBe(1);
+});
+
+test("protection changed after confirmation refuses the new method until previewed again", async () => {
+  const { open, post, fake, script, worktree } = await fixture("squash");
+  await open();
+  await fake.script({
+    ...script,
+    "repo view": {
+      stdout: {
+        ...script["repo view"].stdout,
+        mergeCommitAllowed: true,
+        viewerDefaultMergeMethod: "MERGE",
+      },
+    },
+    "api repos/example/project/branches/main/protection": [
+      { stdout: { required_linear_history: { enabled: false } } },
+      { stdout: { required_linear_history: { enabled: true } } },
+    ],
+  });
+  expect(await (await post("preview-merge-pr")).json()).toEqual({ mergeMethod: "merge" });
+  const head = git(worktree.path, "rev-parse", "HEAD");
+  const refusal = await post("merge-pr", { mergeMethod: "merge" });
+  expect(refusal.status).toBe(409);
+  expect((await refusal.json()).reason).toContain("merge method changed");
+  expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
+  expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+  expect(await (await post("preview-merge-pr")).json()).toEqual({ mergeMethod: "squash" });
+  const response = await post("merge-pr", { mergeMethod: "squash" });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await response.json()).merged.method).toBe("squash");
+});
+
+test.each([
+  { stdout: "", code: 1, effect: "process.stderr.write('gh: Server error (HTTP 500)\\n');" },
+  { stdout: "not JSON" },
+  { stdout: { required_linear_history: { enabled: "true" } } },
+  { stdout: [] },
+])("unexpected protection failures refuse without merging: %j", async (reply) => {
+  const { open, post, fake, script } = await fixture();
+  await open();
+  await fake.script({ ...script, "api repos/example/project/branches/main/protection": reply });
+  expect((await post("merge-pr")).status).toBe(409);
+  expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+});
+
+test("protection reads encode the actual base branch and tolerate a missing linear-history rule", async () => {
+  const { root, fake, script } = await fixture("rebase");
+  await fake.script({
+    ...script,
+    "api repos/example/project/branches/release%2Fnext/protection": { stdout: {} },
+  });
+  const method = await pullRequestMergeMethod(
+    root,
+    { repo: "example/project", base: "release/next" },
+    await githubRepository(root),
+  );
+  expect(method).toBe("rebase");
+  expect((await fake.calls()).at(-1)?.args).toEqual([
+    "api",
+    "repos/example/project/branches/release%2Fnext/protection",
+  ]);
+});
+
 test.each(["diverged", "dirty"])(
   "remote merge retains work for %s main; dirty-main retry avoids another remote merge",
   async (failure) => {
@@ -492,7 +653,7 @@ test("origin with embedded credentials or several push URLs is refused without i
 
 test("PR actions reject foreign origins, malformed JSON, no remote, gh failure and wrong stage without publishing", async () => {
   const { project, root, post, fake, script } = await fixture();
-  for (const action of ["preview-pr", "open-pr", "pr-checks", "merge-pr"]) {
+  for (const action of ["preview-pr", "open-pr", "pr-checks", "preview-merge-pr", "merge-pr"]) {
     expect(
       (
         await project.app.request(`${endpoint}/${action}`, {

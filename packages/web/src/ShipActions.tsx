@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { evidenceStale, type PullRequestPreview } from "@stintwork/core";
+import { evidenceStale, type MergeMethod, type PullRequestPreview } from "@stintwork/core";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 export function ShipActions({ item }: { item: BoardWorkItem }) {
@@ -9,6 +9,7 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [preview, setPreview] = useState<PullRequestPreview | null>(null);
+  const [mergeMethod, setMergeMethod] = useState<MergeMethod | null>(null);
   const [opened, setOpened] = useState(item.pullRequest);
   const pullRequest = item.pullRequest ?? opened;
   const ci = item.pullRequestChecks;
@@ -29,7 +30,9 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
     ...(item.checkExecution?.endedAt === null ? ["Cancel or finish checks before shipping."] : []),
     ...(item.reviewEvidenceError ? [item.reviewEvidenceError] : []),
   ];
-  async function action(name: "merge-local" | "send-back" | "preview-pr" | "open-pr" | "merge-pr") {
+  async function action(
+    name: "merge-local" | "send-back" | "preview-pr" | "open-pr" | "preview-merge-pr" | "merge-pr",
+  ) {
     setBusy(true);
     setError("");
     setPaths([]);
@@ -40,7 +43,13 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(name === "open-pr" ? { confirmation: preview?.confirmation } : {}),
+          body: JSON.stringify(
+            name === "open-pr"
+              ? { confirmation: preview?.confirmation }
+              : name === "merge-pr"
+                ? { mergeMethod }
+                : {},
+          ),
         },
       );
       const result = await response.json();
@@ -53,6 +62,10 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
         setPreview(result.preview);
         return;
       }
+      if (name === "preview-merge-pr") {
+        setMergeMethod(result.mergeMethod);
+        return;
+      }
       if (name === "open-pr") {
         setOpened(result.pullRequest);
         setPreview(null);
@@ -63,8 +76,10 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
           ? `Shipped ${name === "merge-pr" ? `through pull request #${pullRequest?.number}` : "locally"} at ${result.merged.commit}.`
           : `Sent back to ${result.stageName}.`,
       );
+      setMergeMethod(null);
     } catch (cause) {
       if (name === "open-pr") setPreview(null);
+      if (name === "merge-pr") setMergeMethod(null);
       setError(cause instanceof Error ? cause.message : "Could not ship the work item.");
     } finally {
       setBusy(false);
@@ -113,10 +128,35 @@ export function ShipActions({ item }: { item: BoardWorkItem }) {
                 type="button"
                 className="top-button"
                 disabled={busy || blockers.length > 0 || !!message || !mergeReady}
-                onClick={() => void action("merge-pr")}
+                onClick={() => void action("preview-merge-pr")}
               >
                 Merge pull request
               </button>
+              {mergeMethod && (
+                <section role="dialog" aria-modal="false" aria-label="Confirm pull request merge">
+                  <h4>Confirm pull request merge</h4>
+                  <p>
+                    Pull request #{pullRequest.number} → <code>{pullRequest.base}</code> · Merge
+                    method: <strong>{mergeMethod}</strong>
+                  </p>
+                  <button
+                    type="button"
+                    className="top-button"
+                    disabled={busy || blockers.length > 0 || !!message || !mergeReady}
+                    onClick={() => void action("merge-pr")}
+                  >
+                    Confirm {mergeMethod} merge
+                  </button>
+                  <button
+                    type="button"
+                    className="top-button"
+                    disabled={busy}
+                    onClick={() => setMergeMethod(null)}
+                  >
+                    Cancel
+                  </button>
+                </section>
+              )}
             </>
           ) : (
             <>

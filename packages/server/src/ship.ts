@@ -34,6 +34,7 @@ import {
   fetchPullRequestChecks,
   viewPullRequest,
   mergePullRequest,
+  pullRequestMergeMethod,
 } from "./pull-requests.js";
 
 export function addShipRoutes(
@@ -53,6 +54,7 @@ export function addShipRoutes(
     "preview-pr",
     "open-pr",
     "pr-checks",
+    "preview-merge-pr",
     "merge-pr",
   ] as const) {
     app.post(`/api/work-items/:slug/ship/${action}`, async (context) => {
@@ -130,7 +132,9 @@ export function addShipRoutes(
         return { project, item };
       }
       try {
-        if (["preview-pr", "open-pr", "pr-checks", "merge-pr"].includes(action)) {
+        if (
+          ["preview-pr", "open-pr", "pr-checks", "preview-merge-pr", "merge-pr"].includes(action)
+        ) {
           return await withRepoLock(root, async () => {
             const { project, item } = locate();
             const worktree = project.worktreePaths.get(slug);
@@ -274,6 +278,8 @@ export function addShipRoutes(
                 "The GitHub remote changed since the pull request was opened.",
               );
             if (merged) {
+              if (action === "preview-merge-pr")
+                throw new LocalMergeRefusal("This work item is shipped.");
               await shipGit(root, ["merge-base", "--is-ancestor", merged.commit, "HEAD"]);
               await cleanupMergedWorkItem(root, slug, merged.commit, pr.headCommit);
               refresh();
@@ -316,7 +322,13 @@ export function addShipRoutes(
                   "Merge conflicts with the main branch. Send back to resolve them.",
                   report.conflicts,
                 );
-              const requested = { ...pr, mergeMethod: repository.method };
+              const method = await pullRequestMergeMethod(root, pr, repository);
+              if (action === "preview-merge-pr") return context.json({ mergeMethod: method });
+              if (body.mergeMethod !== undefined && body.mergeMethod !== method)
+                throw new LocalMergeRefusal(
+                  "The merge method changed since confirmation. Preview and confirm again.",
+                );
+              const requested = { ...pr, mergeMethod: method };
               pr = requested;
               await saveWorkItemWorkflow(
                 checkout,
@@ -326,9 +338,11 @@ export function addShipRoutes(
                 `Record merge method for pull request #${pr.number} for ${slug}`,
               );
               head = await shipGit(checkout, ["rev-parse", "HEAD"]);
-              await mergePullRequest(root, pr, checks.headCommit, repository.method);
+              await mergePullRequest(root, pr, checks.headCommit, method);
               remote = await viewPullRequest(root, pr, String(pr.number));
             }
+            if (action === "preview-merge-pr")
+              throw new LocalMergeRefusal("The pull request is no longer open. Refresh again.");
             if (
               remote.state !== "MERGED" ||
               remote.number !== pr.number ||
