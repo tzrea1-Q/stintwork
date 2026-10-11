@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+export {
+  deriveWorkItemSlug,
+  prepareWorkItemCreation,
+  type WorkItemCreation,
+} from "./create-work-item.js";
 export type Health = {
   ok: true;
   repo: string;

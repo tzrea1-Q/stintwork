@@ -33,6 +33,7 @@ export function workflowMerge(
   return document.toString();
 }
 export type StagedWorkItem = WorkItem & {
+  intent?: string;
   workflow: WorkflowId;
   stage: StageId | undefined;
   inferred: boolean;
@@ -45,6 +46,8 @@ export type StagedWorkItem = WorkItem & {
 export type StagedIndex = { workItems: StagedWorkItem[]; warnings: Warning[] };
 
 type DeclaredWorkflow = {
+  title?: string;
+  intent?: string;
   workflow: WorkflowId;
   stage: StageId;
   stages: StageRecords;
@@ -81,6 +84,19 @@ function readWorkflow(
     if (problems.length) return invalid(problems.map((problem) => problem.message).join("; "));
     const data: unknown = document.toJS();
     if (!isRecord(data)) return invalid("Expected a mapping");
+    if (
+      data.title !== undefined &&
+      (typeof data.title !== "string" ||
+        !data.title.trim() ||
+        /[\p{Cc}\u2028\u2029\uFFFD]/u.test(data.title))
+    )
+      return invalid("Title must be nonempty, single-line text");
+    if (
+      data.intent !== undefined &&
+      (typeof data.intent !== "string" ||
+        /[\p{Cc}\uFFFD]/u.test(data.intent.replace(/[\t\r\n]/g, "")))
+    )
+      return invalid("Intent must be text");
     if (typeof data.workflow !== "string") {
       return invalid("Unknown workflow");
     }
@@ -137,6 +153,8 @@ function readWorkflow(
       return invalid("Pull request must contain a GitHub URL, number, repository and branches");
     return {
       workflow,
+      ...(data.title === undefined ? {} : { title: (data.title as string).trim() }),
+      ...(data.intent === undefined ? {} : { intent: data.intent as string }),
       stage: stage.id,
       stages,
       ...(data.merged === undefined ? {} : { merged: data.merged as MergeRecord }),
@@ -189,6 +207,8 @@ export function resolveStages(
     }
     return {
       ...workItem,
+      ...(!workItem.spec && declared?.title ? { title: declared.title } : {}),
+      ...(declared?.intent === undefined ? {} : { intent: declared.intent }),
       workflow,
       stage,
       inferred: workItem.type !== "effort" && declared === undefined,

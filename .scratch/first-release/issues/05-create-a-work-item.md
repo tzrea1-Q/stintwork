@@ -1,6 +1,6 @@
 # 05 — Create a work item
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 02
 
 ## What to build
@@ -9,7 +9,11 @@ A work item can be created from the board (spec user stories 10–20). Pressing 
 
 ## Acceptance criteria
 
-- [ ] Core tests: slug derivation and refusal cases; a workflow-only folder indexed as a work item in its first stage; the intent in briefs.
-- [ ] Server tests: preview, duplicate and dirty refusals, the files and single commit, and the roadmap entry.
-- [ ] Component tests: the dialog from `c` and ⌘K, the slug preview, the workflow choice and refusals.
-- [ ] All checks pass.
+- [x] Core tests: slug derivation and refusal cases; a workflow-only folder indexed as a work item in its first stage; the intent in briefs.
+- [x] Server tests: preview, duplicate and dirty refusals, the files and single commit, and the roadmap entry.
+- [x] Component tests: the dialog from `c` and ⌘K, the slug preview, the workflow choice and refusals.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Built by Codex. verify.sh passed (1467 tests). Browser check on a throwaway repo: `c` opened the dialog listing Feature, Bug, Quick and the repo's custom Lean workflow, and both milestones. Title "Export board to CSV!" previewed `.scratch/export-board-to-csv/`. Create made one commit, "Create work item export-board-to-csv" (workflow.yaml with title, workflow, stage clarify and intent, plus the roadmap entry under Next). The card appeared in Clarify without a reload, and the brief shows the intent under "What the developer asked for". Creating the same title again returned 409 "already exists".
