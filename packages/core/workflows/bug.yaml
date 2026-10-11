@@ -1,0 +1,24 @@
+id: bug
+name: Bug
+defaultAgent: codex
+stages:
+  - id: diagnose
+    name: Diagnose
+    column: clarify
+    skill: /diagnosing-bugs
+    gate: manual
+  - id: fix
+    name: Fix
+    column: implement
+    skill: /tdd
+    gate: manual
+  - id: review
+    name: Review
+    column: review
+    skill: /code-review
+    gate: evidence
+  - id: ship
+    name: Ship
+    column: ship
+    skill: null
+    gate: merge

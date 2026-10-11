@@ -16,7 +16,6 @@ import {
   foldStintLog,
   indexProject,
   agentUnavailableReason,
-  builtInWorkflows,
   type BriefHandoff,
   type ReviewFindings,
   type StintLiveMessage,
@@ -231,7 +230,7 @@ export function addStintRoutes(
       if (closing) throw new Error("The project server is stopping.");
       let inheritedAgents = false;
       if (firstWorktree) {
-        for (const stage of builtInWorkflows[workItem.workflow].stages) {
+        for (const stage of result.workflows[workItem.workflow].stages) {
           const choice = workItem.stages[stage.id]?.agent;
           if (
             typeof choice === "string" &&
@@ -286,7 +285,7 @@ export function addStintRoutes(
         cwd: worktree.path,
         encoding: "utf8",
       }).trim();
-      if (stage.id === "review" && !setupFailed) {
+      if (stage.gate === "evidence" && !setupFailed) {
         const review = await prepareStintBrief(
           readProjectFiles,
           workItem.slug,
@@ -359,7 +358,7 @@ export function addStintRoutes(
             .join("\n");
         }
         activeStintIds.delete(id);
-        if (stage.id === "review" && !details.findings)
+        if (stage.gate === "evidence" && !details.findings)
           details.findings = {
             commit: baseCommit,
             findings: null,
@@ -403,7 +402,7 @@ export function addStintRoutes(
           prompt: brief.prompt,
           permissionLevel: brief.permissionLevel,
           handoffTimeoutMs,
-          ...(stage.id === "review"
+          ...(stage.gate === "evidence"
             ? { afterTurnRequests: [handoffRequest, findingsRequest] }
             : {}),
           onEvent: (event) => {
@@ -430,7 +429,7 @@ export function addStintRoutes(
                   stopReason,
                   handoff: handoff ? { ...handoff, stint: id, agent: agent.id } : null,
                   ...(handoffError ? { handoffError } : {}),
-                  ...(stage.id === "review"
+                  ...(stage.gate === "evidence"
                     ? {
                         findings: {
                           commit: baseCommit,

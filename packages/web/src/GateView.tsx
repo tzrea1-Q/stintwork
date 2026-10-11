@@ -1,14 +1,28 @@
-import { builtInWorkflows, gateReadiness, type StageId, type Warning } from "@stintwork/core";
+import {
+  builtInWorkflows,
+  gateReadiness,
+  type WorkflowDefinitions,
+  type StageId,
+  type Warning,
+} from "@stintwork/core";
 import { useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
 
-export function GateView({ item, warnings = [] }: { item: BoardWorkItem; warnings?: Warning[] }) {
+export function GateView({
+  item,
+  warnings = [],
+  workflows = builtInWorkflows,
+}: {
+  item: BoardWorkItem;
+  warnings?: Warning[];
+  workflows?: WorkflowDefinitions;
+}) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const gate = gateReadiness(item);
-  const stages = builtInWorkflows[item.workflow].stages;
+  const gate = gateReadiness(item, workflows);
+  const stages = workflows[item.workflow].stages;
   const position = stages.findIndex(({ id }) => id === item.stage);
   const current = stages[position];
   if (!current) return null;
@@ -22,7 +36,7 @@ export function GateView({ item, warnings = [] }: { item: BoardWorkItem; warning
     setError("");
     try {
       const response = await fetch(
-        `/api/work-items/${encodeURIComponent(item.slug)}/gates/${stage}/${action}`,
+        `/api/work-items/${encodeURIComponent(item.slug)}/gates/${encodeURIComponent(stage)}/${action}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

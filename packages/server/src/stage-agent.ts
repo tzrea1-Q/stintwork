@@ -1,7 +1,6 @@
 import type { AgentRegistry } from "@stintwork/agents";
 import {
   agentUnavailableReason,
-  builtInWorkflows,
   indexProject,
   workflowStageAgent,
   type StagedWorkItem,
@@ -59,7 +58,7 @@ export function addStageAgentRoute(
     const item = snapshot.workItems.find((item) => item.slug === slug);
     if (!item) return context.json({ reason: "Work item not found." }, 404);
     if (item.merged) return context.json({ reason: "This work item is shipped." }, 409);
-    const stage = builtInWorkflows[item.workflow].stages.find(
+    const stage = snapshot.workflows[item.workflow].stages.find(
       (stage) => stage.id === context.req.param("stage"),
     );
     if (!stage || !item.stage) return context.json({ reason: "Stage not found." }, 400);
