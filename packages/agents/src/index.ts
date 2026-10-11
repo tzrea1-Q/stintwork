@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AgentAvailability, AgentProfile } from "@stintwork/core";
 import { type AgentLauncher, startAgentStint } from "./index.js";
 import { codexProfile } from "./profiles.js";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type StintToolContent =
   | { type: "text"; text: string }
   | { type: "diff"; path: string; oldText: string | null; newText: string }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";

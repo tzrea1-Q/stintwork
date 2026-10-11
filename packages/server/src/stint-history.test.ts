@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";

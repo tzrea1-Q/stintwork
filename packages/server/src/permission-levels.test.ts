@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
 import { symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile, symlink } from "node:fs/promises";

@@ -11,7 +11,8 @@
     "stintwork": "node --import tsx --conditions=development packages/cli/src/bin.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && pnpm -r typecheck",
-    "lint": "biome lint .",
+    "licence:check": "node scripts/check-licence-headers.mjs",
+    "lint": "node scripts/check-licence-headers.mjs && biome lint .",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "build": "pnpm -r build"

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { parseDocument } from "yaml";
 import { bundledWorkflowYaml } from "./bundled-workflows.js";
 import type { RepoFiles, Warning } from "./work-items.js";

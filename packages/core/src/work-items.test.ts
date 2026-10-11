@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { expect, test } from "vitest";
 import { createMemoryRepoFiles, indexWorkItems, type RepoFiles } from "./index.js";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { parse } from "yaml";
 import { expect, test } from "vitest";
 import { firstStintWorkflow } from "./first-stint-workflow.js";

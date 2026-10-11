@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { RequestPermissionResponse, Stream } from "@agentclientprotocol/sdk";
 
 export function createPermissionForwarding(stream: Stream) {

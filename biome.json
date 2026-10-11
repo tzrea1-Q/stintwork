@@ -12,6 +12,7 @@
       "tsconfig.json",
       "biome.json",
       "vitest.config.ts",
+      "scripts/**",
       "packages/**"
     ]
   },

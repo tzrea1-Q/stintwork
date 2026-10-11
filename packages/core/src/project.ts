@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { assignMilestones, type Milestone, parseRoadmap } from "./roadmap.js";
 import { detectSetup, type SetupReport } from "./setup.js";
 import { resolveStages, type StagedWorkItem } from "./stages.js";

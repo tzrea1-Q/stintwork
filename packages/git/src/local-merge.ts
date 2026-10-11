@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFile } from "node:child_process";
 import { lstat, realpath } from "node:fs/promises";
 import { promisify } from "node:util";

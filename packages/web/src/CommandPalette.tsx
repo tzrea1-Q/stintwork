@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
 import { Command } from "cmdk";
 import { Check, Search, X } from "lucide-react";

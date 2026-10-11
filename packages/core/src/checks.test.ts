@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { defaultCheckCommands, readProjectConfig } from "./project-config.js";
 import { projectPermissionLevel, updateProjectPermissionLevel } from "./permission-levels.js";

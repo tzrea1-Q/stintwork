@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";

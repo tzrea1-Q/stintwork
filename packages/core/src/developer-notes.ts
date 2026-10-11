@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Stint } from "./stints.js";
 
 export type DeveloperNote = { id: string; at: string; text: string; source?: "review" };

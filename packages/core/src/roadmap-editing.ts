@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { type Milestone, parseRoadmap } from "./roadmap.js";
 
 export type RoadmapChange =

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { deriveMemoryProposals, isProjectMemoryPath } from "./memory-proposals.js";
 import type { ReviewDecision } from "./review-decisions.js";

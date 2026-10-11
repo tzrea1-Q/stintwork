@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { BriefHandoff } from "@stintwork/core";
 import type { AfterTurnRequest } from "./after-turn.js";
 

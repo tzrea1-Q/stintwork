@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
 import { render, screen, waitFor, within } from "@testing-library/react";

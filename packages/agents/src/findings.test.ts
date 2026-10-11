@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { collectAfterTurnRequests } from "./after-turn.js";
 import { findingsFormat, findingsRequest, parseFindings } from "./findings.js";

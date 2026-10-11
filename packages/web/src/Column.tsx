@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AttentionItem, BoardColumn, Milestone } from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";

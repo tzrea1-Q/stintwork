@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { editRoadmap, parseRoadmap, serializeRoadmap } from "./index.js";
 

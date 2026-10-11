@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AttentionItemSource } from "./attention.js";
 import type { ReviewDecision } from "./review-decisions.js";
 import type { Stint } from "./stints.js";

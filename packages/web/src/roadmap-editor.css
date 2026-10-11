@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: Apache-2.0 */
 .roadmap-editor {
   width: min(720px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);

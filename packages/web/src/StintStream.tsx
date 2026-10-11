@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AgentProfile, Stint, StintEvent, StintToolContent } from "@stintwork/core";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
 import { PermissionAnswer } from "./PermissionAnswer";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, editRoadmap, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

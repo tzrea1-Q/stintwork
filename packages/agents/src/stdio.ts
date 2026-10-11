@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { Readable } from "node:stream";
 import type { ndJsonStream } from "@agentclientprotocol/sdk";
 

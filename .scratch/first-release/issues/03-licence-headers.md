@@ -1,6 +1,6 @@
 # 03 — Licence headers
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -9,7 +9,11 @@ Every source file states its licence (spec user story 65; ADR 0008). Add `SPDX-L
 
 ## Acceptance criteria
 
-- [ ] Every package source file carries the header.
-- [ ] The check fails on a fixture file without a header and passes on the repo.
-- [ ] CI runs the check.
-- [ ] All checks pass.
+- [x] Every package source file carries the header.
+- [x] The check fails on a fixture file without a header and passes on the repo.
+- [x] CI runs the check.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Built by Codex. After merging tickets 01 and 02 the check flagged their 15 new files, which the coordinator headed; the workflow bundler now writes the header into the generated file, so builds keep it. `licence:check` runs in lint (project checks) and CI and passes on 230 package source files. verify.sh passed (1404 tests).

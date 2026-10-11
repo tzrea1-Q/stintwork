@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export function PermissionDetails({ details }: { details?: string }) {
   if (!details) return null;
   let tool: Record<string, unknown>;

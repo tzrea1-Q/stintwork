@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 const inspectionOptions: Record<string, RegExp> = {
   cat: /^(?:-[benstuvET]+|--(?:number|number-nonblank|squeeze-blank|show-all|show-ends|show-tabs|show-nonprinting))$/,
   ls: /^(?:-[aAbBcCdDfFgGhHiIklmMnNopqQrRsStTuUvwx1]+|--(?:all|almost-all|directory|human-readable|recursive|size|color(?:=(?:always|auto|never))?))$/,

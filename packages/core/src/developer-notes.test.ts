@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { compileBrief } from "./brief.js";
 import { pendingDeveloperNotes } from "./developer-notes.js";

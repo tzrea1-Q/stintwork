@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AgentProfile } from "./agents.js";
 import type { StagedWorkItem } from "./stages.js";
 import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";

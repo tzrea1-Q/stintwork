@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { editRoadmap, indexProject, type Milestone } from "@stintwork/core";
 import { commitRoadmap, RoadmapWriteRefusal } from "@stintwork/git";
 import type { Hono } from "hono";

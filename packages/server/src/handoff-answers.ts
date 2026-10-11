@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { hasUnresolvedHandoff, indexStints, type StintLogEntry } from "@stintwork/core";

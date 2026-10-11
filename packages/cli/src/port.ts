@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Server } from "node:net";
 
 export async function listenOnAvailablePort(server: Server, preferredPort = 4317): Promise<number> {

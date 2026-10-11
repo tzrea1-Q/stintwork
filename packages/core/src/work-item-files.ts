@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { RepoFiles } from "./work-items.js";
 
 /** ADR 0009: replace whole work-item folders; shared memory and stint logs stay in main. */

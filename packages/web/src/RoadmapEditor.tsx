@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./roadmap-editor.css";
