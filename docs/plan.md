@@ -83,6 +83,8 @@ Work is reviewed with evidence tied to a commit, and shipped without leaving Sti
 
 **Exit test:** the full acceptance scenario in [brief §13](brief.md#13-first-milestone-acceptance-scenario) passes on a second real repo (a PagePilot copy).
 
+Grok Build's end-to-end check (`.scratch/agent-polish/issues/04`) is deferred to Later: its API rate-limited every real stint, so M4 ships with Claude Code and Codex verified.
+
 ### M5 · v0.1 release · M
 
 Someone else can use it.
@@ -97,6 +99,7 @@ Someone else can use it.
 
 ### Later (not in v0.1)
 
+- Grok Build verified end to end: the ACP probe and a real stint with a parsed handoff (deferred from M4, agent-polish 04). It is registered but unverified until then.
 - The Lists and Cockpit views.
 - Reading GitHub Issues.
 - More ACP agents (e.g. Gemini CLI).

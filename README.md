@@ -1,6 +1,6 @@
 # Stintwork
 
-A local, open-source workbench for building software with coding agents. Open any repo, see what you're building and what's next, and take each piece of work through a guided workflow with whichever agent you choose (Claude Code, Codex, Grok Build), without re-explaining the project. Agents work in stints and hand over; the work continues.
+A local, open-source workbench for building software with coding agents. Open any repo, see what you're building and what's next, and take each piece of work through a guided workflow with whichever agent you choose (Claude Code or Codex; Grok Build support is experimental and not yet verified end to end), without re-explaining the project. Agents work in stints and hand over; the work continues.
 
 **Status:** planning. There is no production code yet.
 

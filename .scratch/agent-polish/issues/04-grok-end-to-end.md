@@ -1,6 +1,6 @@
 # 04 — Grok Build end to end
 
-Status: ready-for-agent
+Status: deferred
 Blocked by: none
 
 ## What to build
@@ -11,3 +11,7 @@ Grok Build's registration, warnings and handoff parsing were fixed with real-con
 
 - [ ] The probe for Grok Build is recorded (basic, commands, cancel, resume).
 - [ ] A real Grok stint finishes with a parsed handoff and checkpoint, recorded in Comments.
+
+## Comments
+
+**Coordinator, 2026-10-11:** Deferred by the developer and moved to `docs/plan.md` → Later. Grok's API kept refusing real stints with "Rate limited" on the developer's account, so this can't be verified now. Grok Build stays registered with its M3 fixes (config warning, handoff parsing), but it is unverified end to end and the README says so. M4 no longer waits on this ticket.
