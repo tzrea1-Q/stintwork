@@ -8,18 +8,20 @@ import { createClaudeCodeAgent } from "./index.js";
 vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
   const { default: Module } = await import("node:module");
-  const { fileURLToPath } = await import("node:url");
   const loader = Module.createRequire(import.meta.url).resolve("tsx");
-  const adapter = fileURLToPath(new URL("../node_modules/.bin/claude-agent-acp", import.meta.url));
+  const adapter = Module.createRequire(import.meta.url).resolve(
+    "@agentclientprotocol/claude-agent-acp/dist/index.js",
+  );
   const fake = new URL("./fake-agent.ts", import.meta.url).href;
   return {
     ...original,
     spawn: (
       command: string,
-      _args: string[],
+      args: string[],
       options: import("node:child_process").SpawnOptionsWithoutStdio,
     ) => {
-      if (command !== adapter) throw new Error("Expected the pinned Claude ACP executable.");
+      if (command !== process.execPath || args.length !== 1 || args[0] !== adapter)
+        throw new Error("Expected the pinned Claude ACP executable.");
       return original.spawn(
         process.execPath,
         [
