@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, gateReadiness, type StageId, type Warning } from "@stintwork/core";
 import { useState } from "react";
 import { HandoffCard } from "./HandoffCard";

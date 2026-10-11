@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { appendFileSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { firstStintWorkflow, type StagedWorkItem, type StageId } from "@stintwork/core";

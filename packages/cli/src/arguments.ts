@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export const usage = `Usage: stintwork [options]
 
 Opens Stintwork for the Git repository that contains the current directory.

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "./project.js";
 import type { StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";

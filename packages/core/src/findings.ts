@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type FindingAxis = "Standards" | "Spec";
 export type FindingSeverity = "blocker" | "major" | "minor" | "nit";
 export type ReviewFinding = {

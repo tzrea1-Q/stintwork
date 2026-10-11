@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
 import { evidenceStale, type MergeMethod, type PullRequestPreview } from "@stintwork/core";
 import type { BoardWorkItem } from "./WorkItemCard";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import type { AgentProfile } from "./agents.js";
 import { deriveAttentionItems } from "./attention.js";

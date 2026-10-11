@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFile, execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

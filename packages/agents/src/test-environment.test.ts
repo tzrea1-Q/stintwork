@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import config from "../../../vitest.config.js";
 import { clearAgentTestEnvironment } from "../test/setup.js";

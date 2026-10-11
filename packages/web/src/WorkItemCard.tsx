@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Milestone, ProjectSnapshot } from "@stintwork/core";
 import { Bug, Info, Layers3, LockKeyhole, Sparkles, Zap } from "lucide-react";
 import { useId } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { createMemoryRepoFiles } from "./work-items.js";
 import { indexProject } from "./project.js";

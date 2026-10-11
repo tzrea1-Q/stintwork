@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { RepoFiles } from "@stintwork/core";

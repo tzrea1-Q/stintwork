@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { parse, stringify } from "yaml";
 import type { AgentProfile } from "./agents.js";
 import { readProjectConfig } from "./project-config.js";

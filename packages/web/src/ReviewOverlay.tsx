@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
 import type { EvidenceContext, ReviewDecision, StintSummary } from "@stintwork/core";
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";

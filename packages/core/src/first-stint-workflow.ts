@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { parseDocument } from "yaml";
 import { builtInWorkflows, type StageId, type WorkflowId } from "./workflows.js";
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

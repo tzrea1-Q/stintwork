@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Brief, BriefHandoff } from "./brief.js";
 import { isReviewFindings, type ReviewFindings } from "./findings.js";
 import type { RepoFiles, Warning } from "./work-items.js";

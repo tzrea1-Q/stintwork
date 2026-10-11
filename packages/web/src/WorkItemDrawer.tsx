@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, type Milestone, type AgentProfile, type Warning } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export function readableToolOutput(text: string): string {
   try {
     const value: unknown = JSON.parse(text);

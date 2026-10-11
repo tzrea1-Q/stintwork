@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { RepoFiles, Warning } from "./work-items.js";
 
 export type SetupReport = {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { CheckCommand } from "./project-config.js";
 
 export type CheckStatus = "pending" | "running" | "passed" | "failed" | "cancelled";

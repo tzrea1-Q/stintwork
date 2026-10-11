@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 export type WorkflowId = "feature" | "bug" | "quick";
 export type BoardColumn = "clarify" | "spec" | "tickets" | "implement" | "review" | "ship";
 export type StageId = BoardColumn | "diagnose" | "fix" | "do";

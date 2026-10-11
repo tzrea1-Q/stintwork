@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { spawn } from "node:child_process";
 import type { AgentAvailability } from "@stintwork/core";
 import { type AgentLauncher, createAgentLauncher } from "./index.js";

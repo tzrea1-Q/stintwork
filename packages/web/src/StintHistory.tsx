@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { Stint, StintSummary } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
 import { HandoffCard } from "./HandoffCard";

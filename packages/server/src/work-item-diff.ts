@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { indexProject } from "@stintwork/core";
 import { workItemDiff } from "@stintwork/git";
 import type { Hono } from "hono";

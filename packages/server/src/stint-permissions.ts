@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { AgentStintOptions } from "@stintwork/agents";
 import type { Hono } from "hono";
 

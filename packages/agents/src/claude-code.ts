@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, statSync } from "node:fs";
 import { delimiter, isAbsolute, resolve } from "node:path";

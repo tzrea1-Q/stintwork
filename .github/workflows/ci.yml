@@ -17,6 +17,7 @@ jobs:
           node-version: 22
       - uses: pnpm/action-setup@v4
       - run: pnpm install --no-frozen-lockfile
+      - run: pnpm licence:check
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck

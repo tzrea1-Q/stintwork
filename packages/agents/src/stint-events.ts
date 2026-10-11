@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import type { SessionUpdate, ToolCallUpdate } from "@agentclientprotocol/sdk";
 import type { StintLogEvent, StintToolContent, StintToolFields } from "@stintwork/core";
 

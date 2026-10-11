@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
 import { gateReadiness, indexProject, workflowGate, type GateRecord } from "@stintwork/core";
 import type { Hono } from "hono";

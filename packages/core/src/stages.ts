@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 import { parseDocument } from "yaml";
 import { isPullRequest, type PullRequest, type MergeMethod } from "./pull-requests.js";
 import type { RepoFiles, Warning, WorkItem, WorkItemIndex } from "./work-items.js";

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0
 /**
  * A synchronous, read-only snapshot of repo files. Paths are repo-relative,
  * slash-separated file paths; list recursively returns files under the prefix.
