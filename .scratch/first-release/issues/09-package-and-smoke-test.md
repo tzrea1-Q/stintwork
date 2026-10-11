@@ -17,3 +17,5 @@ Blocked by: 01
 ## Comments
 
 **Coordinator, 2026-10-11:** Built by Codex. verify.sh passed (1412 tests). The coordinator ran the packed-tarball smoke test with network: stintwork-0.1.0.tgz (10 files, no native modules) installed outside the monorepo (128 packages); version, help, /api/health, /api/project, web assets and no browser all passed, in 57 s with a warm npm cache. A cold first run hit the 180 s install timeout on this machine's network (its ~/.npmrc points at registry.npmmirror.com; the test used the npm registry), so the coordinator raised the install timeout to 300 s. The installed CLI also ran by hand in an empty git repo. CI now runs the smoke test on Ubuntu and macOS (result recorded after the first push).
+
+**Coordinator, 2026-10-11 (CI):** First CI run with the smoke matrix (38131748078, on the merge of tickets 04/05/08/09): checks passed, and package-smoke passed on ubuntu-latest (43 s) and macos-latest (49 s). The Node 20 action deprecation warning is gone.
