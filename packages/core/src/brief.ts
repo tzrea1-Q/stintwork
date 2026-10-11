@@ -27,7 +27,7 @@ export type Brief = {
 };
 export type BriefInput = {
   files: RepoFiles;
-  workItem: Pick<WorkItem, "slug" | "spec">;
+  workItem: Pick<WorkItem, "slug" | "spec"> & { intent?: string };
   stage: WorkflowStage;
   ticket?: Pick<Ticket, "path"> | null;
   lastHandoff?: BriefHandoff | null;
@@ -99,6 +99,7 @@ export function compileBrief({
   const ticketScoped = ticket && stage.column === "implement";
   const prompt = [
     ...(stage.skill ? [`${stage.skill} ${ticket?.path ?? `.scratch/${workItem.slug}/`}`] : []),
+    ...(workItem.intent?.trim() ? [`What the developer asked for:\n${workItem.intent}`] : []),
     ...(!ticketScoped
       ? [
           `Work item folder: .scratch/${workItem.slug}/`,

@@ -342,7 +342,7 @@ test("command palette filters milestones and restores focus on Esc", async () =>
   await user.click(trigger);
   const palette = within(screen.getByRole("dialog", { name: "Command palette" }));
   expect(palette.getAllByRole("option")).toHaveLength(
-    snapshot.workItems.length + snapshot.milestones.length + 1,
+    snapshot.workItems.length + snapshot.milestones.length + 2,
   );
   await user.click(palette.getByRole("option", { name: "M2 · Next" }));
   expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveValue("m2");

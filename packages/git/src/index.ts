@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+export {
+  checkWorkItemCreation,
+  commitWorkItemCreation,
+  WorkItemCreationRefusal,
+} from "./create-work-item.js";
 import { execFile } from "node:child_process";
 import { lstat, mkdir, realpath } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";

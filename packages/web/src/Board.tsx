@@ -11,6 +11,7 @@ import { WorkItemDrawer } from "./WorkItemDrawer";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { useAttentionAlerts } from "./useAttentionAlerts";
 import { RoadmapEditor } from "./RoadmapEditor";
+import { CreateWorkItem } from "./CreateWorkItem";
 
 export function Board({
   snapshot,
@@ -26,6 +27,7 @@ export function Board({
     new URL(window.location.href).searchParams.get("item"),
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
   const alerts = useAttentionAlerts(snapshot.attentionItems, snapshot.name);
   const previousItem = useRef<string | null>(null);
@@ -73,12 +75,24 @@ export function Board({
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
+      if (createOpen) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
         setPaletteOpen((open) => !open);
         return;
       }
       if (openItem || paletteOpen || needsYouOpen || !(event.target instanceof HTMLElement)) return;
+      if (
+        event.target.closest(
+          "input, textarea, select, [contenteditable]:not([contenteditable=false]), dialog[open]",
+        )
+      )
+        return;
+      if (event.key === "c" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault();
+        setCreateOpen(true);
+        return;
+      }
       const card = event.target.closest<HTMLButtonElement>("button[data-work-item]");
       const column = card?.closest<HTMLElement>("[data-card-column]");
       if (!card || !column || !event.key.startsWith("Arrow")) return;
@@ -113,7 +127,7 @@ export function Board({
       document.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("popstate", handlePopstate);
     };
-  }, [openItem, paletteOpen, needsYouOpen]);
+  }, [openItem, paletteOpen, needsYouOpen, createOpen]);
 
   return (
     <div className="pipeline-app">
@@ -158,6 +172,14 @@ export function Board({
             {active.length} active · {shipped.length} shipped
           </span>
           <RoadmapEditor snapshot={snapshot} />
+          <button
+            type="button"
+            className="top-button"
+            aria-haspopup="dialog"
+            onClick={() => setCreateOpen(true)}
+          >
+            Create work item
+          </button>
           <nav className="stage-navigation" aria-label="Stage navigation">
             <button
               type="button"
@@ -285,11 +307,22 @@ export function Board({
       )}
       {paletteOpen && (
         <CommandPalette
+          onCreateItem={() => setCreateOpen(true)}
           snapshot={snapshot}
           milestone={milestone}
           onMilestoneChange={setSelectedMilestone}
           onOpenItem={openWorkItem}
           onClose={() => setPaletteOpen(false)}
+        />
+      )}
+      {createOpen && (
+        <CreateWorkItem
+          snapshot={snapshot}
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setSelectedMilestone("");
+            setCreateOpen(false);
+          }}
         />
       )}
     </div>

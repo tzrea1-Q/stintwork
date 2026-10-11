@@ -9,12 +9,14 @@ export function CommandPalette({
   milestone,
   onMilestoneChange,
   onOpenItem,
+  onCreateItem,
   onClose,
 }: {
   snapshot: ProjectSnapshot;
   milestone: string;
   onMilestoneChange: (milestone: string) => void;
   onOpenItem: (slug: string) => void;
+  onCreateItem: () => void;
   onClose: () => void;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -74,6 +76,17 @@ export function CommandPalette({
         </div>
         <Command.List>
           <Command.Empty>No work items or milestones found.</Command.Empty>
+          <Command.Group heading="Actions">
+            <Command.Item
+              value="Create work item"
+              onSelect={() => {
+                onClose();
+                onCreateItem();
+              }}
+            >
+              Create work item
+            </Command.Item>
+          </Command.Group>
           <Command.Group heading="Work items">
             {snapshot.workItems.map((item) => (
               <Command.Item
