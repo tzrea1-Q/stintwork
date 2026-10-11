@@ -1,6 +1,6 @@
 # Working on Stintwork
 
-Stintwork is a local workbench for taking software work through guided workflows, handing it between coding agents in stints. It is in planning: there is no production code yet.
+Stintwork is a local workbench for taking software work through guided workflows, handing it between coding agents in stints.
 
 Read before any change:
 
