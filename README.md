@@ -10,22 +10,12 @@ Start it inside a git repository. It starts a local server, prints its address a
 
 **Status:** v0.1, local-only. Claude Code and Codex are verified over ACP. Grok Build is experimental and not verified end to end.
 
-The single npm package is prepared but **not yet published to npm**. The command above is the intended entry point after publication; it cannot install this release yet. For now, use a local checkout:
-
-```bash
-pnpm install
-pnpm build
-cd /path/to/your/project
-node /path/to/stintwork/dist/bin.js
-```
-
-The first two commands belong in the Stintwork checkout. Use its absolute path for the last command. See the [getting-started guide](docs/getting-started.md) for the first work item through Shipped.
+Stintwork is published on npm. See the [getting-started guide](docs/getting-started.md) for the first work item through Shipped.
 
 ## Requirements
 
 - Node.js 22.12 or newer and Git.
 - Your own installed Claude Code or Codex CLI, available on PATH and signed in.
-- pnpm for building the local checkout. The packaged CLI does not need it unless your project does.
 
 Sign in to the agent you want to use:
 
@@ -91,5 +81,18 @@ Contributor references:
 | [`docs/research/2026-10-09-spikes.md`](docs/research/2026-10-09-spikes.md) | ACP and brief/handoff evidence |
 | [`prototype/`](prototype/) | Throwaway design reference; Pipeline was chosen |
 | [`spikes/acp-probe/`](spikes/acp-probe/) | ACP capability checks |
+
+### From a local checkout
+
+Contributors can build a Stintwork checkout with pnpm. Run the first two commands there, then start it inside your project's git repository:
+
+```bash
+pnpm install
+pnpm build
+cd /path/to/your/project
+node /path/to/stintwork/dist/bin.js
+```
+
+Use absolute paths in place of the examples.
 
 Licensed under [Apache-2.0](LICENSE).
