@@ -321,3 +321,25 @@ test("the Needs-you gate uses the workflow's customised gate kind", async () => 
   expect(queue.getByText("spec.md exists and parses").closest("li")).toHaveTextContent("Ready");
   expect(queue.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
 });
+
+test.each([
+  ["spec", "Spec", ".scratch/first/spec.md"],
+  ["tickets", "Tickets", ".scratch/first/issues/"],
+])("%s output in another folder leaves the gate naming the expected path", (stage, name, path) => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/workflow.yaml": `workflow: feature\nstage: ${stage}\n`,
+      ".scratch/wrong/spec.md": "# Wrong folder",
+      ".scratch/wrong/issues/01-first.md": "# First\nStatus: ready-for-agent\nBlocked by: none",
+    }),
+    { name: "Test" },
+  );
+  const item = snapshot.workItems.find(({ slug }) => slug === "first");
+  expect(item).toBeDefined();
+  if (!item) throw new Error("Fixture work item is missing.");
+  item.stints = [{ ...stint, stage, ticket: null }];
+  render(<GateView item={item} />);
+  expect(screen.getByRole("status")).toHaveTextContent(path);
+  expect(screen.getByRole("list", { name: `${name} gate conditions` })).toHaveTextContent(path);
+  expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
+});

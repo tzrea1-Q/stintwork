@@ -97,6 +97,10 @@ export function compileBrief({
   const changed = [...new Set(changedPaths)].sort();
   const handoff = lastHandoff ? { ...lastHandoff } : null;
   const ticketScoped = ticket && stage.column === "implement";
+  const planningOutput =
+    stage.gate === "spec" ||
+    stage.gate === "tickets" ||
+    (stage.gate === "manual" && (stage.column === "clarify" || stage.id === "do"));
   const prompt = [
     ...(stage.skill ? [`${stage.skill} ${ticket?.path ?? `.scratch/${workItem.slug}/`}`] : []),
     ...(workItem.intent?.trim() ? [`What the developer asked for:\n${workItem.intent}`] : []),
@@ -130,6 +134,13 @@ export function compileBrief({
     [
       "Working instructions:",
       `- Work in the work item worktree on its branch, stintwork/${workItem.slug}.`,
+      ...(planningOutput
+        ? [
+            `- ${stage.gate === "spec" ? "" : "If this stage produces a spec: "}Write the spec to \`.scratch/${workItem.slug}/spec.md\`.`,
+            `- ${stage.gate === "tickets" ? "" : "If this stage produces tickets: "}Write tickets to \`.scratch/${workItem.slug}/issues/\` as \`NN-<slug>.md\`, numbered from 01 in dependency order, each with \`Status: ready-for-agent\` and a \`Blocked by:\` line.`,
+            "- Do not create another work item folder.",
+          ]
+        : []),
       ...(ticketScoped
         ? [
             `- Finish this ticket only: ${ticket.path}.`,
