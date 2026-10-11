@@ -21,7 +21,7 @@ Status: shipped
 
 ## M4 · Review and ship
 Id: m4
-Status: active
+Status: shipped
 
 - agent-polish
 - review-and-ship

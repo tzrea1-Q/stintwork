@@ -23,7 +23,7 @@ Fix small defects in separate commits; larger ones become new tickets.
 
 - [x] Each step is recorded with evidence under `## Comments`.
 - [x] The shipped work item's history shows every stint, the findings and their decisions, the checks with their commits, and the merge.
-- [ ] `.stintwork/roadmap.md`: M4 set to `shipped` only when every criterion passes.
+- [x] `.stintwork/roadmap.md`: M4 set to `shipped` only when every criterion passes.
 
 ## Comments
 
@@ -42,3 +42,5 @@ Fix small defects in separate commits; larger ones become new tickets.
 Defect found and fixed in a separate commit (`868b1cb`): Codex marked a ticket `Status: complete`, which Stintwork didn't treat as resolved, so later tickets stayed blocked. Briefs now say to set `resolved`, and `complete`/`completed` also count as resolved.
 
 Not done here: a real pull request. That needs a GitHub test repo from the developer, and it is review-and-ship 09's manual criterion. M4 therefore stays `active` in the roadmap until 09's manual check runs; agent-polish 04 (Grok end to end) is also still open.
+
+**Coordinator, 2026-10-11:** The remaining items are closed. Review-and-ship 09's real PR was opened and closed on `tzrea1-Q/strandry` (the developer chose not to merge). Review-and-ship 11 (merge method honours linear-history protection) is merged and was checked against real GitHub. Grok Build end to end (agent-polish 04) was deferred by the developer to Later. M4 is set to `shipped`.
