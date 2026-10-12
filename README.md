@@ -20,17 +20,20 @@ Stintwork is published on npm. See the [getting-started guide](docs/getting-star
 ## Requirements
 
 - Node.js 22.12 or newer and Git.
-- Your own installed Claude Code or Codex CLI, available on PATH and signed in.
 
-Sign in to the agent you want to use:
+### Set up your agents
 
-```bash
-claude auth login
-# Or:
-codex login
-```
+Stintwork uses your own installed agent CLIs and logins: for each agent you want it to use, install its CLI on PATH and sign in.
 
-One agent is enough. Stintwork includes the Claude Code and Codex ACP adapters. It uses your existing logins; it does not handle your credentials.
+| Agent | CLI | Sign in | Status |
+|---|---|---|---|
+| Claude Code | `claude` | `claude auth login` | Verified over ACP |
+| Codex | `codex` | `codex login` | Verified over ACP |
+| Grok Build | `grok` | `grok login` | Experimental; not verified end to end |
+
+Stintwork includes the Claude Code and Codex ACP adapters, not their CLIs or logins; it does not handle your credentials. Set up at least one agent to start; you can set up several, choose one per stage or stint, and switch between stints.
+
+When a missing CLI or login is detected, the agent picker disables that agent and shows an installation or sign-in hint; detected login requirements also appear in **Needs you** with the login command and **Refresh agent availability**.
 
 The CLI supports `--no-open`, `--help` and `--version`. With `--no-open`, open the printed address yourself. Stop the server with Ctrl+C.
 
