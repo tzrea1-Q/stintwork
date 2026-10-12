@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile, spawn } from "node:child_process";
-import { accessSync, constants, statSync } from "node:fs";
-import { delimiter, isAbsolute, resolve } from "node:path";
 import { promisify } from "node:util";
 import type { AgentAvailability } from "@stintwork/core";
 import { AgentAuthenticationError } from "./authentication.js";
@@ -9,31 +7,15 @@ import { createAgentLauncher } from "./index.js";
 import { claudeProfile } from "./profiles.js";
 import type { RegisteredAgent } from "./registry.js";
 import { adapterEntry } from "./adapter-entry.js";
+import { findExecutable } from "./executable.js";
 
 const execFileAsync = promisify(execFile);
-
-function claudeExecutable(env: NodeJS.ProcessEnv): string | undefined {
-  const command = env.CLAUDE_CODE_EXECUTABLE || "claude";
-  const candidates = isAbsolute(command)
-    ? [command]
-    : command.includes("/")
-      ? [resolve(command)]
-      : (env.PATH ?? "").split(delimiter).map((directory) => resolve(directory, command));
-  return candidates.find((path) => {
-    try {
-      accessSync(path, constants.X_OK);
-      return statSync(path).isFile();
-    } catch {
-      return false;
-    }
-  });
-}
 
 export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): RegisteredAgent {
   return {
     ...claudeProfile,
     launch: createAgentLauncher((cwd) => {
-      const executable = claudeExecutable(env);
+      const executable = findExecutable(env.CLAUDE_CODE_EXECUTABLE || "claude", env);
       if (!executable) throw new Error(`Claude Code not found. ${claudeProfile.installationHint}`);
       return spawn(process.execPath, [adapterEntry("claude-agent-acp")], {
         cwd,
@@ -46,7 +28,7 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
     }, claudeProfile),
     async detectAvailability(): Promise<AgentAvailability> {
       const checkedAt = new Date().toISOString();
-      const executable = claudeExecutable(env);
+      const executable = findExecutable(env.CLAUDE_CODE_EXECUTABLE || "claude", env);
       if (!executable)
         return {
           available: false,

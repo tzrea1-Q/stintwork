@@ -8,8 +8,8 @@ import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import type { StintLogEvent } from "@stintwork/core";
-import { afterEach, expect, test } from "vitest";
-import { createAgentRegistry, describeAgents } from "./index.js";
+import { afterEach, expect, test, vi } from "vitest";
+import { createAgentRegistry, describeAgents, startAgentStint } from "./index.js";
 import { toAcpReadable } from "./stdio.js";
 import { createFakeAgentLauncher, fakeAgentProfiles } from "./testing.js";
 
@@ -21,6 +21,7 @@ async function fixture() {
 }
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((cwd) => rm(cwd, { recursive: true, force: true })));
+  vi.unstubAllEnvs();
 });
 
 test("the production registry offers Codex, Claude Code and Grok without private launch or detection hooks", () => {
@@ -35,6 +36,14 @@ test("the production registry offers Codex, Claude Code and Grok without private
     expect(profile).not.toHaveProperty("detectAvailability");
   }
   expect(descriptions[0].capabilities.defaultMode).toBe("workspace-write");
+});
+
+test.each([undefined, "1"])("Codex detection respects the skip flag %s", (skip) => {
+  vi.stubEnv("STINTWORK_SKIP_AGENT_DETECTION", skip);
+  const agent = createAgentRegistry().get("codex");
+  expect(agent?.launch).toBe(startAgentStint);
+  if (skip === "1") expect(agent).not.toHaveProperty("detectAvailability");
+  else expect(agent?.detectAvailability).toBeTypeOf("function");
 });
 
 test("registries reject ambiguous or empty agent identities", () => {
