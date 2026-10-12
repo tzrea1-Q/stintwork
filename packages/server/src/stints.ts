@@ -21,6 +21,7 @@ import {
   type ReviewFindings,
   type StintLiveMessage,
   type StintLogEntry,
+  type CheckpointWarning,
 } from "@stintwork/core";
 import {
   commitStintworkSetup,
@@ -60,6 +61,7 @@ type ActiveStint = {
 };
 
 function prepareLogs(root: string) {
+  ensureLocalIgnore(root);
   let directory = root;
   for (const part of [".stintwork", "local", "stints"]) {
     directory = join(directory, part);
@@ -68,7 +70,7 @@ function prepareLogs(root: string) {
       throw new Error("Stint log directories must be real directories.");
     if (!stat) mkdirSync(directory);
   }
-  return { directory, ignoreAdded: ensureLocalIgnore(root) };
+  return { directory };
 }
 
 export function addStintRoutes(
@@ -261,12 +263,7 @@ export function addStintRoutes(
       let setupError: unknown;
       let setupFailed = false;
       try {
-        if (logs.ignoreAdded)
-          setupMessages.push("Added .stintwork/local/ to the project's .gitignore.\n");
-        if (ensureLocalIgnore(worktree.path)) {
-          setupFiles.push(".gitignore");
-          setupMessages.push("Added .stintwork/local/ to the worktree's .gitignore.\n");
-        }
+        ensureLocalIgnore(worktree.path);
         if (
           !workItem.stints.length &&
           typeof prepared.workItem.stages[stage.id]?.agent !== "string" &&
@@ -342,13 +339,20 @@ export function addStintRoutes(
         state.ending = true;
         permissions.clear(id);
         let checkpointCommit: string | undefined;
+        let checkpointWarnings: CheckpointWarning[] = [];
         try {
-          checkpointCommit = await createCheckpoint(worktree.path, {
-            id,
-            workItem: workItem.slug,
-            ticket: ticket?.number ?? null,
-            status,
-          });
+          checkpointCommit = await createCheckpoint(
+            worktree.path,
+            {
+              id,
+              workItem: workItem.slug,
+              ticket: ticket?.number ?? null,
+              status,
+            },
+            (warnings) => {
+              checkpointWarnings = warnings;
+            },
+          );
         } catch (error) {
           status = "failed";
           details.error = [
@@ -372,6 +376,7 @@ export function addStintRoutes(
           handoff: null,
           ...details,
           ...(checkpointCommit ? { checkpointCommit } : {}),
+          ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
         });
         active.delete(workItem.slug);
         refresh();

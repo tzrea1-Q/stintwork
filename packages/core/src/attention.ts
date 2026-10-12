@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "./project.js";
-import type { StintEvent } from "./stints.js";
+import type { CheckpointWarning, StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
 import type { StageId } from "./workflows.js";
 import { deriveGateAttentionItems } from "./gates.js";
@@ -42,6 +42,14 @@ export type HandoffUnresolvedAttentionItem = AttentionItemSource & {
   agent: string;
 };
 
+export type CheckpointWarningAttentionItem = AttentionItemSource & {
+  kind: "checkpoint-warning";
+  workItem: string;
+  stintId: string;
+  agent: string;
+  warnings: CheckpointWarning[];
+};
+
 export type GateAttentionItem = AttentionItemSource & {
   kind: "gate-ready";
   workItem: string;
@@ -50,6 +58,7 @@ export type GateAttentionItem = AttentionItemSource & {
 export type AttentionItem =
   | PermissionAttentionItem
   | HandoffUnresolvedAttentionItem
+  | CheckpointWarningAttentionItem
   | GateAttentionItem
   | MemoryProposalAttentionItem
   | LoginRequiredAttentionItem;
@@ -97,8 +106,26 @@ export function deriveAttentionItems(
         raisedAt: stint.endedAt ?? stint.startedAt,
       }));
     const stint = item.activeStint;
+    const latestEnded = item.stints.find((entry) => entry.status !== "running");
+    const checkpoints: CheckpointWarningAttentionItem[] = latestEnded?.checkpointWarnings?.length
+      ? [
+          {
+            kind: "checkpoint-warning",
+            id: `checkpoint-warning:${latestEnded.id}`,
+            workItem: item.slug,
+            ticket: latestEnded.ticket,
+            stintId: latestEnded.id,
+            agent: latestEnded.agent,
+            title: "Risky files excluded from checkpoint",
+            details:
+              "Remove these files or deliberately ignore them, then start another stint. Checks and Merge locally require a clean worktree.",
+            raisedAt: latestEnded.endedAt ?? latestEnded.startedAt,
+            warnings: latestEnded.checkpointWarnings,
+          },
+        ]
+      : [];
     const proposals = item.memoryProposals ?? [];
-    if (stint?.status !== "running") return [...handoffs, ...proposals];
+    if (stint?.status !== "running") return [...handoffs, ...checkpoints, ...proposals];
     const answered = new Set(
       stint.events.flatMap((event) =>
         event.type === "permission" && event.requestId ? [event.requestId] : [],
@@ -111,6 +138,7 @@ export function deriveAttentionItems(
     );
     return [
       ...handoffs,
+      ...checkpoints,
       ...proposals,
       ...[...requests.values()]
         .filter((request) => !request.automatic && !answered.has(request.requestId))

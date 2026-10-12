@@ -4,6 +4,7 @@ import { lstat, mkdir, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
+import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import type { PullRequest, PullRequestChecks, MergeMethod } from "@stintwork/core";
 import { createNodeRepoFiles } from "./repo-files.js";
 
@@ -227,6 +228,7 @@ export async function fetchPullRequestChecks(
     state: after.state,
     checks,
   } as PullRequestChecks;
+  ensureLocalIgnore(root);
   let directory = root;
   for (const part of [".stintwork", "local", "pr-checks"]) {
     directory = join(directory, part);

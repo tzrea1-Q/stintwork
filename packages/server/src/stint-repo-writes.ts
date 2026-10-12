@@ -1,21 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
-import { appendFileSync, lstatSync, readFileSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { firstStintWorkflow, type StagedWorkItem, type StageId } from "@stintwork/core";
 
 export function ensureLocalIgnore(root: string): boolean {
-  const path = join(root, ".gitignore");
+  let directory = root;
+  for (const part of [".stintwork", "local"]) {
+    directory = join(directory, part);
+    const stat = lstatSync(directory, { throwIfNoEntry: false });
+    if (stat && (!stat.isDirectory() || stat.isSymbolicLink()))
+      throw new Error("Local data directories must be real directories.");
+    if (!stat) mkdirSync(directory);
+  }
+  const path = join(directory, ".gitignore");
   const stat = lstatSync(path, { throwIfNoEntry: false });
   if (stat && (!stat.isFile() || stat.isSymbolicLink()))
-    throw new Error(".gitignore must be a regular file.");
-  const ignore = stat ? readFileSync(path, "utf8") : "";
-  if (
-    ignore
-      .split(/\r?\n/)
-      .some((line) => line === ".stintwork/local/" || line === "/.stintwork/local/")
-  )
-    return false;
-  appendFileSync(path, `${ignore && !ignore.endsWith("\n") ? "\n" : ""}.stintwork/local/\n`);
+    throw new Error("The local .gitignore must be a regular file.");
+  if (stat && readFileSync(path, "utf8") === "*\n") return false;
+  writeFileSync(path, "*\n", { flag: stat ? "w" : "wx" });
   return true;
 }
 

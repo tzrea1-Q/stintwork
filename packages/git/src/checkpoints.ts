@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile } from "node:child_process";
+import { lstat } from "node:fs/promises";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
+
+export type CheckpointWarning = {
+  path: string;
+  reasons: ("likely-secret" | "large-file" | "generated-directory")[];
+  excluded: true;
+};
 
 export async function withGitIdentity(git: (args: string[]) => Promise<string>, args: string[]) {
   const identity = await Promise.all(
@@ -53,24 +61,98 @@ export async function commitStintworkSetup(
 export async function createCheckpoint(
   worktree: string,
   stint: { id: string; workItem: string; ticket: number | null; status: string },
+  onWarnings?: (warnings: CheckpointWarning[]) => void,
 ): Promise<string> {
-  const git = async (args: string[]) =>
-    (await execute("git", args, { cwd: worktree })).stdout.trim();
-  await git(["add", "--all"]);
-  const changed = await git(["diff", "--cached", "--quiet"]).then(
-    () => false,
-    (error: { code?: number }) => {
-      if (error.code !== 1) throw error;
-      return true;
-    },
+  const git = async (args: string[], input?: string) => {
+    const execution = execute("git", args, { cwd: worktree, maxBuffer: 16 * 1024 * 1024 });
+    if (input !== undefined) execution.child.stdin?.end(input);
+    const { stdout } = await execution;
+    return args.includes("-z") ? stdout : stdout.trim();
+  };
+  const stagedPaths = new Set(
+    (await git(["diff", "--cached", "--name-only", "--no-renames", "-z", "HEAD", "--"]))
+      .split("\0")
+      .filter(Boolean),
   );
-  if (changed) {
-    await commitWithIdentity(git, [
-      "-m",
-      `Checkpoint: stint ${stint.id}; work item ${stint.workItem}; ticket ${stint.ticket ?? "none"}; ${stint.status}`,
-    ]);
+  const outputs = await Promise.all([
+    git(["diff", "--name-only", "--no-renames", "-z", "HEAD", "--"]),
+    git(["ls-files", "--others", "--exclude-standard", "-z"]),
+    git(["diff", "--name-only", "--no-renames", "-z", "--"]),
+  ]);
+  const pending = new Set(outputs.slice(1).flatMap((output) => output.split("\0").filter(Boolean)));
+  const paths = [
+    ...new Set([
+      ...stagedPaths,
+      ...outputs.flatMap((output) => output.split("\0").filter(Boolean)),
+    ]),
+  ].sort();
+  const warnings: CheckpointWarning[] = [];
+  for (const path of paths) {
+    const stat = await lstat(join(worktree, path)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code !== "ENOENT") throw error;
+      return undefined;
+    });
+    const stagedSize = stagedPaths.has(path)
+      ? await git(["cat-file", "-s", `:${path}`])
+          .then(Number)
+          .catch((error: { code?: number }) => {
+            if (error.code !== 128) throw error;
+            return undefined;
+          })
+      : undefined;
+    if (!stat && stagedSize === undefined) continue;
+    const reasons: CheckpointWarning["reasons"] = [];
+    // ponytail: filename heuristics, not a content scanner; use a dedicated scanner if stronger detection is needed.
+    if (
+      path
+        .split("/")
+        .some((part) =>
+          /^(?:\.env|id_rsa)|\.(?:pem|key)$|(?:^|[._-])(?:credentials?|tokens?|secrets?)(?:$|[._-])/i.test(
+            part,
+          ),
+        )
+    )
+      reasons.push("likely-secret");
+    if (Math.max(stat?.size ?? 0, stagedSize ?? 0) > 1024 * 1024) reasons.push("large-file");
+    if (
+      path
+        .split("/")
+        .slice(0, -1)
+        .some((part) => ["node_modules", "dist", "build", "coverage"].includes(part))
+    )
+      reasons.push("generated-directory");
+    if (reasons.length) warnings.push({ path, reasons, excluded: true });
   }
-  return git(["rev-parse", "HEAD"]);
+  onWarnings?.(warnings);
+  const excluded = new Set(warnings.map(({ path }) => path));
+  const safe = paths.filter((path) => pending.has(path) && !excluded.has(path));
+  if (safe.length)
+    await git(
+      ["--literal-pathspecs", "add", "--all", "--pathspec-from-file=-", "--pathspec-file-nul"],
+      `${safe.join("\0")}\0`,
+    );
+  const changed = (
+    await git(["diff", "--cached", "--name-only", "--no-renames", "-z", "HEAD", "--"])
+  )
+    .split("\0")
+    .filter((path) => path && !excluded.has(path));
+  if (changed.length) {
+    await commitWithIdentity(
+      (args) =>
+        git(
+          ["--literal-pathspecs", ...args],
+          args.includes("commit") ? `${changed.join("\0")}\0` : undefined,
+        ),
+      [
+        "--only",
+        "--pathspec-from-file=-",
+        "--pathspec-file-nul",
+        "-m",
+        `Checkpoint: stint ${stint.id}; work item ${stint.workItem}; ticket ${stint.ticket ?? "none"}; ${stint.status}`,
+      ],
+    );
+  }
+  return (await git(["rev-parse", "HEAD"])).trim();
 }
 
 export async function changedSince(

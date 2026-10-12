@@ -4,6 +4,7 @@ import type { EvidenceContext, ReviewDecision, StintSummary } from "@stintwork/c
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
+import { CheckpointWarnings } from "./CheckpointWarnings";
 import "./review-overlay.css";
 
 type ReviewSlots = {
@@ -424,6 +425,16 @@ export function ReviewOverlay({
           </p>
         )}
         <aside className="review-evidence" aria-label="Review evidence">
+          {item.stints
+            ?.filter((stint) => stint.checkpointWarnings?.length)
+            .map((stint) => (
+              <div key={stint.id}>
+                <p>
+                  Stint <code>{stint.id}</code>
+                </p>
+                <CheckpointWarnings warnings={stint.checkpointWarnings} />
+              </div>
+            ))}
           <section aria-label="Findings">
             <h3>Findings</h3>
             {findings ?? <FindingsRail {...evidence} anchor={anchor} />}

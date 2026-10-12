@@ -7,10 +7,36 @@ import {
   foldStintLog,
   isStintEvent,
   isStintLogEntry,
+  isCheckpointWarnings,
   summarizeStint,
   type StintLogEntry,
   type StintLogEvent,
 } from "./stints.js";
+
+test("checkpoint warnings validate as metadata and survive folding and summaries", () => {
+  const warnings = [{ path: ".env", reasons: ["likely-secret"], excluded: true }];
+  expect(isCheckpointWarnings(warnings)).toBe(true);
+  const ended: StintLogEntry = {
+    type: "ended",
+    at: "2026-10-09T10:10:00Z",
+    status: "finished",
+    checkpointWarnings: [{ path: ".env", reasons: ["likely-secret"], excluded: true }],
+  };
+  expect(isStintLogEntry(ended)).toBe(true);
+  const stint = foldStintLog([started, ended]);
+  expect(stint?.checkpointWarnings).toEqual(warnings);
+  expect(stint && summarizeStint(stint).checkpointWarnings).toEqual(warnings);
+  for (const warning of [
+    { ...warnings[0], path: "../outside" },
+    { ...warnings[0], path: "/outside" },
+    { ...warnings[0], reasons: ["unknown"] },
+    { ...warnings[0], reasons: [["likely-secret"]] },
+    { ...warnings[0], reasons: [] },
+    { ...warnings[0], excluded: false },
+    { ...warnings[0], contents: "Must not be logged" },
+  ])
+    expect(isStintLogEntry({ ...ended, checkpointWarnings: [warning] })).toBe(false);
+});
 
 const started: StintLogEntry = {
   type: "started",

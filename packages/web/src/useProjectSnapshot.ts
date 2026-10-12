@@ -3,6 +3,7 @@ import {
   applyStintLogEntry,
   parseWorkflowDefinition,
   isStintLogEntry,
+  isCheckpointWarnings,
   isStintEvent,
   isBriefHandoff,
   isReviewFindings,
@@ -31,6 +32,7 @@ function isStintSummary(value: unknown) {
     (value.endedAt === null || typeof value.endedAt === "string") &&
     (value.error === undefined || typeof value.error === "string") &&
     (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&
+    (value.checkpointWarnings === undefined || isCheckpointWarnings(value.checkpointWarnings)) &&
     (value.handoff == null || isBriefHandoff(value.handoff)) &&
     (value.findings === undefined || isReviewFindings(value.findings)) &&
     (value.handoffAnswer === undefined ||
@@ -66,6 +68,7 @@ function isAttentionItem(value: unknown, stages: readonly WorkflowStage[]) {
           (typeof value.stintId === "string" &&
             typeof value.agent === "string" &&
             (value.kind === "handoff-unresolved" ||
+              (value.kind === "checkpoint-warning" && isCheckpointWarnings(value.warnings)) ||
               (value.kind === "memory-proposal" &&
                 ["path", "diff", "baseCommit", "checkpointCommit"].every(
                   (key) => typeof value[key] === "string",

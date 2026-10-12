@@ -3,6 +3,7 @@ import type { StintSummary } from "@stintwork/core";
 import { useId } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { CheckpointWarnings } from "./CheckpointWarnings";
 import "./handoff-card.css";
 
 export function HandoffCard({ stint }: { stint: StintSummary }) {
@@ -10,6 +11,7 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
   return (
     <article className="handoff-card" aria-labelledby={title}>
       <h4 id={title}>Handoff</h4>
+      <CheckpointWarnings warnings={stint.checkpointWarnings} />
       {stint.handoff ? (
         <dl>
           {[

@@ -14,6 +14,7 @@ export {
   commitStintworkSetup,
   commitWithIdentity,
   createCheckpoint,
+  type CheckpointWarning,
 } from "./checkpoints.js";
 export { commitRoadmap, RoadmapWriteRefusal } from "./roadmap.js";
 export {
