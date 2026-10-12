@@ -1,6 +1,6 @@
 # 14 — Quick and Bug first stages start without tickets
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 13
 
 ## What to build
@@ -14,7 +14,20 @@ Make a work item's first stage startable right after creation, in every built-in
 
 ## Acceptance criteria
 
-- [ ] Server tests: a freshly created Quick work item (and a Bug work item) can start its first stint with no tickets; ticket-scoped Do stints still work.
-- [ ] Brief tests for the no-ticket Do brief.
-- [ ] Manual (coordinator): create a Quick work item from the board in a throwaway repo and take it through Do with a real agent.
-- [ ] All checks pass.
+- [x] Server tests: a freshly created Quick work item (and a Bug work item) can start its first stint with no tickets; ticket-scoped Do stints still work.
+- [x] Brief tests for the no-ticket Do brief.
+- [x] Manual (coordinator): create a Quick work item from the board in a throwaway repo and take it through Do with a real agent.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-12:** Built by Codex in two rounds; verify.sh passed (1689 tests). Decision: Quick's Do stage declares `/implement`, reusing brief eligibility, intent, worktrees and checkpoints instead of special-casing stages without a skill. Bug's Diagnose already worked and now has tests.
+
+The first real check found three more defects, all fixed with failing tests first:
+- **Do gate:** Do could be approved with no stint and no tickets. Ticketless skill stages now need a finished stint of that stage.
+- **Uncommitted change:** a gate approval without a worktree left an uncommitted `workflow.yaml` in the main checkout (`"commit": null`). Main-checkout workflow writes now commit, or restore on failure.
+- **Agent startup:** the readiness wait was 15 s and failed three times at load 35–60. It is now one 60 s budget for all agents, with a busy-machine message.
+
+Also fixed: the M2 stop-within-two-seconds assertions are now measured from the Stop request, with a documented 1 s load allowance (they passed 3/3 at load 25–35).
+
+**Real check** on a fresh project at low load: a Quick work item created via the API; approving Do before any stint was refused ("The stage stint must finish before approving."); a real Codex Do stint started from the intent alone, with no ticket, added `multiply` and a passing node:test test, and the checkpoint committed it; the main checkout stayed clean; approving Do afterwards committed and moved the item to Review.
