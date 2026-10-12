@@ -59,6 +59,22 @@ test.each([
   expect(gateReadiness(workItem).reason).toContain("stint is running");
 });
 
+test("Do without tickets keeps its manual gate with no required stage output", () => {
+  const workItem = item("do", "quick");
+  workItem.spec = null;
+  workItem.tickets = [];
+  expect(gateReadiness(workItem)).toMatchObject({
+    ready: true,
+    nextStage: "review",
+    stageStint: null,
+    conditions: [
+      { id: "output", ready: true, label: "Developer approval; no file output required" },
+    ],
+  });
+  workItem.stints = [stint("do", { status: "running" })];
+  expect(gateReadiness(workItem).reason).toContain("stint is running");
+});
+
 test.each(["clarify", "spec", "tickets", "diagnose"] as const)(
   "%s needs its latest stage stint finished with a handoff",
   (stage) => {

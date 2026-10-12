@@ -87,7 +87,7 @@ test("bundled YAML is the source of all unchanged built-in workflows", () => {
       name: "Quick",
       defaultAgent: "codex",
       stages: [
-        ["do", "implement", null, "manual"],
+        ["do", "implement", "/implement", "manual"],
         ["review", "review", "/code-review", "evidence"],
         ["ship", "ship", null, "merge"],
       ],

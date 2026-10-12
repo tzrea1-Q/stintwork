@@ -77,11 +77,11 @@ test("rejects newly blocked or resolved tickets with a reason even before watche
   expect(await resolved.json()).toEqual({ reason: "This ticket is resolved." });
 });
 
-test("Fix uses /tdd, Do has no skill, and Review can preview a ticket stint", async () => {
+test("Fix uses /tdd, Do uses /implement, and Review can preview a ticket stint", async () => {
   const { root, project } = await fixture();
   for (const [workflow, stage, skill] of [
     ["bug", "fix", "/tdd"],
-    ["quick", "do", null],
+    ["quick", "do", "/implement"],
   ]) {
     await write(
       root,

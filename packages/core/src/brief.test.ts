@@ -175,7 +175,7 @@ test("resume briefs carry the checkpoint even when the last stint gave no handof
   expect(brief.changedPaths).toEqual([specPath]);
 });
 
-test("every built-in stage declares its skill, with no invocation for Ship or Do", () => {
+test("every built-in stage declares its skill, with no invocation for Ship", () => {
   const skills = {
     clarify: "/grill-with-docs",
     spec: "/to-spec",
@@ -185,7 +185,7 @@ test("every built-in stage declares its skill, with no invocation for Ship or Do
     ship: null,
     diagnose: "/diagnosing-bugs",
     fix: "/tdd",
-    do: null,
+    do: "/implement",
   };
   for (const workflow of Object.values(builtInWorkflows)) {
     for (const stage of workflow.stages) {
@@ -195,6 +195,51 @@ test("every built-in stage declares its skill, with no invocation for Ship or Do
       else expect(brief.prompt).not.toMatch(/^\//);
     }
   }
+});
+
+test.each(["first-stint", "another-item"])(
+  "Do briefs implement %s from intent without a spec or tickets",
+  (slug) => {
+    const files = createMemoryRepoFiles({
+      "AGENTS.md": "Project conventions",
+      [`.scratch/${slug}/workflow.yaml`]:
+        "workflow: quick\nstage: do\nintent: Change the greeting to Hello.\n",
+    });
+    const workItem = indexProject(files, { name: "Test" }).workItems[0];
+    expect(workItem).toMatchObject({ spec: null, tickets: [] });
+    expect(briefUnavailableReason(workItem)).toBeNull();
+    const brief = compileBrief({ files, workItem, stage: builtInWorkflows.quick.stages[0] });
+    expect(brief.skill).toBe("/implement");
+    expect(brief.prompt.split("\n")[0]).toBe(`/implement .scratch/${slug}/`);
+    expect(brief.prompt).toContain("What the developer asked for:\nChange the greeting to Hello.");
+    expect(brief.prompt).toContain("No spec yet.");
+    expect(brief.pointers).toEqual([
+      { path: "AGENTS.md", reason: "Project conventions and agent instructions" },
+    ]);
+    expect(brief.prompt).toContain(
+      `Work in the work item worktree on its branch, stintwork/${slug}.`,
+    );
+    expect(brief.prompt).toContain("Work on the Do stage only.");
+    expect(brief.prompt).toContain("Leave stage gate approval to the developer.");
+    expect(brief.prompt).toContain("Do not create another work item folder.");
+    expect(brief.prompt).toContain("Do not push.");
+    for (const instruction of [
+      "Write the spec to",
+      "Write tickets to",
+      "Finish this ticket only",
+      "Set the ticket's Status",
+    ])
+      expect(brief.prompt).not.toContain(instruction);
+  },
+);
+
+test("Do still compiles a ticket-scoped brief when a ticket is selected", () => {
+  const brief = compileBrief({ ...input(), stage: builtInWorkflows.quick.stages[0] });
+  expect(brief.skill).toBe("/implement");
+  expect(brief.prompt.split("\n")[0]).toBe(`/implement ${ticketPath}`);
+  expect(brief.prompt).toContain(`Finish this ticket only: ${ticketPath}.`);
+  expect(brief.prompt).toContain("Set the ticket's Status line to `resolved`");
+  expect(brief.prompt).toContain(`Commit referencing the ticket (${ticketPath}); do not push.`);
 });
 
 test.each([

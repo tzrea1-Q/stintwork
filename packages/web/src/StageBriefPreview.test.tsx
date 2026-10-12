@@ -82,17 +82,69 @@ test.each([
     workflow: "feature" as const,
     reason: "This stage has no stint skill.",
   },
-  { stage: "do" as const, workflow: "quick" as const, reason: "This stage has no stint skill." },
-])("the $stage action explains why a stage stint is disabled", ({ stage, workflow, reason }) => {
-  const fetch = vi.fn<(url: string) => Promise<Response>>(
-    async () => new Response(JSON.stringify({ agents: [] })),
-  );
-  vi.stubGlobal("fetch", fetch);
-  render(<WorkItemDrawer item={{ ...item, stage, workflow }} onClose={() => {}} />);
-  expect(screen.getByRole("button", { name: "Start stint" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(reason);
-  expect(fetch.mock.calls.every(([url]) => url === "/api/agents")).toBe(true);
-});
+  { stage: "ship" as const, workflow: "quick" as const, reason: "This stage has no stint skill." },
+])(
+  "the $workflow $stage action explains why a stage stint is disabled",
+  ({ stage, workflow, reason }) => {
+    const fetch = vi.fn<(url: string) => Promise<Response>>(
+      async () => new Response(JSON.stringify({ agents: [] })),
+    );
+    vi.stubGlobal("fetch", fetch);
+    render(<WorkItemDrawer item={{ ...item, stage, workflow }} onClose={() => {}} />);
+    expect(screen.getByRole("button", { name: "Start stint" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(reason);
+    expect(fetch.mock.calls.every(([url]) => url === "/api/agents")).toBe(true);
+  },
+);
+
+test.each(["quick", "bug"] as const)(
+  "the fresh %s drawer previews its first-stage intent and starts without a ticket",
+  async (workflow) => {
+    const firstStage = builtInWorkflows[workflow].stages[0];
+    const intent = "Change the greeting to Hello.";
+    const stageFiles = createMemoryRepoFiles({
+      "AGENTS.md": "Conventions",
+      ".scratch/planning/workflow.yaml": `workflow: ${workflow}\nstage: ${firstStage.id}\nintent: ${intent}\n`,
+    });
+    const workItem = indexProject(stageFiles, { name: "Project" }).workItems[0];
+    expect(workItem).toMatchObject({ spec: null, tickets: [] });
+    const stageBrief = compileBrief({ files: stageFiles, workItem, stage: firstStage });
+    const fetch = vi.fn(
+      async (url: string) =>
+        new Response(
+          JSON.stringify(url === "/api/agents" ? { agents: [codexProfile] } : stageBrief),
+        ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    render(<WorkItemDrawer item={workItem} onClose={() => {}} />);
+    const action = screen.getByRole("button", { name: "Start stint" });
+    expect(action).toBeEnabled();
+    await user.click(action);
+    const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
+    await sheet.findByRole("heading", { name: "Full prompt" });
+    expect(
+      sheet.getByText(`${firstStage.skill} .scratch/planning/`, { selector: "code" }),
+    ).toBeInTheDocument();
+    expect(sheet.getByText(/Working instructions:/, { selector: "pre" })).toHaveTextContent(
+      `What the developer asked for: ${intent}`,
+    );
+    await user.click(sheet.getByRole("button", { name: "Start" }));
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/stints",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          workItem: "planning",
+          ticket: null,
+          agent: "codex",
+          permissionLevel: "edit-freely",
+        }),
+      }),
+    );
+    expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
+  },
+);
 
 test("a stage preview defaults to its stage agent rather than the first registered agent", async () => {
   const user = userEvent.setup();
