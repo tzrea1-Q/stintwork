@@ -90,7 +90,7 @@ try {
   assert.equal(manifest.version, "0.1.1");
   assert.equal(manifest.private, undefined);
   assert.equal(manifest.engines.node, ">=22.12.0");
-  assert.equal(manifest.bin.stintwork, "./dist/bin.js");
+  assert.equal(manifest.bin.stintwork, "dist/bin.js");
   assert(
     !/(?:workspace:|@stintwork\/)/.test(manifestText),
     "Workspace reference in packed manifest.",

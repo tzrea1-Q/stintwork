@@ -13,7 +13,7 @@ test("only the root stintwork package is publishable, at 0.1.1 on Node 22.12 or 
     license: "Apache-2.0",
     type: "module",
     engines: { node: ">=22.12.0" },
-    bin: { stintwork: "./dist/bin.js" },
+    bin: { stintwork: "dist/bin.js" },
     files: ["dist/", "README.md", "README.zh-CN.md", "LICENSE"],
   });
   expect(manifest.private).toBeUndefined();
