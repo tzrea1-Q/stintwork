@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AgentAvailability, AgentProfile } from "@stintwork/core";
-import { type AgentLauncher, startAgentStint } from "./index.js";
-import { codexProfile } from "./profiles.js";
+import type { AgentLauncher } from "./index.js";
+import { createCodexAgent } from "./codex.js";
 import { createClaudeCodeAgent } from "./claude-code.js";
 import { createGrokAgent } from "./grok.js";
 
@@ -31,11 +31,7 @@ export async function refreshAgentAvailability(
 }
 
 function defaultAgents(): RegisteredAgent[] {
-  const agents = [
-    { ...codexProfile, launch: startAgentStint },
-    createClaudeCodeAgent(),
-    createGrokAgent(),
-  ];
+  const agents = [createCodexAgent(), createClaudeCodeAgent(), createGrokAgent()];
   // Test runs set this so the default registry never probes the agents installed on the machine.
   // Tests of detection itself build registries with their own detectors.
   if (process.env.STINTWORK_SKIP_AGENT_DETECTION !== "1") return agents;
