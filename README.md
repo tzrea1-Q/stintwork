@@ -2,7 +2,7 @@
 
 English | [简体中文](README.zh-CN.md)
 
-Stintwork takes work items from an idea to a merged change with your own coding agents. It shows stages on a local board and carries a brief and handoff between stints.
+Stintwork is a local workbench for one developer using their own coding agents on a real repository. It takes work through stages from an idea to a merged change, with a brief and handoff so another agent can pick up the next stint. Project intent and memory stay in the repo.
 
 ```bash
 npx stintwork
@@ -34,26 +34,30 @@ The CLI supports `--no-open`, `--help` and `--version`. With `--no-open`, open t
 ## Concepts
 
 - **Work item:** one feature, bug or small change, with files in `.scratch/<slug>/`.
-- **Stage:** one part of its workflow. A gate must pass before it advances.
-- **Stint:** one agent's turn on a stage, optionally on a ticket. A brief starts it; a handoff ends it. Stintwork records a checkpoint commit when it ends.
+- **Stage:** one part of its workflow. Its gate requires approval, passing checks or a merge before it advances.
+- **Stint:** one agent's turn on a stage, optionally on a ticket. A brief starts it; a handoff records where it stopped, what's unresolved and what to do next. When it ends, Stintwork commits any uncommitted changes as a checkpoint.
 
-## The board
+## How it works
 
-The Pipeline view shows stages and a **Needs you** queue for questions, permissions, gates and memory proposals. Press `c` to create a work item, or use **Create work item** in ⌘K (Ctrl+K also works). Give it a title, workflow, optional milestone and intent. Creation is one commit.
+1. **Create a work item.** Press `c`, or choose **Create work item** in ⌘K / Ctrl+K. Give it a title, intent, workflow and optional milestone. Creation makes one commit.
+2. **Move through stages.** Each stage has a gate; finishing an agent's stint alone does not advance the work item.
+3. **Work in stints.** Preview the brief, then start an agent. The next stint receives the handoff and changes since it. You can switch agents and answer unresolved items with a developer note for the next brief.
+4. **Review with evidence.** Resolve or accept every finding, pass the configured checks and keep review and check evidence current. Open memory proposals also block Review.
+5. **Ship by merging.** Use **Merge locally**, or open and merge a pull request through `gh`, with explicit confirmation before pushing. Shipped means the change is merged.
 
-The **Setup** chip previews proposed project files. You select the changes, then confirm one commit. It also reports whether each agent's stage skills are found, missing or can't tell. Stintwork never installs skills.
+## Features
 
-Built-in workflows are YAML:
+- **Pipeline board:** stages and a **Needs you** queue for questions, permission requests, gate approvals and memory proposals.
+- **Guided setup:** the **Setup** button at the top of the board previews files to add or change. Select the changes and confirm one commit. Skill detection reports found, missing or can't tell; it does not install skills.
+- **Permissions per stint:** choose **Ask**, **Edit freely** or **Autonomous**. Read the agent-specific warnings in the brief preview; these levels depend on the agent and are not an independent security boundary.
+- **Custom workflows:** **Customise** copies a built-in to `.stintwork/workflows/` for you to edit its YAML.
+- **Roadmap editing:** **Edit roadmap** changes milestones and their work items, with one commit per edit.
+
+Built-in workflows:
 
 - **Feature:** Clarify → Spec → Tickets → Implement → Review → Ship.
 - **Bug:** Diagnose → Fix → Review → Ship.
 - **Quick:** Do → Review → Ship.
-
-**Customise** copies a built-in to `.stintwork/workflows/` for editing. **Edit roadmap** changes milestones and their work items, with one commit per edit.
-
-Choose an agent and permission level for each stint: **Ask**, **Edit freely** or **Autonomous**. Read the agent-specific warnings in the brief preview. Answer unresolved handoff items with a developer note for the next brief.
-
-Review needs decided findings, passing current checks, no stale evidence and no open memory proposals. Ship means a merge: **Merge locally**, or a pull request through `gh` after explicit push confirmation.
 
 ## Project files
 
