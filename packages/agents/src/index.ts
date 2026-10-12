@@ -28,6 +28,7 @@ import { AgentAuthenticationError } from "./authentication.js";
 import { adapterEntry } from "./adapter-entry.js";
 
 export { AgentAuthenticationError } from "./authentication.js";
+export { createCodexAgent } from "./codex.js";
 export { createClaudeCodeAgent } from "./claude-code.js";
 export { claudeProfile } from "./profiles.js";
 
