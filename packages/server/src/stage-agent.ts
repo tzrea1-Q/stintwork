@@ -82,7 +82,6 @@ export function addStageAgentRoute(
         worktree ?? root,
         slug,
         (text) => workflowStageAgent(text, item, stage.id, agent.id),
-        !!worktree,
         `Set ${stage.id} agent to ${agent.id} for ${slug}`,
       );
       refresh();

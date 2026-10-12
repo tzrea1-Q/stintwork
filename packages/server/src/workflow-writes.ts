@@ -31,7 +31,6 @@ export async function saveWorkItemWorkflow(
   root: string,
   slug: string,
   update: (existing: string | undefined) => string,
-  commit: boolean,
   message: string,
 ) {
   const relative = `.scratch/${slug}/workflow.yaml`;
@@ -42,19 +41,19 @@ export async function saveWorkItemWorkflow(
   const changed = writeWorkItemWorkflow(root, slug, (text) => {
     existing = text;
     written = update(text);
-    if (commit) {
-      indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
-        cwd: root,
-        encoding: "utf8",
-      }).trim();
-      if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
-        throw new Error("Resolve workflow.yaml's index conflict before changing it.");
-    }
+    indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
+      throw new Error("Resolve workflow.yaml's index conflict before changing it.");
     return written;
   });
-  if (!commit) return null;
   try {
-    return await commitStintworkSetup(root, slug, [relative], message);
+    const commit = await commitStintworkSetup(root, slug, [relative], message);
+    if (changed && commit === null)
+      throw new Error("workflow.yaml could not be committed. Check whether it is ignored by Git.");
+    return commit;
   } catch (error) {
     if (changed && readFileSync(path, "utf8") === written) {
       if (existing === undefined) rmSync(path);

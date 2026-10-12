@@ -76,6 +76,8 @@ export type AgentStint = {
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (cwd: string) => ChildProcessWithoutNullStreams;
 
+const agentReadyTimeoutMs = 60_000;
+
 export function createAgentLauncher(
   launchAdapter: AdapterLauncher,
   profile: AgentProfile = codexProfile,
@@ -356,8 +358,12 @@ export function createAgentLauncher(
         const timeout = new Promise<never>((_resolve, reject) => {
           timer = setTimeout(
             () =>
-              reject(new Error(`${profile.displayName} did not become ready within 15 seconds.`)),
-            15_000,
+              reject(
+                new Error(
+                  `The agent took longer than ${agentReadyTimeoutMs / 1000} seconds to start; the machine may be busy. Try again.`,
+                ),
+              ),
+            agentReadyTimeoutMs,
           );
         });
         await Promise.race([initialize, failure, timeout]);

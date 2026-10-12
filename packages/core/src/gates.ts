@@ -24,7 +24,11 @@ export function gateReadiness(
     reason = "This stage has no approval gate.";
   else if (item.activeStint || item.stints.some(({ status }) => status === "running"))
     reason = "A stint is running on this work item. Finish or stop it before approving.";
-  else if (stages[position].column === "implement" && stages[position].gate === "manual") {
+  else if (
+    stages[position].column === "implement" &&
+    stages[position].gate === "manual" &&
+    (item.tickets.length > 0 || !stages[position].skill)
+  ) {
     if (!item.tickets.every(({ resolved }) => resolved))
       reason = "Every ticket must be resolved before approving.";
   } else {

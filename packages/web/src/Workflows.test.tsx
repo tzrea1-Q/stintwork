@@ -4,7 +4,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 
-function project(id = "team", stage = "design") {
+function project(id = "team", stage = "design", tickets = false) {
   return indexProject(
     createMemoryRepoFiles({
       ".stintwork/workflows/custom.yaml": JSON.stringify({
@@ -19,6 +19,9 @@ function project(id = "team", stage = "design") {
       }),
       ".scratch/example/spec.md": "# Example",
       ".scratch/example/workflow.yaml": `workflow: ${id}\nstage: ${stage}\n`,
+      ...(tickets
+        ? { ".scratch/example/issues/01-build.md": "# Build\nStatus: resolved\nBlocked by: none" }
+        : {}),
     }),
     { name: "Fixture" },
   );
@@ -57,6 +60,8 @@ test("custom implementation gates and renamed Ship stages stay usable", () => {
   );
   window.history.replaceState({}, "", "/?item=example");
   const rendered = render(<Board snapshot={project("team", "build")} />);
+  expect(screen.getByRole("button", { name: "Approve Build" })).toBeDisabled();
+  rendered.rerender(<Board snapshot={project("team", "build", true)} />);
   expect(screen.getByRole("button", { name: "Approve Build" })).toBeEnabled();
   rendered.rerender(<Board snapshot={project("team", "deliver")} />);
   expect(screen.getByRole("button", { name: "Merge locally" })).toBeInTheDocument();

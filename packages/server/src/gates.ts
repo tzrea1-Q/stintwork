@@ -102,7 +102,6 @@ export function addGateRoutes(
           directory,
           slug,
           (text) => workflowGate(text, item, stage.id, action, record, snapshot.workflows),
-          !!worktree,
           `${action === "approve" ? "Approve" : "Reopen"} ${stage.id} gate for ${slug}`,
         );
         refresh();

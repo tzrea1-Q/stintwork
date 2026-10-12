@@ -81,13 +81,15 @@ afterEach(async () => {
   }
 });
 
-test("the developer can choose a future stage's agent in the main checkout without committing or advancing the stage", async () => {
+test("a future stage's agent choice commits only workflow.yaml in main without advancing the stage", async () => {
   const { root, project } = await fixture();
   const head = git(root, "rev-parse", "HEAD");
-  expect(await (await choose(project)).json()).toEqual({
+  const response = await choose(project);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
     stage: "review",
     agent: "claude",
-    commit: null,
+    commit: expect.any(String),
   });
   const text = await readFile(join(root, workflowPath), "utf8");
   expect(text).toContain("agent: claude");
@@ -95,7 +97,13 @@ test("the developer can choose a future stage's agent in the main checkout witho
   expect(text).toContain("approved: true");
   expect(text).toContain("stage: implement");
   expect(text).toContain("milestone: M3");
-  expect(git(root, "rev-parse", "HEAD")).toBe(head);
+  expect(git(root, "rev-parse", "HEAD")).not.toBe(head);
+  expect(git(root, "show", "--format=", "--name-only", "HEAD")).toBe(workflowPath);
+  expect(git(root, "log", "-1", "--format=%s")).toBe("Set review agent to claude for first");
+  expect(git(root, "status", "--porcelain")).toBe("");
+  const chosen = git(root, "rev-parse", "HEAD");
+  expect(await (await choose(project)).json()).toMatchObject({ commit: null });
+  expect(git(root, "rev-parse", "HEAD")).toBe(chosen);
   const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
   expect(snapshot.workItems[0].stages.review.agent).toBe("claude");
 });
