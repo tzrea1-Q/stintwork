@@ -1,5 +1,7 @@
 # Stintwork
 
+English | [简体中文](README.zh-CN.md)
+
 Stintwork takes work items from an idea to a merged change with your own coding agents. It shows stages on a local board and carries a brief and handoff between stints.
 
 ```bash
