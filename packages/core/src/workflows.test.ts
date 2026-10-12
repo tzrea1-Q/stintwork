@@ -87,7 +87,7 @@ test("bundled YAML is the source of all unchanged built-in workflows", () => {
       name: "Quick",
       defaultAgent: "codex",
       stages: [
-        ["do", "implement", null, "manual"],
+        ["do", "implement", "/implement", "manual"],
         ["review", "review", "/code-review", "evidence"],
         ["ship", "ship", null, "merge"],
       ],
@@ -373,6 +373,27 @@ test("file port errors warn, and only direct YAML files are loaded", () => {
 test("custom gates advance, reopen and record a merge using the loaded order", () => {
   const snapshot = project(definition("team"), "team", "build");
   const item = snapshot.workItems[0];
+  expect(gateReadiness(item, snapshot.workflows).ready).toBe(false);
+  item.stints = [
+    {
+      id: "build-stint",
+      workItem: item.slug,
+      stage: "build",
+      ticket: null,
+      agent: "claude",
+      status: "finished",
+      startedAt: "2026-10-10T09:00:00Z",
+      endedAt: "2026-10-10T09:05:00Z",
+      checkpointCommit: null,
+      handoff: {
+        stint: "build-stint",
+        agent: "claude",
+        stoppedAt: "Built",
+        unresolved: "None",
+        nextStep: "Approve",
+      },
+    },
+  ];
   expect(gateReadiness(item, snapshot.workflows)).toMatchObject({
     ready: true,
     nextStage: "inspect",

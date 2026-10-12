@@ -68,7 +68,7 @@ stages:
   - id: do
     name: Do
     column: implement
-    skill: null
+    skill: /implement
     gate: manual
   - id: review
     name: Review

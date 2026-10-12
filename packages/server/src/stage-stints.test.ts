@@ -4,7 +4,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
-import { type Brief, foldStintLog, type Stint, type StintLogEntry } from "@stintwork/core";
+import {
+  type Brief,
+  foldStintLog,
+  type ProjectSnapshot,
+  type Stint,
+  type StintLogEntry,
+} from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
 import { createProjectServer } from "./index.js";
 
@@ -31,6 +37,7 @@ async function fixture(
     { type: "write", path: spec, content: "# Planned feature\nLimit: 32" },
     { type: "message", text: "Spec ready" },
   ],
+  workflow: string | null = "workflow: feature\nstage: spec\n",
 ) {
   const parent = await mkdtemp(join(tmpdir(), "stintwork-stage-"));
   const root = join(parent, "project");
@@ -39,7 +46,7 @@ async function fixture(
   git(root, "config", "user.email", "developer@example.invalid");
   await write(root, "AGENTS.md", "Conventions");
   await write(root, ".gitignore", ".stintwork/local/\n");
-  await write(root, `${folder}/workflow.yaml`, "workflow: feature\nstage: spec\n");
+  if (workflow !== null) await write(root, `${folder}/workflow.yaml`, workflow);
   await write(root, "web/index.html", "<!doctype html><title>Stintwork</title>");
   git(root, "add", "--all");
   git(root, "commit", "--quiet", "-m", "Fixture");
@@ -85,6 +92,81 @@ async function ended(project: ReturnType<typeof createProjectServer>, id: string
     .not.toBe("running");
   return stint as Stint;
 }
+
+test.each([
+  ["quick", "do", "/implement", "review"],
+  ["bug", "diagnose", "/diagnosing-bugs", "fix"],
+])(
+  "a freshly created %s starts from intent without tickets and checkpoints its first stint",
+  async (workflow, stage, skill, nextStage) => {
+    const intent = "Change the greeting to Hello.";
+    const { root, project } = await fixture(
+      [
+        { type: "expect-prompt", includes: `${skill} ${folder}/` },
+        { type: "expect-prompt", includes: `What the developer asked for:\n${intent}` },
+        { type: "expect-prompt", includes: "No spec yet." },
+        { type: "expect-file", path: `${folder}/workflow.yaml`, includes: intent },
+        { type: "write", path: "greeting.txt", content: "Hello" },
+      ],
+      null,
+    );
+    const created = await project.app.request("/api/work-items", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Planning", workflow, intent }),
+    });
+    expect(created.status).toBe(201);
+    const before: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+    expect(before.workItems).toHaveLength(1);
+    expect(before.workItems[0]).toMatchObject({ stage, intent, spec: null, tickets: [] });
+    expect(before.workItems[0].worktreePath).toBeUndefined();
+    const previewed = await project.app.request(preview);
+    const response = await start(project);
+    expect(response.status, JSON.stringify(await response.clone().json())).toBe(201);
+    expect(previewed.status).toBe(200);
+    const brief: Brief = await previewed.json();
+    expect(brief.skill).toBe(skill);
+    expect(brief.prompt).toContain(`What the developer asked for:\n${intent}`);
+    const { stint }: { stint: Stint } = await response.json();
+    expect(stint).toMatchObject({ stage, ticket: null, brief });
+    const finished = await ended(project, stint.id);
+    expect(finished).toMatchObject({
+      status: "finished",
+      ticket: null,
+      checkpointCommit: expect.any(String),
+      handoff: { stint: stint.id },
+    });
+    expect(git(stint.worktree.path, "show", `${finished.checkpointCommit}:greeting.txt`)).toBe(
+      "Hello",
+    );
+    expect(git(stint.worktree.path, "status", "--porcelain")).toBe("");
+    await expect(readFile(join(root, "greeting.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    const after: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+    expect(after.workItems[0]).toMatchObject({
+      stage,
+      intent,
+      spec: null,
+      tickets: [],
+      worktreePath: stint.worktree.path,
+    });
+    const next: Brief = await (await project.app.request(preview)).json();
+    expect(next.lastHandoff).toEqual(finished.handoff);
+    expect(next.checkpointCommit).toBe(finished.checkpointCommit);
+    const approved = await project.app.request(`/api/work-items/planning/gates/${stage}/approve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(approved.status).toBe(200);
+    expect(await approved.json()).toMatchObject({ stage: nextStage });
+    expect(await readFile(join(stint.worktree.path, folder, "workflow.yaml"), "utf8")).toContain(
+      `stage: ${nextStage}`,
+    );
+    expect(await readFile(join(root, folder, "workflow.yaml"), "utf8")).toContain(
+      `stage: ${stage}`,
+    );
+  },
+);
 
 test.each([undefined, null])(
   "Spec starts without a ticket (%s), checkpoints both turns and resumes after restart",
@@ -204,7 +286,7 @@ test("stage and ticket starts share the work item active-stint guard, and stoppi
 
 test.each([
   ["feature", "ship"],
-  ["quick", "do"],
+  ["quick", "ship"],
 ])("%s %s refuses stage starts without creating a worktree or log", async (workflow, stage) => {
   const { root, project } = await fixture();
   await write(root, `${folder}/workflow.yaml`, `workflow: ${workflow}\nstage: ${stage}\n`);
@@ -213,6 +295,84 @@ test.each([
   expect(git(root, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
   await expect(readFile(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
     code: "ENOENT",
+  });
+});
+
+test("ticket-scoped Do keeps ticket refusals, checkpoints and its manual gate rule", async () => {
+  const first = `${folder}/issues/01-greeting.md`;
+  const { root, project } = await fixture(
+    [
+      { type: "expect-prompt", includes: `/implement ${first}` },
+      { type: "expect-prompt", includes: `Finish this ticket only: ${first}.` },
+      { type: "write", path: first, content: "# Greeting\nStatus: resolved\nBlocked by: none" },
+      { type: "write", path: "greeting.txt", content: "Hello" },
+      { type: "hang" },
+    ],
+    "workflow: quick\nstage: do\n",
+  );
+  await write(root, first, "# Greeting\nStatus: ready-for-agent\nBlocked by: none");
+  await write(
+    root,
+    `${folder}/issues/02-followup.md`,
+    "# Followup\nStatus: ready-for-agent\nBlocked by: 01",
+  );
+  await write(
+    root,
+    `${folder}/issues/03-finished.md`,
+    "# Finished\nStatus: resolved\nBlocked by: none",
+  );
+  git(root, "add", "--all");
+  git(root, "commit", "--quiet", "-m", "Quick tickets fixture");
+  const approve = () =>
+    project.app.request("/api/work-items/planning/gates/do/approve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+  for (const [number, reason] of [
+    [2, "Blocked by ticket 01."],
+    [3, "This ticket is resolved."],
+  ] as const) {
+    const refused = await start(project, number);
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ reason });
+  }
+  const notReady = await approve();
+  expect(notReady.status).toBe(409);
+  expect(await notReady.json()).toMatchObject({
+    reason: "Every ticket must be resolved before approving.",
+  });
+  const previewed = await project.app.request("/api/work-items/planning/tickets/1/brief-preview");
+  expect(previewed.status).toBe(200);
+  const brief: Brief = await previewed.json();
+  const response = await start(project, 1);
+  expect(response.status).toBe(201);
+  const { stint }: { stint: Stint } = await response.json();
+  expect(stint).toMatchObject({ stage: "do", ticket: 1, brief });
+  await expect
+    .poll(() => readFile(join(stint.worktree.path, "greeting.txt"), "utf8").catch(() => null))
+    .toBe("Hello");
+  const active = await approve();
+  expect(active.status).toBe(409);
+  expect(await active.json()).toMatchObject({
+    reason: "A stint, check or workflow write is active for this work item.",
+  });
+  expect(
+    (await project.app.request(`/api/stints/${stint.id}/stop`, { method: "POST" })).status,
+  ).toBe(202);
+  const stopped = await ended(project, stint.id);
+  expect(stopped).toMatchObject({
+    status: "stopped",
+    ticket: 1,
+    checkpointCommit: expect.any(String),
+  });
+  expect(git(stint.worktree.path, "show", `${stopped.checkpointCommit}:${first}`)).toContain(
+    "Status: resolved",
+  );
+  const unresolved = await approve();
+  expect(unresolved.status).toBe(409);
+  expect(await unresolved.json()).toMatchObject({
+    reason: "Every ticket must be resolved before approving.",
   });
 });
 

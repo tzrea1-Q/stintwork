@@ -233,6 +233,7 @@ test("HTTP and live snapshots accept project workflow ids, stages and gate atten
       }),
       ".scratch/example/spec.md": "# Example",
       ".scratch/example/workflow.yaml": "workflow: team\nstage: build\n",
+      ".scratch/example/issues/01-build.md": "# Build\nStatus: resolved\nBlocked by: none",
     }),
     { name: "Fixture" },
   );

@@ -35,7 +35,7 @@ test.each(
 )(
   "$workflow $stage.name briefs invoke the skill with or without a ticket",
   ({ workflow, stage }) => {
-    const implementation = ["implement", "fix"].includes(stage.id);
+    const implementation = stage.column === "implement";
     for (const ticket of [null, { ...item.tickets[0], resolved: !implementation }]) {
       expect(briefUnavailableReason({ ...item, workflow, stage: stage.id }, ticket)).toBeNull();
       const brief = compileBrief({
@@ -84,10 +84,12 @@ test("Clarify without a spec says so and uses project instructions plus the work
   expect(brief.prompt).not.toContain("undefined");
 });
 
-test.each(["ship", "do"] as const)("%s cannot start a stage stint without a ticket", (stage) => {
-  const workflow = stage === "do" ? "quick" : "feature";
-  expect(briefUnavailableReason({ type: "feature", workflow, stage })).not.toBeNull();
-});
+test.each(["feature", "quick"])(
+  "%s Ship cannot start a stage stint without a ticket",
+  (workflow) => {
+    expect(briefUnavailableReason({ type: "feature", workflow, stage: "ship" })).not.toBeNull();
+  },
+);
 
 test("efforts and work items with no declared stage cannot start a stage stint", () => {
   expect(briefUnavailableReason({ type: "effort", stage: "spec" })).not.toBeNull();

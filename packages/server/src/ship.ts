@@ -277,7 +277,6 @@ export function addShipRoutes(
                 checkout,
                 slug,
                 (text) => workflowPullRequest(text, pullRequest, workflows, item.workflow),
-                true,
                 `Record pull request #${opened.number} for ${slug}`,
               );
               refresh();
@@ -350,7 +349,6 @@ export function addShipRoutes(
                 checkout,
                 slug,
                 (text) => workflowPullRequest(text, requested, workflows, item.workflow),
-                true,
                 `Record merge method for pull request #${pr.number} for ${slug}`,
               );
               head = await shipGit(checkout, ["rev-parse", "HEAD"]);
@@ -397,7 +395,6 @@ export function addShipRoutes(
                   workflows,
                   item.workflow,
                 ),
-              true,
               `Record merge of ${slug}`,
             );
             if ((await shipGit(checkout, ["rev-parse", "HEAD"])) !== head)
@@ -420,7 +417,6 @@ export function addShipRoutes(
                 root,
                 slug,
                 (text) => workflowMerge(text, merged as MergeRecord, workflows, item.workflow),
-                true,
                 `Record merge of ${slug}`,
               );
             },

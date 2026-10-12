@@ -59,6 +59,52 @@ test.each([
   expect(gateReadiness(workItem).reason).toContain("stint is running");
 });
 
+test.each([
+  ["implement", "feature"],
+  ["fix", "bug"],
+  ["do", "quick"],
+] as const)(
+  "%s without tickets needs its latest stage stint finished with a handoff",
+  (stage, workflow) => {
+    const workItem = item(stage, workflow);
+    workItem.spec = null;
+    workItem.tickets = [];
+    expect(gateReadiness(workItem)).toMatchObject({
+      ready: false,
+      reason: "The stage stint must finish before approving.",
+    });
+    workItem.stints = [stint(stage)];
+    expect(gateReadiness(workItem)).toMatchObject({
+      ready: true,
+      nextStage: "review",
+      conditions: [
+        { id: "output", ready: true, label: "Developer approval; no file output required" },
+      ],
+    });
+    for (const overrides of [
+      { status: "stopped" },
+      { status: "failed" },
+      { status: "interrupted" },
+      { handoff: null },
+      { stage: "review" },
+    ] as Partial<StintSummary>[]) {
+      workItem.stints = [stint(stage, overrides)];
+      expect(gateReadiness(workItem).ready).toBe(false);
+    }
+    workItem.stints = [stint(stage, { status: "failed" }), stint(stage)];
+    expect(gateReadiness(workItem).ready).toBe(false);
+    workItem.stints = [stint(stage)];
+    workItem.stages[stage] = {
+      reopened: { by: "Developer", at: "2026-10-09T10:06:00Z", commit: "checkpoint" },
+    };
+    expect(gateReadiness(workItem).ready).toBe(false);
+    workItem.stints = [stint(stage, { endedAt: "2026-10-09T10:07:00Z" })];
+    expect(gateReadiness(workItem).ready).toBe(true);
+    workItem.stints = [stint(stage, { status: "running" })];
+    expect(gateReadiness(workItem).reason).toContain("stint is running");
+  },
+);
+
 test.each(["clarify", "spec", "tickets", "diagnose"] as const)(
   "%s needs its latest stage stint finished with a handoff",
   (stage) => {

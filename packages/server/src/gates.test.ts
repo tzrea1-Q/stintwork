@@ -79,17 +79,49 @@ afterEach(async () => {
   }
 });
 
+test("a fresh Quick item cannot approve Do before a finished stage stint", async () => {
+  const { root, project } = await fixture();
+  const created = await project.app.request("/api/work-items", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Add multiply", workflow: "quick", intent: "Add multiply." }),
+  });
+  expect(created.status).toBe(201);
+  const head = git(root, "rev-parse", "HEAD");
+  const path = join(root, ".scratch/add-multiply/workflow.yaml");
+  const before = await readFile(path, "utf8");
+  expect(
+    (await snapshot(project)).workItems.find(({ slug }) => slug === "add-multiply"),
+  ).toMatchObject({ stage: "do", tickets: [], stints: [] });
+  const response = await action(project, "do", "approve", "add-multiply");
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    reason: "The stage stint must finish before approving.",
+  });
+  expect(git(root, "rev-parse", "HEAD")).toBe(head);
+  expect(await readFile(path, "utf8")).toBe(before);
+  expect(git(root, "status", "--porcelain")).toBe("");
+  expect(
+    (await snapshot(project)).attentionItems.some(
+      ({ kind, workItem }) => kind === "gate-ready" && workItem === "add-multiply",
+    ),
+  ).toBe(false);
+});
+
 test("approval in the main checkout records HEAD, preserves preferences, advances the snapshot, and reopen reverses it", async () => {
   const { root, project } = await fixture();
   const before = git(root, "rev-parse", "HEAD");
+  await writeFile(join(root, "unrelated.txt"), "Keep staged");
+  git(root, "add", "unrelated.txt");
   expect((await snapshot(project)).attentionItems).toMatchObject([
     { kind: "gate-ready", stage: "implement" },
   ]);
   const response = await action(project);
   expect(response.status).toBe(200);
-  expect(await response.json()).toMatchObject({
+  const result = await response.json();
+  expect(result).toMatchObject({
     stage: "review",
-    commit: null,
+    commit: expect.any(String),
     record: { by: "Developer Tests", commit: before, at: expect.any(String) },
   });
   const approved = await readFile(join(root, workflowPath), "utf8");
@@ -97,7 +129,12 @@ test("approval in the main checkout records HEAD, preserves preferences, advance
   expect(approved).toContain("agent: claude");
   expect(approved).toContain("milestone: M3");
   expect(approved).toContain("approved:");
-  expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  const approval = git(root, "rev-parse", "HEAD");
+  expect(result.commit).toBe(approval);
+  expect(approval).not.toBe(before);
+  expect(git(root, "log", "-1", "--format=%s")).toBe("Approve implement gate for first");
+  expect(git(root, "show", "--format=", "--name-only", "HEAD")).toBe(workflowPath);
+  expect(git(root, "status", "--porcelain")).toBe("A  unrelated.txt");
   expect((await snapshot(project)).workItems[0]).toMatchObject({
     stage: "review",
     column: "review",
@@ -105,14 +142,19 @@ test("approval in the main checkout records HEAD, preserves preferences, advance
   });
   expect((await snapshot(project)).attentionItems).toEqual([]);
   expect((await action(project)).status).toBe(409);
-  expect((await action(project, "implement", "reopen")).status).toBe(200);
+  const reopened = await action(project, "implement", "reopen");
+  expect(reopened.status).toBe(200);
+  expect(await reopened.json()).toMatchObject({ commit: git(root, "rev-parse", "HEAD") });
+  expect(git(root, "log", "-1", "--format=%s")).toBe("Reopen implement gate for first");
+  expect(git(root, "show", "--format=", "--name-only", "HEAD")).toBe(workflowPath);
+  expect(git(root, "status", "--porcelain")).toBe("A  unrelated.txt");
   expect((await snapshot(project)).workItems[0]).toMatchObject({
     stage: "implement",
     column: "implement",
     stages: {
       implement: {
         approved: { commit: before },
-        reopened: { by: "Developer Tests", commit: before },
+        reopened: { by: "Developer Tests", commit: approval },
       },
     },
   });
@@ -232,25 +274,53 @@ test("a running stage stint refuses approval and reopen without a workflow write
   expect(git(root, "status", "--porcelain", "--", workflowPath)).toBe("");
 });
 
-test("failed gate commits restore the workflow and its original index entry", async () => {
-  const { root, project } = await fixture();
-  const worktree = await ensureWorktree(root, "first");
-  await writeFile(join(worktree.path, workflowPath), `${workflow}# Staged preference\n`);
-  git(worktree.path, "add", workflowPath);
-  const original = `${workflow}# Staged preference\n# Unstaged preference\n`;
-  await writeFile(join(worktree.path, workflowPath), original);
-  const gitDirectory = git(root, "rev-parse", "--absolute-git-dir");
-  const hook = join(gitDirectory, "hooks", "pre-commit");
-  await writeFile(hook, "#!/bin/sh\nexit 1\n");
-  await chmod(hook, 0o755);
-  const head = git(worktree.path, "rev-parse", "HEAD");
-  const index = git(worktree.path, "ls-files", "--stage", "--", workflowPath);
-  expect((await action(project)).status).toBe(503);
-  expect(await readFile(join(worktree.path, workflowPath), "utf8")).toBe(original);
-  expect(git(worktree.path, "ls-files", "--stage", "--", workflowPath)).toBe(index);
-  expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
-  expect((await snapshot(project)).workItems[0].stage).toBe("implement");
-});
+test.each([false, true])(
+  "failed gate commits restore the workflow and index (worktree: %s)",
+  async (useWorktree) => {
+    const { root, project } = await fixture();
+    const directory = useWorktree ? (await ensureWorktree(root, "first")).path : root;
+    await writeFile(join(directory, workflowPath), `${workflow}# Staged preference\n`);
+    git(directory, "add", workflowPath);
+    const original = `${workflow}# Staged preference\n# Unstaged preference\n`;
+    await writeFile(join(directory, workflowPath), original);
+    const gitDirectory = git(root, "rev-parse", "--absolute-git-dir");
+    const hook = join(gitDirectory, "hooks", "pre-commit");
+    await writeFile(hook, "#!/bin/sh\nexit 1\n");
+    await chmod(hook, 0o755);
+    const head = git(directory, "rev-parse", "HEAD");
+    const index = git(directory, "ls-files", "--stage", "--", workflowPath);
+    expect((await action(project)).status).toBe(503);
+    expect(await readFile(join(directory, workflowPath), "utf8")).toBe(original);
+    expect(git(directory, "ls-files", "--stage", "--", workflowPath)).toBe(index);
+    expect(git(directory, "rev-parse", "HEAD")).toBe(head);
+    expect((await snapshot(project)).workItems[0].stage).toBe("implement");
+  },
+);
+
+test.each(["hook", "ignored"])(
+  "an uncommittable new workflow is refused and removed (%s)",
+  async (failure) => {
+    const { root, project } = await fixture(null);
+    const head = git(root, "rev-parse", "HEAD");
+    const gitDirectory = git(root, "rev-parse", "--absolute-git-dir");
+    if (failure === "hook") {
+      const hook = join(gitDirectory, "hooks", "pre-commit");
+      await writeFile(hook, "#!/bin/sh\nexit 1\n");
+      await chmod(hook, 0o755);
+    } else await writeFile(join(gitDirectory, "info", "exclude"), `${workflowPath}\n`);
+    const response = await project.app.request("/api/work-items/first/stages/review/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: '{"agent":"codex"}',
+    });
+    expect(response.status).toBe(503);
+    await expect(readFile(join(root, workflowPath))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(git(root, "ls-files", "--stage", "--", workflowPath)).toBe("");
+    expect(git(root, "rev-parse", "HEAD")).toBe(head);
+    expect(git(root, "status", "--porcelain")).toBe("");
+    expect((await snapshot(project)).workItems[0].stage).toBe("review");
+  },
+);
 
 test("gate writes serialize with stage agent choices and stint starts", async () => {
   const { root, project } = await fixture();
