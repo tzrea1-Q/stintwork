@@ -5,10 +5,13 @@
 独自维护项目时，Stintwork 可以帮你用自己已安装的编程智能体，从一个想法一路做到代码合并。工作在本地按阶段推进，每轮都有任务简报和交接说明，下一轮可以换一个智能体接着做。项目要做什么、有哪些约定和决策，都留在仓库里。
 
 ```bash
+cd /path/to/your/project
 npx stintwork
 ```
 
-在项目的 Git 仓库中运行这条命令，Stintwork 会启动本地服务器，在终端显示地址并打开浏览器。
+在你自己的项目 Git 仓库中运行，而不是 Stintwork 仓库；npx 会从 npm 为你下载 Stintwork。
+
+Stintwork 会启动本地服务器，在终端显示地址并打开浏览器。工作项的工作树创建在项目目录旁的 `<project>-worktrees/<slug>` 中。
 
 **状态：** v0.1，仅限本地使用。Claude Code 和 Codex 已通过 ACP 验证。Grok Build 为实验性支持，尚未完成端到端验证。
 
@@ -90,11 +93,12 @@ CLI 支持 `--no-open`、`--help` 和 `--version`。加上 `--no-open` 后不会
 | [`prototype/`](prototype/)（英文） | 仅作设计参考的原型，正式界面选择了 Pipeline 视图 |
 | [`spikes/acp-probe/`](spikes/acp-probe/)（英文） | ACP 能力检查 |
 
-### 从源码运行
+### 参与开发 Stintwork
 
-开发 Stintwork 时，可以用 pnpm 构建本地源码。在 Stintwork 仓库里运行前两条命令，再切换到要使用它的项目 Git 仓库中启动：
+日常使用无需克隆或构建 Stintwork。参与开发 Stintwork 时，先在 Stintwork 源码目录中用 pnpm 构建，再切换到你自己的项目 Git 仓库中运行：
 
 ```bash
+cd /path/to/stintwork
 pnpm install
 pnpm build
 cd /path/to/your/project

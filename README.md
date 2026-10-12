@@ -5,10 +5,13 @@ English | [简体中文](README.zh-CN.md)
 Stintwork is a local workbench for one developer using their own coding agents on a real repository. It takes work through stages from an idea to a merged change, with a brief and handoff so another agent can pick up the next stint. Project intent and memory stay in the repo.
 
 ```bash
+cd /path/to/your/project
 npx stintwork
 ```
 
-Start it inside a git repository. It starts a local server, prints its address and opens the browser.
+Run this in your own project's git repository, not the Stintwork repository; npx downloads Stintwork from npm for you.
+
+It starts a local server, prints its address and opens the browser. Work item worktrees are created next to the project at `<project>-worktrees/<slug>`.
 
 **Status:** v0.1, local-only. Claude Code and Codex are verified over ACP. Grok Build is experimental and not verified end to end.
 
@@ -88,11 +91,12 @@ Contributor references:
 | [`prototype/`](prototype/) | Throwaway design reference; Pipeline was chosen |
 | [`spikes/acp-probe/`](spikes/acp-probe/) | ACP capability checks |
 
-### From a local checkout
+### Developing Stintwork itself
 
-Contributors can build a Stintwork checkout with pnpm. Run the first two commands there, then start it inside your project's git repository:
+Ordinary use does not require cloning or building Stintwork. To develop Stintwork itself, build in its checkout with pnpm, then run it from your project's git repository:
 
 ```bash
+cd /path/to/stintwork
 pnpm install
 pnpm build
 cd /path/to/your/project
