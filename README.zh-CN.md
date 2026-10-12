@@ -20,17 +20,20 @@ Stintwork 已发布到 npm。[入门指南](docs/getting-started.md)（英文）
 ## 环境要求
 
 - Node.js 22.12 或更新版本，以及 Git。
-- 自行安装的 Claude Code 或 Codex CLI，能通过 PATH 找到，并且已登录。
 
-登录你要使用的智能体：
+### 配置智能体
 
-```bash
-claude auth login
-# 或者：
-codex login
-```
+Stintwork 使用你自己安装的智能体 CLI 和已有的登录状态：每个想让 Stintwork 使用的智能体，都需要你安装其 CLI，确保能通过 PATH 找到，并完成登录。
 
-装好并登录其中一个就够了。Stintwork 内置这两个智能体的 ACP 适配器，使用已有的登录状态，不处理你的凭据。
+| 智能体 | CLI | 登录命令 | 状态 |
+|---|---|---|---|
+| Claude Code | `claude` | `claude auth login` | 已通过 ACP 验证 |
+| Codex | `codex` | `codex login` | 已通过 ACP 验证 |
+| Grok Build | `grok` | `grok login` | 实验性支持，尚未完成端到端验证 |
+
+Stintwork 内置 Claude Code 和 Codex 的 ACP 适配器，但不包含它们的 CLI 或登录状态，也不处理你的凭据。开始前至少配置好一个智能体；也可以配置多个，为每个阶段或每轮工作选择一个，在两轮工作之间切换。
+
+检测到 CLI 未安装或尚未登录时，该智能体会在选择列表中被禁用，并显示安装或登录提示；需要登录的智能体还会出现在 **Needs you** 中，显示登录命令和 **Refresh agent availability**（刷新智能体可用状态）按钮。
 
 CLI 支持 `--no-open`、`--help` 和 `--version`。加上 `--no-open` 后不会自动打开浏览器，需要自行打开终端显示的地址。按 Ctrl+C 停止服务器。
 

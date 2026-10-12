@@ -17,19 +17,21 @@ The CLI finds the git repository containing the current directory and shows that
 
 Add `--no-open` to start without opening a browser; open the printed address yourself. `--help` lists the options and `--version` prints the package version. Ctrl+C stops the server.
 
-## 2. Sign in to an agent
+## 2. Set up your agents
 
-Claude Code and Codex are verified over ACP with the developer's own CLIs and logins. You only need one of them. In another terminal, sign in to the one you choose:
+Stintwork uses your own installed agent CLIs and logins: for each agent you want it to use, install its CLI on PATH and sign in from another terminal.
 
-```bash
-claude auth login
-# Or:
-codex login
-```
+| Agent | CLI | Sign in | Status |
+|---|---|---|---|
+| Claude Code | `claude` | `claude auth login` | Verified over ACP |
+| Codex | `codex` | `codex login` | Verified over ACP |
+| Grok Build | `grok` | `grok login` | Experimental; not verified end to end |
 
-Stintwork includes their ACP adapters. It does not install the agent CLIs or handle your credentials. If an agent needs a login, Needs you shows its login command. Sign in, refresh agent availability there and start another stint.
+Stintwork includes the Claude Code and Codex ACP adapters, not their CLIs or logins; it does not handle your credentials. Set up at least one agent to start; you can set up several, choose one per stage or stint, and switch between stints.
 
-Grok Build is experimental and not verified end to end. Use Claude Code or Codex for this guide.
+When a missing CLI or login is detected, the agent picker disables that agent and shows an installation or sign-in hint; detected login requirements also appear in **Needs you** with the login command and **Refresh agent availability**. Sign in, refresh availability there and start another stint.
+
+Use Claude Code or Codex for this guide.
 
 ## 3. Review guided setup and skills
 
