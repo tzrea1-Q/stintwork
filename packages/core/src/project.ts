@@ -17,6 +17,7 @@ import {
   projectPermissionLevel,
   type PermissionLevel,
 } from "./permission-levels.js";
+import type { RiskyPath } from "./stints.js";
 
 export type ProjectSnapshot = {
   permissionLevel?: PermissionLevel;
@@ -42,6 +43,7 @@ export type ProjectSnapshot = {
     checkCommands?: CheckCommand[];
     evidenceChangedPaths?: Record<string, string[] | null>;
     reviewEvidenceError?: string;
+    riskyPaths?: RiskyPath[];
   })[];
   setup: SetupReport;
   warnings: Warning[];

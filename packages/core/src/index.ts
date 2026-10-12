@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+export { type RiskyPath, isRiskyPaths } from "./stints.js";
+export { riskyPathAccepted } from "./review-evidence.js";
 export {
   deriveWorkItemSlug,
   prepareWorkItemCreation,
@@ -68,6 +70,7 @@ export {
   type PermissionAttentionItem,
   type LoginRequiredAttentionItem,
   type HandoffUnresolvedAttentionItem,
+  type CheckpointWarningAttentionItem,
   type GateAttentionItem,
 } from "./attention.js";
 export {
@@ -143,6 +146,7 @@ export {
   isBriefHandoff,
   isStintEvent,
   isStintLogEntry,
+  isCheckpointWarnings,
   mergeStintEvent,
   summarizeStint,
   type Stint,
@@ -152,6 +156,7 @@ export {
   type StintLogEntry,
   type StintStatus,
   type StintSummary,
+  type CheckpointWarning,
 } from "./stints.js";
 export {
   type Brief,

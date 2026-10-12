@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { changedSince, createCheckpoint, ensureWorktree } from "./index.js";
+import { changedSince, createCheckpoint, ensureWorktree, committedRiskyPaths } from "./index.js";
 
 const fixtures: string[] = [];
 const stint = { id: "stint-01", workItem: "first", ticket: 4, status: "finished" };
@@ -35,6 +35,25 @@ afterEach(async () => {
   await Promise.all(
     fixtures.splice(0).map((parent) => rm(parent, { recursive: true, force: true })),
   );
+});
+
+test("commit scanning also covers a new root commit if an agent rewrites the branch", async () => {
+  const { worktree } = await fixture();
+  const base = git(worktree, "rev-parse", "HEAD");
+  git(worktree, "checkout", "--quiet", "--orphan", "rewritten");
+  await write(worktree, ".env", "API_TOKEN=dummy\n");
+  git(worktree, "add", "--all");
+  git(worktree, "commit", "--quiet", "-m", "New root");
+  const commit = git(worktree, "rev-parse", "HEAD");
+  expect(committedRiskyPaths(worktree, base)).toEqual([
+    {
+      path: ".env",
+      reasons: ["likely-secret"],
+      excluded: false,
+      committed: true,
+      commits: [commit],
+    },
+  ]);
 });
 
 test("checkpoints stage additions, edits and deletions only on the work item branch", async () => {

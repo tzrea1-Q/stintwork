@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { riskyPathReasons } from "./risky-paths.js";
 
 export type DiffLine = {
   kind: "context" | "added" | "removed";
@@ -25,6 +26,7 @@ export type DiffFile = {
   deletions: number | null;
   binary: boolean;
   hunks: DiffHunk[];
+  contentsHidden?: true;
 };
 export type WorkItemDiff = {
   branch: string;
@@ -167,13 +169,18 @@ export async function workItemDiff(
     const path = code === "R" ? nameFields[++index] : originalPath;
     const stat = stats.get(path);
     if (!stat) throw new Error("Missing Git diff counts.");
+    const size = Number(
+      (await git(["cat-file", "-s", `${code === "D" ? mergeBase : headCommit}:${path}`])).trim(),
+    );
+    const contentsHidden = riskyPathReasons(path, size).length > 0;
     files.push({
       path,
       ...(code === "R" ? { oldPath: originalPath } : {}),
       status,
       ...stat,
+      ...(contentsHidden ? { contentsHidden: true as const } : {}),
       hunks:
-        code === "R" || stat.binary
+        contentsHidden || code === "R" || stat.binary
           ? []
           : parseHunks(
               await git([

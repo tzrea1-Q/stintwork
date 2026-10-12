@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { hasUnresolvedHandoff, indexStints, type StintLogEntry } from "@stintwork/core";
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { ensureLocalIgnore } from "./stint-repo-writes.js";
 
 export function addHandoffAnswerRoute(
   app: Hono,
@@ -61,6 +62,7 @@ export function addHandoffAnswerRoute(
           at: new Date().toISOString(),
           note,
         };
+        ensureLocalIgnore(root);
         appendFileSync(
           join(root, path),
           `${text.endsWith("\n") ? "" : "\n"}${JSON.stringify(entry)}\n`,

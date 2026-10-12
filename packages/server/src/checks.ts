@@ -3,6 +3,7 @@ import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { appendFileSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import {
   defaultCheckCommands,
   indexProject,
@@ -56,6 +57,7 @@ function commands(root: string) {
   return defaultCheckCommands(text, manager);
 }
 function prepareLog(root: string, id: string) {
+  ensureLocalIgnore(root);
   let directory = root;
   for (const part of [".stintwork", "local", "checks"]) {
     directory = join(directory, part);

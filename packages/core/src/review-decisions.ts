@@ -4,11 +4,12 @@ import type { DeveloperNote } from "./developer-notes.js";
 
 export type ReviewDecision = {
   id: string;
-  kind: "finding" | "memory-proposal";
+  kind: "finding" | "memory-proposal" | "risky-path";
   status: "open" | "resolved" | "accepted" | "rejected" | "sent-back";
   reason: string;
   by: string;
   at: string;
+  blob?: string;
 };
 
 function isReviewDecision(value: unknown): value is ReviewDecision {
@@ -17,13 +18,22 @@ function isReviewDecision(value: unknown): value is ReviewDecision {
   return (
     typeof entry.id === "string" &&
     !!entry.id.trim() &&
-    (entry.kind === "finding" || entry.kind === "memory-proposal") &&
+    (entry.kind === "finding" || entry.kind === "memory-proposal" || entry.kind === "risky-path") &&
     typeof entry.status === "string" &&
-    (entry.kind === "memory-proposal"
-      ? ["open", "accepted", "rejected"].includes(entry.status)
-      : ["open", "resolved", "accepted", "sent-back"].includes(entry.status)) &&
+    (entry.kind === "risky-path"
+      ? entry.status === "accepted"
+      : entry.kind === "memory-proposal"
+        ? ["open", "accepted", "rejected"].includes(entry.status)
+        : ["open", "resolved", "accepted", "sent-back"].includes(entry.status)) &&
     typeof entry.reason === "string" &&
     (entry.kind !== "finding" || entry.status !== "accepted" || !!entry.reason.trim()) &&
+    (entry.kind !== "risky-path" ||
+      (!!entry.reason.trim() &&
+        typeof entry.blob === "string" &&
+        /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(entry.blob) &&
+        !entry.id.startsWith("/") &&
+        !entry.id.includes("\0") &&
+        !entry.id.split("/").some((part: string) => part === "." || part === ".."))) &&
     typeof entry.by === "string" &&
     !!entry.by.trim() &&
     typeof entry.at === "string" &&

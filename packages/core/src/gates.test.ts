@@ -19,6 +19,7 @@ function item(stage: StageId, workflow: WorkflowId = "feature") {
   ).workItems[0];
   workItem.headCommit = "checkpoint";
   workItem.checkCommands = [];
+  workItem.riskyPaths = [];
   return workItem;
 }
 function stint(stage: StageId, overrides: Partial<StintSummary> = {}): StintSummary {

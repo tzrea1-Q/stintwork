@@ -2,8 +2,14 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
-import { indexStints, type RepoFiles, type StintLogEntry } from "@stintwork/core";
-import { createCheckpoint } from "@stintwork/git";
+import {
+  indexStints,
+  type CheckpointWarning,
+  type RepoFiles,
+  type StintLogEntry,
+} from "@stintwork/core";
+import { ensureLocalIgnore } from "./stint-repo-writes.js";
+import { createCheckpoint, committedRiskyPaths } from "@stintwork/git";
 import type { Hono } from "hono";
 
 export const activeStintIds = new Set<string>();
@@ -23,7 +29,9 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
       const stint = stints[0];
       if (stint?.status !== "running" || activeStintIds.has(stint.id)) continue;
       let checkpointCommit: string | undefined;
+      let checkpointWarnings: CheckpointWarning[] = [];
       let error: string | undefined;
+      let verifiedWorktree: string | undefined;
       try {
         const worktreePath = realpathSync(stint.worktree.path);
         const records = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
@@ -43,12 +51,29 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
           })
         )
           throw new Error("The logged worktree is not on this project's work item branch.");
-        checkpointCommit = await createCheckpoint(worktreePath, {
-          ...stint,
-          status: "interrupted",
-        });
+        verifiedWorktree = worktreePath;
+        ensureLocalIgnore(worktreePath);
+        checkpointCommit = await createCheckpoint(
+          worktreePath,
+          {
+            ...stint,
+            status: "interrupted",
+          },
+          (warnings) => {
+            checkpointWarnings = warnings;
+          },
+        );
       } catch (cause) {
         error = `Checkpoint failed: ${cause instanceof Error ? cause.message : String(cause)}`;
+      }
+      if (verifiedWorktree) {
+        try {
+          checkpointWarnings.push(...committedRiskyPaths(verifiedWorktree, stint.baseCommit));
+        } catch (cause) {
+          error = [error, `Cannot inspect stint commits: ${String(cause)}`]
+            .filter(Boolean)
+            .join("\n");
+        }
       }
       const ended: StintLogEntry = {
         type: "ended",
@@ -56,8 +81,10 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
         status: "interrupted",
         handoff: null,
         ...(checkpointCommit ? { checkpointCommit } : {}),
+        ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
         ...(error ? { error } : {}),
       };
+      ensureLocalIgnore(root);
       appendFileSync(
         join(root, path),
         `${text.endsWith("\n") ? "" : "\n"}${JSON.stringify(ended)}\n`,

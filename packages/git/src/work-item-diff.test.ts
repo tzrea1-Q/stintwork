@@ -40,6 +40,24 @@ afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 
+test("risky files show only metadata, including deleted secrets, even when already committed", async () => {
+  const { root, worktree } = await fixture();
+  await write(root, ".env.removed", "API_TOKEN=old-dummy\n");
+  const main = commit(root);
+  git(worktree, "merge", "--quiet", "main");
+  await rm(join(worktree, ".env.removed"));
+  await write(worktree, ".env", "API_TOKEN=dummy\n");
+  await write(worktree, "dist/bundle.js", "generated output\n");
+  await write(worktree, "large.bin", Buffer.alloc(1024 * 1024 + 1, "x"));
+  commit(worktree);
+  const diff = await workItemDiff(root, "first");
+  expect(diff.mergeBase).toBe(main);
+  expect(diff.files).toHaveLength(4);
+  expect(diff.files.every((file) => file.contentsHidden && !file.hunks.length)).toBe(true);
+  expect(JSON.stringify(diff)).not.toContain("API_TOKEN");
+  expect(JSON.stringify(diff)).not.toContain("generated output");
+});
+
 test("added, removed and modified files have counts, hunks and both line numbers", async () => {
   const { root, worktree, base } = await fixture();
   await write(worktree, "added.txt", "new line\nanother\n");

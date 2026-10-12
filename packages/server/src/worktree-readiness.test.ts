@@ -180,7 +180,7 @@ test("commits Stintwork setup before the first stint and makes no setup commit o
   await ended(root, firstStint.id);
   expect(starts[0].head).toBe(firstStint.baseCommit);
   expect(starts[0]).toMatchObject({
-    files: [".gitignore", ".scratch/first/workflow.yaml"],
+    files: [".scratch/first/workflow.yaml"],
     status: "",
     subject: "Stintwork setup for work item first",
   });
@@ -222,7 +222,7 @@ test("the setup commit leaves unrelated staged and untracked work in the worktre
   expect(response.status).toBe(201);
   const { stint }: { stint: Stint } = await response.json();
   expect(started).toMatchObject({
-    files: [".gitignore", ".scratch/first/workflow.yaml"],
+    files: [".scratch/first/workflow.yaml"],
     status: "A  staged.txt\n?? unrelated.txt",
   });
   expect(git(worktree.path, "diff", "--cached", "--name-only")).toBe("staged.txt");
@@ -287,8 +287,8 @@ test("first repo writes happen exactly once, same-work-item starts conflict, and
   );
   const firstWritePaths = [
     join(first.worktree.path, ".scratch/first/workflow.yaml"),
-    join(first.worktree.path, ".gitignore"),
-    join(root, ".gitignore"),
+    join(first.worktree.path, ".stintwork/local/.gitignore"),
+    join(root, ".stintwork/local/.gitignore"),
   ];
   const firstWriteTimes = await Promise.all(
     firstWritePaths.map(async (path) => (await stat(path)).mtimeMs),
@@ -310,7 +310,7 @@ test("first repo writes happen exactly once, same-work-item starts conflict, and
       (entry) =>
         entry.type === "event" &&
         entry.event.type === "message" &&
-        entry.event.text.includes(".gitignore"),
+        entry.event.text.includes("workflow.yaml"),
     ),
   ).toBe(true);
   await project.app.request(`/api/stints/${first.id}/stop`, { method: "POST" });
@@ -324,11 +324,8 @@ test("first repo writes happen exactly once, same-work-item starts conflict, and
     workflow,
   );
   for (const directory of [root, ...accepted.map((stint) => stint.worktree.path)]) {
-    expect(
-      (await readFile(join(directory, ".gitignore"), "utf8"))
-        .split("\n")
-        .filter((line) => line === ".stintwork/local/"),
-    ).toHaveLength(1);
+    expect(await readFile(join(directory, ".stintwork/local/.gitignore"), "utf8")).toBe("*\n");
+    await expect(readFile(join(directory, ".gitignore"))).rejects.toMatchObject({ code: "ENOENT" });
   }
 });
 

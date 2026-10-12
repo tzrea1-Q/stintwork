@@ -1,6 +1,6 @@
 # 13 — Keep local data out of the project's Git
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -18,7 +18,16 @@ Fix:
 
 ## Acceptance criteria
 
-- [ ] Server tests reproduce each gap first: check logs untracked without setup, the main checkout's `.gitignore` modified after a first stint (and whether Merge locally then refuses), and a stray `.env` committed at a checkpoint. All three fail before the fix.
-- [ ] After the fix: `git status` in a fresh project with no setup stays clean after stints and checks; the main checkout's `.gitignore` is untouched outside setup; risky paths are flagged and handled as decided; Merge locally works on a project without setup.
-- [ ] Component tests: flagged paths in the handoff card and the review overlay, and the attention item.
-- [ ] All checks pass.
+- [x] Server tests reproduce each gap first: check logs untracked without setup, the main checkout's `.gitignore` modified after a first stint (and whether Merge locally then refuses), and a stray `.env` committed at a checkpoint. All three fail before the fix.
+- [x] After the fix: `git status` in a fresh project with no setup stays clean after stints and checks; the main checkout's `.gitignore` is untouched outside setup; risky paths are flagged and handled as decided; Merge locally works on a project without setup.
+- [x] Component tests: flagged paths in the handoff card and the review overlay, and the attention item.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-12:** Built by Codex in two rounds; verify.sh passed (1664 tests). Codex reproduced all three gaps with failing tests first, including the suspected Merge locally refusal (confirmed). Decisions: Stintwork no longer commits a worktree `.gitignore` outside guided setup, because `.stintwork/local/` ignores itself; checkpoints exclude (not just flag) likely secrets, files over 1 MiB and generated directories.
+
+Real checks on fresh projects with no setup, using real Codex stints on a ticket asking for a `.env` (dummy token) and `dist/bundle.js`:
+- **Round 1:** the main checkout stayed clean, its `.gitignore` was untouched, and `.stintwork/local/.gitignore` was `*`. But the agent committed `.env` and `dist/` itself, so nothing was flagged. Gap 3 was not closed.
+- **Round 2 (fix):** every commit a stint adds is scanned; committed risky paths are recorded with their commits; a Review gate condition "No risky files on the branch" (merge base to head) blocks shipping; a per-path Accept with a reason is recorded in review.yaml and bound to the file's blob; and every brief tells agents not to commit secrets or build output.
+- **Recheck:** the agent left `.env` and `dist/` uncommitted; the checkpoint excluded them; Needs you showed "Risky files excluded from checkpoint" with the next step. Committing `.env` by hand made the Review condition fail with remediation (including rotating real secrets). Accepting it (reason "Test fixture with a dummy value") cleared the condition. Changing `.env` blocked it again. Detection is by path and size, not content.

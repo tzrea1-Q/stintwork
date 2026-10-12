@@ -2,6 +2,7 @@
 import type { ProjectSnapshot } from "@stintwork/core";
 import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { CheckpointWarnings } from "./CheckpointWarnings";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { HandoffAnswer } from "./HandoffAnswer";
 import { MemoryProposal } from "./MemoryProposal";
@@ -127,12 +128,20 @@ export function NeedsYouQueue({
                   ? "Permission"
                   : item.kind === "handoff-unresolved"
                     ? "Handoff"
-                    : item.kind === "memory-proposal"
-                      ? "Memory proposal"
-                      : "Gate ready"}
+                    : item.kind === "checkpoint-warning"
+                      ? "Checkpoint"
+                      : item.kind === "memory-proposal"
+                        ? "Memory proposal"
+                        : "Gate ready"}
                 {item.agent && ` · ${profile?.displayName ?? item.agent}`}
               </p>
               <h3>{item.title}</h3>
+              {item.kind === "checkpoint-warning" && (
+                <>
+                  <p>{item.details}</p>
+                  <CheckpointWarnings warnings={item.warnings} />
+                </>
+              )}
               <button
                 type="button"
                 className="attention-work-item"

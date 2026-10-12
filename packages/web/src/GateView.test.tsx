@@ -49,6 +49,7 @@ afterEach(() => {
 function reviewItem() {
   const item = project("review").workItems[0];
   item.headCommit = "head";
+  item.riskyPaths = [];
   item.evidenceChangedPaths = { reviewed: [".scratch/first/review.yaml"] };
   item.stints = [{ ...stint, stage: "review", findings: { commit: "reviewed", findings: [] } }];
   item.checkCommands = [{ name: "Test", command: "node test.cjs" }];
@@ -63,6 +64,17 @@ function reviewItem() {
   ];
   return item;
 }
+
+test("risky branch files block the Review condition with a removal or acceptance action", () => {
+  const item = reviewItem();
+  item.riskyPaths = [{ path: ".env", reasons: ["likely-secret"], blob: "a".repeat(40) }];
+  render(<GateView item={item} />);
+  const condition = screen.getByText("No risky files on the branch").closest("li") as HTMLElement;
+  expect(condition).toHaveTextContent("Blocked");
+  expect(condition).toHaveTextContent("follow-up commit");
+  expect(condition).toHaveTextContent("Accept each path with a reason");
+  expect(screen.getByRole("button", { name: "Approve Review" })).toBeDisabled();
+});
 
 test("Review lists every evidence condition with state and an actionable remedy", () => {
   const item = reviewItem();
@@ -100,7 +112,7 @@ test("Review lists every evidence condition with state and an actionable remedy"
   ];
   render(<GateView item={item} />);
   const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
-  expect(conditions.getAllByRole("listitem")).toHaveLength(5);
+  expect(conditions.getAllByRole("listitem")).toHaveLength(6);
   expect(conditions.getByText("Latest Review stint finished").closest("li")).toHaveTextContent(
     "Ready",
   );
@@ -133,7 +145,7 @@ test("fresh bookkeeping evidence enables Review approval, but the server's refus
   );
   render(<GateView item={reviewItem()} />);
   const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
-  expect(conditions.getAllByText("No action needed.")).toHaveLength(5);
+  expect(conditions.getAllByText("No action needed.")).toHaveLength(6);
   const approve = screen.getByRole("button", { name: "Approve Review" });
   expect(approve).toBeEnabled();
   await user.click(approve);

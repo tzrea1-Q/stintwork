@@ -291,6 +291,7 @@ test("an evidence gate uses its named stage rather than a hard-coded Review id",
   const snapshot = project(definition("team"), "team", "inspect");
   const item = snapshot.workItems[0];
   item.headCommit = "checkpoint";
+  item.riskyPaths = [];
   item.checkCommands = [];
   item.stints = [
     {

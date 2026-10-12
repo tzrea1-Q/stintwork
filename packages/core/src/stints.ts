@@ -10,6 +10,65 @@ import {
 } from "./rich-stint-events.js";
 
 export type StintStatus = "running" | "finished" | "stopped" | "failed" | "interrupted";
+export type CheckpointWarning = {
+  path: string;
+  reasons: ("likely-secret" | "large-file" | "generated-directory")[];
+} & ({ excluded: true } | { excluded: false; committed: true; commits: string[] });
+
+export type RiskyPath = Pick<CheckpointWarning, "path" | "reasons"> & { blob: string };
+
+export function isRiskyPaths(value: unknown): value is RiskyPath[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (risk) =>
+        risk &&
+        typeof risk === "object" &&
+        typeof risk.blob === "string" &&
+        /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(risk.blob) &&
+        Object.keys(risk).every((key) => ["path", "reasons", "blob"].includes(key)) &&
+        isCheckpointWarnings([{ path: risk.path, reasons: risk.reasons, excluded: true }]),
+    )
+  );
+}
+
+export function isCheckpointWarnings(value: unknown): value is CheckpointWarning[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (warning) =>
+        warning &&
+        typeof warning === "object" &&
+        typeof warning.path === "string" &&
+        warning.path.length > 0 &&
+        !warning.path.startsWith("/") &&
+        !warning.path.includes("\0") &&
+        !warning.path.split("/").some((part: string) => part === ".." || part === ".") &&
+        (warning.excluded === true ||
+          (warning.excluded === false &&
+            warning.committed === true &&
+            Array.isArray(warning.commits) &&
+            warning.commits.length > 0 &&
+            warning.commits.every(
+              (commit: unknown) =>
+                typeof commit === "string" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit),
+            ))) &&
+        Array.isArray(warning.reasons) &&
+        warning.reasons.length > 0 &&
+        warning.reasons.every(
+          (reason: unknown) =>
+            typeof reason === "string" &&
+            ["likely-secret", "large-file", "generated-directory"].includes(reason),
+        ) &&
+        Object.keys(warning).every((key) =>
+          (warning.excluded
+            ? ["path", "reasons", "excluded"]
+            : ["path", "reasons", "excluded", "committed", "commits"]
+          ).includes(key),
+        ),
+    )
+  );
+}
 export type StintEvent =
   | RichStintEvent
   | { type: "message" | "thought"; id: string; text: string }
@@ -42,6 +101,7 @@ export type Stint = {
   worktree: { path: string; branch: string };
   baseCommit: string;
   checkpointCommit: string | null;
+  checkpointWarnings?: CheckpointWarning[];
   brief: Brief;
   events: StintEvent[];
   handoff: BriefHandoff | null;
@@ -62,6 +122,7 @@ export type StintSummary = Pick<
   | "endedAt"
   | "error"
   | "checkpointCommit"
+  | "checkpointWarnings"
   | "handoff"
   | "handoffError"
   | "handoffAnswer"
@@ -85,6 +146,7 @@ export type StintLogEntry =
       stopReason?: string;
       error?: string;
       checkpointCommit?: string;
+      checkpointWarnings?: CheckpointWarning[];
       handoff?: BriefHandoff | null;
       handoffError?: string;
       findings?: ReviewFindings;
@@ -180,6 +242,7 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     status: entry.status,
     endedAt: entry.at,
     checkpointCommit: entry.checkpointCommit ?? null,
+    ...(entry.checkpointWarnings ? { checkpointWarnings: entry.checkpointWarnings } : {}),
     handoff: entry.handoff ?? null,
     ...(entry.findings ? { findings: entry.findings } : {}),
     ...(entry.handoffError ? { handoffError: entry.handoffError } : {}),
@@ -203,6 +266,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     startedAt,
     endedAt,
     checkpointCommit: stint.checkpointCommit,
+    ...(stint.checkpointWarnings ? { checkpointWarnings: stint.checkpointWarnings } : {}),
     handoff: stint.handoff,
     ...(stint.findings ? { findings: stint.findings } : {}),
     ...(stint.brief.lastHandoff ? { lastHandoffStintId: stint.brief.lastHandoff.stint } : {}),
@@ -265,6 +329,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   if (entry.type === "ended")
     return (
       ["finished", "stopped", "failed", "interrupted"].includes(String(entry.status)) &&
+      (entry.checkpointWarnings === undefined || isCheckpointWarnings(entry.checkpointWarnings)) &&
       (entry.findings === undefined || isReviewFindings(entry.findings)) &&
       ["error", "stopReason", "checkpointCommit", "handoffError"].every(
         (key) => entry[key] === undefined || typeof entry[key] === "string",
