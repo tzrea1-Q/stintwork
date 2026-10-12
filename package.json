@@ -1,6 +1,6 @@
 {
   "name": "stintwork",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A local workbench for handing software work between coding agents in stints",
   "license": "Apache-2.0",
   "type": "module",
@@ -10,6 +10,7 @@
   "files": [
     "dist/",
     "README.md",
+    "README.zh-CN.md",
     "LICENSE"
   ],
   "packageManager": "pnpm@11.21.0",
