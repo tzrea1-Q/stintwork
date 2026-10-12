@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { riskyPathReasons } from "./risky-paths.js";
 
 const execute = promisify(execFile);
 
@@ -101,26 +102,7 @@ export async function createCheckpoint(
           })
       : undefined;
     if (!stat && stagedSize === undefined) continue;
-    const reasons: CheckpointWarning["reasons"] = [];
-    // ponytail: filename heuristics, not a content scanner; use a dedicated scanner if stronger detection is needed.
-    if (
-      path
-        .split("/")
-        .some((part) =>
-          /^(?:\.env|id_rsa)|\.(?:pem|key)$|(?:^|[._-])(?:credentials?|tokens?|secrets?)(?:$|[._-])/i.test(
-            part,
-          ),
-        )
-    )
-      reasons.push("likely-secret");
-    if (Math.max(stat?.size ?? 0, stagedSize ?? 0) > 1024 * 1024) reasons.push("large-file");
-    if (
-      path
-        .split("/")
-        .slice(0, -1)
-        .some((part) => ["node_modules", "dist", "build", "coverage"].includes(part))
-    )
-      reasons.push("generated-directory");
+    const reasons = riskyPathReasons(path, Math.max(stat?.size ?? 0, stagedSize ?? 0));
     if (reasons.length) warnings.push({ path, reasons, excluded: true });
   }
   onWarnings?.(warnings);

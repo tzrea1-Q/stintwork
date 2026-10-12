@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { riskyPathAccepted } from "./review-evidence.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { CheckpointWarning, StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
@@ -107,20 +108,49 @@ export function deriveAttentionItems(
       }));
     const stint = item.activeStint;
     const latestEnded = item.stints.find((entry) => entry.status !== "running");
-    const checkpoints: CheckpointWarningAttentionItem[] = latestEnded?.checkpointWarnings?.length
+    const warnings: CheckpointWarning[] = [
+      ...(latestEnded?.checkpointWarnings?.filter((warning) => warning.excluded) ?? []),
+      ...(item.riskyPaths === undefined
+        ? (latestEnded?.checkpointWarnings?.filter((warning) => !warning.excluded) ?? [])
+        : item.riskyPaths
+            .filter((risk) => !riskyPathAccepted(risk, item.reviewDecisions))
+            .map((risk): CheckpointWarning => {
+              const commits = [
+                ...new Set(
+                  item.stints.flatMap(
+                    (stint) =>
+                      stint.checkpointWarnings?.flatMap((warning) =>
+                        !warning.excluded && warning.path === risk.path ? warning.commits : [],
+                      ) ?? [],
+                  ),
+                ),
+              ];
+              return {
+                path: risk.path,
+                reasons: risk.reasons,
+                excluded: false,
+                committed: true,
+                commits: commits.length ? commits : [item.headCommit as string],
+              };
+            })),
+    ];
+    const checkpoints: CheckpointWarningAttentionItem[] = warnings.length
       ? [
           {
             kind: "checkpoint-warning",
-            id: `checkpoint-warning:${latestEnded.id}`,
+            id: `checkpoint-warning:${latestEnded?.id ?? item.slug}`,
             workItem: item.slug,
-            ticket: latestEnded.ticket,
-            stintId: latestEnded.id,
-            agent: latestEnded.agent,
-            title: "Risky files excluded from checkpoint",
-            details:
-              "Remove these files or deliberately ignore them, then start another stint. Checks and Merge locally require a clean worktree.",
-            raisedAt: latestEnded.endedAt ?? latestEnded.startedAt,
-            warnings: latestEnded.checkpointWarnings,
+            ticket: latestEnded?.ticket ?? null,
+            stintId: latestEnded?.id ?? `branch:${item.slug}`,
+            agent: latestEnded?.agent ?? "Developer",
+            title: warnings.some((warning) => !warning.excluded)
+              ? "Risky files committed on the branch"
+              : "Risky files excluded from checkpoint",
+            details: warnings.some((warning) => !warning.excluded)
+              ? "Remove these files in a follow-up commit and add them to .gitignore, or deliberately Accept each path with a reason in Review. Risky files block shipping. Rotate real secrets and clean Git history before publishing."
+              : "Remove these files or deliberately ignore them, then start another stint. Checks and Merge locally require a clean worktree.",
+            raisedAt: latestEnded?.endedAt ?? latestEnded?.startedAt ?? "1970-01-01T00:00:00.000Z",
+            warnings,
           },
         ]
       : [];

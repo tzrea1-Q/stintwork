@@ -25,45 +25,60 @@ const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": 
   name: "Stintwork",
 });
 
-test("checkpoint warnings survive HTTP snapshots and live ended entries and immediately raise attention", async () => {
-  const initial = attentionSnapshot([]);
-  vi.mocked(fetch).mockResolvedValue(response(initial));
-  const { result } = renderHook(useProjectSnapshot);
-  await waitFor(() => expect(result.current.snapshot).toEqual(initial));
-  const entry: StintLogEntry = {
-    type: "ended",
-    at: "2026-10-09T11:00:00Z",
-    status: "finished",
-    checkpointWarnings: [{ path: ".env", reasons: ["likely-secret"], excluded: true }],
-  };
-  act(() =>
-    TestSocket.instances[0].onmessage?.({
-      data: JSON.stringify({
-        type: "stint",
-        stintId: "stint",
-        workItem: "first",
-        sequence: 1,
-        entry,
+test.each([false, true])(
+  "checkpoint warnings (%s committed) survive snapshots and live ended entries and immediately raise attention",
+  async (committed) => {
+    const initial = attentionSnapshot([]);
+    initial.workItems[0].riskyPaths = [];
+    vi.mocked(fetch).mockResolvedValue(response(initial));
+    const { result } = renderHook(useProjectSnapshot);
+    await waitFor(() => expect(result.current.snapshot).toEqual(initial));
+    const entry: StintLogEntry = {
+      type: "ended",
+      at: "2026-10-09T11:00:00Z",
+      status: "finished",
+      checkpointWarnings: [
+        committed
+          ? {
+              path: ".env",
+              reasons: ["likely-secret"],
+              excluded: false,
+              committed: true,
+              commits: ["a".repeat(40)],
+            }
+          : { path: ".env", reasons: ["likely-secret"], excluded: true },
+      ],
+    };
+    act(() =>
+      TestSocket.instances[0].onmessage?.({
+        data: JSON.stringify({
+          type: "stint",
+          stintId: "stint",
+          workItem: "first",
+          sequence: 1,
+          entry,
+        }),
       }),
-    }),
-  );
-  expect(result.current.snapshot?.workItems[0].stints[0].checkpointWarnings).toEqual(
-    entry.checkpointWarnings,
-  );
-  expect(result.current.snapshot?.attentionItems[0]).toMatchObject({
-    kind: "checkpoint-warning",
-    warnings: entry.checkpointWarnings,
-  });
-  const persisted = result.current.snapshot as ProjectSnapshot;
-  act(() => TestSocket.instances[0].sendSnapshot(persisted));
-  expect(result.current.snapshot).toEqual(persisted);
-  expect(result.current.connection).toBe("live");
-});
+    );
+    expect(result.current.snapshot?.workItems[0].stints[0].checkpointWarnings).toEqual(
+      entry.checkpointWarnings,
+    );
+    expect(result.current.snapshot?.attentionItems[0]).toMatchObject({
+      kind: "checkpoint-warning",
+      warnings: entry.checkpointWarnings,
+    });
+    const persisted = result.current.snapshot as ProjectSnapshot;
+    act(() => TestSocket.instances[0].sendSnapshot(persisted));
+    expect(result.current.snapshot).toEqual(persisted);
+    expect(result.current.connection).toBe("live");
+  },
+);
 
 test("Review evidence and open memory proposals survive HTTP and live snapshots, blocking the gate", async () => {
   const next = structuredClone(snapshot);
   const item = next.workItems[0];
   item.stage = "review";
+  item.riskyPaths = [];
   item.column = "review";
   item.headCommit = "head";
   item.checkCommands = [];

@@ -141,6 +141,72 @@ async function forceShip(worktree: { path: string }) {
   });
 }
 
+test("Review refuses an agent's committed risks until every path is explicitly accepted", async () => {
+  const script: FakeAgentStep[] = [
+    { type: "write", path: ".env.fixture", content: "API_TOKEN=dummy\n" },
+    { type: "write", path: "dist/bundle.js", content: "dummy fixture\n" },
+    { type: "commit", message: "Resolve .scratch/first/issues/01-first.md" },
+  ];
+  const { project } = await fixture(script);
+  const stint = await review(project);
+  expect(stint.checkpointWarnings?.every((warning) => !warning.excluded)).toBe(true);
+  expect(
+    (
+      await post(project, `${endpoint}/findings/decision`, {
+        id: stint.findings?.findings?.[0].id,
+        status: "accepted",
+        reason: "History verified",
+      })
+    ).status,
+  ).toBe(200);
+  expect((await post(project, `${endpoint}/checks`)).status).toBe(202);
+  await expect
+    .poll(
+      async () => (await (await project.app.request(`${endpoint}/checks`)).json()).checkExecution,
+    )
+    .toBeNull();
+  const approval = await post(project, `${endpoint}/gates/review/approve`);
+  expect(approval.status).toBe(409);
+  expect(
+    (await approval.json()).conditions.find(
+      (condition: { id: string }) => condition.id === "risky-paths",
+    ),
+  ).toMatchObject({ ready: false });
+  const risks = (await snapshot(project)).workItems[0].riskyPaths ?? [];
+  expect(risks).toHaveLength(2);
+  for (const risk of risks) {
+    expect(
+      (
+        await post(project, `${endpoint}/risky-paths/accept`, {
+          id: risk.path,
+          blob: risk.blob,
+          reason: "Deliberate dummy fixture",
+        })
+      ).status,
+    ).toBe(200);
+  }
+  expect((await post(project, `${endpoint}/gates/review/approve`)).status).toBe(409);
+  script.splice(0);
+  await ready(project);
+  expect((await post(project, `${endpoint}/ship/merge-local`)).status).toBe(200);
+});
+
+test.each(["merge-local", "merge-pr"])(
+  "%s reinspects manual commits after Review approval",
+  async (action) => {
+    const { root, worktree, project } = await fixture();
+    await ready(project);
+    const main = git(root, "rev-parse", "HEAD");
+    await write(worktree.path, ".env", "API_TOKEN=dummy\n");
+    git(worktree.path, "add", ".env");
+    git(worktree.path, "commit", "--quiet", "-m", "Risk added by hand after approval");
+    const response = await post(project, `${endpoint}/ship/${action}`);
+    expect(response.status).toBe(409);
+    expect((await response.json()).reason).toContain("No risky files on the branch");
+    expect(git(root, "rev-parse", "HEAD")).toBe(main);
+  },
+);
+
 test.each([false, true])(
   "local shipping (%s divergence) records its own main commit and retains history, findings and checks after cleanup and restart",
   async (diverged) => {

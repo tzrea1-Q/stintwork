@@ -8,6 +8,7 @@ import {
   workflowPullRequest,
   pullRequestText,
   evidenceStale,
+  riskyPathAccepted,
   type PullRequestPreview,
   type MergeRecord,
 } from "@stintwork/core";
@@ -123,6 +124,14 @@ export function addShipRoutes(
         if (item.memoryProposals?.length)
           throw new LocalMergeRefusal(
             "Accept or reject every open memory proposal before shipping.",
+          );
+        if (
+          action !== "send-back" &&
+          (item.riskyPaths === undefined ||
+            item.riskyPaths.some((risk) => !riskyPathAccepted(risk, item.reviewDecisions)))
+        )
+          throw new LocalMergeRefusal(
+            "No risky files on the branch: remove them in a follow-up commit and add them to .gitignore, or Accept each path with a reason in Review.",
           );
         if (action === "merge-local" && item.pullRequest)
           throw new LocalMergeRefusal(

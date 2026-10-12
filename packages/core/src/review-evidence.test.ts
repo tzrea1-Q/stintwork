@@ -42,6 +42,7 @@ function item() {
   return {
     ...result,
     headCommit: head,
+    riskyPaths: [] as import("./stints.js").RiskyPath[],
     evidenceChangedPaths: {
       [commit]: [".scratch/first/workflow.yaml", ".scratch/first/review.yaml"],
     },
@@ -62,6 +63,40 @@ function item() {
     ] as ReviewDecision[],
   };
 }
+
+test("risky branch paths block Review until each current blob has an explicit acceptance", () => {
+  const workItem = item();
+  const risks = [
+    { path: ".env", reasons: ["likely-secret"] as const, blob: "c".repeat(40) },
+    { path: "dist/bundle.js", reasons: ["generated-directory"] as const, blob: "d".repeat(40) },
+  ].map((risk) => ({ ...risk, reasons: [...risk.reasons] }));
+  workItem.riskyPaths = risks;
+  expect(gateReadiness(workItem).ready).toBe(false);
+  expect(gateReadiness(workItem).conditions.find(({ id }) => id === "risky-paths")).toMatchObject({
+    label: "No risky files on the branch",
+    ready: false,
+    action: expect.stringContaining("follow-up commit"),
+  });
+  for (const risk of risks) {
+    workItem.reviewDecisions.push({
+      id: risk.path,
+      kind: "risky-path",
+      status: "accepted",
+      reason: "Deliberate dummy fixture",
+      blob: risk.blob,
+      by: "Developer",
+      at: "2026-10-10T10:03:00Z",
+    });
+  }
+  expect(gateReadiness(workItem).ready).toBe(true);
+  workItem.riskyPaths[0] = { ...risks[0], blob: "e".repeat(40) };
+  expect(gateReadiness(workItem).ready).toBe(false);
+  workItem.riskyPaths = [];
+  expect(gateReadiness(workItem).ready).toBe(true);
+  const unknown = { ...workItem, riskyPaths: undefined };
+  expect(gateReadiness(unknown).ready).toBe(false);
+  expect(gateReadiness({ ...workItem, reviewEvidenceError: "Cannot scan" }).ready).toBe(false);
+});
 
 test.each([
   [[], false],
@@ -129,6 +164,7 @@ test.each(Array.from({ length: 32 }, (_, mask) => mask))(
       "checks",
       "freshness",
       "memory",
+      "risky-paths",
     ]);
     expect(gate.conditions.find(({ id }) => id === "review")?.ready).toBe(!(mask & 16));
     expect(gate.conditions.find(({ id }) => id === "findings")?.ready).toBe(!(mask & 1));

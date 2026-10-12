@@ -13,8 +13,24 @@ export type StintStatus = "running" | "finished" | "stopped" | "failed" | "inter
 export type CheckpointWarning = {
   path: string;
   reasons: ("likely-secret" | "large-file" | "generated-directory")[];
-  excluded: true;
-};
+} & ({ excluded: true } | { excluded: false; committed: true; commits: string[] });
+
+export type RiskyPath = Pick<CheckpointWarning, "path" | "reasons"> & { blob: string };
+
+export function isRiskyPaths(value: unknown): value is RiskyPath[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (risk) =>
+        risk &&
+        typeof risk === "object" &&
+        typeof risk.blob === "string" &&
+        /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(risk.blob) &&
+        Object.keys(risk).every((key) => ["path", "reasons", "blob"].includes(key)) &&
+        isCheckpointWarnings([{ path: risk.path, reasons: risk.reasons, excluded: true }]),
+    )
+  );
+}
 
 export function isCheckpointWarnings(value: unknown): value is CheckpointWarning[] {
   return (
@@ -28,7 +44,15 @@ export function isCheckpointWarnings(value: unknown): value is CheckpointWarning
         !warning.path.startsWith("/") &&
         !warning.path.includes("\0") &&
         !warning.path.split("/").some((part: string) => part === ".." || part === ".") &&
-        warning.excluded === true &&
+        (warning.excluded === true ||
+          (warning.excluded === false &&
+            warning.committed === true &&
+            Array.isArray(warning.commits) &&
+            warning.commits.length > 0 &&
+            warning.commits.every(
+              (commit: unknown) =>
+                typeof commit === "string" && /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit),
+            ))) &&
         Array.isArray(warning.reasons) &&
         warning.reasons.length > 0 &&
         warning.reasons.every(
@@ -36,7 +60,12 @@ export function isCheckpointWarnings(value: unknown): value is CheckpointWarning
             typeof reason === "string" &&
             ["likely-secret", "large-file", "generated-directory"].includes(reason),
         ) &&
-        Object.keys(warning).every((key) => ["path", "reasons", "excluded"].includes(key)),
+        Object.keys(warning).every((key) =>
+          (warning.excluded
+            ? ["path", "reasons", "excluded"]
+            : ["path", "reasons", "excluded", "committed", "commits"]
+          ).includes(key),
+        ),
     )
   );
 }

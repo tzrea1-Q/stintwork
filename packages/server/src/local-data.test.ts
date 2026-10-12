@@ -4,7 +4,14 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
-import type { CheckpointWarning, ProjectSnapshot, Stint, StintLogEntry } from "@stintwork/core";
+import {
+  gateReadiness,
+  parseReviewDecisions,
+  type CheckpointWarning,
+  type ProjectSnapshot,
+  type Stint,
+  type StintLogEntry,
+} from "@stintwork/core";
 import { ensureWorktree, mergeLocalWorkItem } from "@stintwork/git";
 import { afterEach, expect, test, vi } from "vitest";
 import { createProjectServer } from "./index.js";
@@ -75,6 +82,163 @@ async function ended(
 async function start(project: ReturnType<typeof createProjectServer>, status = "finished") {
   return ended(project, (await begin(project)).id, status);
 }
+
+async function checks(project: ReturnType<typeof createProjectServer>) {
+  expect(
+    (await project.app.request("/api/work-items/first/checks", { method: "POST" })).status,
+  ).toBe(202);
+  await expect
+    .poll(
+      async () =>
+        (await (await project.app.request("/api/work-items/first/checks")).json()).checkExecution,
+    )
+    .toBeNull();
+}
+
+test("an agent's own commit still warns about .env and build output", async () => {
+  const { root, project } = await fixture([
+    { type: "write", path: ".env", content: "API_TOKEN=dummy\n" },
+    { type: "write", path: "dist/bundle.js", content: "generated output\n" },
+    { type: "commit", message: "Resolve .scratch/first/issues/01-first.md" },
+  ]);
+  const stint = await start(project);
+  const commit = git(stint.worktree.path, "rev-parse", "HEAD");
+  expect(git(stint.worktree.path, "status", "--porcelain")).toBe("");
+  expect(stint.checkpointWarnings).toEqual([
+    {
+      path: ".env",
+      reasons: ["likely-secret"],
+      excluded: false,
+      committed: true,
+      commits: [commit],
+    },
+    {
+      path: "dist/bundle.js",
+      reasons: ["generated-directory"],
+      excluded: false,
+      committed: true,
+      commits: [commit],
+    },
+  ]);
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.attentionItems).toContainEqual(
+    expect.objectContaining({ kind: "checkpoint-warning" }),
+  );
+  expect(snapshot.workItems[0].riskyPaths?.map(({ path }) => path)).toEqual([
+    ".env",
+    "dist/bundle.js",
+  ]);
+  expect(
+    gateReadiness({ ...snapshot.workItems[0], stage: "review" }).conditions.find(
+      ({ id }) => id === "risky-paths",
+    )?.ready,
+  ).toBe(false);
+  const diff = await (await project.app.request("/api/work-items/first/diff")).json();
+  expect(JSON.stringify(diff)).not.toContain("API_TOKEN=dummy");
+  expect(diff.files.find((file: { path: string }) => file.path === ".env")).toMatchObject({
+    contentsHidden: true,
+    hunks: [],
+  });
+  const log = await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8");
+  expect(log).not.toContain("API_TOKEN=dummy");
+  expect(log).toContain('"committed":true');
+});
+
+test("each commit is inspected even when a later commit deletes or shrinks a risky path", async () => {
+  const { root, project } = await fixture([
+    { type: "write", path: ".env", content: "API_TOKEN=dummy\n" },
+    { type: "commit", message: "Add risky files" },
+    { type: "write", path: ".env", content: "API_TOKEN=another-dummy\n" },
+    { type: "write", path: "large.dat", content: "small\n" },
+    { type: "commit", message: "Modify risky files" },
+  ]);
+  const worktree = await ensureWorktree(root, "first");
+  await writeFile(join(worktree.path, "large.dat"), "x".repeat(1024 * 1024 + 1));
+  const stint = await start(project);
+  const commits = git(
+    stint.worktree.path,
+    "rev-list",
+    "--reverse",
+    `${stint.baseCommit}..HEAD`,
+  ).split("\n");
+  expect(stint.checkpointWarnings).toEqual([
+    { path: ".env", reasons: ["likely-secret"], excluded: false, committed: true, commits },
+    {
+      path: "large.dat",
+      reasons: ["large-file"],
+      excluded: false,
+      committed: true,
+      commits: [commits[0]],
+    },
+  ]);
+  git(stint.worktree.path, "rm", ".env");
+  git(stint.worktree.path, "commit", "--quiet", "-m", "Remove dummy secret");
+  await checks(project);
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].riskyPaths).toEqual([]);
+  expect(snapshot.attentionItems.some(({ kind }) => kind === "checkpoint-warning")).toBe(false);
+  expect(
+    (await (await project.app.request(`/api/stints/${stint.id}`)).json()).stint.checkpointWarnings,
+  ).toEqual(stint.checkpointWarnings);
+});
+
+test("manual commits require per-path, blob-scoped acceptance recorded in review.yaml", async () => {
+  const { root, project } = await fixture();
+  const stint = await start(project);
+  await writeFile(join(stint.worktree.path, ".env.fixture"), "API_TOKEN=dummy\n");
+  git(stint.worktree.path, "add", ".env.fixture");
+  git(stint.worktree.path, "commit", "--quiet", "-m", "Deliberate fixture by hand");
+  await checks(project);
+  const read = async () =>
+    (await (await project.app.request("/api/project")).json()) as ProjectSnapshot;
+  const item = (await read()).workItems[0];
+  const risk = item.riskyPaths?.[0];
+  expect(risk?.path).toBe(".env.fixture");
+  expect((await read()).attentionItems.some(({ kind }) => kind === "checkpoint-warning")).toBe(
+    true,
+  );
+  const accept = (body: object, origin?: string) =>
+    project.app.request("/api/work-items/first/risky-paths/accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(origin ? { origin } : {}) },
+      body: JSON.stringify(body),
+    });
+  const request = { id: risk?.path, blob: risk?.blob, reason: "Dummy token fixture" };
+  expect((await accept({ ...request, reason: " " })).status).toBe(400);
+  expect((await accept(request, "http://foreign.invalid")).status).toBe(403);
+  expect((await accept({ ...request, blob: "f".repeat(40) })).status).toBe(409);
+  const response = await accept(request);
+  expect(response.status, await response.clone().text()).toBe(200);
+  const { decision } = await response.json();
+  expect(decision).toMatchObject({ ...request, kind: "risky-path", status: "accepted" });
+  expect(
+    parseReviewDecisions(
+      await readFile(join(stint.worktree.path, ".scratch/first/review.yaml"), "utf8"),
+    ),
+  ).toEqual([decision]);
+  expect(
+    gateReadiness({ ...(await read()).workItems[0], stage: "review" }).conditions.find(
+      ({ id }) => id === "risky-paths",
+    )?.ready,
+  ).toBe(true);
+  expect((await read()).attentionItems.some(({ kind }) => kind === "checkpoint-warning")).toBe(
+    false,
+  );
+  await writeFile(join(stint.worktree.path, ".env.fixture"), "API_TOKEN=changed-dummy\n");
+  git(stint.worktree.path, "add", ".env.fixture");
+  git(stint.worktree.path, "commit", "--quiet", "-m", "Change fixture");
+  await checks(project);
+  expect((await accept(request)).status).toBe(409);
+  expect(
+    gateReadiness({ ...(await read()).workItems[0], stage: "review" }).conditions.find(
+      ({ id }) => id === "risky-paths",
+    )?.ready,
+  ).toBe(false);
+  expect((await read()).attentionItems.some(({ kind }) => kind === "checkpoint-warning")).toBe(
+    true,
+  );
+  expect(git(root, "status", "--porcelain", "--untracked-files=all")).toBe("");
+});
 
 test("check logs ignore themselves before any stint or guided setup", async () => {
   const { root, project } = await fixture();
@@ -262,6 +426,39 @@ test("interrupted stint recovery uses the same checkpoint guard and persists its
   );
   expect(git(root, "status", "--porcelain", "--untracked-files=all")).toBe("");
   expect(await readFile(join(root, ".stintwork/local/.gitignore"), "utf8")).toBe("*\n");
+});
+
+test("interrupted recovery reports the agent's earlier commits as well as checkpoint exclusions", async () => {
+  const { root, project, tracked } = await fixture();
+  const stint = await start(project);
+  const path = join(root, `.stintwork/local/stints/${stint.id}.jsonl`);
+  const started: StintLogEntry = JSON.parse((await readFile(path, "utf8")).split("\n")[0]);
+  await project.stop();
+  await writeFile(path, `${JSON.stringify(started)}\n`);
+  await writeFile(join(stint.worktree.path, ".env"), "API_TOKEN=dummy\n");
+  git(stint.worktree.path, "add", ".env");
+  git(stint.worktree.path, "commit", "--quiet", "-m", "Agent work before interruption");
+  const commit = git(stint.worktree.path, "rev-parse", "HEAD");
+  await mkdir(join(stint.worktree.path, "dist"));
+  await writeFile(join(stint.worktree.path, "dist/bundle.js"), "Pending output\n");
+  tracked.project = createProjectServer(root, join(root, "web"));
+  const snapshot: ProjectSnapshot = await (
+    await tracked.project.app.request("/api/project")
+  ).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "interrupted",
+    checkpointWarnings: [
+      { path: "dist/bundle.js", reasons: ["generated-directory"], excluded: true },
+      {
+        path: ".env",
+        reasons: ["likely-secret"],
+        excluded: false,
+        committed: true,
+        commits: [commit],
+      },
+    ],
+  });
+  expect(snapshot.attentionItems.some(({ kind }) => kind === "checkpoint-warning")).toBe(true);
 });
 
 test("PR-check records ignore themselves without any stint or guided setup", async () => {

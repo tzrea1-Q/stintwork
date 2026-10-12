@@ -11,11 +11,31 @@ export function CheckpointWarnings({ warnings }: { warnings?: readonly Checkpoin
   return (
     <section className="warning" aria-label="Checkpoint warnings">
       <h4>Checkpoint warnings</h4>
-      <p>Excluded from the checkpoint and left uncommitted. File contents are not shown.</p>
+      {warnings.some((warning) => warning.excluded) && (
+        <p>Excluded from the checkpoint and left uncommitted. File contents are not shown.</p>
+      )}
+      {warnings.some((warning) => !warning.excluded) && (
+        <p>
+          Already committed on the branch; not excluded by the checkpoint. Remove these files in a
+          follow-up commit and add them to .gitignore, or deliberately Accept each path with a
+          reason in Review. Rotate real secrets and clean Git history before publishing. File
+          contents are not shown.
+        </p>
+      )}
       <ul>
-        {warnings.map(({ path, reasons }) => (
-          <li key={path}>
-            <code>{path}</code> — {reasons.map((reason) => labels[reason]).join(", ")}
+        {warnings.map((warning) => (
+          <li key={`${warning.path}:${warning.excluded}`}>
+            <code>{warning.path}</code> —{" "}
+            {warning.reasons.map((reason) => labels[reason]).join(", ")}
+            {!warning.excluded && (
+              <span>
+                {" "}
+                · Committed:{" "}
+                {warning.commits.map((commit) => (
+                  <code key={commit}>{commit} </code>
+                ))}
+              </span>
+            )}
           </li>
         ))}
       </ul>

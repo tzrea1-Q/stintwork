@@ -186,6 +186,7 @@ test.each(["manual", "spec", "tickets", "evidence", "merge"] as const)(
       if (withOutput && kind === "evidence") {
         item.stints[0].findings = { commit: "head", findings: [] };
         item.headCommit = "head";
+        item.riskyPaths = [];
         item.checkCommands = [];
       }
       expect(gateReadiness(item, snapshot.workflows).ready).toBe(

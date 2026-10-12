@@ -9,7 +9,7 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import { ensureLocalIgnore } from "./stint-repo-writes.js";
-import { createCheckpoint } from "@stintwork/git";
+import { createCheckpoint, committedRiskyPaths } from "@stintwork/git";
 import type { Hono } from "hono";
 
 export const activeStintIds = new Set<string>();
@@ -31,6 +31,7 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
       let checkpointCommit: string | undefined;
       let checkpointWarnings: CheckpointWarning[] = [];
       let error: string | undefined;
+      let verifiedWorktree: string | undefined;
       try {
         const worktreePath = realpathSync(stint.worktree.path);
         const records = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
@@ -50,6 +51,7 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
           })
         )
           throw new Error("The logged worktree is not on this project's work item branch.");
+        verifiedWorktree = worktreePath;
         ensureLocalIgnore(worktreePath);
         checkpointCommit = await createCheckpoint(
           worktreePath,
@@ -63,6 +65,15 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
         );
       } catch (cause) {
         error = `Checkpoint failed: ${cause instanceof Error ? cause.message : String(cause)}`;
+      }
+      if (verifiedWorktree) {
+        try {
+          checkpointWarnings.push(...committedRiskyPaths(verifiedWorktree, stint.baseCommit));
+        } catch (cause) {
+          error = [error, `Cannot inspect stint commits: ${String(cause)}`]
+            .filter(Boolean)
+            .join("\n");
+        }
       }
       const ended: StintLogEntry = {
         type: "ended",

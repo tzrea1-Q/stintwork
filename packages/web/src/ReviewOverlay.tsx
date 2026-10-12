@@ -5,6 +5,8 @@ import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNo
 import { X } from "lucide-react";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { CheckpointWarnings } from "./CheckpointWarnings";
+import { RiskyPaths } from "./RiskyPaths";
+import type { RiskyPath } from "@stintwork/core";
 import "./review-overlay.css";
 
 type ReviewSlots = {
@@ -90,9 +92,17 @@ export function ReviewDiff({
               <p className="review-file-note">Renamed file — content not shown.</p>
             )}
             {file.binary && <p className="review-file-note">Binary file — content not shown.</p>}
-            {!file.binary && file.status !== "renamed" && !file.hunks.length && (
-              <p className="review-file-note">No text hunks (file metadata changed).</p>
+            {file.contentsHidden && (
+              <p className="review-file-note">
+                Risky file — contents hidden. Inspect privately before removing or accepting it.
+              </p>
             )}
+            {!file.contentsHidden &&
+              !file.binary &&
+              file.status !== "renamed" &&
+              !file.hunks.length && (
+                <p className="review-file-note">No text hunks (file metadata changed).</p>
+              )}
             {file.hunks.map((hunk) => (
               <div className="review-hunk" key={`${hunk.oldStart}:${hunk.newStart}`}>
                 <h4>
@@ -174,6 +184,7 @@ export function ReviewOverlay({
     title: string;
     stints?: StintSummary[];
     reviewDecisions?: ReviewDecision[];
+    riskyPaths?: RiskyPath[];
     stage?: string | null;
   };
   onClose: () => void;
@@ -202,13 +213,13 @@ export function ReviewOverlay({
     },
     reviewStageId,
   );
-  async function act(action: "decision" | "send-back", body: object) {
+  async function act(action: "decision" | "send-back" | "accept-risky-path", body: object) {
     setSaving(true);
     setActionError("");
     setMessage("");
     try {
       const response = await fetch(
-        `/api/work-items/${encodeURIComponent(item.slug)}/findings/${action}`,
+        `/api/work-items/${encodeURIComponent(item.slug)}/${action === "accept-risky-path" ? "risky-paths/accept" : `findings/${action}`}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -230,7 +241,10 @@ export function ReviewOverlay({
         setMessage(
           `${result.stageName ?? "Implement"} reopened. Review findings will be included in the next implement brief.`,
         );
-      } else setMessage(`Finding recorded as ${result.decision.status}.`);
+      } else
+        setMessage(
+          `${action === "accept-risky-path" ? "Risky path" : "Finding"} recorded as ${result.decision.status}.`,
+        );
       return true;
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : String(cause));
@@ -425,6 +439,16 @@ export function ReviewOverlay({
           </p>
         )}
         <aside className="review-evidence" aria-label="Review evidence">
+          {item.riskyPaths && (
+            <RiskyPaths
+              risks={item.riskyPaths}
+              decisions={decisions}
+              saving={saving}
+              onAccept={(risk, reason) =>
+                act("accept-risky-path", { id: risk.path, blob: risk.blob, reason })
+              }
+            />
+          )}
           {item.stints
             ?.filter((stint) => stint.checkpointWarnings?.length)
             .map((stint) => (

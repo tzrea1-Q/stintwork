@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+export { type RiskyPath, isRiskyPaths } from "./stints.js";
+export { riskyPathAccepted } from "./review-evidence.js";
 export {
   deriveWorkItemSlug,
   prepareWorkItemCreation,

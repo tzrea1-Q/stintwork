@@ -52,6 +52,17 @@ test("Review briefs point at every ticket, exact diff range and /code-review, de
   ).toBe("claude");
 });
 
+test("every workflow stage's brief warns agents not to commit secrets or build output", () => {
+  for (const workflow of Object.values(builtInWorkflows)) {
+    for (const stage of workflow.stages.filter((entry) => entry.gate !== "merge")) {
+      const brief = compileBrief({ ...input(), stage });
+      expect(brief.prompt).toContain(
+        "Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
+      );
+    }
+  }
+});
+
 const ticketPath = ".scratch/first-stint/issues/02-brief-preview.md";
 const specPath = ".scratch/first-stint/spec.md";
 const contents = {
@@ -92,6 +103,7 @@ test("compiles real file pointers with reasons and the validated prompt order", 
       "\n\nLast handoff: none — start from the project conventions and work item scope." +
       "\n\nChanged since the last handoff:\n- none\nWhere the handoff and the files disagree, the files win." +
       "\n\nWorking instructions:" +
+      "\n- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff." +
       "\n- Work in the work item worktree on its branch, stintwork/first-stint." +
       `\n- Finish this ticket only: ${ticketPath}.` +
       "\n- Keep the project checks green." +

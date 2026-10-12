@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
 import { deriveAttentionItems, type ProjectSnapshot } from "@stintwork/core";
-import { checkpointChangedPaths } from "@stintwork/git";
+import { checkpointChangedPaths, branchRiskyPaths } from "@stintwork/git";
 import type { createChecks } from "./checks.js";
 import { createMemoryProposalReader } from "./memory-proposals.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -39,6 +39,7 @@ export function createReviewEvidenceReader(root: string, checks: ReturnType<type
         if (item.pullRequest)
           item.pullRequestChecks = readPullRequestChecks(root, item.pullRequest);
         if (path || item.merged) {
+          item.riskyPaths = item.merged ? [] : branchRiskyPaths(root, item.slug);
           item.headCommit =
             item.merged?.commit ??
             execFileSync("git", ["rev-parse", "HEAD"], {

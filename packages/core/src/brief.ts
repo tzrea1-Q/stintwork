@@ -133,6 +133,7 @@ export function compileBrief({
     ].join("\n"),
     [
       "Working instructions:",
+      "- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
       `- Work in the work item worktree on its branch, stintwork/${workItem.slug}.`,
       ...(planningOutput
         ? [

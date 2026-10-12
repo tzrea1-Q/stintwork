@@ -1,6 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "./project.js";
 import type { StintSummary } from "./stints.js";
+import type { RiskyPath } from "./stints.js";
+import type { ReviewDecision } from "./review-decisions.js";
+
+export function riskyPathAccepted(risk: RiskyPath, decisions: readonly ReviewDecision[] = []) {
+  return decisions.some(
+    (decision) =>
+      decision.kind === "risky-path" &&
+      decision.id === risk.path &&
+      decision.blob === risk.blob &&
+      decision.status === "accepted" &&
+      typeof decision.reason === "string" &&
+      !!decision.reason.trim(),
+  );
+}
 
 export type EvidenceContext = {
   slug: string;
@@ -29,7 +43,7 @@ export function evidenceStale(item: EvidenceContext, commit: string): boolean {
 }
 
 export type ReviewGateCondition = {
-  id: "review" | "findings" | "checks" | "freshness" | "memory";
+  id: "review" | "findings" | "checks" | "freshness" | "memory" | "risky-paths";
   label: string;
   ready: boolean;
   action: string;
@@ -95,6 +109,16 @@ export function reviewGateConditions(
       label: "No open memory proposals",
       ready: !item.reviewEvidenceError && item.memoryProposals?.length === 0,
       action: "Accept or reject every open memory proposal in Needs you.",
+    },
+    {
+      id: "risky-paths",
+      label: "No risky files on the branch",
+      ready:
+        !item.reviewEvidenceError &&
+        item.riskyPaths !== undefined &&
+        item.riskyPaths.every((risk) => riskyPathAccepted(risk, item.reviewDecisions)),
+      action:
+        "Remove risky files in a follow-up commit and add them to .gitignore, or explicitly Accept each path with a reason in Review. If secrets were real, rotate them and clean Git history before publishing.",
     },
   ];
 }

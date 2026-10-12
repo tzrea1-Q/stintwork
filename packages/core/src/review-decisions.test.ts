@@ -26,6 +26,28 @@ const finding: ReviewDecision = {
   reason: "Fixed",
 };
 
+test("risky path acceptances round-trip a path, reason and exact blob, rejecting invalid decisions", () => {
+  const decision: ReviewDecision = {
+    ...memory,
+    kind: "risky-path",
+    id: ".env.fixture",
+    blob: "a".repeat(40),
+  };
+  const text = recordReviewDecision(recordReviewDecision(undefined, finding), decision);
+  expect(parseReviewDecisions(text)).toEqual([finding, decision]);
+  for (const invalid of [
+    { ...decision, reason: " " },
+    { ...decision, blob: undefined },
+    { ...decision, blob: "not-a-blob" },
+    { ...decision, status: "resolved" },
+    { ...decision, id: "../.env" },
+    { ...decision, id: "/.env" },
+  ])
+    expect(() => recordReviewDecision(text, invalid as ReviewDecision)).toThrow(
+      "Invalid review decision",
+    );
+});
+
 test("one entry per kind and id round-trips both finding and memory decisions", () => {
   expect(parseReviewDecisions(undefined)).toEqual([]);
   const first = recordReviewDecision(undefined, finding);

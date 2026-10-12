@@ -10,6 +10,7 @@ import {
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export function addFindingDecisionRoutes(
   app: Hono,
@@ -18,9 +19,11 @@ export function addFindingDecisionRoutes(
   isStintActive: (slug: string) => boolean,
   writing: Set<string>,
   isChecking: (slug: string) => boolean,
+  readReviewEvidence?: ReviewEvidenceReader,
 ) {
-  for (const action of ["decision", "send-back"] as const) {
-    app.post(`/api/work-items/:slug/findings/${action}`, async (context) => {
+  for (const action of ["decision", "send-back", "accept-risky-path"] as const) {
+    const route = action === "accept-risky-path" ? "risky-paths/accept" : `findings/${action}`;
+    app.post(`/api/work-items/:slug/${route}`, async (context) => {
       const origin = context.req.header("origin");
       if (origin && origin !== new URL(context.req.url).origin)
         return context.json({ reason: "Origin must match the project server." }, 403);
@@ -38,6 +41,18 @@ export function addFindingDecisionRoutes(
       if (!body || typeof body !== "object" || Array.isArray(body))
         return context.json({ reason: "A JSON finding action is required." }, 400);
       const request = body as Record<string, unknown>;
+      if (
+        action === "accept-risky-path" &&
+        (typeof request.id !== "string" ||
+          typeof request.blob !== "string" ||
+          !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(request.blob) ||
+          typeof request.reason !== "string" ||
+          !request.reason.trim())
+      )
+        return context.json(
+          { reason: "Choose a risky path and its blob; acceptance needs a reason." },
+          400,
+        );
       if (
         action === "decision" &&
         (typeof request.id !== "string" ||
@@ -62,11 +77,61 @@ export function addFindingDecisionRoutes(
       const snapshot = indexProject(project.files, { name: "" });
       const item = snapshot.workItems.find((entry) => entry.slug === slug);
       if (!item) return context.json({ reason: "Work item not found." }, 404);
+      if (item.merged) return context.json({ reason: "This work item is shipped." }, 409);
       if (item.activeStint || isStintActive(slug) || writing.has(slug) || isChecking(slug))
         return context.json(
           { reason: "A stint, check or review write is active for this work item." },
           409,
         );
+      if (action === "accept-risky-path") {
+        readReviewEvidence?.(project, snapshot);
+        if (item.reviewEvidenceError || item.riskyPaths === undefined)
+          return context.json(
+            { reason: item.reviewEvidenceError ?? "Cannot inspect risky paths." },
+            503,
+          );
+        if (!item.riskyPaths.some((risk) => risk.path === request.id && risk.blob === request.blob))
+          return context.json(
+            { reason: "The risky path changed or is no longer on the branch. Refresh Review." },
+            409,
+          );
+        const worktree = project.worktreePaths.get(slug);
+        if (!worktree)
+          return context.json({ reason: "The work item's worktree is unavailable." }, 409);
+        writing.add(slug);
+        try {
+          let by = "Developer";
+          try {
+            by =
+              execFileSync("git", ["config", "--get", "user.name"], {
+                cwd: worktree,
+                encoding: "utf8",
+                stdio: "pipe",
+              }).trim() || by;
+          } catch (error) {
+            if ((error as { status?: number }).status !== 1) throw error;
+          }
+          const decision: ReviewDecision = {
+            id: request.id as string,
+            blob: request.blob as string,
+            kind: "risky-path",
+            status: "accepted",
+            reason: (request.reason as string).trim(),
+            by,
+            at: new Date().toISOString(),
+          };
+          const commit = await saveWorkItemReview(worktree, slug, decision);
+          refresh();
+          return context.json({ decision, commit });
+        } catch (error) {
+          return context.json(
+            { reason: error instanceof Error ? error.message : String(error) },
+            503,
+          );
+        } finally {
+          writing.delete(slug);
+        }
+      }
       const reviewPath = `.scratch/${slug}/review.yaml`;
       const workflowPath = `.scratch/${slug}/workflow.yaml`;
       if (

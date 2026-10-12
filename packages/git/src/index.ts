@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 export {
+  scanRiskyPaths,
+  committedRiskyPaths,
+  branchRiskyPaths,
+  type RiskyPath,
+} from "./risky-paths.js";
+export {
   checkWorkItemCreation,
   commitWorkItemCreation,
   WorkItemCreationRefusal,

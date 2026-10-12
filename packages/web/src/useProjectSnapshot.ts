@@ -4,6 +4,7 @@ import {
   parseWorkflowDefinition,
   isStintLogEntry,
   isCheckpointWarnings,
+  isRiskyPaths,
   isStintEvent,
   isBriefHandoff,
   isReviewFindings,
@@ -157,6 +158,7 @@ function readSnapshot(value: unknown): ProjectSnapshot {
         (item.milestone === undefined || typeof item.milestone === "string") &&
         (item.headCommit === undefined || typeof item.headCommit === "string") &&
         (item.reviewEvidenceError === undefined || typeof item.reviewEvidenceError === "string") &&
+        (item.riskyPaths === undefined || isRiskyPaths(item.riskyPaths)) &&
         (item.checkCommands === undefined ||
           (Array.isArray(item.checkCommands) &&
             item.checkCommands.every(
@@ -347,6 +349,7 @@ export function useProjectSnapshot() {
                     const summary = summarizeStint(stint);
                     return {
                       ...item,
+                      ...(entry.type === "ended" ? { riskyPaths: undefined } : {}),
                       activeStint: stint.status === "running" ? stint : null,
                       stints: [
                         summary,

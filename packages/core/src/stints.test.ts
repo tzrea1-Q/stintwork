@@ -8,6 +8,7 @@ import {
   isStintEvent,
   isStintLogEntry,
   isCheckpointWarnings,
+  isRiskyPaths,
   summarizeStint,
   type StintLogEntry,
   type StintLogEvent,
@@ -36,6 +37,48 @@ test("checkpoint warnings validate as metadata and survive folding and summaries
     { ...warnings[0], contents: "Must not be logged" },
   ])
     expect(isStintLogEntry({ ...ended, checkpointWarnings: [warning] })).toBe(false);
+});
+
+test("committed warnings preserve commit identities, with no arbitrary content fields", () => {
+  const warning = {
+    path: ".env",
+    reasons: ["likely-secret"],
+    excluded: false,
+    committed: true,
+    commits: ["a".repeat(40)],
+  };
+  expect(isCheckpointWarnings([warning])).toBe(true);
+  expect(
+    isRiskyPaths([{ path: warning.path, reasons: warning.reasons, blob: "b".repeat(40) }]),
+  ).toBe(true);
+  for (const invalid of [
+    { ...warning, committed: false },
+    { ...warning, commits: [] },
+    { ...warning, commits: ["not-a-commit"] },
+    { ...warning, contents: "Never disclose" },
+    { ...warning, path: "/outside" },
+    { ...warning, excluded: true },
+  ])
+    expect(isCheckpointWarnings([invalid])).toBe(false);
+  expect(
+    isRiskyPaths([
+      {
+        path: warning.path,
+        reasons: warning.reasons,
+        blob: "b".repeat(40),
+        contents: "Never disclose",
+      },
+    ]),
+  ).toBe(false);
+  const entry = {
+    type: "ended",
+    at: "2026-10-09T10:10:00Z",
+    status: "finished",
+    checkpointWarnings: [warning],
+  };
+  expect(isStintLogEntry(entry)).toBe(true);
+  const stint = foldStintLog([started, entry as StintLogEntry]);
+  expect(stint && summarizeStint(stint).checkpointWarnings).toEqual([warning]);
 });
 
 const started: StintLogEntry = {

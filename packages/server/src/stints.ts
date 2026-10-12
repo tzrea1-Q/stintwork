@@ -26,6 +26,7 @@ import {
 import {
   commitStintworkSetup,
   createCheckpoint,
+  committedRiskyPaths,
   ensureWorktree,
   installWorktreeDependencies,
   worktreeGitDirectories,
@@ -114,6 +115,7 @@ export function addStintRoutes(
     (slug) => active.has(slug),
     workflowWrites,
     isChecking,
+    readReviewEvidence,
   );
   addMemoryProposalRoutes(
     app,
@@ -359,6 +361,14 @@ export function addStintRoutes(
             details.error,
             `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`,
           ]
+            .filter(Boolean)
+            .join("\n");
+        }
+        try {
+          checkpointWarnings.push(...committedRiskyPaths(worktree.path, baseCommit));
+        } catch (error) {
+          status = "failed";
+          details.error = [details.error, `Cannot inspect stint commits: ${String(error)}`]
             .filter(Boolean)
             .join("\n");
         }
