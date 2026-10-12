@@ -2,6 +2,37 @@
 
 All notable changes to Stintwork are recorded here, in Keep a Changelog style.
 
+## 0.1.1 — unreleased
+
+### Local data and checkpoints
+
+- `.stintwork/local/` ignores itself, including stint logs, check logs and pull request check records. Stintwork no longer edits the project's `.gitignore` outside confirmed guided setup.
+- Checkpoints exclude likely secrets, files over 1 MiB and generated directories such as `node_modules/`, `dist/`, `build/` and `coverage/`. Excluded paths appear in the handoff, Review and Needs you without showing file contents.
+- Every commit added during a stint is scanned for risky files. The Review gate condition "No risky files on the branch" blocks shipping until each file is removed or accepted with a reason. Per-file Accept decisions are tied to the file's blob, so changing it requires another decision. Detection uses paths and sizes, not file contents.
+
+### Stints and gates
+
+- Quick's Do stage starts from the intent without tickets, using `/implement`. Bug's Diagnose stage also starts without tickets. Ticket-scoped Do stints still work.
+- Do without tickets needs a finished stint before its gate can be approved.
+- Gate approvals commit `workflow.yaml` even before a worktree exists. Failed commits restore the file rather than leaving an uncommitted gate change.
+- Agents have one 60-second startup budget. A timeout explains that the machine may be busy and asks the developer to try again.
+- Codex availability is checked before a stint. A missing CLI or login disables it in the agent picker and raises an attention item with the next step. Refresh agent availability reruns the check without authenticating or prompting for work.
+
+### Documentation
+
+- Both READMEs explain Stintwork for newcomers, where to run `npx stintwork` in the developer's own project, and how to install and sign in to the agents they want to use.
+- The package includes the Simplified Chinese `README.zh-CN.md` alongside `README.md`.
+
+### Review and shipping carried over from 0.1.0
+
+These behaviours were already in the published 0.1.0 package. They remain in 0.1.1.
+
+- Real `gh pr checks` output saying "no checks reported" is handled as no CI checks. Merge remains blocked rather than showing a raw command failure.
+- Review diffs work when the project's main branch is `master` rather than `main`.
+- Pull request merge-method selection honours readable linear-history protection by choosing an allowed squash or rebase method. It refuses when neither is allowed and shows the chosen method before confirmation.
+
+See the [release notes](docs/release-notes/0.1.1.md) for upgrade instructions and known limitations.
+
 ## 0.1.0 — 2026-10-11
 
 ### Added

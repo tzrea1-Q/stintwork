@@ -6,15 +6,15 @@ import { checkNodeVersion } from "./cli.js";
 const root = new URL("../../../", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
 
-test("only the root stintwork package is publishable, at 0.1.0 on Node 22.12 or newer", () => {
+test("only the root stintwork package is publishable, at 0.1.1 on Node 22.12 or newer", () => {
   expect(manifest).toMatchObject({
     name: "stintwork",
-    version: "0.1.0",
+    version: "0.1.1",
     license: "Apache-2.0",
     type: "module",
     engines: { node: ">=22.12.0" },
     bin: { stintwork: "./dist/bin.js" },
-    files: ["dist/", "README.md", "LICENSE"],
+    files: ["dist/", "README.md", "README.zh-CN.md", "LICENSE"],
   });
   expect(manifest.private).toBeUndefined();
   for (const directory of readdirSync(new URL("packages/", root))) {

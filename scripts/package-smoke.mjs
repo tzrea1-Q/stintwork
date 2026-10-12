@@ -59,8 +59,12 @@ try {
   for (const entry of entries) {
     assert(!entry.split("/").includes(".."), `Invalid tarball path: ${entry}`);
     assert(
-      ["package/package.json", "package/README.md", "package/LICENSE"].includes(entry) ||
-        entry.startsWith("package/dist/"),
+      [
+        "package/package.json",
+        "package/README.md",
+        "package/README.zh-CN.md",
+        "package/LICENSE",
+      ].includes(entry) || entry.startsWith("package/dist/"),
       `Unexpected tarball file: ${entry}`,
     );
     assert(
@@ -72,6 +76,7 @@ try {
     "package/dist/bin.js",
     "package/dist/web/index.html",
     "package/README.md",
+    "package/README.zh-CN.md",
     "package/LICENSE",
   ])
     assert(entries.includes(entry), `Missing tarball file: ${entry}`);
@@ -82,7 +87,7 @@ try {
   );
   const manifest = JSON.parse(manifestText);
   assert.equal(manifest.name, "stintwork");
-  assert.equal(manifest.version, "0.1.0");
+  assert.equal(manifest.version, "0.1.1");
   assert.equal(manifest.private, undefined);
   assert.equal(manifest.engines.node, ">=22.12.0");
   assert.equal(manifest.bin.stintwork, "./dist/bin.js");
@@ -157,7 +162,7 @@ try {
   }
   const executable = join(consumer, "node_modules/.bin/stintwork");
   const version = await execute(executable, ["--version"], { ...options, cwd: consumer });
-  assert.equal(version.stdout, "0.1.0\n");
+  assert.equal(version.stdout, "0.1.1\n");
   assert.equal(version.stderr, "");
   const help = await execute(executable, ["--help"], { ...options, cwd: consumer });
   assert.equal(help.stderr, "");
