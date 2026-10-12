@@ -5,7 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
-    "stintwork": "./dist/bin.js"
+    "stintwork": "dist/bin.js"
   },
   "files": [
     "dist/",

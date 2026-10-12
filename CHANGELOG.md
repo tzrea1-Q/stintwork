@@ -2,7 +2,7 @@
 
 All notable changes to Stintwork are recorded here, in Keep a Changelog style.
 
-## 0.1.1 — unreleased
+## 0.1.1 — 2026-10-12
 
 ### Local data and checkpoints
 
