@@ -89,14 +89,17 @@ test("stage navigation describes its keyboard controls without moving focus", as
 test("milestone filter hides other milestones", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
-  await user.selectOptions(screen.getByRole("combobox", { name: "Milestone" }), "m1");
+  await user.click(screen.getByRole("combobox", { name: "Milestone" }));
+  await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
   expect(screen.getByRole("article", { name: /^board:/ })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^next:/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^clarify:/ })).not.toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox"), "m2");
+  await user.click(screen.getByRole("combobox", { name: "Milestone" }));
+  await user.click(await screen.findByRole("option", { name: "M2 · Next" }));
   expect(screen.getByRole("article", { name: /^next:/ })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^board:/ })).not.toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox"), "");
+  await user.click(screen.getByRole("combobox", { name: "Milestone" }));
+  await user.click(await screen.findByRole("option", { name: "All" }));
   expect(screen.getByRole("article", { name: /^board:/ })).toBeInTheDocument();
 });
 
@@ -144,29 +147,30 @@ test("opens warnings and setup reports and dismisses them with Escape or outside
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   await user.click(screen.getByRole("button", { name: /^Warnings/ }));
-  expect(screen.getByRole("region", { name: "Project warnings" })).toHaveTextContent(/99/);
+  expect(await screen.findByRole("dialog", { name: "Project warnings" })).toHaveTextContent(/99/);
   await user.keyboard("{Escape}");
-  expect(screen.queryByRole("region", { name: "Project warnings" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Project warnings" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /^Warnings/ })).toHaveFocus();
   await user.click(screen.getByRole("button", { name: /^Setup/ }));
-  expect(screen.getByRole("region", { name: "Project setup" })).toHaveTextContent(
+  expect(await screen.findByRole("dialog", { name: "Project setup" })).toHaveTextContent(
     "Glossary: Missing",
   );
   await user.click(screen.getByRole("heading", { name: /^Pipeline/ }));
-  expect(screen.queryByRole("region", { name: "Project setup" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Project setup" })).not.toBeInTheDocument();
 });
 
 test("updates ticket progress from a new snapshot and resets a removed milestone filter", async () => {
   const user = userEvent.setup();
   const { rerender } = render(<Board snapshot={project()} />);
-  await user.selectOptions(screen.getByRole("combobox"), "m1");
+  await user.click(screen.getByRole("combobox", { name: "Milestone" }));
+  await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
   const updated = project({
     ...files,
     ".scratch/board/issues/02-ui.md": "# Pipeline\nStatus: resolved",
   });
   updated.milestones = [];
   rerender(<Board snapshot={updated} />);
-  expect(screen.getByRole("combobox")).toHaveValue("");
+  expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveTextContent("All");
   expect(
     within(screen.getByRole("region", { name: "Review" })).getByRole("article", {
       name: /^board:/,
@@ -259,7 +263,8 @@ test("?item=<slug> opens the drawer on load", () => {
 test("command palette jumps to a work item", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
-  await user.selectOptions(screen.getByRole("combobox", { name: "Milestone" }), "m1");
+  await user.click(screen.getByRole("combobox", { name: "Milestone" }));
+  await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
   await user.keyboard("{Meta>}k{/Meta}");
   const palette = within(screen.getByRole("dialog", { name: "Command palette" }));
   const search = palette.getByRole("combobox", { name: "Search work items and milestones" });
@@ -362,7 +367,7 @@ test("command palette filters milestones and restores focus on Esc", async () =>
       2,
   );
   await user.click(palette.getByRole("option", { name: "M2 · Next" }));
-  expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveValue("m2");
+  expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveTextContent("M2 · Next");
   expect(trigger).toHaveFocus();
   await user.keyboard("{Control>}k{/Control}");
   await user.keyboard("{Escape}");
@@ -374,7 +379,7 @@ test("command palette filters milestones and restores focus on Esc", async () =>
       name: "All",
     }),
   );
-  expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveValue("");
+  expect(screen.getByRole("combobox", { name: "Milestone" })).toHaveTextContent("All");
 });
 
 test("keeps the drawer open when Esc dismisses a palette above it", async () => {

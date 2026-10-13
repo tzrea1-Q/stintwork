@@ -118,7 +118,7 @@ test("blocked localStorage reads and writes still render and switch", async () =
   );
   expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "语言" }));
-  await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+  await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
   expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "en");
 });
@@ -136,13 +136,16 @@ test("switching persists the preference and preserves the open drawer and ticket
   await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
   expect(ticket).toHaveAttribute("open");
   await user.click(screen.getByRole("button", { name: "Language" }));
-  const choices = screen.getByRole("listbox", { name: "Language" });
-  expect(within(choices).getByRole("option", { name: "English" })).toHaveAttribute("lang", "en");
-  expect(within(choices).getByRole("option", { name: "简体中文" })).toHaveAttribute(
+  const choices = await screen.findByRole("menu", { name: "Language" });
+  expect(within(choices).getByRole("menuitemradio", { name: "English" })).toHaveAttribute(
+    "lang",
+    "en",
+  );
+  expect(within(choices).getByRole("menuitemradio", { name: "简体中文" })).toHaveAttribute(
     "lang",
     "zh-CN",
   );
-  await user.selectOptions(choices, "zh-CN");
+  await user.click(within(choices).getByRole("menuitemradio", { name: "简体中文" }));
   expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /^待你处理/ })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "zh-CN");
@@ -201,7 +204,9 @@ test.each(["team", "feature", "constructor"])(
       expect(screen.getByRole("heading", { name })).toBeInTheDocument();
     expect(screen.getByText("Repo project 中文")).toBeInTheDocument();
     expect(screen.getByText("team/中文")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Repo milestone 中文" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "里程碑" }));
+    expect(await screen.findByRole("option", { name: "Repo milestone 中文" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     const card = within(screen.getByRole("article", { name: "example: Repo title 中文" }));
     expect(card.getByText("Team workflow 自定义:")).toBeInTheDocument();
     await user.click(card.getByRole("button", { name: "打开 example：Repo title 中文" }));
@@ -278,12 +283,12 @@ test("warnings and setup checklist chrome translate without changing core warnin
     </LanguageProvider>,
   );
   await user.click(screen.getByRole("button", { name: "警告 1" }));
-  const warnings = within(screen.getByRole("region", { name: "项目警告" }));
+  const warnings = within(await screen.findByRole("dialog", { name: "项目警告" }));
   expect(warnings.getByText("Core warning 原文")).toBeInTheDocument();
   expect(warnings.getByText(".scratch/中文/spec.md")).toBeInTheDocument();
   expect(warnings.getByText("只读 · 不会更改任何文件。")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /^设置/ }));
-  const setup = within(screen.getByRole("region", { name: "项目设置" }));
+  const setup = within(await screen.findByRole("dialog", { name: "项目设置" }));
   expect(setup.getByText("工单跟踪指南")).toBeInTheDocument();
   expect(setup.getByText("Agent 指令")).toBeInTheDocument();
   expect(setup.getByText("docs/agents/issue-tracker.md")).toBeInTheDocument();
