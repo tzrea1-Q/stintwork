@@ -22,6 +22,8 @@ import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { LanguageSelect } from "./i18n/LanguageSelect";
+import { useLanguage } from "./i18n/language";
+import { stageName, workflowName } from "./i18n/workflow-names";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -34,21 +36,22 @@ function Markdown({ text }: { text: string }) {
 }
 
 function FilePath({ path }: { path: string }) {
+  const { t } = useLanguage();
   const [message, setMessage] = useState("");
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(path);
-      setMessage("Copied");
+      setMessage(t.stints.copied);
     } catch {
-      setMessage("Could not copy. Select the path to copy it manually.");
+      setMessage(t.stints.copyPathFailed);
     }
   }
 
   return (
     <div className="file-path">
       <code>{path}</code>
-      <button type="button" onClick={copy} aria-label={`Copy ${path}`}>
+      <button type="button" onClick={copy} aria-label={t.stints.copyPath(path)}>
         <Copy size={13} aria-hidden="true" />
       </button>
       <span className="copy-status" role="status">
@@ -75,13 +78,14 @@ export function WorkItemDrawer({
   workflows?: WorkflowDefinitions;
   onCustomiseWorkflow?: (id: string) => void;
 }) {
+  const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [reviewOpen, setReviewOpen] = useState(false);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
-  const type = item.type === "effort" ? "Effort" : workflow.name;
+  const type = item.type === "effort" ? t.card.effort : workflowName(workflow, t);
   const reviewStageId = workflow.stages.find(({ gate }) => gate === "evidence")?.id;
   const archived = reviewFindings(item.stints, item.reviewDecisions, item, reviewStageId);
 
@@ -121,7 +125,7 @@ export function WorkItemDrawer({
               className="top-button"
               ref={closeButton}
               onClick={onClose}
-              aria-label="Close work item"
+              aria-label={t.stints.closeWorkItem}
             >
               <X size={16} aria-hidden="true" />
             </button>
@@ -131,26 +135,26 @@ export function WorkItemDrawer({
           {item.title}
         </h2>
         <p className="mt-3 text-xs muted">
-          Milestone: {milestone?.name ?? item.milestone ?? "No milestone"}
+          {t.stints.milestone} {milestone?.name ?? item.milestone ?? t.stints.noMilestone}
         </p>
         <p className="mt-3 text-xs muted">
-          Workflow: {workflow.name}{" "}
+          {t.stints.workflow} {workflowName(workflow, t)}{" "}
           {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
             <button
               type="button"
               className="top-button"
               onClick={() => onCustomiseWorkflow(item.workflow)}
             >
-              Customise
+              {t.stints.customise}
             </button>
           )}
         </p>
         {item.worktreePath && (
           <div className="mt-3">
-            <p className="text-xs muted">Work item files live in this worktree:</p>
+            <p className="text-xs muted">{t.stints.worktreeFiles}</p>
             <FilePath path={item.worktreePath} />
             <button type="button" className="top-button" onClick={() => setReviewOpen(true)}>
-              Open review
+              {t.stints.openReview}
             </button>
           </div>
         )}
@@ -158,12 +162,12 @@ export function WorkItemDrawer({
       {item.stage && !item.merged ? (
         <StageAgentRail key={item.slug} item={item} workflows={workflows} />
       ) : !item.merged ? (
-        <p className="drawer-stage-note muted">No stage declared for this work item.</p>
+        <p className="drawer-stage-note muted">{t.stints.noStage}</p>
       ) : null}
-      <nav className="drawer-sections" aria-label="Work item sections">
-        <a href="#drawer-spec">Spec</a>
+      <nav className="drawer-sections" aria-label={t.stints.sections}>
+        <a href="#drawer-spec">{t.stints.spec}</a>
         <a href="#drawer-tickets">
-          Tickets <span className="count">{item.tickets.length}</span>
+          {t.stints.tickets} <span className="count">{item.tickets.length}</span>
         </a>
       </nav>
       <div className="drawer-content">
@@ -177,16 +181,16 @@ export function WorkItemDrawer({
           />
         )}
         {item.stage && !item.merged && (!item.tickets.length || stage?.column !== "implement") && (
-          <section aria-label="Stage stint">
+          <section aria-label={t.stints.stageStintSection}>
             <h3 className="drawer-section-heading">
-              {workflow.stages.find((stage) => stage.id === item.stage)?.name} stint
+              {t.stints.stageStint(stage ? stageName(workflow, stage, t) : "")}
             </h3>
             <StageBriefPreview item={item} workflows={workflows} />
           </section>
         )}
         <section id="drawer-spec" aria-labelledby="drawer-spec-title">
           <h3 id="drawer-spec-title" className="drawer-section-heading">
-            Spec
+            {t.stints.spec}
           </h3>
           {item.spec ? (
             <>
@@ -194,12 +198,12 @@ export function WorkItemDrawer({
               <Markdown text={item.spec.text} />
             </>
           ) : (
-            <p className="muted">No spec yet.</p>
+            <p className="muted">{t.stints.noSpec}</p>
           )}
         </section>
         <section id="drawer-tickets" aria-labelledby="drawer-tickets-title">
           <h3 id="drawer-tickets-title" className="drawer-section-heading">
-            Tickets <span className="count">{item.tickets.length}</span>
+            {t.stints.tickets} <span className="count">{item.tickets.length}</span>
           </h3>
           {item.tickets.length ? (
             <ol className="drawer-tickets">
@@ -229,7 +233,7 @@ export function WorkItemDrawer({
                             {ticket.blockedBy.length > 0 && (
                               <>
                                 {" "}
-                                · Blocked by{" "}
+                                {t.stints.blockedBy}{" "}
                                 {ticket.blockedBy
                                   .map((number) => String(number).padStart(2, "0"))
                                   .join(", ")}
@@ -249,17 +253,17 @@ export function WorkItemDrawer({
               })}
             </ol>
           ) : (
-            <p className="muted">No tickets yet.</p>
+            <p className="muted">{t.stints.noTickets}</p>
           )}
         </section>
         {item.activeStint && (
           <section aria-labelledby="drawer-live-stint-title">
             <h3 id="drawer-live-stint-title" className="drawer-section-heading">
-              Live stint
+              {t.stints.liveStint}
             </h3>
             <p role="status">
-              {item.activeStint.agent} · Ticket {item.activeStint.ticket} ·{" "}
-              {item.activeStint.status}
+              {item.activeStint.agent} · {t.stints.ticket(item.activeStint.ticket)} ·{" "}
+              {t.stints.statuses[item.activeStint.status]}
             </p>
             <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
             <StintStream
@@ -271,30 +275,31 @@ export function WorkItemDrawer({
         )}
         <section aria-labelledby="drawer-stint-history-title">
           <h3 id="drawer-stint-history-title" className="drawer-section-heading">
-            Stint history
+            {t.stints.history}
           </h3>
           <StintHistory stints={item.stints} />
         </section>
         {item.merged && (
           <>
-            <section aria-label="Review findings">
-              <h3 className="drawer-section-heading">Review findings</h3>
+            <section aria-label={t.stints.reviewFindings}>
+              <h3 className="drawer-section-heading">{t.stints.reviewFindings}</h3>
               <FindingsRail {...archived} anchor={(finding) => `archived-${finding.id}`} />
               {archived.findings.map((finding) => (
                 <FindingCard key={finding.id} finding={finding} anchor={`archived-${finding.id}`} />
               ))}
             </section>
-            <section aria-label="Recorded checks">
-              <h3 className="drawer-section-heading">Checks</h3>
+            <section aria-label={t.stints.recordedChecks}>
+              <h3 className="drawer-section-heading">{t.stints.checks}</h3>
               <ChecksPanel item={item} />
             </section>
           </>
         )}
       </div>
       <footer className="drawer-footer">
-        <span>Local Markdown tracker</span>
+        <span>{t.stints.tracker}</span>
         <span>
-          <kbd>Esc</kbd> to return to Pipeline
+          <kbd>Esc</kbd>
+          {t.stints.returnToPipeline}
         </span>
       </footer>
       {reviewOpen && (

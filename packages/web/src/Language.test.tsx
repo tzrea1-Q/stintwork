@@ -204,10 +204,10 @@ test.each(["team", "feature", "constructor"])(
     await user.click(card.getByRole("button", { name: "打开 example：Repo title 中文" }));
     const drawer = within(screen.getByRole("dialog", { name: "Repo title 中文" }));
     expect(
-      drawer.getByRole("list", { name: "Team workflow 自定义 workflow stages" }),
+      drawer.getByRole("list", { name: "Team workflow 自定义工作流阶段" }),
     ).toHaveTextContent("Design 自定义");
     expect(
-      drawer.getByRole("list", { name: "Team workflow 自定义 workflow stages" }),
+      drawer.getByRole("list", { name: "Team workflow 自定义工作流阶段" }),
     ).toHaveTextContent("Deliver 自定义");
   },
 );

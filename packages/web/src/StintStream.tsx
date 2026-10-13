@@ -7,13 +7,15 @@ import { readableToolOutput } from "./tool-output";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./stint-stream.css";
+import { useLanguage } from "./i18n/language";
+import type { Catalog } from "./i18n/en";
 
-function toolOutput(content: StintToolContent): string {
+function toolOutput(content: StintToolContent, t: Catalog): string {
   if (content.type === "text") return readableToolOutput(content.text);
   if (content.type === "diff")
-    return `${content.path}\n${content.oldText !== null ? `Previous file content:\n${content.oldText}\n` : ""}New file content:\n${content.newText}`;
-  if (content.type === "terminal") return `Terminal output · ${content.terminalId}`;
-  return `Content · ${String(content.content.type ?? "unknown")}`;
+    return `${content.path}\n${content.oldText !== null ? `${t.stints.previousContent}\n${content.oldText}\n` : ""}${t.stints.newContent}\n${content.newText}`;
+  if (content.type === "terminal") return t.stints.terminalOutput(content.terminalId);
+  return t.stints.content(String(content.content.type ?? t.stints.unknown));
 }
 
 function PermissionPrompt({
@@ -27,6 +29,7 @@ function PermissionPrompt({
   replay: boolean;
   profile?: AgentProfile;
 }) {
+  const { t } = useLanguage();
   const decision = stint.events.find(
     (entry) => entry.type === "permission" && entry.requestId === event.requestId,
   );
@@ -34,32 +37,32 @@ function PermissionPrompt({
 
   let outcome = event.automatic
     ? !replay && stint.status === "running"
-      ? "Stintwork is answering automatically."
-      : "No automatic answer recorded."
+      ? t.stints.answeringAutomatically
+      : t.stints.noAutomaticAnswer
     : replay && stint.status === "running"
-      ? "No answer recorded."
-      : "This request is no longer pending.";
+      ? t.stints.noAnswer
+      : t.stints.noLongerPending;
   if (decision?.type === "permission") {
     if (decision.decision.outcome === "selected") {
       const optionId = decision.decision.optionId;
       outcome = event.options.find((option) => option.optionId === optionId)?.name ?? optionId;
-      if (decision.automatic) outcome = `Automatic · ${outcome}`;
+      if (decision.automatic) outcome = t.stints.automaticOutcome(outcome);
     } else
       outcome =
         decision.decision.outcome === "failed"
           ? decision.decision.reason
-          : "Permission request cancelled.";
+          : t.stints.permissionCancelled;
   }
   return (
     <section
       className="stint-permission"
-      aria-label={`Permission: ${event.title ?? event.toolCallId}`}
+      aria-label={t.stints.permissionTitle(event.title ?? event.toolCallId)}
     >
-      <strong>{event.title ?? "Permission requested"}</strong>
+      <strong>{event.title ?? t.stints.permissionRequested}</strong>
       {event.kind && <span className="muted"> · {event.kind}</span>}
       {pending ? (
         <>
-          <p>The stint waits for your answer, even when this drawer is closed.</p>
+          <p>{t.stints.waitingForAnswer}</p>
           <PermissionAnswer stintId={stint.id} request={event} profile={profile} />
         </>
       ) : (
@@ -81,6 +84,7 @@ export function StintStream({
   replay?: boolean;
   profile?: AgentProfile;
 }) {
+  const { t } = useLanguage();
   const waitingForPermission = stint.events.some(
     (event) =>
       event.type === "permission_request" &&
@@ -97,10 +101,10 @@ export function StintStream({
           const occurrences = new Map<string, number>();
           return (
             event.type === "plan" && (
-              <section key={event.id} className="stint-plan" aria-label="Stint plan">
+              <section key={event.id} className="stint-plan" aria-label={t.stints.stintPlan}>
                 <h4>
                   <ListChecks size={15} aria-hidden="true" />
-                  Plan{" "}
+                  {t.stints.plan}{" "}
                   <span className="muted">
                     {event.entries.filter((entry) => entry.status === "completed").length}/
                     {event.entries.length}
@@ -117,7 +121,7 @@ export function StintStream({
                       >
                         {entry.status === "completed" && <Check size={14} aria-hidden="true" />}
                         <span>{entry.content}</span>
-                        <small>{entry.status.replaceAll("_", " ")}</small>
+                        <small>{t.stints.progress[entry.status]}</small>
                       </li>
                     );
                   })}
@@ -129,7 +133,7 @@ export function StintStream({
       <div
         className="stint-messages stint-event-log"
         role="log"
-        aria-label="Stint messages"
+        aria-label={t.stints.messages}
         aria-live="polite"
       >
         {stint.events.map((event, index) => {
@@ -154,7 +158,7 @@ export function StintStream({
             <div className={`stint-event stint-event-${event.type}`} key={`${event.type}:${key}`}>
               {(event.type === "message" || event.type === "thought") && (
                 <div className={event.type === "thought" ? "markdown muted" : "markdown"}>
-                  {event.type === "thought" && <small>Agent thought</small>}
+                  {event.type === "thought" && <small>{t.stints.agentThought}</small>}
                   <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
                     {event.text}
                   </ReactMarkdown>
@@ -166,7 +170,8 @@ export function StintStream({
                     <Wrench size={14} aria-hidden="true" />
                     <strong>{event.title ?? event.toolCallId}</strong>
                     <span>
-                      {event.kind ?? "other"} · {(event.status ?? "pending").replaceAll("_", " ")}
+                      {event.kind ?? t.stints.other} ·{" "}
+                      {t.stints.progress[event.status ?? "pending"]}
                     </span>
                   </div>
                   {event.locations?.map((location) => (
@@ -179,9 +184,11 @@ export function StintStream({
                   ))}
                   {event.content?.length || event.output ? (
                     <details className="stint-tool-output">
-                      <summary>Tool output</summary>
+                      <summary>{t.stints.toolOutput}</summary>
                       {!!event.content?.length && (
-                        <pre>{event.content.map(toolOutput).join("\n\n")}</pre>
+                        <pre>
+                          {event.content.map((content) => toolOutput(content, t)).join("\n\n")}
+                        </pre>
                       )}
                       {event.output && <pre>{readableToolOutput(event.output)}</pre>}
                     </details>
@@ -191,7 +198,7 @@ export function StintStream({
               {event.type === "file_edit" && (
                 <div className="stint-file-edit">
                   <FileCode2 size={14} aria-hidden="true" />
-                  <strong>File edit</strong>
+                  <strong>{t.stints.fileEdit}</strong>
                   <code>{event.path}</code>
                 </div>
               )}
@@ -200,11 +207,13 @@ export function StintStream({
               )}
               {event.type === "permission" && (
                 <p>
-                  Permission{event.automatic ? " · Automatic" : ""} ·{" "}
-                  {event.title ?? event.toolCallId} ·{" "}
+                  {t.stints.permission}
+                  {event.automatic ? t.stints.automatic : ""} · {event.title ?? event.toolCallId} ·{" "}
                   {event.decision.outcome === "selected"
                     ? event.decision.optionId
-                    : event.decision.outcome}
+                    : event.decision.outcome === "failed"
+                      ? t.stints.progress.failed
+                      : t.stints.cancelled}
                 </p>
               )}
               {event.type === "other" && (
@@ -223,11 +232,17 @@ export function StintStream({
         )}
       </div>
       <p className="stint-stream-status" role="status">
-        {stint.status === "running" && !replay
-          ? waitingForPermission
-            ? "Waiting for your permission answer"
-            : "Streaming live · Agent is working"
-          : `Stint ${stint.status}`}
+        {stint.status === "running" && !replay ? (
+          waitingForPermission ? (
+            t.stints.waitingPermission
+          ) : (
+            t.stints.streaming
+          )
+        ) : (
+          <>
+            {t.stints.stint} {t.stints.statuses[stint.status]}
+          </>
+        )}
       </p>
     </div>
   );
