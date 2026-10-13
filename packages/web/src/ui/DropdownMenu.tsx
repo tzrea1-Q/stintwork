@@ -21,9 +21,10 @@ export const DropdownMenuContent = forwardRef<
         {...props}
         ref={ref}
         sideOffset={sideOffset}
-        collisionPadding={16}
+        collisionPadding={17}
+        avoidCollisions
         className={cn(
-          "z-50 min-w-32 max-w-[calc(100vw-32px)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
+          "z-50 min-w-32 max-w-[calc(100vw-34px)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
           className,
         )}
       />
