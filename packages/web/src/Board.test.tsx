@@ -72,6 +72,20 @@ test("renders cards in the column of their stage", () => {
   ).toHaveAccessibleName(/^effort:/);
 });
 
+test("stage navigation describes its keyboard controls without moving focus", async () => {
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  const navigation = screen.getByRole("navigation", { name: "Stage navigation" });
+  for (const name of ["Previous stages", "Next stages"]) {
+    const trigger = within(navigation).getByRole("button", { name });
+    trigger.focus();
+    await screen.findByRole("tooltip", { name });
+    expect(trigger).toHaveAccessibleDescription(name);
+    await user.keyboard("{Escape}");
+    expect(trigger).toHaveFocus();
+  }
+});
+
 test("milestone filter hides other milestones", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);

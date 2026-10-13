@@ -28,6 +28,7 @@
   "scripts": {
     "stintwork": "node --import tsx --conditions=development packages/cli/src/bin.ts",
     "test": "vitest run",
+    "test:e2e": "pnpm --filter @stintwork/web test:e2e",
     "typecheck": "tsc --noEmit && pnpm -r typecheck",
     "licence:check": "node scripts/check-licence-headers.mjs",
     "lint": "node scripts/check-licence-headers.mjs && biome lint .",

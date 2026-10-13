@@ -4,6 +4,7 @@ import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core"
 import { useEffect, useId, useRef, useState } from "react";
 import "./roadmap-editor.css";
 import { en } from "./i18n/en";
+import { Button } from "./ui/Button";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { t } = useLanguage();
@@ -11,15 +12,14 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const trigger = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <button
-        type="button"
-        className="top-button"
+      <Button
+        variant="secondary"
         ref={trigger}
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       >
         {t.planning.roadmap.title}
-      </button>
+      </Button>
       {open && (
         <RoadmapSheet
           snapshot={snapshot}
