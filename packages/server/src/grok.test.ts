@@ -170,7 +170,13 @@ test("a missing Grok login refuses a start before creating a worktree and clears
   );
   const response = await start(project);
   expect(response.status).toBe(409);
-  expect(await response.json()).toEqual({ reason: expect.stringContaining("grok login") });
+  expect(await response.json()).toEqual({
+    reason: expect.stringContaining("grok login"),
+    reasonMessage: {
+      code: "agent.loginRequired",
+      params: { agent: "Grok Build", command: "grok login" },
+    },
+  });
   const attention = (await snapshot(project)).attentionItems;
   expect(attention).toEqual([
     expect.objectContaining({
@@ -205,7 +211,13 @@ test("Authentication required from an actual Grok stint is logged and rebuilds a
   );
   const response = await start(project);
   expect(response.status).toBe(503);
-  expect(await response.json()).toEqual({ reason: expect.stringContaining("grok login") });
+  expect(await response.json()).toEqual({
+    reason: expect.stringContaining("grok login"),
+    reasonMessage: {
+      code: "agent.loginRequired",
+      params: { agent: "Grok Build", command: "grok login" },
+    },
+  });
   const before = await snapshot(project);
   expect(before.workItems[0].stints[0]).toMatchObject({
     agent: "grok",

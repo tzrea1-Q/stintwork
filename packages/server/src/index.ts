@@ -6,7 +6,7 @@ import { basename, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAdaptorServer, type ServerType, upgradeWebSocket } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { type Health, indexProject, type Warning } from "@stintwork/core";
+import { coreTextMessage, type Health, indexProject, type Warning } from "@stintwork/core";
 import { createAgentRegistry, describeAgents } from "@stintwork/agents";
 import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
@@ -124,6 +124,22 @@ export function createProjectServer(
   }
 
   const app = new Hono();
+  app.use("/api/*", async (context, next) => {
+    await next();
+    const response = context.res;
+    if (response.ok || !response.headers.get("Content-Type")?.includes("application/json")) return;
+    const body = await response.clone().json();
+    if (!body || typeof body.reason !== "string" || body.reasonMessage) return;
+    const reasonMessage = coreTextMessage(body.reason);
+    if (!reasonMessage) return;
+    const headers = new Headers(response.headers);
+    headers.delete("Content-Length");
+    context.res = new Response(JSON.stringify({ ...body, reasonMessage }), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+  });
   addProjectPermissionRoute(app, root, () => refresh());
   let initialization: Promise<void> | undefined;
   function initialize() {
@@ -138,7 +154,13 @@ export function createProjectServer(
     try {
       await initialize();
     } catch (error) {
-      return context.json({ reason: `Stint recovery failed: ${String(error)}` }, 503);
+      return context.json(
+        {
+          reason: `Stint recovery failed: ${String(error)}`,
+          reasonMessage: { code: "server.recoveryFailed", params: { detail: String(error) } },
+        },
+        503,
+      );
     }
     await next();
   });

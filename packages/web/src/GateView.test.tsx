@@ -12,6 +12,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 function project(stage = "implement", approved = false): ProjectSnapshot {
   return indexProject(
@@ -42,8 +43,43 @@ const stint: StintSummary = {
   },
 };
 afterEach(() => {
+  localStorage.removeItem(languageStorageKey);
   vi.unstubAllGlobals();
   window.history.replaceState({}, "", "/");
+});
+
+test.each([
+  [false, "所有工单都必须解决后才能批准。"],
+  [true, "此工作项有正在运行的 Stint。请先结束或停止，再批准。"],
+])("Chinese gate shows the blocking reason and output label (%s)", (running, reason) => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const item = project().workItems[0];
+  item.tickets[0].resolved = false;
+  if (running) item.stints = [{ ...stint, status: "running" }];
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(reason);
+  expect(screen.getByText("由开发者批准，无需输出文件")).toBeInTheDocument();
+});
+
+test("Chinese gate translates its required path but keeps parser warnings verbatim", () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const item = project("spec").workItems[0];
+  item.spec = null;
+  item.outputWarnings = [{ path: ".scratch/first/spec.md", message: "Repo parser 原文" }];
+  item.stints = [{ ...stint, stage: "spec", ticket: null }];
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "编写或编辑 .scratch/first/spec.md，加入非空的 # 标题。 Repo parser 原文",
+  );
+  expect(screen.getByText("spec.md 存在且可解析")).toBeInTheDocument();
 });
 
 function reviewItem() {

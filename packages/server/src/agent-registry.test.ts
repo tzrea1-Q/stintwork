@@ -18,6 +18,28 @@ const fixtures: {
 }[] = [];
 const handoff =
   "## Where I stopped\nWrote greeting.\n## Unresolved\nNone\n## Suggested next\nReview it.";
+
+test("agent HTTP status carries a message alongside the unchanged diagnostic", async () => {
+  const registry = createAgentRegistry([
+    {
+      ...fakeAgentProfiles.codex,
+      launch: createFakeAgentLauncher([]),
+      detectAvailability: async () => ({
+        available: false,
+        kind: "check-failed",
+        reason: "Internal error",
+      }),
+    },
+  ]);
+  const { project } = await fixture(registry);
+  const result = await (await project.app.request("/api/agents")).json();
+  expect(result.agents[0].availability).toEqual({
+    available: false,
+    kind: "check-failed",
+    reason: "Internal error",
+    reasonMessage: { code: "agent.internalError" },
+  });
+});
 function secondAgentRegistry() {
   return createAgentRegistry([
     { ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) },
@@ -98,7 +120,10 @@ test("an injected registry is discoverable and refuses unregistered agents befor
   for (const id of ["claude", "grok", "unknown", "__proto__", "toString"]) {
     const refused = await start(project, id);
     expect(refused.status).toBe(400);
-    expect(await refused.json()).toEqual({ reason: `Agent is not registered: ${id}.` });
+    expect(await refused.json()).toEqual({
+      reason: `Agent is not registered: ${id}.`,
+      reasonMessage: { code: "agent.notRegistered", params: { agent: id } },
+    });
   }
   await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
     code: "ENOENT",

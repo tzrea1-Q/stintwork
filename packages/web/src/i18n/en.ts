@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreTextEnglish } from "@stintwork/core";
 export const en = {
   connection: {
     workbench: "Stintwork · Local project workbench",
@@ -713,6 +714,7 @@ export const en = {
       failed: "failed",
     },
   },
+  coreText: { ...coreTextEnglish },
   slugInput: {
     label: "Folder name",
     hint: "Enter a folder name using lowercase English letters, digits and single hyphens (up to 48 characters).",

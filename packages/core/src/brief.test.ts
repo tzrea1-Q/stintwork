@@ -3,12 +3,27 @@ import { expect, test } from "vitest";
 import {
   type BriefInput,
   briefUnavailableReason,
+  briefAvailability,
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
   stageAgent,
 } from "./index.js";
+
+test("brief availability returns typed blockers and keeps the legacy English interface", () => {
+  const workItem = { type: "feature" as const, stage: "implement" };
+  const ticket = { resolved: false, blocked: true, blockedBy: [1, 12] };
+  expect(briefAvailability(workItem, ticket)).toEqual({
+    reason: "Blocked by ticket 01, 12.",
+    reasonMessage: { code: "brief.blockedBy", params: { tickets: "01, 12" } },
+  });
+  expect(briefUnavailableReason(workItem, ticket)).toBe("Blocked by ticket 01, 12.");
+  expect(briefAvailability(workItem, { ...ticket, resolved: true })).toEqual({
+    reason: "This ticket is resolved.",
+    reasonMessage: { code: "brief.ticketResolved" },
+  });
+});
 
 test("a shipped work item has no stint brief, even if its stage is edited later", () => {
   expect(
@@ -90,12 +105,36 @@ test("compiles real file pointers with reasons and the validated prompt order", 
   const brief = compileBrief(input());
   expect(brief.skill).toBe("/implement");
   expect(brief.pointers).toEqual([
-    { path: "AGENTS.md", reason: "Project conventions and agent instructions" },
-    { path: "GLOSSARY.md", reason: "Project vocabulary; use its terms in code and UI copy" },
-    { path: "docs/adr/0001-files.md", reason: "Decision record: Files are the source of truth" },
-    { path: "docs/adr/0002-agents.md", reason: "Decision record: Agents use ACP" },
-    { path: specPath, reason: "Work item scope and acceptance criteria" },
-    { path: ticketPath, reason: "This ticket's scope, status, blockers and comments" },
+    {
+      path: "AGENTS.md",
+      reason: "Project conventions and agent instructions",
+      reasonMessage: { code: "brief.conventions" },
+    },
+    {
+      path: "GLOSSARY.md",
+      reason: "Project vocabulary; use its terms in code and UI copy",
+      reasonMessage: { code: "brief.vocabulary" },
+    },
+    {
+      path: "docs/adr/0001-files.md",
+      reason: "Decision record: Files are the source of truth",
+      reasonMessage: { code: "brief.decision", params: { title: "Files are the source of truth" } },
+    },
+    {
+      path: "docs/adr/0002-agents.md",
+      reason: "Decision record: Agents use ACP",
+      reasonMessage: { code: "brief.decision", params: { title: "Agents use ACP" } },
+    },
+    {
+      path: specPath,
+      reason: "Work item scope and acceptance criteria",
+      reasonMessage: { code: "brief.scope" },
+    },
+    {
+      path: ticketPath,
+      reason: "This ticket's scope, status, blockers and comments",
+      reasonMessage: { code: "brief.ticketScope" },
+    },
   ]);
   expect(brief.prompt).toBe(
     `/implement ${ticketPath}\n\nRead first:\n` +
@@ -214,7 +253,11 @@ test.each(["first-stint", "another-item"])(
     expect(brief.prompt).toContain("What the developer asked for:\nChange the greeting to Hello.");
     expect(brief.prompt).toContain("No spec yet.");
     expect(brief.pointers).toEqual([
-      { path: "AGENTS.md", reason: "Project conventions and agent instructions" },
+      {
+        path: "AGENTS.md",
+        reason: "Project conventions and agent instructions",
+        reasonMessage: { code: "brief.conventions" },
+      },
     ]);
     expect(brief.prompt).toContain(
       `Work in the work item worktree on its branch, stintwork/${slug}.`,

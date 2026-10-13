@@ -10,6 +10,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { codexProfile } from "../../agents/src/profiles";
+import { TicketBriefPreview } from "./BriefPreview";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const ticketPath = ".scratch/first-stint/issues/02-brief-preview.md";
 const specPath = ".scratch/first-stint/spec.md";
@@ -22,6 +24,24 @@ const files = createMemoryRepoFiles({
 });
 const item = indexProject(files, { name: "Stintwork" }).workItems[0];
 const ticket = item.tickets[0];
+
+test.each([
+  [true, false, "此工单已解决。"],
+  [false, true, "被工单 01, 12 阻塞。"],
+])("Chinese brief explains why a ticket cannot start (%s, %s)", (resolved, blocked, reason) => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  render(
+    <LanguageProvider>
+      <TicketBriefPreview
+        item={item}
+        ticket={{ ...ticket, resolved, blocked, blockedBy: [1, 12] }}
+      />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(reason)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "开始 Stint" })).toBeDisabled();
+  localStorage.removeItem(languageStorageKey);
+});
 const agents = [codexProfile];
 const brief = compileBrief({
   files,
@@ -38,8 +58,52 @@ function previewFetch(preview = brief) {
 }
 
 afterEach(() => {
+  localStorage.removeItem(languageStorageKey);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+});
+
+test("Chinese brief translates the Codex permission warning, not the agent prompt", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  vi.stubGlobal("fetch", previewFetch());
+  render(
+    <LanguageProvider>
+      <TicketBriefPreview item={item} ticket={ticket} />
+    </LanguageProvider>,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "开始 Stint" }));
+  expect(
+    await screen.findByText(
+      "Codex 的沙盒可以不经问询执行命令。Stintwork 只能控制 Codex 发出的请求；命令和工作树外的访问可能不会产生请求。",
+    ),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      (_text, element) => element?.tagName === "PRE" && element.textContent === brief.prompt,
+    ),
+  ).toBeInTheDocument();
+});
+
+test("Chinese brief translates pointer reasons, preserving paths, decision titles and the prompt", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  vi.stubGlobal("fetch", previewFetch());
+  render(
+    <LanguageProvider>
+      <TicketBriefPreview item={item} ticket={ticket} />
+    </LanguageProvider>,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "开始 Stint" }));
+  expect(await screen.findByText(/项目约定与 Agent 指令/, { selector: "li" })).toHaveTextContent(
+    "AGENTS.md",
+  );
+  expect(
+    screen.getByText(/决策记录：Files are the source of truth/, { selector: "li" }),
+  ).toHaveTextContent("docs/adr/0001-files.md");
+  expect(
+    screen.getByText(
+      (_text, element) => element?.tagName === "PRE" && element.textContent === brief.prompt,
+    ),
+  ).toBeInTheDocument();
 });
 
 test("resume preview shows the checkpoint alongside the handoff and changed spec", async () => {

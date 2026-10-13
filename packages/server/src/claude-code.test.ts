@@ -190,6 +190,10 @@ test.each([true, false])(
     expect(response.status).toBe(503);
     const refusal = await response.json();
     expect(refusal.reason).toContain("claude auth login");
+    expect(refusal.reasonMessage).toEqual({
+      code: "agent.loginRequired",
+      params: { agent: "Claude Code", command: "claude auth login" },
+    });
     const projectSnapshot = await snapshot(project);
     expect(projectSnapshot.agents[0].availability).toMatchObject({
       available: false,

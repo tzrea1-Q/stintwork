@@ -3,6 +3,7 @@ import type { ProjectSnapshot } from "./project.js";
 import type { StintSummary } from "./stints.js";
 import type { RiskyPath } from "./stints.js";
 import type { ReviewDecision } from "./review-decisions.js";
+import { coreTextMessage, type CoreTextMessage } from "./core-text.js";
 
 export function riskyPathAccepted(risk: RiskyPath, decisions: readonly ReviewDecision[] = []) {
   return decisions.some(
@@ -47,6 +48,8 @@ export type ReviewGateCondition = {
   label: string;
   ready: boolean;
   action: string;
+  labelMessage?: CoreTextMessage;
+  actionMessage?: CoreTextMessage;
 };
 
 export function reviewGateConditions(
@@ -60,7 +63,7 @@ export function reviewGateConditions(
       (result) => result.name === command.name && result.command === command.command,
     ),
   );
-  return [
+  const conditions: ReviewGateCondition[] = [
     {
       id: "review",
       label: "Latest Review stint finished",
@@ -121,4 +124,13 @@ export function reviewGateConditions(
         "Remove risky files in a follow-up commit and add them to .gitignore, or explicitly Accept each path with a reason in Review. If secrets were real, rotate them and clean Git history before publishing.",
     },
   ];
+  return conditions.map((condition) => {
+    const labelMessage = coreTextMessage(condition.label);
+    const actionMessage = coreTextMessage(condition.action);
+    return {
+      ...condition,
+      ...(labelMessage ? { labelMessage } : {}),
+      ...(actionMessage ? { actionMessage } : {}),
+    };
+  });
 }

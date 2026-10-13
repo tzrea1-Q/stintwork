@@ -2,6 +2,13 @@
 export { type RiskyPath, isRiskyPaths } from "./stints.js";
 export { riskyPathAccepted } from "./review-evidence.js";
 export {
+  coreTextEnglish,
+  coreTextMessage,
+  coreTextReason,
+  isCoreTextMessage,
+  type CoreTextMessage,
+} from "./core-text.js";
+export {
   deriveWorkItemSlug,
   prepareWorkItemCreation,
   type WorkItemCreation,
@@ -51,7 +58,7 @@ export {
   type ReviewDecision,
 } from "./review-decisions.js";
 export { parseReviewDeveloperNotes, recordReviewDeveloperNote } from "./review-decisions.js";
-export { agentUnavailableReason } from "./agents.js";
+export { agentUnavailableReason, agentUnavailable } from "./agents.js";
 export {
   defaultPermissionLevel,
   isPermissionLevel,
@@ -164,6 +171,7 @@ export {
   type BriefInput,
   type BriefPointer,
   briefUnavailableReason,
+  briefAvailability,
   compileBrief,
 } from "./brief.js";
 export * from "./pull-requests.js";

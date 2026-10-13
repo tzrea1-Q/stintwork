@@ -54,6 +54,7 @@ test.each(
       expect(brief.pointers).toContainEqual({
         path: spec,
         reason: "Work item scope and acceptance criteria",
+        reasonMessage: { code: "brief.scope" },
       });
       expect(brief.lastHandoff).toEqual(handoff);
       expect(brief.prompt).toContain("Choose a limit.");

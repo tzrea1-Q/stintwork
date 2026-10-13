@@ -4,8 +4,9 @@ import type { RepoFiles, Ticket, WorkItem } from "./work-items.js";
 import { builtInWorkflows, type WorkflowStage, type WorkflowDefinitions } from "./workflows.js";
 import type { DeveloperNote } from "./developer-notes.js";
 import type { PermissionLevel } from "./permission-levels.js";
+import { coreTextReason, type CoreTextMessage } from "./core-text.js";
 
-export type BriefPointer = { path: string; reason: string };
+export type BriefPointer = { path: string; reason: string; reasonMessage?: CoreTextMessage };
 export type BriefHandoff = {
   stint: string;
   agent: string;
@@ -17,6 +18,7 @@ export type Brief = {
   permissionLevel?: PermissionLevel;
   agent?: string;
   warnings?: readonly string[];
+  warningMessages?: readonly (CoreTextMessage | null)[];
   skill: string | null;
   pointers: BriefPointer[];
   lastHandoff: BriefHandoff | null;
@@ -37,14 +39,15 @@ export type BriefInput = {
   reviewRange?: { mergeBase: string; headCommit: string };
 };
 
-export function briefUnavailableReason(
+export function briefAvailability(
   workItem: Pick<StagedWorkItem, "type" | "stage"> &
     Partial<Pick<StagedWorkItem, "workflow" | "merged">>,
   ticket?: Pick<Ticket, "resolved" | "blocked" | "blockedBy"> | null,
   workflows: WorkflowDefinitions = builtInWorkflows,
-): string | null {
-  if (workItem.merged) return "This work item is shipped.";
-  if (workItem.type === "effort" || !workItem.stage) return "This work item has no stint stage.";
+) {
+  if (workItem.merged) return coreTextReason("This work item is shipped.");
+  if (workItem.type === "effort" || !workItem.stage)
+    return coreTextReason("This work item has no stint stage.");
   const stage = workflows[workItem.workflow ?? "feature"]?.stages.find(
     (candidate) => candidate.id === workItem.stage,
   );
@@ -52,13 +55,23 @@ export function briefUnavailableReason(
     stage?.column === "implement" ||
     (workItem.workflow === undefined && ["implement", "fix", "do"].includes(workItem.stage));
   if (!ticket || !implementation) {
-    return stage?.skill ? null : "This stage has no stint skill.";
+    return coreTextReason(stage?.skill ? null : "This stage has no stint skill.");
   }
-  if (ticket.resolved) return "This ticket is resolved.";
+  if (ticket.resolved) return coreTextReason("This ticket is resolved.");
   if (ticket.blocked) {
-    return `Blocked by ticket ${ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", ")}.`;
+    const tickets = ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", ");
+    return coreTextReason(`Blocked by ticket ${tickets}.`, {
+      code: "brief.blockedBy",
+      params: { tickets },
+    });
   }
-  return null;
+  return coreTextReason(null);
+}
+
+export function briefUnavailableReason(
+  ...args: Parameters<typeof briefAvailability>
+): string | null {
+  return briefAvailability(...args).reason;
 }
 
 export function compileBrief({
@@ -74,7 +87,7 @@ export function compileBrief({
 }: BriefInput): Brief {
   const pointers: BriefPointer[] = [];
   function addPointer(path: string, reason: string) {
-    if (files.read(path) !== undefined) pointers.push({ path, reason });
+    if (files.read(path) !== undefined) pointers.push({ path, ...coreTextReason(reason) });
   }
   const conventions = files.read("AGENTS.md") === undefined ? "CLAUDE.md" : "AGENTS.md";
   addPointer(conventions, "Project conventions and agent instructions");
@@ -83,7 +96,12 @@ export function compileBrief({
     const text = files.read(path);
     if (text === undefined) continue;
     const title = /^#\s+(.+?)\s*#*\s*$/m.exec(text)?.[1].trim();
-    pointers.push({ path, reason: `Decision record: ${title || path.split("/").at(-1)}` });
+    const decisionTitle = title || path.split("/").at(-1) || "";
+    pointers.push({
+      path,
+      reason: `Decision record: ${decisionTitle}`,
+      reasonMessage: { code: "brief.decision", params: { title: decisionTitle } },
+    });
   }
   if (workItem.spec) addPointer(workItem.spec.path, "Work item scope and acceptance criteria");
   if (ticket) addPointer(ticket.path, "This ticket's scope, status, blockers and comments");

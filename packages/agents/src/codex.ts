@@ -55,6 +55,9 @@ export function createCodexAgent(
                 ? "missing-executable"
                 : "check-failed",
           reason,
+          ...(error instanceof AgentAuthenticationError
+            ? { reasonMessage: error.reasonMessage }
+            : {}),
           checkedAt,
         };
       } finally {

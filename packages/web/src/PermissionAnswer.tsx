@@ -2,7 +2,7 @@
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
 import { PermissionDetails } from "./PermissionDetails";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
 
 export function PermissionAnswer({
   stintId,
@@ -16,12 +16,12 @@ export function PermissionAnswer({
     "requestId" | "options" | "details"
   >;
   profile?: AgentProfile;
-  onError?: (reason: string) => void;
+  onError?: (reason: string | Error) => void;
 }) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useCoreTextError();
 
   async function answer(optionId: string) {
     setSending(true);
@@ -38,13 +38,16 @@ export function PermissionAnswer({
       );
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(
-          typeof body.reason === "string" ? body.reason : t.needsYou.permissionFailed,
-        );
+        throw new CoreTextError(body, t.needsYou.permissionFailed);
       }
       setSubmitted(true);
     } catch (cause) {
-      const reason = cause instanceof Error ? cause.message : t.needsYou.permissionFailed;
+      const reason =
+        cause instanceof CoreTextError && cause.reasonMessage !== undefined
+          ? cause
+          : cause instanceof Error
+            ? cause.message
+            : t.needsYou.permissionFailed;
       if (onError) onError(reason);
       else setError(reason);
     } finally {

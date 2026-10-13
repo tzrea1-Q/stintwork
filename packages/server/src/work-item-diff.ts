@@ -22,9 +22,11 @@ export function addWorkItemDiffRoute(
     try {
       return context.json(await workItemDiff(root, slug));
     } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
       return context.json(
         {
-          reason: `Could not read the work item diff: ${error instanceof Error ? error.message : String(error)}`,
+          reason: `Could not read the work item diff: ${detail}`,
+          reasonMessage: { code: "server.diffFailed", params: { detail } },
         },
         503,
       );

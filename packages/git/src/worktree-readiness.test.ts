@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { installWorktreeDependencies } from "./worktree-readiness.js";
+import type { CoreTextMessage } from "@stintwork/core";
 
 const fixtures: string[] = [];
 afterEach(async () => {
@@ -28,6 +29,38 @@ async function fixture(
   for (const [path, text] of Object.entries(files)) await writeFile(join(root, path), text);
   return root;
 }
+
+test("dependency notes carry typed manager and connection parameters but raw output does not", async () => {
+  const root = await fixture("pnpm", { "pnpm-lock.yaml": "" }, true);
+  const progress: { text: string; message?: CoreTextMessage }[] = [];
+  await installWorktreeDependencies(root, (text, message) => progress.push({ text, message }));
+  expect(progress.filter(({ message }) => message)).toEqual([
+    {
+      text: "Installing worktree dependencies with pnpm (offline).\n",
+      message: {
+        code: "stream.installDependencies",
+        params: { manager: "pnpm", connection: "offline" },
+      },
+    },
+    {
+      text: "Offline dependency install unavailable; trying online.\n",
+      message: { code: "stream.offlineUnavailable" },
+    },
+    {
+      text: "Installing worktree dependencies with pnpm (online).\n",
+      message: {
+        code: "stream.installDependencies",
+        params: { manager: "pnpm", connection: "online" },
+      },
+    },
+    { text: "Worktree dependencies are ready.\n", message: { code: "stream.dependenciesReady" } },
+  ]);
+  expect(
+    progress
+      .filter(({ text }) => text === "fixture output\n")
+      .every(({ message }) => message === undefined),
+  ).toBe(true);
+});
 
 test.each([
   [

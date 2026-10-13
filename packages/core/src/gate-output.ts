@@ -2,6 +2,7 @@
 import type { ProjectSnapshot } from "./project.js";
 import type { ReviewGateCondition } from "./review-evidence.js";
 import type { WorkflowStage } from "./workflows.js";
+import { coreTextMessage } from "./core-text.js";
 
 export type GateCondition = Omit<ReviewGateCondition, "id"> & {
   id: ReviewGateCondition["id"] | "output";
@@ -26,6 +27,10 @@ export function outputGateConditions(
       label: "spec.md exists and parses",
       ready: item.spec !== null && !warning,
       action: `Write or edit ${prefix}spec.md with a nonempty # heading.${warning ? ` ${warning.message}` : ""}`,
+      actionMessage: {
+        code: "gate.writeSpec",
+        params: { path: `${prefix}spec.md`, warning: warning?.message ?? "" },
+      },
     };
   } else if (stage.gate === "tickets") {
     const warning = warnings.find(({ path }) => path.startsWith(`${prefix}issues/`));
@@ -40,6 +45,10 @@ export function outputGateConditions(
           ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
         ),
       action: `Write or fix ${prefix}issues/NN-<slug>.md tickets with Status and Blocked by lines and valid dependencies.${warning ? ` ${warning.message}` : ""}`,
+      actionMessage: {
+        code: "gate.writeTickets",
+        params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },
+      },
     };
   }
   const conditions: GateCondition[] = [output];
@@ -51,5 +60,13 @@ export function outputGateConditions(
       action:
         item.memoryProposalError ?? "Accept or reject every open memory proposal in Needs you.",
     });
-  return conditions;
+  return conditions.map((condition) => {
+    const labelMessage = coreTextMessage(condition.label);
+    const actionMessage = condition.actionMessage ?? coreTextMessage(condition.action);
+    return {
+      ...condition,
+      ...(labelMessage ? { labelMessage } : {}),
+      ...(actionMessage ? { actionMessage } : {}),
+    };
+  });
 }

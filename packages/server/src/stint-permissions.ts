@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AgentStintOptions } from "@stintwork/agents";
+import { coreTextReason } from "@stintwork/core";
 import type { Hono } from "hono";
 
 type PermissionHandler = NonNullable<AgentStintOptions["onPermission"]>;
@@ -30,16 +31,16 @@ export function addStintPermissionRoute(app: Hono) {
   app.post("/api/stints/:stintId/permissions/:requestId", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
-      return context.json({ reason: "Origin must match the project server." }, 403);
+      return context.json(coreTextReason("Origin must match the project server."), 403);
     if (
       context.req.header("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json"
     )
-      return context.json({ reason: "A JSON permission answer is required." }, 400);
+      return context.json(coreTextReason("A JSON permission answer is required."), 400);
     let body: unknown;
     try {
       body = await context.req.json();
     } catch {
-      return context.json({ reason: "Invalid JSON." }, 400);
+      return context.json(coreTextReason("Invalid JSON."), 400);
     }
     if (
       !body ||
@@ -47,34 +48,36 @@ export function addStintPermissionRoute(app: Hono) {
       !("optionId" in body) ||
       typeof body.optionId !== "string"
     )
-      return context.json({ reason: "Choose an offered permission option." }, 400);
+      return context.json(coreTextReason("Choose an offered permission option."), 400);
     const requestId = context.req.param("requestId");
     const stintId = context.req.param("stintId");
     const requestKey = key(stintId, requestId);
     const permission = pending.get(requestKey);
     if (!permission)
       return context.json(
-        {
-          reason:
-            unavailable.get(requestKey) ??
+        coreTextReason(
+          unavailable.get(requestKey) ??
             (closed || endedStints.has(stintId)
               ? "This permission request's stint has ended."
               : "This permission request is no longer pending."),
-        },
+        ),
         409,
       );
     if (permission.answering)
-      return context.json({ reason: "This permission request is already being answered." }, 409);
+      return context.json(
+        coreTextReason("This permission request is already being answered."),
+        409,
+      );
     const optionId = body.optionId;
     if (!permission.request.options.some((option) => option.optionId === optionId))
-      return context.json({ reason: "Choose an offered permission option." }, 400);
+      return context.json(coreTextReason("Choose an offered permission option."), 400);
     permission.answering = true;
     permission.answer({ outcome: { outcome: "selected", optionId } });
     try {
       await permission.completion;
     } catch (error) {
       return context.json(
-        { reason: error instanceof Error ? error.message : String(error) },
+        coreTextReason(error instanceof Error ? error.message : String(error)),
         error instanceof PermissionAnswerError ? error.status : 503,
       );
     }

@@ -27,7 +27,7 @@ Still out of scope: CLI output, agent-supplied text (permission option names, to
 
 ## Acceptance criteria
 
-- [ ] Core and server tests: each new code is returned with its parameters alongside the unchanged English string.
-- [ ] Component tests in Chinese: each listed sentence renders in Chinese, an unknown code falls back to the English string, and an old stint log without codes still renders.
-- [ ] Existing English tests pass unchanged, and the catalog completeness test passes.
-- [ ] All checks pass.
+- [x] Core and server tests: each new code is returned with its parameters alongside the unchanged English string.
+- [x] Component tests in Chinese: each listed sentence renders in Chinese, an unknown code falls back to the English string, and an old stint log without codes still renders.
+- [x] Existing English tests pass unchanged, and the catalog completeness test passes.
+- [x] All checks pass.

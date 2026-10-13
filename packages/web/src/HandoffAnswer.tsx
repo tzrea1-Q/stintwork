@@ -3,7 +3,7 @@ import type { HandoffUnresolvedAttentionItem } from "@stintwork/core";
 import { useId, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, useLanguage } from "./i18n/language";
 import "./handoff-answer.css";
 
 export function HandoffAnswer({
@@ -11,7 +11,7 @@ export function HandoffAnswer({
   onError,
 }: {
   item: HandoffUnresolvedAttentionItem;
-  onError: (reason: string) => void;
+  onError: (reason: string | Error) => void;
 }) {
   const { t } = useLanguage();
   const noteId = useId();
@@ -33,11 +33,17 @@ export function HandoffAnswer({
       );
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(typeof body.reason === "string" ? body.reason : t.needsYou.handoffFailed);
+        throw new CoreTextError(body, t.needsYou.handoffFailed);
       }
       setSubmitted(true);
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : t.needsYou.handoffFailed);
+      onError(
+        cause instanceof CoreTextError && cause.reasonMessage !== undefined
+          ? cause
+          : cause instanceof Error
+            ? cause.message
+            : t.needsYou.handoffFailed,
+      );
     } finally {
       setSending(false);
     }

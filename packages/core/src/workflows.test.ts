@@ -320,6 +320,7 @@ test("an evidence gate uses its named stage rather than a hard-coded Review id",
   expect(brief.pointers).toContainEqual({
     path: ".scratch/bug-example/issues/01-first.md",
     reason: expect.stringContaining("Review against"),
+    reasonMessage: { code: "brief.reviewScope" },
   });
   expect(brief.prompt).toContain("Do not implement fixes");
   expect(brief.prompt).toContain("Review both Standards and Spec with /team-review.");

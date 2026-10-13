@@ -7,7 +7,7 @@ import { readableToolOutput } from "./tool-output";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./stint-stream.css";
-import { stintEventKind, useLanguage } from "./i18n/language";
+import { renderCoreText, stintEventKind, useLanguage } from "./i18n/language";
 import type { Catalog } from "./i18n/en";
 
 function toolOutput(content: StintToolContent, t: Catalog): string {
@@ -162,7 +162,9 @@ export function StintStream({
                 <div className={event.type === "thought" ? "markdown muted" : "markdown"}>
                   {event.type === "thought" && <small>{t.stints.agentThought}</small>}
                   <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-                    {event.text}
+                    {event.type === "message"
+                      ? renderCoreText(event.message, event.text, t)
+                      : event.text}
                   </ReactMarkdown>
                 </div>
               )}
@@ -229,7 +231,7 @@ export function StintStream({
         })}
         {stint.error && (
           <p role="alert" className="warning">
-            {stint.error}
+            {renderCoreText(stint.errorMessage, stint.error, t)}
           </p>
         )}
       </div>

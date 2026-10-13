@@ -7,7 +7,7 @@ import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { RiskyPaths } from "./RiskyPaths";
 import type { RiskyPath } from "@stintwork/core";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
 import "./review-overlay.css";
 
 type ReviewSlots = {
@@ -198,10 +198,10 @@ export function ReviewOverlay({
   const titleId = useId();
   const findingId = useId();
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useCoreTextError();
   const [decisions, setDecisions] = useState<ReviewDecision[]>(item.reviewDecisions ?? []);
   const [saving, setSaving] = useState(false);
-  const [actionError, setActionError] = useState("");
+  const [actionError, setActionError] = useCoreTextError();
   const [message, setMessage] = useState("");
   const [sentBack, setSentBack] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -230,7 +230,7 @@ export function ReviewOverlay({
         },
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? t.review.diff.updateError);
+      if (!response.ok) throw new CoreTextError(result, t.review.diff.updateError);
       const updated: ReviewDecision[] = result.decisions ?? [result.decision];
       setDecisions((previous) => [
         ...previous.filter(
@@ -255,7 +255,7 @@ export function ReviewOverlay({
         );
       return true;
     } catch (cause) {
-      setActionError(cause instanceof Error ? cause.message : String(cause));
+      setActionError(cause instanceof Error ? cause : String(cause));
       return false;
     } finally {
       setSaving(false);
@@ -323,13 +323,12 @@ export function ReviewOverlay({
         signal: controller.signal,
       });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.reason ?? t.review.diff.readError);
+      if (!response.ok) throw new CoreTextError(body, t.review.diff.readError);
       if (!controller.signal.aborted) setDiff(body);
     } catch (cause) {
-      if (!controller.signal.aborted)
-        setError(cause instanceof Error ? cause.message : String(cause));
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause : String(cause));
     }
-  }, [item.slug, t.review.diff.readError]);
+  }, [item.slug, t.review.diff.readError, setError]);
 
   useEffect(() => {
     void readDiff();

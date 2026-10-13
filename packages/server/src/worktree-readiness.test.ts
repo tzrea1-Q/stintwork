@@ -274,6 +274,7 @@ test("first repo writes happen exactly once, same-work-item starts conflict, and
   const conflict = responses.find((response) => response.status === 409);
   expect(await conflict?.json()).toEqual({
     reason: "A stint is already active for this work item.",
+    reasonMessage: { code: "stint.alreadyActive" },
   });
   const accepted: Stint[] = [];
   for (const response of responses.filter((response) => response.status === 201))

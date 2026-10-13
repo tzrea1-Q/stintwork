@@ -7,9 +7,65 @@ import {
   permissionLevels,
   permissionPaths,
   permissionPolicy,
+  agentUnavailable,
   projectPermissionLevel,
   updateProjectPermissionLevel,
 } from "./index.js";
+
+test("agent availability exposes known status messages and preserves unknown diagnostics", () => {
+  expect(
+    agentUnavailable({
+      ...codexProfile,
+      availability: { available: false, reason: "Internal error" },
+    }),
+  ).toEqual({
+    reason: "Internal error",
+    reasonMessage: { code: "agent.internalError" },
+  });
+  expect(agentUnavailable({ ...codexProfile, availability: { available: false } })).toEqual({
+    reason: "Codex is unavailable. codex login",
+    reasonMessage: {
+      code: "agent.unavailable",
+      params: { agent: "Codex", command: "codex login" },
+    },
+  });
+  expect(
+    agentUnavailable({
+      ...codexProfile,
+      availability: { available: false, reason: "Agent raw 原文" },
+    }),
+  ).toEqual({ reason: "Agent raw 原文" });
+});
+
+test("permission warnings carry typed messages while retaining every English warning", () => {
+  const policy = permissionPolicy(
+    { ...codexProfile, capabilities: { ...codexProfile.capabilities, modes: [] } },
+    "ask",
+  );
+  expect({ warnings: policy.warnings, warningMessages: policy.warningMessages }).toEqual({
+    warnings: [
+      "Codex does not offer the required read-only mode; it cannot honour this permission level.",
+      "Codex’s sandbox can execute commands without asking. Stintwork only controls requests Codex sends; commands and access outside the worktree may not produce a request.",
+    ],
+    warningMessages: [
+      { code: "permission.unsupportedMode", params: { agent: "Codex", mode: "read-only" } },
+      { code: "permission.codexSandbox" },
+    ],
+  });
+  const grok = permissionPolicy(
+    {
+      ...grokProfile,
+      capabilities: { ...grokProfile.capabilities, permissionMode: "always-approve" },
+    },
+    "autonomous",
+  );
+  expect({ warnings: grok.warnings, warningMessages: grok.warningMessages }).toEqual({
+    warnings: [
+      "Grok Build has an always-approve config and never asks. Stintwork can only answer requests the agent sends and cannot enforce the worktree boundary.",
+    ],
+    warningMessages: [{ code: "permission.alwaysApprove", params: { agent: "Grok Build" } }],
+  });
+});
 
 test.each([
   [codexProfile, ["read-only", "workspace-write", "workspace-write"]],

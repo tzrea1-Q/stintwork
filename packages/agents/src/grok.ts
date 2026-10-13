@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import type { AgentAvailability } from "@stintwork/core";
 import { type AgentLauncher, createAgentLauncher } from "./index.js";
 import { readGrokConfig } from "./grok-config.js";
+import { AgentAuthenticationError } from "./authentication.js";
 import { grokProfile } from "./profiles.js";
 import type { RegisteredAgent } from "./registry.js";
 
@@ -43,6 +44,9 @@ export function createGrokAgent(
         return {
           available: false,
           reason,
+          ...(error instanceof AgentAuthenticationError
+            ? { reasonMessage: error.reasonMessage }
+            : {}),
           kind: /authentication required/i.test(reason)
             ? "login-required"
             : /not found/i.test(reason)

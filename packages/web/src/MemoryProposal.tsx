@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { MemoryProposalAttentionItem } from "@stintwork/core";
 import { useState } from "react";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, useLanguage } from "./i18n/language";
 
 export function MemoryProposal({
   item,
   onError,
 }: {
   item: MemoryProposalAttentionItem;
-  onError: (reason: string) => void;
+  onError: (reason: string | Error) => void;
 }) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
@@ -27,11 +27,17 @@ export function MemoryProposal({
       );
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(typeof body.reason === "string" ? body.reason : t.review.memory.error);
+        throw new CoreTextError(body, t.review.memory.error);
       }
       setSubmitted(true);
     } catch (error) {
-      onError(error instanceof Error ? error.message : t.review.memory.error);
+      onError(
+        error instanceof CoreTextError && error.reasonMessage !== undefined
+          ? error
+          : error instanceof Error
+            ? error.message
+            : t.review.memory.error,
+      );
     } finally {
       setSending(false);
     }

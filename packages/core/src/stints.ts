@@ -3,6 +3,7 @@ import type { Brief, BriefHandoff } from "./brief.js";
 import { isReviewFindings, type ReviewFindings } from "./findings.js";
 import type { RepoFiles, Warning } from "./work-items.js";
 import { isPermissionLevel } from "./permission-levels.js";
+import type { CoreTextMessage } from "./core-text.js";
 import {
   isRichStintEvent,
   type RichStintEvent,
@@ -71,7 +72,8 @@ export function isCheckpointWarnings(value: unknown): value is CheckpointWarning
 }
 export type StintEvent =
   | RichStintEvent
-  | { type: "message" | "thought"; id: string; text: string }
+  | { type: "message"; id: string; text: string; message?: CoreTextMessage }
+  | { type: "thought"; id: string; text: string }
   | {
       type: "permission";
       requestId?: string;
@@ -107,8 +109,10 @@ export type Stint = {
   handoff: BriefHandoff | null;
   handoffAnswer?: { at: string; note: string | null };
   handoffError?: string;
+  handoffErrorMessage?: CoreTextMessage;
   findings?: ReviewFindings;
   error?: string;
+  errorMessage?: CoreTextMessage;
 };
 export type StintSummary = Pick<
   Stint,
@@ -121,10 +125,12 @@ export type StintSummary = Pick<
   | "startedAt"
   | "endedAt"
   | "error"
+  | "errorMessage"
   | "checkpointCommit"
   | "checkpointWarnings"
   | "handoff"
   | "handoffError"
+  | "handoffErrorMessage"
   | "handoffAnswer"
   | "findings"
 > & { lastHandoffStintId?: string };
@@ -145,10 +151,12 @@ export type StintLogEntry =
       status: Exclude<StintStatus, "running">;
       stopReason?: string;
       error?: string;
+      errorMessage?: CoreTextMessage;
       checkpointCommit?: string;
       checkpointWarnings?: CheckpointWarning[];
       handoff?: BriefHandoff | null;
       handoffError?: string;
+      handoffErrorMessage?: CoreTextMessage;
       findings?: ReviewFindings;
     };
 export type StintLiveMessage = {
@@ -192,7 +200,12 @@ export function mergeStintEvent(events: readonly StintEvent[], event: StintLogEv
       : event.type === "thought_delta"
         ? "thought"
         : event.type;
-  const message: Extract<StintEvent, { text: string }> = { type, id: event.id, text: event.text };
+  const message: Extract<StintEvent, { text: string }> = {
+    type,
+    id: event.id,
+    text: event.text,
+    ...(event.type === "message" && event.message ? { message: event.message } : {}),
+  };
   const index = events.findIndex(
     (previous) => previous.type === type && "id" in previous && previous.id === event.id,
   );
@@ -246,7 +259,9 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     handoff: entry.handoff ?? null,
     ...(entry.findings ? { findings: entry.findings } : {}),
     ...(entry.handoffError ? { handoffError: entry.handoffError } : {}),
+    ...(entry.handoffErrorMessage ? { handoffErrorMessage: entry.handoffErrorMessage } : {}),
     ...(entry.error ? { error: entry.error } : {}),
+    ...(entry.errorMessage ? { errorMessage: entry.errorMessage } : {}),
   };
 }
 
@@ -272,7 +287,9 @@ export function summarizeStint(stint: Stint): StintSummary {
     ...(stint.brief.lastHandoff ? { lastHandoffStintId: stint.brief.lastHandoff.stint } : {}),
     ...(stint.handoffAnswer ? { handoffAnswer: stint.handoffAnswer } : {}),
     ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),
+    ...(stint.handoffErrorMessage ? { handoffErrorMessage: stint.handoffErrorMessage } : {}),
     ...(error ? { error } : {}),
+    ...(stint.errorMessage ? { errorMessage: stint.errorMessage } : {}),
   };
 }
 
