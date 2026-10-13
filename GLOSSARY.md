@@ -95,3 +95,32 @@ _Avoid_: ADR (fine as the file convention, not as the product word)
 **View**:
 One way of presenting the same project: Pipeline (a board of stages), Lists, or Cockpit.
 _Avoid_: Layout, mode, theme
+
+## Chinese terms
+
+Product and agent names stay unchanged. Stint and Agent are also left untranslated.
+
+| English | 简体中文 |
+|---|---|
+| Project | 项目 |
+| Milestone | 里程碑 |
+| Work item | 工作项 |
+| Ticket | 工单 |
+| Spec | 规格说明 |
+| Shipped | 已交付 |
+| Workflow | 工作流 |
+| Stage | 阶段 |
+| Gate | 关卡 |
+| Skill | 技能 |
+| Agent | Agent |
+| Stint | Stint |
+| Brief | 简报 |
+| Handoff | 交接 |
+| Checkpoint | 检查点 |
+| Permission level | 权限级别（问询 / 自由编辑 / 自主） |
+| Attention item | 待处理事项 |
+| Needs you | 待你处理 |
+| Project memory | 项目记忆 |
+| Memory proposal | 记忆提案 |
+| Decision record | 决策记录 |
+| View / Pipeline | 视图 / 流水线 |

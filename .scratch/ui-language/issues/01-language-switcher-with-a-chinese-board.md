@@ -1,6 +1,6 @@
 # 01 — Language switcher with a Chinese top bar and board
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -22,13 +22,26 @@ The tracer bullet for the spec (user stories 1–12, 33, 34, 36–46). A develop
 
 ## Acceptance criteria
 
-- [ ] Component tests:
+- [x] Component tests:
   - detection (`zh-CN`, `zh-TW` and `zh` give Chinese; `fr` and `en-GB` give English);
   - a stored choice overrides detection;
   - blocked storage still renders;
   - switching updates the text and `lang` attribute and keeps an open drawer;
   - in Chinese, built-in stage headings are Chinese while a customised workflow's stage names and repo titles stay verbatim.
-- [ ] A catalog completeness test: every `en` key exists in `zh-CN`, and no Chinese entry is empty or identical to English outside an explicit allowlist (product and agent names, "Stint", "Agent").
-- [ ] Existing English tests pass unchanged.
-- [ ] No new runtime dependency.
-- [ ] All checks pass.
+- [x] A catalog completeness test: every `en` key exists in `zh-CN`, and no Chinese entry is empty or identical to English outside an explicit allowlist (product and agent names, "Stint", "Agent").
+- [x] Existing English tests pass unchanged.
+- [x] No new runtime dependency.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-12:** Built by Codex. The coordinator ran checks in the worktree:
+- `pnpm test`: 125 files, 1718 tests passed.
+- `typecheck`, `lint` and `format:check` passed.
+
+Browser check on Stintwork's own repo, with `stintwork.language` set to `zh-CN`:
+- the top bar, the board's chrome and the built-in stage headings (澄清, 规格说明, 工单, 实现, 审查) were in Chinese, and the html `lang` was `zh-CN`;
+- work item titles and milestone names stayed verbatim;
+- switching to English from an open drawer kept the drawer open and updated the board, `lang` and the stored choice.
+
+Deviation from the ticket: the switcher also appears in the drawer header. The drawer is a modal `<dialog>`, which makes the top bar unreachable while it is open. "Edit roadmap" and the drawer's contents are still English; tickets 02 and 04 cover them.

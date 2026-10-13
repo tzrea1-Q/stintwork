@@ -21,6 +21,7 @@ import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
+import { LanguageSelect } from "./i18n/LanguageSelect";
 
 function Markdown({ text }: { text: string }) {
   return (
@@ -110,18 +111,21 @@ export function WorkItemDrawer({
     >
       <header className="drawer-header">
         <div className="flex items-center justify-between gap-3">
-          <p className="eyebrow">
+          <p className="eyebrow min-w-0 break-words">
             {type} / <code>{item.slug}</code>
           </p>
-          <button
-            type="button"
-            className="top-button"
-            ref={closeButton}
-            onClick={onClose}
-            aria-label="Close work item"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <LanguageSelect />
+            <button
+              type="button"
+              className="top-button"
+              ref={closeButton}
+              onClick={onClose}
+              aria-label="Close work item"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
         </div>
         <h2 id={titleId} className="mt-3 text-2xl font-medium break-words">
           {item.title}
