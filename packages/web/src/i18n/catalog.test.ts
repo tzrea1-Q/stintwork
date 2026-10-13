@@ -14,6 +14,7 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "connection.errors.requestFailed": [[503], [404]],
   "coreText.agent.internalErrorDetail": [[{ detail: ": Agent diagnostic 原文" }]],
   "coreText.creation.exists": [[{ slug: "repo-name" }]],
   "coreText.creation.existsInGit": [[{ slug: "repo-name" }]],
@@ -137,6 +138,21 @@ const samples: Record<string, unknown[][]> = {
   "coreText.server.checkpointCompareFailed": [[{ detail: "git 原文" }]],
   "coreText.server.recoveryFailed": [[{ detail: "Error: 原文" }]],
 };
+
+test("project failures and live connection states are translated", () => {
+  expect(zhCN.connection.errors.requestFailed(503)).toBe("项目请求失败（503）。");
+  expect(zhCN.connection.errors.timeout).toBe("项目请求超时。");
+  expect(zhCN.connection.errors.unreachable).toBe("无法连接项目服务器。");
+  expect(zhCN.connection.errors.invalidSnapshot).toBe("项目服务器返回的快照无效。");
+  expect(zhCN.connection.errors.invalidResponse).toBe("服务器返回的响应无效。");
+  expect(zhCN.review.diff.files).toBe("文件");
+  expect(zhCN.review.diff.diff).toBe("差异");
+  expect(zhCN.review.diff.panes).toBe("审查视图");
+  expect(zhCN.review.diff.details).toBe("审查详情");
+  expect(zhCN.board.connecting).toBe("正在连接实时更新");
+  expect(zhCN.board.reconnecting).toBe("正在重新连接 · 定期读取项目");
+  expect(zhCN.board.live).toBe("实时更新中");
+});
 
 test.each([
   [["重命名", "First"], "重命名 First"],

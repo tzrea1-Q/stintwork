@@ -197,7 +197,13 @@ export function CreateWorkItem({
             </p>
             {error && (
               <p role="alert" className="warning text-warning">
-                {error}
+                {Object.entries(en.planning.create.errors).reduce(
+                  (message, [key, original]) =>
+                    message === original
+                      ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
+                      : message,
+                  error,
+                )}
               </p>
             )}
             <p className="muted text-muted">{t.planning.create.description}</p>

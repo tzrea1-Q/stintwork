@@ -83,6 +83,7 @@ export function FindingCard({
       className="review-finding m-3 min-w-0 rounded-md border border-border p-3 [overflow-wrap:anywhere] [&_h4]:my-2 [&_p]:my-2"
       id={anchor}
       aria-label={finding.title}
+      tabIndex={-1}
     >
       <h4>{finding.title}</h4>
       <p>
@@ -176,10 +177,12 @@ export function FindingsRail({
   findings,
   reports,
   anchor,
+  onSelectFinding,
 }: {
   findings: readonly DisplayFinding[];
   reports: readonly (ReviewFindings & { stintId: string; stale: boolean; historical: boolean })[];
   anchor: (finding: DisplayFinding) => string;
+  onSelectFinding?: () => void;
 }) {
   const { t } = useLanguage();
   const selectId = useId();
@@ -280,7 +283,9 @@ export function FindingsRail({
       <ul className="review-findings-rail m-0 list-none p-0 [&_li]:border-b [&_li]:border-border [&_li]:py-3 [&_li]:[overflow-wrap:anywhere] [&_a]:text-text">
         {filtered.map((finding) => (
           <li key={finding.id}>
-            <a href={`#${anchor(finding)}`}>{finding.title}</a>
+            <a href={`#${anchor(finding)}`} onClick={onSelectFinding}>
+              {finding.title}
+            </a>
             <p>
               {t.review.findings.axes[finding.axis]} ·{" "}
               {t.review.findings.severities[finding.severity]} ·{" "}

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readResponseJson } from "./i18n/language";
+import { readResponseJson, useLanguage } from "./i18n/language";
+import { en } from "./i18n/en";
 import {
   applyStintLogEntry,
   parseWorkflowDefinition,
@@ -89,11 +90,11 @@ function isAttentionItem(value: unknown, stages: readonly WorkflowStage[]) {
 
 function readSnapshot(value: unknown): ProjectSnapshot {
   if (!isRecord(value) || !isRecord(value.workflows) || Array.isArray(value.workflows))
-    throw new Error("Invalid project workflows.");
+    throw new Error(en.connection.errors.invalidWorkflows);
   const workflows = Object.fromEntries(
     Object.entries(value.workflows).map(([id, definition]) => {
       const workflow = parseWorkflowDefinition(JSON.stringify(definition));
-      if (workflow.id !== id) throw new Error("Invalid project workflow id.");
+      if (workflow.id !== id) throw new Error(en.connection.errors.invalidWorkflowId);
       return [id, workflow];
     }),
   );
@@ -206,14 +207,27 @@ function readSnapshot(value: unknown): ProjectSnapshot {
         ),
     )
   )
-    throw new Error("The project server returned an invalid snapshot.");
+    throw new Error(en.connection.errors.invalidSnapshot);
   return readCoreTextWire(value) as ProjectSnapshot;
 }
 
 export function useProjectSnapshot() {
+  const { t } = useLanguage();
   const [snapshot, setSnapshot] = useState<ProjectSnapshot>();
   const [connection, setConnection] = useState<Connection>("connecting");
-  const [error, setError] = useState<string>();
+  const [failure, setError] = useState<string | number>();
+  const error =
+    typeof failure === "number"
+      ? t.connection.errors.requestFailed(failure)
+      : Object.entries(en.connection.errors).reduce(
+          (message, [key, original]) =>
+            message === original
+              ? t.connection.errors[
+                  key as Exclude<keyof typeof en.connection.errors, "requestFailed">
+                ]
+              : message,
+          failure,
+        );
 
   useEffect(() => {
     let disposed = false;
@@ -239,7 +253,7 @@ export function useProjectSnapshot() {
           signal: controller.signal,
           cache: "no-store",
         });
-        if (!response.ok) throw new Error(`Project request failed (${response.status}).`);
+        if (!response.ok) throw response.status;
         const next = readSnapshot(await readResponseJson(response));
         if (!disposed && startedAt === version) {
           setSnapshot(next);
@@ -249,10 +263,17 @@ export function useProjectSnapshot() {
         if (!disposed && startedAt === version) {
           setError(
             controller.signal.aborted
-              ? "Project request timed out."
-              : cause instanceof Error
-                ? cause.message
-                : "Could not reach the project server.",
+              ? en.connection.errors.timeout
+              : typeof cause === "number"
+                ? cause
+                : cause instanceof TypeError ||
+                    (cause instanceof Error && cause.name === "NetworkError")
+                  ? en.connection.errors.unreachable
+                  : cause instanceof SyntaxError
+                    ? en.connection.errors.invalidSnapshot
+                    : cause instanceof Error
+                      ? cause.message
+                      : en.connection.errors.unreachable,
           );
         }
       } finally {

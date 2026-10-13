@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page, type TestInfo } from "@playwrigh
 import type { ProjectSnapshot, PullRequest, PullRequestPreview, Stint } from "@stintwork/core";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
-import { dialogBrief, dialogItem, dialogSnapshot } from "./dialogs.fixture";
+import { dialogBrief, dialogItem, dialogSnapshot, gate as requestGate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
 
 const wideCode = `const result = ${JSON.stringify("Developer-authored content 原文 ".repeat(80))};`;
@@ -54,6 +54,7 @@ const recorded: Stint = {
 
 async function capture(page: Page, overlay: Locator, info: TestInfo, state: string) {
   await expect(overlay).toBeVisible();
+  await expect(overlay).toHaveAttribute("data-state", "open");
   const id = await overlay.getAttribute("id");
   await assertLayout(page, { region: `[id="${id}"]` });
   await overlay.screenshot({ path: info.outputPath(`${state}.png`) });
@@ -64,6 +65,7 @@ async function scrollCode(page: Page, code: Locator) {
   await expect(code).toHaveCSS("white-space", "pre");
   expect(await code.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
   await code.focus();
+  await expect(code).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => code.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
 }
@@ -97,9 +99,20 @@ for (const language of ["en", "zh-CN"] as const) {
         test("gate, handoff and replay keep long code inside their own boxes", async ({
           page,
         }, info) => {
-          await page.route("**/api/work-items/*/gates/spec/approve", (route) =>
-            route.fulfill({ json: { stage: "tickets" } }),
-          );
+          const saving = requestGate();
+          let attempts = 0;
+          await page.route("**/api/work-items/*/gates/spec/approve", async (route) => {
+            attempts++;
+            if (attempts === 1) {
+              await saving.ready;
+              await route.fulfill({
+                status: 409,
+                json: {
+                  reason: `Fixture gate refusal. ${"Long recovery detail 原文。 ".repeat(15)}`,
+                },
+              });
+            } else await route.fulfill({ json: { stage: "tickets" } });
+          });
           await page.goto("/");
           const trigger = page.getByRole("button", {
             name: t.card.open(dialogItem.slug, dialogItem.title),
@@ -129,15 +142,53 @@ for (const language of ["en", "zh-CN"] as const) {
             name: t.stints.approve(t.workflows.feature.stages.spec),
           });
           await approve.click();
+          await expect(approve).toBeDisabled();
+          await capture(page, drawer, info, "gate-saving");
+          saving.release();
+          await expect(gate.getByRole("alert")).toContainText("Fixture gate refusal.");
+          await expect(approve).toBeEnabled();
+          await capture(page, drawer, info, "gate-error");
+          await approve.click();
           await expect(gate.getByRole("status").last()).toHaveText(
             t.stints.gateApproved(t.workflows.feature.stages.tickets),
           );
           await capture(page, drawer, info, "gate-approved");
+          expect(attempts).toBe(2);
+          const close = drawer.getByRole("button", { name: t.stints.closeWorkItem });
+          await close.focus();
+          await expect(close).toBeFocused();
+          const tooltip = page.getByRole("tooltip", { name: t.stints.closeWorkItem, exact: true });
+          await expect(tooltip).toHaveText(t.stints.closeWorkItem);
+          const tooltipBox = page
+            .locator("[data-radix-popper-content-wrapper]")
+            .filter({ has: tooltip });
+          await expect(
+            tooltipBox.locator('[data-state="instant-open"], [data-state="delayed-open"]'),
+          ).toBeVisible();
+          await assertLayout(page, { region: ".work-item-drawer" });
+          await tooltipBox.screenshot({ path: info.outputPath("gate-close-tooltip.png") });
           await page.keyboard.press("Escape");
+          await expect(tooltip).toBeHidden();
+          await expect(drawer).toHaveAttribute("data-state", "open");
+          await expect(close).toBeFocused();
+          await page.keyboard.press("Escape");
+          await expect(drawer).toBeHidden();
           await expect(trigger).toBeFocused();
+          snapshot = {
+            ...snapshot,
+            workItems: [{ ...dialogItem, spec: null, stints: [], tickets: [] }],
+          };
+          await page.reload();
+          await trigger.click();
+          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          await expect(approve).toBeDisabled();
+          await expect(gate.getByText(t.stints.noHandoffRecorded, { exact: true })).toBeVisible();
+          await expect(gate.getByText(t.stints.noWarnings, { exact: true })).toBeVisible();
+          await gate.scrollIntoViewIfNeeded();
+          await capture(page, drawer, info, "gate-empty-blocked");
         });
 
-        test("publishing and merge confirmations dismiss only their topmost dialog", async ({
+        test("ship: pending/refused publishing and merge, conflicts, empty CI and nested dismissal", async ({
           page,
         }, info) => {
           const pr: PullRequest = {
@@ -152,17 +203,69 @@ for (const language of ["en", "zh-CN"] as const) {
           };
           const preview: PullRequestPreview = {
             ...pr,
+            remoteUrl: `git@github.com:fixture/${"long-remote-path/".repeat(12)}project.git`,
+            branch: `stintwork/${"long-branch-原文/".repeat(12)}dialog-item`,
+            base: `release/${"long-base/".repeat(12)}main`,
             title: dialogItem.title,
             body: `## Developer-authored description 原文\n${wideCode}\n${"Long description 原文\n".repeat(60)}`,
             confirmation: "fixture-confirmation",
           };
+          const previewReady = requestGate();
+          const publishing = requestGate();
+          const mergeReady = requestGate();
+          const merging = requestGate();
+          let previewAttempts = 0;
+          let publishAttempts = 0;
+          let mergePreviewAttempts = 0;
+          let mergeAttempts = 0;
+          const longPath = `src/${"conflicting-directory-原文/".repeat(30)}module.ts`;
           snapshot = { ...snapshot, workItems: [{ ...dialogItem, stage: "ship", column: "ship" }] };
-          await page.route("**/api/work-items/*/ship/preview-pr", (route) =>
-            route.fulfill({ json: { preview } }),
-          );
-          await page.route("**/api/work-items/*/ship/preview-merge-pr", (route) =>
-            route.fulfill({ json: { mergeMethod: "squash" } }),
-          );
+          await page.route("**/api/work-items/*/ship/preview-pr", async (route) => {
+            previewAttempts++;
+            if (previewAttempts === 1) {
+              await previewReady.ready;
+              await route.fulfill({
+                status: 409,
+                json: { reason: "Fixture publishing preview refusal." },
+              });
+            } else await route.fulfill({ json: { preview } });
+          });
+          await page.route("**/api/work-items/*/ship/open-pr", async (route) => {
+            expect(route.request().postDataJSON()).toEqual({ confirmation: preview.confirmation });
+            publishAttempts++;
+            if (publishAttempts === 1) {
+              await publishing.ready;
+              await route.fulfill({
+                status: 409,
+                json: {
+                  reason: `Fixture publishing refusal. ${"Long recovery detail 原文。 ".repeat(15)}`,
+                  conflicts: [longPath],
+                  paths: [longPath],
+                },
+              });
+            } else await route.fulfill({ json: { pullRequest: pr } });
+          });
+          await page.route("**/api/work-items/*/ship/preview-merge-pr", async (route) => {
+            mergePreviewAttempts++;
+            if (mergePreviewAttempts === 1) {
+              await mergeReady.ready;
+              await route.fulfill({
+                status: 409,
+                json: { reason: "Fixture merge preview refusal." },
+              });
+            } else await route.fulfill({ json: { mergeMethod: "squash" } });
+          });
+          await page.route("**/api/work-items/*/ship/merge-pr", async (route) => {
+            expect(route.request().postDataJSON()).toEqual({ mergeMethod: "squash" });
+            mergeAttempts++;
+            if (mergeAttempts === 1) {
+              await merging.ready;
+              await route.fulfill({
+                status: 409,
+                json: { reason: "Fixture merge refusal.", paths: [longPath] },
+              });
+            } else await route.fulfill({ json: { merged: { commit: "d".repeat(40) } } });
+          });
           await page.goto("/");
           await page
             .getByRole("button", {
@@ -171,19 +274,82 @@ for (const language of ["en", "zh-CN"] as const) {
             })
             .click();
           const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          const ship = drawer.getByRole("region", { name: t.review.ship.label, exact: true });
           const publish = drawer.getByRole("button", { name: t.review.ship.openPr });
+          await ship.scrollIntoViewIfNeeded();
+          await capture(page, drawer, info, "ship-no-pr");
+          await publish.click();
+          await expect(publish).toBeDisabled();
+          await capture(page, drawer, info, "ship-preview-loading");
+          previewReady.release();
+          await expect(ship.getByRole("alert")).toHaveText("Fixture publishing preview refusal.");
+          await expect(publish).toBeEnabled();
+          await capture(page, drawer, info, "ship-preview-error");
           await publish.click();
           const confirmation = page.getByRole("dialog", { name: t.review.ship.confirmPublishing });
           await scrollCode(page, confirmation.locator("pre"));
           await capture(page, confirmation, info, "publishing-confirmation");
-          await confirmation
-            .getByRole("button", { name: t.review.ship.confirmPush })
-            .scrollIntoViewIfNeeded();
+          await confirmation.getByRole("button", { name: t.review.ship.confirmPush }).focus();
+          await expect(
+            confirmation.getByRole("button", { name: t.review.ship.confirmPush }),
+          ).toBeFocused();
           await assertLayout(page, { region: `[id="${await confirmation.getAttribute("id")}"]` });
           await page.keyboard.press("Escape");
           await expect(confirmation).toBeHidden();
           await expect(drawer).toBeVisible();
           await expect(publish).toBeFocused();
+          await publish.click();
+          await expect(confirmation).toHaveAttribute("data-state", "open");
+          const confirmPush = confirmation.getByRole("button", { name: t.review.ship.confirmPush });
+          await confirmPush.click();
+          await expect(confirmPush).toBeDisabled();
+          await confirmation.focus();
+          await expect(confirmation).toBeFocused();
+          await page.keyboard.press("Escape");
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
+          await capture(page, confirmation, info, "ship-publishing-pending");
+          publishing.release();
+          await expect(confirmation).toBeHidden();
+          await expect(publish).toBeFocused();
+          await expect(ship.getByRole("alert")).toContainText("Fixture publishing refusal.");
+          await expect(
+            ship
+              .getByRole("region", { name: t.review.ship.conflicts })
+              .getByText(longPath, { exact: true }),
+          ).toBeVisible();
+          await expect(ship.getByRole("button", { name: t.review.ship.sendBack })).toBeEnabled();
+          await ship.getByRole("alert").scrollIntoViewIfNeeded();
+          await capture(page, drawer, info, "ship-conflicts-paths-error");
+          await publish.click();
+          await expect(confirmation).toHaveAttribute("data-state", "open");
+          await confirmPush.click();
+          await expect(confirmation).toBeHidden();
+          await expect(ship.getByRole("button", { name: t.review.ship.mergePr })).toBeDisabled();
+          await expect(ship.getByText(t.review.ship.notReady, { exact: true })).toBeVisible();
+          await capture(page, drawer, info, "ship-pr-empty-ci");
+          expect(publishAttempts).toBe(2);
+          await expect(publish).toBeHidden();
+          const close = drawer.getByRole("button", { name: t.stints.closeWorkItem });
+          await close.focus();
+          await expect(close).toBeFocused();
+          const tooltip = page.getByRole("tooltip", { name: t.stints.closeWorkItem, exact: true });
+          await expect(tooltip).toHaveText(t.stints.closeWorkItem);
+          const tooltipBox = page
+            .locator("[data-radix-popper-content-wrapper]")
+            .filter({ has: tooltip });
+          await expect(
+            tooltipBox.locator('[data-state="instant-open"], [data-state="delayed-open"]'),
+          ).toBeVisible();
+          await assertLayout(page, { region: ".work-item-drawer" });
+          await tooltipBox.screenshot({ path: info.outputPath("ship-close-tooltip.png") });
+          await page.keyboard.press("Escape");
+          await expect(tooltip).toBeHidden();
+          await expect(drawer).toHaveAttribute("data-state", "open");
+          await expect(close).toBeFocused();
           await page.keyboard.press("Escape");
           await expect(drawer).toBeHidden();
           snapshot = {
@@ -214,12 +380,70 @@ for (const language of ["en", "zh-CN"] as const) {
           const merge = drawer.getByRole("button", { name: t.review.ship.mergePr });
           await expect(merge).toBeEnabled();
           await merge.click();
+          await expect(merge).toBeDisabled();
+          await capture(page, drawer, info, "ship-merge-preview-loading");
+          mergeReady.release();
+          await expect(ship.getByRole("alert")).toHaveText("Fixture merge preview refusal.");
+          await expect(merge).toBeEnabled();
+          await capture(page, drawer, info, "ship-merge-preview-error");
+          await merge.click();
           const mergeDialog = page.getByRole("dialog", { name: t.review.ship.confirmMerge });
           await capture(page, mergeDialog, info, "merge-confirmation");
           await mergeDialog.getByRole("button", { name: t.review.ship.cancel }).click();
           await expect(mergeDialog).toBeHidden();
           await expect(drawer).toBeVisible();
           await expect(merge).toBeFocused();
+          await merge.click();
+          await expect(mergeDialog).toHaveAttribute("data-state", "open");
+          const confirmMerge = mergeDialog.getByRole("button", {
+            name: t.review.ship.confirmMethod("squash"),
+          });
+          await confirmMerge.click();
+          await expect(confirmMerge).toBeDisabled();
+          await mergeDialog.focus();
+          await expect(mergeDialog).toBeFocused();
+          await page.keyboard.press("Escape");
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
+          await capture(page, mergeDialog, info, "ship-merging-pending");
+          merging.release();
+          await expect(mergeDialog).toBeHidden();
+          await expect(merge).toBeFocused();
+          await expect(ship.getByRole("alert")).toHaveText("Fixture merge refusal.");
+          await capture(page, drawer, info, "ship-merge-error");
+          await merge.click();
+          await expect(mergeDialog).toHaveAttribute("data-state", "open");
+          await confirmMerge.click();
+          await expect(mergeDialog).toBeHidden();
+          await expect(ship.getByRole("status")).toHaveText(
+            t.review.ship.shippedAt(12, "d".repeat(40)),
+          );
+          await capture(page, drawer, info, "ship-merged");
+          expect(mergeAttempts).toBe(2);
+          snapshot = {
+            ...snapshot,
+            workItems: [
+              {
+                ...snapshot.workItems[0],
+                merged: {
+                  at: "2026-10-13T10:10:00Z",
+                  commit: "d".repeat(40),
+                  pr: pr.url,
+                  method: "squash",
+                },
+              },
+            ],
+          };
+          await page.reload();
+          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          await expect(
+            ship.getByRole("heading", { name: t.review.ship.shipped, exact: true }),
+          ).toBeVisible();
+          await expect(ship.getByRole("button")).toHaveCount(0);
+          await ship.scrollIntoViewIfNeeded();
+          await capture(page, drawer, info, "ship-shipped-record");
         });
       });
     }

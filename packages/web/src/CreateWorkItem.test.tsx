@@ -36,6 +36,81 @@ function fetcher() {
   return fetch;
 }
 
+test.each([
+  [
+    "legacy preview refusal",
+    { reason: "Could not preview the work item." },
+    409,
+    "无法预览工作项。",
+  ],
+  ["preview fallback", null, 409, "无法预览工作项。"],
+  ["invalid preview", { slug: "" }, 200, "文件夹名称预览无效。"],
+  [
+    "authored preview refusal",
+    { reason: "Fixture refusal 原文: src/long-path.ts" },
+    409,
+    "Fixture refusal 原文: src/long-path.ts",
+  ],
+])(
+  "Chinese create renders %s and keeps creation disabled",
+  async (_name, reply, status, message) => {
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => (reply === null ? Promise.reject(undefined) : response(reply, status))),
+    );
+    render(
+      <LanguageProvider>
+        <CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />
+      </LanguageProvider>,
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "标题" }), {
+      target: { value: "Retry 原文" },
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(screen.getByRole("button", { name: "创建工作项" })).toBeDisabled();
+    expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue("Retry 原文");
+  },
+);
+
+test.each([
+  ["legacy save refusal", { reason: "Could not create the work item." }, "无法创建工作项。"],
+  ["save fallback", null, "无法创建工作项。"],
+  [
+    "authored save refusal",
+    { reason: "Fixture refusal 原文: src/long-path.ts" },
+    "Fixture refusal 原文: src/long-path.ts",
+  ],
+])("Chinese create renders %s without losing the input", async (_name, reply, message) => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) =>
+      path.endsWith("/preview")
+        ? response({ slug: "server-preview" })
+        : reply === null
+          ? Promise.reject(undefined)
+          : response(reply, 409),
+    ),
+  );
+  const created = vi.fn();
+  const user = userEvent.setup();
+  render(
+    <LanguageProvider>
+      <CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={created} />
+    </LanguageProvider>,
+  );
+  const title = screen.getByRole("textbox", { name: "标题" });
+  fireEvent.change(title, { target: { value: "Retry 原文" } });
+  const confirm = screen.getByRole("button", { name: "创建工作项" });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  await user.click(confirm);
+  expect(await screen.findByRole("alert")).toHaveTextContent(message);
+  expect(confirm).toBeEnabled();
+  expect(title).toHaveValue("Retry 原文");
+  expect(created).not.toHaveBeenCalled();
+});
+
 test("create contains keyboard focus and dismisses on an outside click", async () => {
   fetcher();
   const user = userEvent.setup();

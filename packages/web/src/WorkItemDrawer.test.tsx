@@ -76,6 +76,53 @@ test("dismissing a nested review leaves the drawer open and restores the review 
   expect(screen.queryByRole("button", { name: "Close review" })).not.toBeInTheDocument();
 });
 
+test("Escape immediately after the close tooltip disappears dismisses the drawer", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents: [] }))),
+  );
+  const user = userEvent.setup();
+  render(<DrawerExample />);
+  const opener = screen.getByRole("button", { name: "Inspect First" });
+  await user.click(opener);
+  const drawer = screen.getByRole("dialog", { name: "First" });
+  await user.tab({ shift: true });
+  await user.tab();
+  const close = screen.getByRole("button", { name: "Close work item" });
+  expect(close).toHaveFocus();
+  const tooltip = await screen.findByRole("tooltip", { name: "Close work item" });
+  const nextEscape = vi.fn(() => {
+    const drawerOpen = drawer.isConnected && drawer.getAttribute("data-state") === "open";
+    const closeFocused = document.activeElement === close;
+    const escapeEvent = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    close.dispatchEvent(escapeEvent);
+    return { drawerOpen, closeFocused, handled: escapeEvent.defaultPrevented };
+  });
+  const observer = new MutationObserver(() => {
+    if (tooltip.isConnected) return;
+    observer.disconnect();
+    nextEscape();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  try {
+    close.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "First" })).not.toBeInTheDocument(),
+    );
+    expect(nextEscape).toHaveBeenCalledOnce();
+    expect(nextEscape).toHaveReturnedWith({ drawerOpen: true, closeFocused: true, handled: true });
+    await waitFor(() => expect(opener).toHaveFocus());
+  } finally {
+    observer.disconnect();
+  }
+});
+
 test("the drawer shows and copies the worktree path even when no stint is active", async () => {
   const user = userEvent.setup();
   const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {

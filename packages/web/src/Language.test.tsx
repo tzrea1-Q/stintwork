@@ -7,7 +7,7 @@ import { App } from "./App";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { RoadmapEditor } from "./RoadmapEditor";
-import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
+import { LanguageProvider, languageStorageKey, useErrorText, useLanguage } from "./i18n/language";
 
 const files = {
   ".scratch/example/spec.md": "# Repo title 中文",
@@ -22,6 +22,60 @@ function project(contents: Record<string, string> = files) {
     branch: "team/中文",
   });
 }
+
+test.each<[Error, string, string]>([
+  [new TypeError("Failed to fetch"), "Could not reach the project server.", "无法连接项目服务器。"],
+  [new TypeError("Load failed"), "Could not reach the project server.", "无法连接项目服务器。"],
+  [
+    new DOMException("A network error occurred.", "NetworkError"),
+    "Could not reach the project server.",
+    "无法连接项目服务器。",
+  ],
+  [
+    new TypeError("NetworkError when attempting to fetch resource."),
+    "Could not reach the project server.",
+    "无法连接项目服务器。",
+  ],
+  [
+    new SyntaxError("Unexpected end of JSON input"),
+    "The server returned an invalid response.",
+    "服务器返回的响应无效。",
+  ],
+])(
+  "client fetch failure %s changes language without translating author diagnostics",
+  async (cause, english, chinese) => {
+    const user = userEvent.setup();
+    function Failure() {
+      const [error, setError] = useErrorText();
+      const { setLanguage } = useLanguage();
+      return (
+        <>
+          <button type="button" onClick={() => setError(cause)}>
+            Fail
+          </button>
+          <button type="button" onClick={() => setLanguage("zh-CN")}>
+            Chinese
+          </button>
+          <button type="button" onClick={() => setError(new Error("Author diagnostic 原文"))}>
+            Diagnostic
+          </button>
+          <p role="alert">{error}</p>
+        </>
+      );
+    }
+    render(
+      <LanguageProvider>
+        <Failure />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: "Fail" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(english);
+    await user.click(screen.getByRole("button", { name: "Chinese" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(chinese);
+    await user.click(screen.getByRole("button", { name: "Diagnostic" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("Author diagnostic 原文");
+  },
+);
 
 beforeEach(() => {
   localStorage.clear();

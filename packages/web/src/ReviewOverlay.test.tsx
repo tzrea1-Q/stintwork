@@ -62,6 +62,49 @@ const diff: WorkItemDiff = {
 };
 const item = { slug: "first", title: "First work item" };
 
+test("review defaults to Diff and file navigation returns to it without losing findings", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(diff)));
+  render(<ReviewOverlay item={item} onClose={() => {}} findings={<p>Finding original</p>} />);
+  const diffButton = screen.getByRole("button", { name: "Diff" });
+  expect(diffButton).toHaveAttribute("aria-pressed", "true");
+  const filesButton = screen.getByRole("button", { name: "Files" });
+  await waitFor(() => expect(filesButton).toBeEnabled());
+  filesButton.focus();
+  expect(filesButton).toHaveFocus();
+  await user.keyboard(" ");
+  expect(filesButton).toHaveAttribute("aria-pressed", "true");
+  await user.click(await screen.findByRole("link", { name: /src\/changed.ts/ }));
+  expect(diffButton).toHaveAttribute("aria-pressed", "true");
+  const findingsButton = screen.getByRole("button", { name: "Findings" });
+  await user.click(findingsButton);
+  expect(findingsButton).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByText("Finding original")).toBeInTheDocument();
+  const details = screen.getByRole("button", { name: "Review details" });
+  expect(details).toHaveAttribute("aria-expanded", "false");
+  await user.click(details);
+  expect(details).toHaveAttribute("aria-expanded", "true");
+  expect(screen.getByText(diff.headCommit)).toBeInTheDocument();
+});
+
+test("Files remains available for findings outside an otherwise empty diff", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply({ ...diff, files: [] })));
+  render(
+    <ReviewOverlay
+      item={item}
+      onClose={() => {}}
+      outsideDiff={[{ path: "outside.ts", content: <p>Outside finding</p> }]}
+    />,
+  );
+  await screen.findByText("Outside finding");
+  const filesButton = screen.getByRole("button", { name: "Files" });
+  expect(filesButton).toBeEnabled();
+  await user.click(filesButton);
+  await user.click(screen.getByRole("link", { name: /outside.ts/ }));
+  expect(screen.getByRole("button", { name: "Diff" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("review contains keyboard focus and supports outside dismissal", async () => {
   const user = userEvent.setup();
   const close = vi.fn();
@@ -107,7 +150,9 @@ test("hunks render old/new numbers, distinguish additions/removals and escape fi
   const table = screen.getByRole("table", {
     name: "src/changed.ts: @@ -10,2 +10,2 @@ function example",
   });
-  const rows = within(table).getAllByRole("row").slice(1);
+  const allRows = within(table).getAllByRole("row");
+  expect(allRows[1]).toHaveTextContent(diff.files[0].hunks[0].header);
+  const rows = allRows.slice(2);
   expect(
     rows.map((row) =>
       within(row)

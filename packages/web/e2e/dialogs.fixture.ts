@@ -6,6 +6,15 @@ import {
   indexProject,
 } from "@stintwork/core";
 import type { WorkItemDiff } from "@stintwork/git";
+import type { ReviewFinding, StintSummary } from "@stintwork/core";
+
+export function gate() {
+  let release = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { ready, release };
+}
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Browser fixture conventions",
@@ -53,4 +62,47 @@ export const dialogDiff: WorkItemDiff = {
       ],
     },
   ],
+};
+
+export const dialogFinding: ReviewFinding = {
+  id: "fixture-review:1",
+  axis: "Standards",
+  severity: "major",
+  path: dialogDiff.files[0].path,
+  line: 1,
+  title: `Validate developer-authored input 原文 ${"long finding title ".repeat(8)}`,
+  body: "Unchecked developer input reaches the writer. 保留原文。 ".repeat(20),
+};
+
+export const dialogReview: StintSummary = {
+  id: "fixture-review",
+  workItem: dialogItem.slug,
+  stage: "review",
+  ticket: null,
+  agent: "codex",
+  status: "finished",
+  startedAt: "2026-10-13T10:00:00Z",
+  endedAt: "2026-10-13T10:05:00Z",
+  checkpointCommit: dialogDiff.headCommit,
+  handoff: null,
+  findings: {
+    commit: dialogDiff.headCommit,
+    findings: [
+      dialogFinding,
+      {
+        ...dialogFinding,
+        id: "fixture-review:2",
+        axis: "Spec",
+        severity: "blocker",
+        line: 100,
+        title: "Finding outside the hunk 原文",
+      },
+      {
+        ...dialogFinding,
+        id: "fixture-review:3",
+        path: `src/${"outside-diff/".repeat(30)}file.ts`,
+        title: "Finding outside the diff 原文",
+      },
+    ],
+  },
 };
