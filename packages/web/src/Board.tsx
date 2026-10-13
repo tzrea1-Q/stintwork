@@ -15,6 +15,8 @@ import { CreateWorkItem } from "./CreateWorkItem";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
+import { Button } from "./ui/Button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function Board({
   snapshot,
@@ -37,6 +39,7 @@ export function Board({
   const alerts = useAttentionAlerts(snapshot.attentionItems, snapshot.name);
   const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
+  const stageScroll = useRef<HTMLDivElement>(null);
   const openItem = snapshot.workItems.find((item) => item.slug === openSlug);
   const milestone = snapshot.milestones.some((entry) => entry.id === selectedMilestone)
     ? selectedMilestone
@@ -47,6 +50,13 @@ export function Board({
   const shipped = visible.filter(isShipped);
   const unstaged = active.filter((item) => item.column === undefined);
   const selected = snapshot.milestones.find((entry) => entry.id === milestone);
+
+  function scrollStages(direction: -1 | 1) {
+    const viewport = stageScroll.current;
+    const columns = viewport?.querySelectorAll<HTMLElement>(".stage-column");
+    if (viewport && columns && columns.length > 1)
+      viewport.scrollBy({ left: direction * (columns[1].offsetLeft - columns[0].offsetLeft) });
+  }
 
   const openWorkItem = useCallback(
     (slug: string) => {
@@ -169,37 +179,55 @@ export function Board({
             {t.board.lastAvailable}
           </p>
         )}
-        <div className="board-toolbar">
-          <span className="flex items-center gap-2">
-            <Layers3 size={13} aria-hidden="true" />
-            {selected?.name ?? t.board.allMilestones}
-          </span>
-          <span>{t.board.counts(active.length, shipped.length)}</span>
-          <RoadmapEditor snapshot={snapshot} />
-          <button
-            type="button"
-            className="top-button"
-            aria-haspopup="dialog"
-            onClick={() => setCreateOpen(true)}
-          >
-            {t.board.createWorkItem}
-          </button>
-          <nav className="stage-navigation" aria-label={t.board.stageNavigation}>
-            <button
-              type="button"
-              aria-label={t.board.previousStages}
-              onClick={() => scroll.current?.scrollBy({ left: -240 })}
-            >
-              <ChevronLeft size={14} aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              aria-label={t.board.nextStages}
-              onClick={() => scroll.current?.scrollBy({ left: 240 })}
-            >
-              <ChevronRight size={14} aria-hidden="true" />
-            </button>
-          </nav>
+        <div className="board-toolbar flex flex-col gap-3 border-y border-border px-4 py-3 text-xs text-muted lg:flex-row lg:items-center lg:justify-between lg:px-6">
+          <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
+            <span className="board-milestone-label flex min-w-0 items-center gap-2 break-words">
+              <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
+              {selected?.name ?? t.board.allMilestones}
+            </span>
+            <span className="board-stats whitespace-nowrap">
+              {t.board.counts(active.length, shipped.length)}
+            </span>
+          </div>
+          <div className="board-toolbar-actions flex shrink-0 items-center gap-2">
+            <RoadmapEditor snapshot={snapshot} />
+            <Button variant="primary" aria-haspopup="dialog" onClick={() => setCreateOpen(true)}>
+              {t.board.createWorkItem}
+            </Button>
+            <TooltipProvider>
+              <nav
+                className="stage-navigation ml-auto flex gap-1 lg:ml-0 min-[1200px]:hidden"
+                aria-label={t.board.stageNavigation}
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t.board.previousStages}
+                      onClick={() => scrollStages(-1)}
+                    >
+                      <ChevronLeft aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t.board.previousStages}</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t.board.nextStages}
+                      onClick={() => scrollStages(1)}
+                    >
+                      <ChevronRight aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>{t.board.nextStages}</TooltipContent>
+                </Tooltip>
+              </nav>
+            </TooltipProvider>
+          </div>
         </div>
         <section className="board-scroll" ref={scroll} aria-label={t.board.stages}>
           {snapshot.workItems.length === 0 ? (
@@ -223,19 +251,24 @@ export function Board({
                   {t.board.emptyMilestone}
                 </p>
               )}
-              <div className="stage-grid">
-                {builtInWorkflows.feature.stages.map((stage) => (
-                  <Column
-                    key={stage.id}
-                    id={stage.column}
-                    name={stageName(builtInWorkflows.feature, stage, t)}
-                    items={active.filter((item) => item.column === stage.column)}
-                    milestones={snapshot.milestones}
-                    workflows={snapshot.workflows}
-                    attentionItems={snapshot.attentionItems}
-                    onOpen={openWorkItem}
-                  />
-                ))}
+              <div
+                className="stage-scroll min-w-0 overflow-x-auto overscroll-x-contain max-lg:snap-x max-lg:snap-mandatory"
+                ref={stageScroll}
+              >
+                <div className="stage-grid grid min-h-[360px] min-w-[1150px] grid-cols-[repeat(6,minmax(180px,1fr))] gap-4 max-lg:min-w-0 max-lg:grid-flow-col max-lg:auto-cols-[85vw] max-lg:grid-cols-none [&>.stage-column]:snap-start">
+                  {builtInWorkflows.feature.stages.map((stage) => (
+                    <Column
+                      key={stage.id}
+                      id={stage.column}
+                      name={stageName(builtInWorkflows.feature, stage, t)}
+                      items={active.filter((item) => item.column === stage.column)}
+                      milestones={snapshot.milestones}
+                      workflows={snapshot.workflows}
+                      attentionItems={snapshot.attentionItems}
+                      onOpen={openWorkItem}
+                    />
+                  ))}
+                </div>
               </div>
               {unstaged.length > 0 && (
                 <section

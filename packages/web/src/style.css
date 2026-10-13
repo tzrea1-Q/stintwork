@@ -1,54 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
 @import "tailwindcss";
-
-:root {
-  color-scheme: dark;
-  --bg: #101114;
-  --surface: #17181c;
-  --surface-raised: #202127;
-  --surface-hover: #262830;
-  --border: #ffffff12;
-  --border-strong: #ffffff24;
-  --text: #e6e7eb;
-  --muted: #9598a3;
-  --accent: #8b8df8;
-  --accent-soft: #8b8df819;
-  --success: #61bd99;
-  --warning: #e4b468;
-  font-family:
-    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
-    "Noto Sans CJK SC", sans-serif;
-  font-size: 13px;
-  background: var(--bg);
-  color: var(--text);
-}
-
-@media (prefers-color-scheme: light) {
-  :root {
-    color-scheme: light;
-    --bg: #fafafa;
-    --surface: #fff;
-    --surface-raised: #f3f3f5;
-    --surface-hover: #eaeaf0;
-    --border: #16182214;
-    --border-strong: #16182229;
-    --text: #22232a;
-    --muted: #686b78;
-    --accent: #5b55ce;
-    --accent-soft: #5b55ce10;
-    --success: #197c58;
-    --warning: #98630d;
-  }
-}
+@import "./styles/tokens.css";
 
 body {
   margin: 0;
   min-width: 320px;
-}
-button,
-select {
-  font: inherit;
 }
 button,
 summary,
@@ -69,7 +25,7 @@ code,
 .branch,
 .work-item-id,
 .milestone-tag {
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-monospace);
 }
 * {
   scrollbar-width: thin;
@@ -220,46 +176,12 @@ code,
 .is-reconnecting {
   background: var(--warning);
 }
-.board-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 11px 24px;
-  border-block: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 10px;
-}
 .board-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
   padding: 0 24px 24px;
   overscroll-behavior: contain;
-}
-.stage-navigation {
-  display: none;
-  gap: 8px;
-}
-.stage-navigation button {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-}
-@media (max-width: 1199px) {
-  .stage-navigation {
-    display: flex;
-  }
-}
-.stage-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(180px, 1fr));
-  gap: 14px;
-  min-width: 1150px;
-  min-height: 360px;
 }
 .stage-column {
   min-width: 0;
@@ -434,8 +356,7 @@ code,
   .milestone-filter select {
     max-width: 160px;
   }
-  .pipeline-heading,
-  .board-toolbar {
+  .pipeline-heading {
     padding-inline: 16px;
   }
   .board-scroll {
@@ -474,7 +395,7 @@ code,
   z-index: 1;
 }
 kbd {
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-monospace);
   font-size: 10px;
   color: var(--muted);
 }

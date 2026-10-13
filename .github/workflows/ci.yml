@@ -24,6 +24,28 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: pnpm/action-setup@v5
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm --filter @stintwork/web exec playwright install --with-deps chromium
+      - run: pnpm --filter @stintwork/web... build
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-layout-evidence
+          path: |
+            packages/web/coverage/e2e/test-results/
+            packages/web/coverage/e2e/report/
+          if-no-files-found: warn
+
   package-smoke:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
