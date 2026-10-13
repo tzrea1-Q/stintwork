@@ -45,6 +45,49 @@ function stint(stage: StageId, overrides: Partial<StintSummary> = {}): StintSumm
   };
 }
 
+test("gate refusal carries a stable message without changing its English reason", () => {
+  const workItem = item("implement");
+  workItem.tickets[0].resolved = false;
+  const gate = gateReadiness(workItem);
+  expect(gate.reason).toEqual({
+    text: "Every ticket must be resolved before approving.",
+    code: "gate.ticketsUnresolved",
+  });
+});
+
+test.each([
+  ["shipped", "This work item is shipped.", "workItem.shipped"],
+  ["ship", "This stage has no approval gate.", "gate.noApproval"],
+  [
+    "running",
+    "A stint is running on this work item. Finish or stop it before approving.",
+    "gate.running",
+  ],
+  ["unfinished", "The stage stint must finish before approving.", "gate.stintUnfinished"],
+  ["handoff", "The finished stage stint needs a handoff before approving.", "gate.handoffMissing"],
+  [
+    "reopened",
+    "Start a new Review stint after reopening or entering Review.",
+    "gate.reviewRestart",
+  ],
+])("%s gate refusal keeps English and supplies its code", (state, reason, code) => {
+  const workItem = item(state === "ship" ? "ship" : state === "reopened" ? "review" : "clarify");
+  if (state === "shipped") workItem.merged = { at: "now", commit: "head" };
+  if (state === "running") workItem.stints = [stint("clarify", { status: "running" })];
+  if (state === "handoff") workItem.stints = [stint("clarify", { handoff: null })];
+  if (state === "reopened") {
+    workItem.stints = [stint("review")];
+    workItem.stages.review = {
+      reopened: { at: "2026-10-09T10:06:00Z", by: "You", commit: "head" },
+    };
+  }
+  const gate = gateReadiness(workItem);
+  expect(gate.reason).toEqual({
+    text: reason,
+    code,
+  });
+});
+
 test.each([
   ["implement", "feature"],
   ["fix", "bug"],
@@ -56,7 +99,7 @@ test.each([
   expect(gateReadiness(workItem).ready).toBe(false);
   workItem.tickets[0].resolved = true;
   workItem.stints = [stint(stage, { ticket: 1, status: "running" })];
-  expect(gateReadiness(workItem).reason).toContain("stint is running");
+  expect(gateReadiness(workItem).reason?.text).toContain("stint is running");
 });
 
 test.each([
@@ -71,14 +114,24 @@ test.each([
     workItem.tickets = [];
     expect(gateReadiness(workItem)).toMatchObject({
       ready: false,
-      reason: "The stage stint must finish before approving.",
+      reason: {
+        text: "The stage stint must finish before approving.",
+        code: "gate.stintUnfinished",
+      },
     });
     workItem.stints = [stint(stage)];
     expect(gateReadiness(workItem)).toMatchObject({
       ready: true,
       nextStage: "review",
       conditions: [
-        { id: "output", ready: true, label: "Developer approval; no file output required" },
+        {
+          id: "output",
+          ready: true,
+          label: {
+            text: "Developer approval; no file output required",
+            code: "gate.manualApproval",
+          },
+        },
       ],
     });
     for (const overrides of [
@@ -101,7 +154,7 @@ test.each([
     workItem.stints = [stint(stage, { endedAt: "2026-10-09T10:07:00Z" })];
     expect(gateReadiness(workItem).ready).toBe(true);
     workItem.stints = [stint(stage, { status: "running" })];
-    expect(gateReadiness(workItem).reason).toContain("stint is running");
+    expect(gateReadiness(workItem).reason?.text).toContain("stint is running");
   },
 );
 
@@ -155,9 +208,9 @@ test("a reopened stage needs fresh stint evidence; build gates stay ticket-deriv
   review.stages.implement = { approved: { by: "You", at: "2026-10-09T10:06:00Z", commit: "head" } };
   review.stints = [stint("review")];
   expect(gateReadiness(review).ready).toBe(false);
-  expect(gateReadiness(review).conditions[0].action).toContain("Start a new Review stint");
+  expect(gateReadiness(review).conditions[0].action.text).toContain("Start a new Review stint");
   review.stages.review = { reopened: { at: "2026-10-09T10:06:00Z" } };
-  expect(gateReadiness(review).conditions[0].action).toContain("Start a new Review stint");
+  expect(gateReadiness(review).conditions[0].action.text).toContain("Start a new Review stint");
   review.stints = [stint("review", { endedAt: "2026-10-09T10:07:00Z" })];
   expect(gateReadiness(review).ready).toBe(true);
 });

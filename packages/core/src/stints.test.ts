@@ -14,6 +14,63 @@ import {
   type StintLogEvent,
 } from "./stints.js";
 
+test("stint log folding retains structured notes, old English and future message codes", () => {
+  const entries = [
+    {
+      type: "event",
+      at: "now",
+      event: {
+        type: "message",
+        id: "setup",
+        text: "Wrote workflow.yaml with the workflow, stage and Claude Code for this stage.\n",
+        message: { code: "stream.wroteWorkflow", params: { agent: "Claude Code" } },
+      },
+    },
+    { type: "event", at: "now", event: { type: "message", id: "old", text: "Old English note\n" } },
+    {
+      type: "event",
+      at: "now",
+      event: {
+        type: "message",
+        id: "future",
+        text: "Future English note",
+        message: { code: "stream.future" },
+      },
+    },
+  ];
+  const recorded = JSON.parse(JSON.stringify([started, ...entries]));
+  expect(recorded.every(isStintLogEntry)).toBe(true);
+  expect(foldStintLog(recorded)?.events).toEqual(entries.map(({ event }) => event));
+});
+
+test("ended stint diagnostics retain message metadata in replay and summaries without annotating old logs", () => {
+  const ended = {
+    type: "ended",
+    at: "now",
+    status: "failed",
+    error: "Agent ended the stint with stop reason: max_tokens.",
+    errorMessage: { code: "stint.stopReason", params: { reason: "max_tokens" } },
+    handoffError: "Handoff timed out.",
+    handoffErrorMessage: { code: "stint.handoffTimeout" },
+  };
+  const entries = JSON.parse(JSON.stringify([started, ended]));
+  expect(entries.every(isStintLogEntry)).toBe(true);
+  const stint = foldStintLog(entries);
+  expect(stint?.errorMessage).toEqual({
+    code: "stint.stopReason",
+    params: { reason: "max_tokens" },
+  });
+  expect(stint && summarizeStint(stint).handoffErrorMessage).toEqual({
+    code: "stint.handoffTimeout",
+  });
+  expect(
+    foldStintLog([
+      started,
+      { type: "ended", at: "now", status: "failed", error: "Handoff timed out." },
+    ])?.errorMessage,
+  ).toBeUndefined();
+});
+
 test("checkpoint warnings validate as metadata and survive folding and summaries", () => {
   const warnings = [{ path: ".env", reasons: ["likely-secret"], excluded: true }];
   expect(isCheckpointWarnings(warnings)).toBe(true);

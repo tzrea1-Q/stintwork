@@ -69,10 +69,11 @@ test("failed decisions keep the proposal actionable and surface the server reaso
   const user = userEvent.setup();
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue({
-      ok: false,
-      json: async () => ({ reason: "Commit the proposed file first." }),
-    }),
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ reason: "Commit the proposed file first." }), {
+        status: 409,
+      }),
+    ),
   );
   render(<Board snapshot={memorySnapshot()} />);
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));

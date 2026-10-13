@@ -124,6 +124,55 @@ test("an injected agent-neutral launcher records messages and a finished stint w
   });
 });
 
+test("the workflow setup note persists its code and agent without translating the agent stream", async () => {
+  const { root, project } = await fixture(({ onEvent }) => ({
+    done: Promise.resolve().then(() => {
+      onEvent({ type: "message", id: "agent-note", text: "Agent text 原文" });
+      return { stopReason: "end_turn" };
+    }),
+    cancel: async () => {},
+  }));
+  await writeFile(
+    join(root, ".scratch/first/workflow.yaml"),
+    "workflow: feature\nstage: implement\n",
+  );
+  execFileSync("git", ["add", ".scratch/first/workflow.yaml"], { cwd: root });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Tests",
+      "-c",
+      "user.email=tests@example.invalid",
+      "commit",
+      "--quiet",
+      "-m",
+      "Unassigned stage fixture",
+    ],
+    { cwd: root },
+  );
+  const { stint } = await (await start(project)).json();
+  await finished(project, stint.id);
+  const entries = (await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  const expected = {
+    type: "message",
+    id: "setup-1",
+    text: "Wrote workflow.yaml with the workflow, stage and Codex for this stage.\n",
+    message: { code: "stream.wroteWorkflow", params: { agent: "Codex" } },
+  };
+  expect(entries.find((entry) => entry.event?.id === "setup-1")?.event).toEqual(expected);
+  const recorded = await (await project.app.request(`/api/stints/${stint.id}`)).json();
+  expect(recorded.stint.events.find((event: { id?: string }) => event.id === "setup-1")).toEqual(
+    expected,
+  );
+  expect(recorded.stint.events.find((event: { id?: string }) => event.id === "agent-note")).toEqual(
+    { type: "message", id: "agent-note", text: "Agent text 原文" },
+  );
+});
+
 test("an agent that ends its own turn as cancelled finishes rather than reading as stopped", async () => {
   const { root, project } = await fixture(() => ({
     done: Promise.resolve({ stopReason: "cancelled" }),
@@ -141,6 +190,29 @@ test("an agent that ends its own turn as cancelled finishes rather than reading 
   expect(entries.at(-1)).toMatchObject({ type: "ended", stopReason: "cancelled" });
 });
 
+test("an authored stop-reason diagnostic persists its code and unchanged English", async () => {
+  const { root, project } = await fixture(() => ({
+    done: Promise.resolve({ stopReason: "max_tokens" }),
+    cancel: async () => {},
+  }));
+  const { stint } = await (await start(project)).json();
+  await expect
+    .poll(
+      async () =>
+        (await (await project.app.request(`/api/stints/${stint.id}`)).json()).stint.status,
+    )
+    .toBe("failed");
+  const entries = (await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  expect(entries.at(-1).error).toBe("Agent ended the stint with stop reason: max_tokens.");
+  expect(entries.at(-1).errorMessage).toEqual({
+    code: "stint.stopReason",
+    params: { reason: "max_tokens" },
+  });
+});
+
 test("starts from the server-compiled preview, records every event and reuses the worktree on a second stint", async () => {
   const { root, project } = await fixture();
   const preview: Brief = await (
@@ -155,6 +227,7 @@ test("starts from the server-compiled preview, records every event and reuses th
   expect(conflict.status).toBe(409);
   expect(await conflict.json()).toEqual({
     reason: "A stint is already active for this work item.",
+    reasonMessage: { code: "stint.alreadyActive" },
   });
   await finished(project, stint.id);
   const log = await readFile(join(root, `.stintwork/local/stints/${stint.id}.jsonl`), "utf8");

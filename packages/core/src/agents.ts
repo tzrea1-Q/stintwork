@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreText, type CoreText } from "./core-text.js";
 export type AgentPermissionOption = {
   optionId: string;
   name: string;
@@ -21,7 +22,7 @@ export type AgentProfile = {
   displayName: string;
   capabilities: AgentCapabilityProfile;
   installationHint: string;
-  warnings?: readonly string[];
+  warnings?: readonly CoreText[];
   availability?: AgentAvailability;
   skillLocations?: readonly AgentSkillLocation[];
 };
@@ -34,14 +35,19 @@ export type AgentSkillLocation = {
 
 export type AgentAvailability = {
   available: boolean;
-  reason?: string;
+  reason?: CoreText;
   kind?: "login-required" | "missing-executable" | "check-failed";
   checkedAt?: string;
 };
 
-export function agentUnavailableReason(agent: AgentProfile): string | null {
-  return agent.availability?.available === false
-    ? agent.availability.reason?.trim() ||
-        `${agent.displayName} is unavailable. ${agent.capabilities.authenticationRequired.loginCommand}`
-    : null;
+export function agentUnavailable(agent: AgentProfile): CoreText | null {
+  if (agent.availability?.available !== false) return null;
+  if (agent.availability.reason?.text.trim()) return agent.availability.reason;
+  return coreText({
+    code: "agent.unavailable",
+    params: {
+      agent: agent.displayName,
+      command: agent.capabilities.authenticationRequired.loginCommand,
+    },
+  });
 }

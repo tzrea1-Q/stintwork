@@ -40,6 +40,61 @@ const custom = JSON.stringify({
   ],
 });
 
+test("uses an explicit folder slug while preserving a Chinese-only title", () => {
+  const creation = prepareWorkItemCreation(
+    { title: "修复登录", slug: "fix-login", workflow: "bug", milestone: "first" },
+    builtInWorkflows,
+    "## First\nId: first\nStatus: active\n",
+  );
+  expect(creation.slug).toBe("fix-login");
+  expect(parse(creation.workflowText).title).toBe("修复登录");
+  expect(creation.roadmapText).toContain("- fix-login\n");
+});
+
+test("an explicit slug trims title whitespace without bypassing title validation", () => {
+  expect(
+    parse(
+      prepareWorkItemCreation(
+        { title: " 修复登录 ", slug: "123", workflow: "bug" },
+        builtInWorkflows,
+        "",
+      ).workflowText,
+    ).title,
+  ).toBe("修复登录");
+  for (const title of ["", " ", "修复\n登录", null])
+    expect(() =>
+      prepareWorkItemCreation({ title, slug: "fix-login", workflow: "bug" }, builtInWorkflows, ""),
+    ).toThrow("Title must be nonempty, single-line text.");
+  expect(
+    prepareWorkItemCreation(
+      { title: "Idea", slug: "a".repeat(48), workflow: "bug" },
+      builtInWorkflows,
+      "",
+    ).slug,
+  ).toBe("a".repeat(48));
+});
+
+test.each([
+  "",
+  "Fix-login",
+  "fix--login",
+  "-login",
+  "login-",
+  "../login",
+  "修复",
+  "a".repeat(49),
+  " login",
+  "login\n",
+  null,
+  42,
+])("refuses invalid explicit folder slug %j rather than deriving a replacement", (slug) => {
+  expect(() =>
+    prepareWorkItemCreation({ title: "Idea", slug, workflow: "bug" }, builtInWorkflows, ""),
+  ).toThrow(
+    "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+  );
+});
+
 test("creates and indexes a workflow-only work item using its loaded first stage and title", () => {
   const contents = { ".stintwork/workflows/team.yaml": custom };
   const workflows = loadWorkflows(createMemoryRepoFiles(contents)).workflows;

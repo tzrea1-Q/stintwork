@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -14,12 +15,12 @@ export function writeWorkItemWorkflow(
     directory = join(directory, part);
     const stat = lstatSync(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error("Work item directories must be real directories.");
+      throw new CoreTextError({ code: "server.workItemDirectories" });
   }
   const path = join(directory, "workflow.yaml");
   const stat = lstatSync(path, { throwIfNoEntry: false });
   if (stat && (!stat.isFile() || stat.isSymbolicLink()))
-    throw new Error("workflow.yaml must be a regular file.");
+    throw new CoreTextError({ code: "workflow.regularFile" });
   const existing = stat ? readFileSync(path, "utf8") : undefined;
   const text = update(existing);
   if (text === existing) return false;
@@ -46,13 +47,12 @@ export async function saveWorkItemWorkflow(
       encoding: "utf8",
     }).trim();
     if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
-      throw new Error("Resolve workflow.yaml's index conflict before changing it.");
+      throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
     return written;
   });
   try {
     const commit = await commitStintworkSetup(root, slug, [relative], message);
-    if (changed && commit === null)
-      throw new Error("workflow.yaml could not be committed. Check whether it is ignored by Git.");
+    if (changed && commit === null) throw new CoreTextError({ code: "workflow.commitIgnored" });
     return commit;
   } catch (error) {
     if (changed && readFileSync(path, "utf8") === written) {

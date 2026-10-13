@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readFileSync } from "node:fs";
-import { stringify, parse } from "yaml";
-import { expect, test } from "vitest";
 import {
-  briefUnavailableReason,
+  briefAvailability,
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
@@ -17,6 +14,10 @@ import {
   workflowMerge,
   type WorkflowDefinition,
 } from "./index.js";
+import { readFileSync } from "node:fs";
+import { stringify, parse } from "yaml";
+import { expect, test } from "vitest";
+
 import { bundledWorkflowYaml } from "./bundled-workflows.js";
 
 function definition(id = "feature"): WorkflowDefinition {
@@ -119,7 +120,7 @@ test.each(["feature", "team-release", "constructor", "__proto__"])(
     });
     expect(builtInWorkflows.feature.name).toBe("Feature");
     const item = snapshot.workItems[0];
-    expect(briefUnavailableReason(item, null, snapshot.workflows)).toBeNull();
+    expect(briefAvailability(item, null, snapshot.workflows)?.text ?? null).toBeNull();
     expect(
       stageAgent(item, "design", [{ id: "codex" }, { id: "claude" }], snapshot.workflows),
     ).toBe("codex");
@@ -319,7 +320,7 @@ test("an evidence gate uses its named stage rather than a hard-coded Review id",
   });
   expect(brief.pointers).toContainEqual({
     path: ".scratch/bug-example/issues/01-first.md",
-    reason: expect.stringContaining("Review against"),
+    reason: { text: expect.stringContaining("Review against"), code: "brief.reviewScope" },
   });
   expect(brief.prompt).toContain("Do not implement fixes");
   expect(brief.prompt).toContain("Review both Standards and Spec with /team-review.");

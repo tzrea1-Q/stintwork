@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreText, coreTextWire, type Health, indexProject, type Warning } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { accessSync } from "node:fs";
@@ -6,7 +7,7 @@ import { basename, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAdaptorServer, type ServerType, upgradeWebSocket } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
-import { type Health, indexProject, type Warning } from "@stintwork/core";
+
 import { createAgentRegistry, describeAgents } from "@stintwork/agents";
 import { type FSWatcher, watch } from "chokidar";
 import { Hono } from "hono";
@@ -86,7 +87,7 @@ export function createProjectServer(
   }
 
   let snapshot = readSnapshot();
-  let lastBroadcast = JSON.stringify(snapshot);
+  let lastBroadcast = JSON.stringify(coreTextWire(snapshot));
   let watcher: FSWatcher | undefined;
   let watcherReady = false;
   let watcherWarning: Warning | undefined;
@@ -100,7 +101,7 @@ export function createProjectServer(
   const websocket = new WebSocketServer({ noServer: true });
   websocket.on("connection", (socket) => {
     socket.on("error", () => socket.terminate());
-    socket.send(JSON.stringify(snapshot));
+    socket.send(JSON.stringify(coreTextWire(snapshot)));
   });
 
   function refresh(paths?: readonly string[]) {
@@ -113,7 +114,7 @@ export function createProjectServer(
       if (!watchedPaths.has(path)) void watcher?.unwatch(path);
     }
     if (watcherWarning) snapshot.warnings.push(watcherWarning);
-    const message = JSON.stringify(snapshot);
+    const message = JSON.stringify(coreTextWire(snapshot));
     // Refreshes can be triggered by events that change nothing visible (new watches reporting
     // their files, metadata probes); clients only hear about snapshots that actually changed.
     if (message === lastBroadcast) return;
@@ -138,15 +139,20 @@ export function createProjectServer(
     try {
       await initialize();
     } catch (error) {
-      return context.json({ reason: `Stint recovery failed: ${String(error)}` }, 503);
+      return context.json(
+        coreTextWire({
+          reason: coreText({ code: "server.recoveryFailed", params: { detail: String(error) } }),
+        }),
+        503,
+      );
     }
     await next();
   });
   const health: Health = { ok: true, repo: name };
-  app.get("/api/health", (context) => context.json(health));
+  app.get("/api/health", (context) => context.json(coreTextWire(health)));
   app.get("/api/project", (context) => {
     context.header("Cache-Control", "no-store");
-    return context.json(snapshot);
+    return context.json(coreTextWire(snapshot));
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);

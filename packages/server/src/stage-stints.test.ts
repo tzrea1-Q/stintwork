@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
 import {
   type Brief,
+  coreTextWire,
   foldStintLog,
   type ProjectSnapshot,
   type Stint,
@@ -210,7 +211,7 @@ test.each([undefined, null])(
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    expect(foldStintLog(entries)).toEqual(finished);
+    expect(coreTextWire(foldStintLog(entries))).toEqual(finished);
     await project.stop();
     tracked.project = createProjectServer(root, join(root, "web"), {
       launchAgent: createFakeAgentLauncher(
@@ -234,6 +235,7 @@ test.each([undefined, null])(
     expect(next.pointers).toContainEqual({
       path: spec,
       reason: "Work item scope and acceptance criteria",
+      reasonMessage: { code: "brief.scope" },
     });
     const continuation = await start(tracked.project);
     expect(continuation.status).toBe(201);
@@ -271,6 +273,7 @@ test("stage and ticket starts share the work item active-stint guard, and stoppi
     expect(refusal.status).toBe(409);
     expect(await refusal.json()).toEqual({
       reason: "A stint is already active for this work item.",
+      reasonMessage: { code: "stint.alreadyActive" },
     });
   }
   expect((await project.app.request(preview)).status).toBe(409);
@@ -329,13 +332,13 @@ test("ticket-scoped Do keeps ticket refusals, checkpoints and its manual gate ru
       headers: { "Content-Type": "application/json" },
       body: "{}",
     });
-  for (const [number, reason] of [
-    [2, "Blocked by ticket 01."],
-    [3, "This ticket is resolved."],
+  for (const [number, reason, reasonMessage] of [
+    [2, "Blocked by ticket 01.", { code: "brief.blockedBy", params: { tickets: "01" } }],
+    [3, "This ticket is resolved.", { code: "brief.ticketResolved" }],
   ] as const) {
     const refused = await start(project, number);
     expect(refused.status).toBe(409);
-    expect(await refused.json()).toEqual({ reason });
+    expect(await refused.json()).toEqual({ reason, reasonMessage });
   }
   const notReady = await approve();
   expect(notReady.status).toBe(409);

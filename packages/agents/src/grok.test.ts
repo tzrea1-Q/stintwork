@@ -73,7 +73,9 @@ test.each([
   const { configPath } = await fixture(config);
   expect(readGrokConfig(configPath)).toEqual({
     permissionMode: null,
-    warnings: [expect.stringContaining("unknown")],
+    warnings: [
+      { text: expect.stringContaining("unknown"), code: "permission.grokConfigUnreadable" },
+    ],
   });
   expect(await readFile(configPath, "utf8")).toBe(config);
 });
@@ -101,7 +103,7 @@ test("availability probes never prompt for work, invent modes, or authenticate; 
     availability: {
       available: false,
       kind: "login-required",
-      reason: expect.stringContaining("grok login"),
+      reason: { text: expect.stringContaining("grok login") },
     },
     warnings: [grokPermissionWarning],
   });
@@ -149,6 +151,6 @@ test("the native launcher invokes grok agent stdio using the developer's PATH an
   expect(agent.availability).toMatchObject({
     available: false,
     kind: "missing-executable",
-    reason: expect.stringContaining("Install Grok Build"),
+    reason: { text: expect.stringContaining("Install Grok Build") },
   });
 });

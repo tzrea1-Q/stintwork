@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
-  briefUnavailableReason,
+  errorText,
+  coreTextWire,
+  coreText,
+  briefAvailability,
   compileBrief,
   indexProject,
   indexStints,
@@ -12,6 +15,7 @@ import {
   type PermissionLevel,
   type DeveloperNote,
 } from "@stintwork/core";
+
 import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince, workItemDiff } from "@stintwork/git";
@@ -34,8 +38,9 @@ export function addBriefPreviewRoute(
       registry,
     );
     refresh();
-    if ("reason" in result) return context.json({ reason: result.reason }, result.status);
-    return context.json(result.brief);
+    if ("reason" in result)
+      return context.json(coreTextWire({ reason: result.reason }), result.status);
+    return context.json(coreTextWire(result.brief));
   });
   app.get("/api/work-items/:slug/tickets/:ticket/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
@@ -48,8 +53,9 @@ export function addBriefPreviewRoute(
       registry,
     );
     refresh();
-    if ("reason" in result) return context.json({ reason: result.reason }, result.status);
-    return context.json(result.brief);
+    if ("reason" in result)
+      return context.json(coreTextWire({ reason: result.reason }), result.status);
+    return context.json(coreTextWire(result.brief));
   });
 }
 
@@ -66,18 +72,27 @@ export async function prepareStintBrief(
   const files = project.files;
   const snapshot = indexProject(files, { name: "" });
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
-  if (!workItem) return { reason: "Work item not found.", status: 404 as const };
+  if (!workItem)
+    return { reason: coreText({ code: "server.workItemNotFound" }), status: 404 as const };
   const ticket =
     number === null ? null : workItem.tickets.find((candidate) => candidate.number === number);
-  if (ticket === undefined) return { reason: "Ticket not found.", status: 404 as const };
-  const reason = briefUnavailableReason(workItem, ticket, snapshot.workflows);
-  if (reason) return { reason, status: 409 as const };
+  if (ticket === undefined)
+    return { reason: coreText({ code: "server.ticketNotFound" }), status: 404 as const };
+  const unavailable = briefAvailability(workItem, ticket, snapshot.workflows);
+  if (unavailable)
+    return {
+      reason: unavailable,
+      status: 409 as const,
+    };
   if (workItem.activeStint)
-    return { reason: "A stint is already active for this work item.", status: 409 as const };
+    return {
+      reason: coreText({ code: "stint.alreadyActive" }),
+      status: 409 as const,
+    };
   const stage = snapshot.workflows[workItem.workflow].stages.find(
     (candidate) => candidate.id === workItem.stage,
   );
-  if (!stage) return { reason: "Stage not found.", status: 409 as const };
+  if (!stage) return { reason: coreText({ code: "server.stageNotFound" }), status: 409 as const };
   const agent =
     chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()], snapshot.workflows);
   const registered = registry.get(agent);
@@ -86,7 +101,7 @@ export async function prepareStintBrief(
   try {
     permissionLevel = chosenLevel ?? projectPermissionLevel(files.read(".stintwork/config"));
   } catch (error) {
-    return { reason: String(error), status: 409 as const };
+    return { reason: errorText(error, true), status: 409 as const };
   }
   // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
   // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
@@ -106,8 +121,13 @@ export async function prepareStintBrief(
         slug,
       );
   } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
     return {
-      reason: `${stage.gate === "evidence" ? "Could not prepare the Review diff" : "Could not compare the last checkpoint"}: ${error instanceof Error ? error.message : String(error)}`,
+      reason: coreText({
+        code:
+          stage.gate === "evidence" ? "server.reviewDiffFailed" : "server.checkpointCompareFailed",
+        params: { detail },
+      }),
       status: 503 as const,
     };
   }
@@ -118,7 +138,7 @@ export async function prepareStintBrief(
         ? parseReviewDeveloperNotes(files.read(`.scratch/${slug}/review.yaml`))
         : [];
   } catch (error) {
-    return { reason: String(error), status: 409 as const };
+    return { reason: errorText(error, true), status: 409 as const };
   }
   const brief = compileBrief({
     files,
@@ -134,6 +154,7 @@ export async function prepareStintBrief(
     changedPaths,
     reviewRange,
   });
+  const policy = registered ? permissionPolicy(registered, permissionLevel) : undefined;
   return {
     workItem,
     ticket,
@@ -143,7 +164,7 @@ export async function prepareStintBrief(
       ...brief,
       agent,
       permissionLevel,
-      warnings: registered ? permissionPolicy(registered, permissionLevel).warnings : [],
+      warnings: policy?.warnings ?? [],
       ...(stage.gate === "evidence"
         ? {
             prompt: `${brief.prompt}\n\nAfter-turn findings format for ${stage.skill}:\n${findingsFormat}`,

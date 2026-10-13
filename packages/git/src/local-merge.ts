@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
+import type { CoreText, CoreTextMessage } from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { lstat, realpath } from "node:fs/promises";
 import { promisify } from "node:util";
@@ -21,7 +23,7 @@ async function mainCheckoutBranch(root: string) {
     branch.startsWith("stintwork/") ||
     branch !== target
   )
-    throw new LocalMergeRefusal("Merge locally requires the main checkout on its main branch.");
+    throw new LocalMergeRefusal({ code: "ship.mainBranchRequired" });
   return branch;
 }
 
@@ -34,9 +36,9 @@ export type LocalMergeReport = {
   touchedPaths: string[];
 };
 
-export class LocalMergeRefusal extends Error {
+export class LocalMergeRefusal extends CoreTextError {
   constructor(
-    message: string,
+    message: string | CoreTextMessage | CoreText,
     public conflicts: string[] = [],
     public paths: string[] = [],
   ) {
@@ -45,11 +47,12 @@ export class LocalMergeRefusal extends Error {
 }
 
 export async function dryRunLocalMerge(root: string, slug: string): Promise<LocalMergeReport> {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const git = gitAt(root);
   const mainBranch = await mainCheckoutBranch(root);
   const worktree = listWorkItemWorktrees(root).worktrees.get(slug);
-  if (!worktree) throw new LocalMergeRefusal("The work item's worktree is unavailable.");
+  if (!worktree) throw new LocalMergeRefusal({ code: "server.worktreeUnavailable" });
   const [mainCommit, headCommit] = await Promise.all(
     ["HEAD", `refs/heads/${worktree.branch}`].map(async (ref) =>
       (await git(["rev-parse", "--verify", `${ref}^{commit}`])).trim(),
@@ -87,7 +90,8 @@ export async function mergeLocalWorkItem(
 ): Promise<string> {
   const root = await realpath(repoRoot);
   return withRepoLock(root, async () => {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+      throw new CoreTextError({ code: "git.invalidSlug" });
     await mainCheckoutBranch(root);
     const recordedCommit = beforeMerge();
     const git = gitAt(root);
@@ -109,14 +113,11 @@ export async function mergeLocalWorkItem(
     }
     const report = await dryRunLocalMerge(root, slug);
     if (report.conflicts.length)
-      throw new LocalMergeRefusal(
-        "Merge conflicts with the main branch. Send back to resolve them.",
-        report.conflicts,
-      );
+      throw new LocalMergeRefusal({ code: "ship.conflicts" }, report.conflicts);
     const worktree = listWorkItemWorktrees(root).worktrees.get(slug);
-    if (!worktree) throw new LocalMergeRefusal("The work item's worktree is unavailable.");
+    if (!worktree) throw new LocalMergeRefusal({ code: "server.worktreeUnavailable" });
     if ((await gitAt(worktree.path)(["status", "--porcelain", "--untracked-files=all"])).trim())
-      throw new LocalMergeRefusal("Commit worktree changes before merging locally.");
+      throw new LocalMergeRefusal({ code: "ship.commitLocal" });
     for (const state of [
       "MERGE_HEAD",
       "CHERRY_PICK_HEAD",
@@ -131,9 +132,7 @@ export async function mergeLocalWorkItem(
           return undefined;
         })
       )
-        throw new LocalMergeRefusal(
-          "Finish the main checkout's pending Git operation before merging.",
-        );
+        throw new LocalMergeRefusal({ code: "ship.pendingGitOperation" });
     }
     const protectedPaths = [...report.touchedPaths, `.scratch/${slug}/workflow.yaml`];
     const dirty = (
@@ -163,11 +162,7 @@ export async function mergeLocalWorkItem(
       ),
     );
     if (overlaps.length)
-      throw new LocalMergeRefusal(
-        "The main checkout has uncommitted changes to files this merge touches.",
-        [],
-        overlaps,
-      );
+      throw new LocalMergeRefusal({ code: "ship.mainUncommitted" }, [], overlaps);
     let commit = recordedCommit;
     if (commit) {
       await git(["merge-base", "--is-ancestor", commit, "HEAD"]);
@@ -217,7 +212,7 @@ export async function mergeLocalWorkItem(
         (await git(["rev-parse", "HEAD"])).trim() !== report.mainCommit ||
         (await git(["rev-parse", `refs/heads/${worktree.branch}`])).trim() !== report.headCommit
       )
-        throw new LocalMergeRefusal("The branches changed during the merge. Try again.");
+        throw new LocalMergeRefusal({ code: "ship.branchesChanged" });
       await git(["merge", "--ff-only", "--no-overwrite-ignore", commit]);
       try {
         await recordMerge(commit);
@@ -238,7 +233,8 @@ export async function cleanupMergedWorkItem(
   commit: string,
   remoteHead?: string,
 ) {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const git = gitAt(root);
   const worktree = listWorkItemWorktrees(root).worktrees.get(slug);
   try {
@@ -256,11 +252,7 @@ export async function cleanupMergedWorkItem(
             path !== `.scratch/${slug}/workflow.yaml` && path !== `.scratch/${slug}/review.yaml`,
         );
       if (changed.length)
-        throw new LocalMergeRefusal(
-          "The work item branch contains unpublished changes; worktree and branch retained.",
-          [],
-          changed,
-        );
+        throw new LocalMergeRefusal({ code: "ship.unpublishedChanges" }, [], changed);
     }
     if (worktree) await git(["worktree", "remove", worktree.path]);
     if (head) {
@@ -286,7 +278,7 @@ export async function updateMainAfterPullRequest(
 ) {
   const git = gitAt(root);
   if ((await mainCheckoutBranch(root)) !== base)
-    throw new LocalMergeRefusal("The pull request base must match the main checkout's branch.");
+    throw new LocalMergeRefusal({ code: "ship.baseMismatch" });
   await git(["fetch", "--no-tags", remote, `refs/heads/${base}`]);
   const target = (await git(["rev-parse", "FETCH_HEAD^{commit}"])).trim();
   await git(["merge-base", "--is-ancestor", commit, target]);
@@ -297,10 +289,7 @@ export async function updateMainAfterPullRequest(
       return false;
     },
   );
-  if (!fastForward)
-    throw new LocalMergeRefusal(
-      "The pull request is merged remotely, but local main has diverged. Worktree and branch retained; reconcile main and retry.",
-    );
+  if (!fastForward) throw new LocalMergeRefusal({ code: "ship.mainDiverged" });
   try {
     await git(["merge", "--ff-only", "--no-overwrite-ignore", target]);
   } catch (error) {

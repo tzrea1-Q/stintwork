@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  translateCoreText,
+  readResponseJson,
+  CoreTextError,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
+
+import {
   builtInWorkflows,
   type AgentProfile,
-  agentUnavailableReason,
+  agentUnavailable,
   type Brief,
-  briefUnavailableReason,
+  briefAvailability,
   type Ticket,
   defaultPermissionLevel,
   isPermissionLevel,
@@ -17,7 +25,7 @@ import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./brief-preview.css";
-import { useLanguage } from "./i18n/language";
+
 import { stageName as translatedStageName } from "./i18n/workflow-names";
 
 export function TicketBriefPreview({
@@ -64,9 +72,12 @@ function StintBriefAction({
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
+  const availability = briefAvailability(item, ticket, workflows);
   const reason = item.activeStint
     ? t.stints.alreadyActive
-    : briefUnavailableReason(item, ticket, workflows);
+    : availability === null
+      ? null
+      : translateCoreText(availability, t);
 
   useEffect(() => {
     if (reason) setOpen(false);
@@ -126,15 +137,23 @@ function BriefPreviewSheet({
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>(defaultPermissionLevel);
   const [projectDefault, setProjectDefault] = useState<PermissionLevel>(defaultPermissionLevel);
   const [savingDefault, setSavingDefault] = useState(false);
-  const [defaultError, setDefaultError] = useState("");
-  const [error, setError] = useState<string | { key: "loadBriefFailed" | "loadAgentsFailed" }>("");
+  const [defaultError, setDefaultError] = useErrorText();
+  const [error, setError] = useErrorText({
+    loadBriefFailed: t.stints.loadBriefFailed,
+    loadAgentsFailed: t.stints.loadAgentsFailed,
+  });
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useState("");
+  const [startError, setStartError] = useErrorText();
   const selectedAgent = agents.find(({ id }) => id === agent);
+  const availability = selectedAgent ? agentUnavailable(selectedAgent) : null;
   const unavailable = selectedAgent
-    ? agentUnavailableReason(selectedAgent)
+    ? availability === null
+      ? null
+      : translateCoreText(availability, t)
     : t.stints.agentNotRegistered;
+  const policy = selectedAgent ? permissionPolicy(selectedAgent, permissionLevel) : null;
+  const warnings = policy?.warnings ?? brief?.warnings ?? [];
 
   useEffect(() => {
     const element = dialog.current;
@@ -156,16 +175,16 @@ function BriefPreviewSheet({
           fetch("/api/agents", { signal: request.signal, cache: "no-store" }),
         ]);
         if (!response.ok) {
-          const failure: { reason?: string } = await response.json();
-          throw new Error(failure.reason ?? "");
+          const failure: { reason?: string } = await readResponseJson(response);
+          throw new CoreTextError(failure, "");
         }
         if (!registryResponse.ok) {
           fallback = "loadAgentsFailed";
-          const failure: { reason?: string } = await registryResponse.json();
-          throw new Error(failure.reason ?? "");
+          const failure: { reason?: string } = await readResponseJson(registryResponse);
+          throw new CoreTextError(failure, "");
         }
-        const preview: Brief = await response.json();
-        const registry: { agents: AgentProfile[] } = await registryResponse.json();
+        const preview: Brief = await readResponseJson(response);
+        const registry: { agents: AgentProfile[] } = await readResponseJson(registryResponse);
         if (!request.signal.aborted) {
           setBrief(preview);
           setAgents(registry.agents);
@@ -175,13 +194,13 @@ function BriefPreviewSheet({
         }
       } catch (cause) {
         if (!request.signal.aborted) {
-          setError(cause instanceof Error && cause.message ? cause.message : { key: fallback });
+          setError(cause instanceof Error && cause.message ? cause : { key: fallback });
         }
       }
     }
     void load();
     return () => request.abort();
-  }, [slug, ticketNumber]);
+  }, [slug, ticketNumber, setError]);
 
   async function copy() {
     if (!brief) return;
@@ -204,12 +223,12 @@ function BriefPreviewSheet({
         body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent, permissionLevel }),
       });
       if (!response.ok) {
-        const failure: { reason?: string } = await response.json();
-        throw new Error(failure.reason ?? t.stints.startFailed);
+        const failure: { reason?: string } = await readResponseJson(response);
+        throw new CoreTextError(failure, t.stints.startFailed);
       }
       onClose();
     } catch (cause) {
-      setStartError(cause instanceof Error ? cause.message : t.stints.startFailed);
+      setStartError(cause instanceof Error ? cause : t.stints.startFailed);
     } finally {
       setStarting(false);
     }
@@ -269,7 +288,8 @@ function BriefPreviewSheet({
                 </option>
               )}
               {agents.map((candidate) => {
-                const reason = agentUnavailableReason(candidate);
+                const availability = agentUnavailable(candidate);
+                const reason = availability === null ? null : translateCoreText(availability, t);
                 return (
                   <option key={candidate.id} value={candidate.id} disabled={!!reason}>
                     {candidate.displayName}
@@ -286,12 +306,9 @@ function BriefPreviewSheet({
                 : t.stints.noAgents
               : t.stints.readingAgents}
           </p>
-          {(selectedAgent
-            ? permissionPolicy(selectedAgent, permissionLevel).warnings
-            : (brief?.warnings ?? [])
-          ).map((warning) => (
-            <p key={warning} role="alert" className="warning">
-              {warning}
+          {warnings.map((warning) => (
+            <p key={warning.text} role="alert" className="warning">
+              {translateCoreText(warning, t)}
             </p>
           ))}
         </section>
@@ -330,12 +347,12 @@ function BriefPreviewSheet({
                   body: JSON.stringify({ permissionLevel }),
                 });
                 if (!response.ok) {
-                  const body = await response.json();
-                  throw new Error(body.reason ?? t.stints.saveDefaultFailed);
+                  const body = await readResponseJson(response);
+                  throw new CoreTextError(body, t.stints.saveDefaultFailed);
                 }
                 setProjectDefault(permissionLevel);
               } catch (error) {
-                setDefaultError(error instanceof Error ? error.message : String(error));
+                setDefaultError(error instanceof Error ? error : String(error));
               } finally {
                 setSavingDefault(false);
               }
@@ -351,7 +368,7 @@ function BriefPreviewSheet({
         </section>
         {error ? (
           <p role="alert" className="warning">
-            {typeof error === "string" ? error : t.stints[error.key]}
+            {error}
           </p>
         ) : !brief ? (
           <p role="status" className="muted">
@@ -368,7 +385,7 @@ function BriefPreviewSheet({
               <ul>
                 {brief.pointers.map(({ path, reason }) => (
                   <li key={path}>
-                    <code>{path}</code> — {reason}
+                    <code>{path}</code> — {translateCoreText(reason, t)}
                   </li>
                 ))}
               </ul>

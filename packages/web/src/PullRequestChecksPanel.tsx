@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import {
   type PullRequest,
   type PullRequestChecks,
@@ -6,7 +7,6 @@ import {
   type EvidenceContext,
 } from "@stintwork/core";
 import { useCallback, useEffect, useState } from "react";
-import { useLanguage } from "./i18n/language";
 
 export function PullRequestChecksPanel({
   item,
@@ -19,7 +19,7 @@ export function PullRequestChecksPanel({
 }) {
   const { t } = useLanguage();
   const [checks, setChecks] = useState(item.pullRequestChecks);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const [busy, setBusy] = useState(false);
   const number = item.pullRequest?.number;
   const endpoint = `/api/work-items/${encodeURIComponent(item.slug)}/ship/pr-checks`;
@@ -33,20 +33,19 @@ export function PullRequestChecksPanel({
           body: "{}",
           signal,
         });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.reason ?? t.review.pr.refreshError);
+        const body = await readResponseJson(response);
+        if (!response.ok) throw new CoreTextError(body, t.review.pr.refreshError);
         if (!signal?.aborted) {
           setChecks(body.checks);
           setError("");
         }
       } catch (cause) {
-        if (!signal?.aborted)
-          setError(cause instanceof Error ? cause.message : t.review.pr.refreshError);
+        if (!signal?.aborted) setError(cause instanceof Error ? cause : t.review.pr.refreshError);
       } finally {
         if (!signal?.aborted) setBusy(false);
       }
     },
-    [endpoint, t.review.pr.refreshError],
+    [endpoint, t.review.pr.refreshError, setError],
   );
   useEffect(() => {
     setChecks(item.pullRequestChecks);

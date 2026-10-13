@@ -538,9 +538,24 @@ test("the answer stays in flight until forwarded and duplicate answers cannot re
   expect(duplicate.status).toBe(409);
   expect(await duplicate.json()).toEqual({
     reason: "This permission request is already being answered.",
+    reasonMessage: { code: "permission.answering" },
   });
   forward();
   expect((await answer).status).toBe(200);
+});
+
+test("a completed permission answer returns an authored status code on retry", async () => {
+  const { app, response, forward, path } = routeFixture();
+  const answer = post(app, path, { optionId: "allow" });
+  await response;
+  forward();
+  expect((await answer).status).toBe(200);
+  const retry = await post(app, path, { optionId: "allow" });
+  expect(retry.status).toBe(409);
+  expect(await retry.json()).toEqual({
+    reason: "This permission request was already answered.",
+    reasonMessage: { code: "permission.alreadyAnswered" },
+  });
 });
 
 test("a forwarding failure returns its reason and ending during forwarding never returns success", async () => {
@@ -554,6 +569,7 @@ test("a forwarding failure returns its reason and ending during forwarding never
     expect(result.status).toBe(ending ? 409 : 503);
     expect(await result.json()).toEqual({
       reason: ending ? "This permission request's stint has ended." : "Agent pipe is closed.",
+      ...(ending ? { reasonMessage: { code: "permission.stintEnded" } } : {}),
     });
     expect((await post(app, path, { optionId: "allow" })).status).toBe(409);
   }
@@ -628,5 +644,8 @@ test("permission identifiers are scoped to their stint and late registration can
   });
   const late = await post(app, path.replace("/request", "/late-request"), { optionId: "allow" });
   expect(late.status).toBe(409);
-  expect(await late.json()).toEqual({ reason: "This permission request's stint has ended." });
+  expect(await late.json()).toEqual({
+    reason: "This permission request's stint has ended.",
+    reasonMessage: { code: "permission.stintEnded" },
+  });
 });

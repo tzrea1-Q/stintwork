@@ -107,7 +107,7 @@ function actions(status: ReviewDecision["status"] = "open", failure?: string) {
   };
   const fetch = vi.fn(async (_url: string, options?: RequestInit) => {
     if (!options?.method) return { ok: true, json: async () => diff };
-    if (failure) return { ok: false, json: async () => ({ reason: failure }) };
+    if (failure) return new Response(JSON.stringify({ reason: failure }), { status: 409 });
     const body = JSON.parse(String(options.body));
     return {
       ok: true,

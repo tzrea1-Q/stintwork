@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./roadmap-editor.css";
 import { en } from "./i18n/en";
-import { useLanguage } from "./i18n/language";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { t } = useLanguage();
@@ -42,7 +42,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
   const [workItem, setWorkItem] = useState(snapshot.workItems[0]?.slug ?? "");
   const [destination, setDestination] = useState("");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const [message, setMessage] = useState("");
   useEffect(() => {
     setMilestones(snapshot.milestones);
@@ -65,13 +65,13 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(change),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? en.planning.roadmap.errors.save);
+      const result = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(result, en.planning.roadmap.errors.save);
       setMilestones(result.milestones);
       if (change.kind === "add") setName("");
       setMessage(result.commit ? "committed" : "unchanged");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : en.planning.roadmap.errors.save);
+      setError(cause instanceof Error ? cause : en.planning.roadmap.errors.save);
     } finally {
       setSaving(false);
     }

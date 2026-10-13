@@ -11,6 +11,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { StageAgentRail } from "./StageAgentRail";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const item = indexProject(
   createMemoryRepoFiles({
@@ -28,10 +29,58 @@ const agents = [
     ...grokProfile,
     id: "grok",
     displayName: "Grok Build",
-    availability: { available: false, reason: "Authentication required. Use grok login." },
+    availability: {
+      available: false,
+      reason: { text: "Authentication required. Use grok login." },
+    },
   },
 ];
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  localStorage.removeItem(languageStorageKey);
+});
+
+test("Chinese agent picker translates an internal error and preserves unknown agent diagnostics", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            agents: [
+              {
+                ...codexProfile,
+                availability: {
+                  available: false,
+                  reason: "Internal error",
+                  reasonMessage: { code: "agent.internalError" },
+                },
+              },
+              {
+                ...claudeProfile,
+                availability: {
+                  available: false,
+                  reason: "Raw Agent error",
+                  reasonMessage: { code: "agent.future" },
+                },
+              },
+            ],
+          }),
+        ),
+    ),
+  );
+  render(
+    <LanguageProvider>
+      <StageAgentRail item={item} />
+    </LanguageProvider>,
+  );
+  const picker = screen.getByRole("combobox", { name: "实现 Agent" });
+  expect(await within(picker).findByRole("option", { name: "Codex — 内部错误" })).toBeDisabled();
+  expect(
+    within(picker).getByRole("option", { name: "Claude Code — Raw Agent error" }),
+  ).toBeDisabled();
+});
 
 test("the stage rail defaults to workflow agents, honours stage choices, disables unavailable agents with reasons and saves choices", async () => {
   const user = userEvent.setup();

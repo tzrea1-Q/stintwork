@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { AgentSkillAvailability, SetupPlan, WorkflowDefinitions } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import "./setup-guide.css";
 import { en } from "./i18n/en";
-import { useLanguage } from "./i18n/language";
+
 import { stageName, uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
 
 type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
@@ -14,15 +15,15 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
   const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const [message, setMessage] = useState("");
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       try {
         const response = await fetch("/api/setup", { signal: controller.signal });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.reason ?? en.planning.setup.errors.load);
+        const result = await readResponseJson(response);
+        if (!response.ok) throw new CoreTextError(result, en.planning.setup.errors.load);
         if (
           !Array.isArray(result.changes) ||
           !Array.isArray(result.warnings) ||
@@ -35,11 +36,11 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
         }
       } catch (cause) {
         if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : en.planning.setup.errors.load);
+          setError(cause instanceof Error ? cause : en.planning.setup.errors.load);
       }
     })();
     return () => controller.abort();
-  }, []);
+  }, [setError]);
 
   function installationHint(message: string) {
     const hint =
@@ -62,14 +63,14 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
           changes: guide.changes.filter(({ path }) => selected.includes(path)),
         }),
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? en.planning.setup.errors.apply);
+      const result = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(result, en.planning.setup.errors.apply);
       setGuide(result);
       setSelected([]);
       setConfirming(false);
       setMessage(result.commit.slice(0, 7));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : en.planning.setup.errors.apply);
+      setError(cause instanceof Error ? cause : en.planning.setup.errors.apply);
     } finally {
       setSaving(false);
     }

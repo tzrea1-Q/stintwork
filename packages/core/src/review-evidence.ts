@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "./project.js";
-import type { StintSummary } from "./stints.js";
-import type { RiskyPath } from "./stints.js";
+import type { StintSummary, RiskyPath } from "./stints.js";
+
 import type { ReviewDecision } from "./review-decisions.js";
+import { coreText, type CoreText } from "./core-text.js";
 
 export function riskyPathAccepted(risk: RiskyPath, decisions: readonly ReviewDecision[] = []) {
   return decisions.some(
@@ -44,14 +45,14 @@ export function evidenceStale(item: EvidenceContext, commit: string): boolean {
 
 export type ReviewGateCondition = {
   id: "review" | "findings" | "checks" | "freshness" | "memory" | "risky-paths";
-  label: string;
+  label: CoreText;
   ready: boolean;
-  action: string;
+  action: CoreText;
 };
 
 export function reviewGateConditions(
   item: ProjectSnapshot["workItems"][number],
-  stageReason: string | null,
+  stageReason: CoreText | null,
   stageId = "review",
 ): ReviewGateCondition[] {
   const report = latestReviewStint(item.stints, stageId)?.findings;
@@ -60,17 +61,16 @@ export function reviewGateConditions(
       (result) => result.name === command.name && result.command === command.command,
     ),
   );
-  return [
+  const conditions: ReviewGateCondition[] = [
     {
       id: "review",
-      label: "Latest Review stint finished",
+      label: coreText({ code: "gate.reviewFinished" }),
       ready: stageReason === null && report?.findings != null,
-      action:
-        stageReason ?? "Start a new Review stint to record findings, or explicit no findings.",
+      action: stageReason ?? coreText({ code: "gate.recordFindings" }),
     },
     {
       id: "findings",
-      label: "Every finding resolved or accepted",
+      label: coreText({ code: "gate.findingsDecided" }),
       ready:
         report?.findings?.every((finding) =>
           item.reviewDecisions?.some(
@@ -80,20 +80,20 @@ export function reviewGateConditions(
               (decision.status === "resolved" || decision.status === "accepted"),
           ),
         ) ?? false,
-      action: "Resolve or accept each current finding; sent-back findings need a new Review stint.",
+      action: coreText({ code: "gate.decideFindings" }),
     },
     {
       id: "checks",
-      label: "Every configured check passing",
+      label: coreText({ code: "gate.checksPassing" }),
       ready:
         item.checkCommands !== undefined &&
         item.checkExecution?.endedAt !== null &&
         checks.every((result) => result?.status === "passed"),
-      action: "Run all configured checks and fix failures before checking again.",
+      action: coreText({ code: "gate.runChecks" }),
     },
     {
       id: "freshness",
-      label: "No stale evidence",
+      label: coreText({ code: "gate.evidenceFresh" }),
       ready:
         !!item.headCommit &&
         !item.reviewEvidenceError &&
@@ -101,24 +101,24 @@ export function reviewGateConditions(
         !evidenceStale(item, report.commit) &&
         checks.every((result) => !!result && !evidenceStale(item, result.commit)),
       action:
-        item.reviewEvidenceError ??
-        "Start a new Review stint and rerun checks on the current head.",
+        (item.reviewEvidenceError ? { text: item.reviewEvidenceError } : null) ??
+        coreText({ code: "gate.refreshEvidence" }),
     },
     {
       id: "memory",
-      label: "No open memory proposals",
+      label: coreText({ code: "gate.memoryDecided" }),
       ready: !item.reviewEvidenceError && item.memoryProposals?.length === 0,
-      action: "Accept or reject every open memory proposal in Needs you.",
+      action: coreText({ code: "gate.decideMemory" }),
     },
     {
       id: "risky-paths",
-      label: "No risky files on the branch",
+      label: coreText({ code: "gate.riskyPathsHandled" }),
       ready:
         !item.reviewEvidenceError &&
         item.riskyPaths !== undefined &&
         item.riskyPaths.every((risk) => riskyPathAccepted(risk, item.reviewDecisions)),
-      action:
-        "Remove risky files in a follow-up commit and add them to .gitignore, or explicitly Accept each path with a reason in Review. If secrets were real, rotate them and clean Git history before publishing.",
+      action: coreText({ code: "gate.handleRiskyPaths" }),
     },
   ];
+  return conditions;
 }

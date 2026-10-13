@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreTextWire } from "@stintwork/core";
 import { type AgentRegistry, describeAgents, refreshAgentAvailability } from "@stintwork/agents";
 import type { Hono } from "hono";
 
@@ -17,6 +18,6 @@ export function addAgentAvailabilityRoute(
     await refreshAgentRegistry(registry, context.req.query("refresh") === "true");
     refreshSnapshot();
     context.header("Cache-Control", "no-store");
-    return context.json({ agents: describeAgents(registry) });
+    return context.json(coreTextWire({ agents: describeAgents(registry) }));
   });
 }

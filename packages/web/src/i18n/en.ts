@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreTextEnglish } from "@stintwork/core";
 export const en = {
   connection: {
     workbench: "Stintwork · Local project workbench",
@@ -128,28 +129,7 @@ export const en = {
         preview: "Could not preview the work item.",
         invalidPreview: "Invalid slug preview.",
         save: "Could not create the work item.",
-        title: "Title must be nonempty, single-line text.",
-        ascii: "Title must produce a valid ASCII work item slug.",
-        creation: "A work item creation is required.",
-        requiredTitle: "A title is required.",
-        workflow: "Choose a loaded workflow.",
-        firstStage: "The workflow needs a first stage.",
-        intent: "Intent must be text.",
-        milestone: "Choose a milestone or no milestone.",
-        invalidSlug: "Invalid work item slug.",
-        creationEdits: "Commit or discard hand edits to the creation paths first.",
-        roadmapFile: "roadmap.md must be a regular file.",
-        roadmapEdits: "Commit or discard hand edits to roadmap.md first.",
-        worktrees: "Cannot discover work item worktrees.",
-        origin: "Origin must match the project server.",
-        jsonCreation: "A JSON work item creation is required.",
-        json: "Invalid JSON.",
-        milestoneMissing: "Milestone not found.",
-        roadmapWarnings: "Fix roadmap warnings before editing it.",
       },
-      exists: (slug: string) => `Work item ${slug} already exists.`,
-      existsInGit: (slug: string) => `Work item ${slug} already exists in Git.`,
-      directory: (path: string) => `${path} must be a real directory.`,
       title: "Create work item",
       titleLabel: "Title",
       workflow: "Workflow",
@@ -469,8 +449,8 @@ export const en = {
     },
     ship: {
       running: "Finish or stop the running stint before shipping.",
-      memory: "Accept or reject every open memory proposal before shipping.",
-      checks: "Cancel or finish checks before shipping.",
+      memory: coreTextEnglish["ship.memoryUndecided"],
+      checks: coreTextEnglish["ship.checksActive"],
       error: "Could not ship the work item.",
       label: "Ship actions",
       shipped: "Shipped",
@@ -508,7 +488,7 @@ export const en = {
     },
     risks: {
       label: "Risky files on the branch",
-      heading: "No risky files on the branch",
+      heading: coreTextEnglish["gate.riskyPathsHandled"],
       explanation:
         "Remove risky files in a follow-up commit and add them to .gitignore, or deliberately Accept each path with a reason. File contents are not shown.",
       empty: "No risky paths in the merge-base-to-head diff.",
@@ -580,7 +560,7 @@ export const en = {
     inferred: "Inferred",
     notRegistered: "Not registered",
     readingAgents: "Reading registered agents…",
-    alreadyActive: "A stint is already active for this work item.",
+    alreadyActive: coreTextEnglish["stint.alreadyActive"],
     startStint: "Start stint",
     agentNotRegistered: "Agent is not registered.",
     loadBriefFailed: "Could not load the brief preview.",
@@ -712,6 +692,12 @@ export const en = {
       completed: "completed",
       failed: "failed",
     },
+  },
+  coreText: { ...coreTextEnglish },
+  slugInput: {
+    label: "Folder name",
+    hint: "Enter a folder name using lowercase English letters, digits and single hyphens (up to 48 characters).",
+    invalid: coreTextEnglish["creation.invalidSlug"],
   },
 };
 

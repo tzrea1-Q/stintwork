@@ -48,9 +48,11 @@ test("a missing or non-executable Claude installation is unavailable with an ins
   expect(agent.availability).toMatchObject({
     available: false,
     kind: "missing-executable",
-    reason: expect.stringContaining("claude auth login"),
+    reason: { text: expect.stringContaining("claude auth login") },
   });
-  expect(agent.availability?.reason).toContain("@agentclientprotocol/claude-agent-acp@0.88.0");
+  expect(agent.availability?.reason?.text).toContain(
+    "@agentclientprotocol/claude-agent-acp@0.88.0",
+  );
   await rm(executable);
   await refreshAgentAvailability(agent, true);
   expect(agent.availability?.kind).toBe("missing-executable");
@@ -60,7 +62,7 @@ test("logged-out status is cached, concurrent reads share a check, and refresh d
   const { agent, state, checks } = await fixture();
   await Promise.all([refreshAgentAvailability(agent), refreshAgentAvailability(agent)]);
   expect(agent.availability).toMatchObject({ available: false, kind: "login-required" });
-  expect(agent.availability?.reason).toContain("claude auth login");
+  expect(agent.availability?.reason?.text).toContain("claude auth login");
   const initial = agent.availability;
   await writeFile(state, JSON.stringify({ loggedIn: true, token: "must-not-be-published" }));
   await refreshAgentAvailability(agent);
@@ -94,6 +96,6 @@ test.each([0, 2])(
     await writeFile(state, "private diagnostic, not JSON");
     await refreshAgentAvailability(agent);
     expect(agent.availability).toMatchObject({ available: false, kind: "check-failed" });
-    expect(agent.availability?.reason).not.toContain("private diagnostic");
+    expect(agent.availability?.reason?.text).not.toContain("private diagnostic");
   },
 );

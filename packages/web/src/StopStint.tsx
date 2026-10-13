@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import { useState } from "react";
-import { useLanguage } from "./i18n/language";
 
 export function StopStint({ stintId }: { stintId: string }) {
   const { t } = useLanguage();
   const [requested, setRequested] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
 
   async function stop() {
     setRequested(true);
@@ -15,11 +15,11 @@ export function StopStint({ stintId }: { stintId: string }) {
         method: "POST",
       });
       if (!response.ok) {
-        const body = await response.json();
-        throw new Error(typeof body.reason === "string" ? body.reason : t.stints.stopFailed);
+        const body = await readResponseJson(response);
+        throw new CoreTextError(body, t.stints.stopFailed);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.stints.stopFailed);
+      setError(cause instanceof Error ? cause : t.stints.stopFailed);
       setRequested(false);
     }
   }

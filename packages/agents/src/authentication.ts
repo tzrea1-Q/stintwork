@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AgentProfile } from "@stintwork/core";
-
-export class AgentAuthenticationError extends Error {
+import { CoreTextError, type AgentProfile } from "@stintwork/core";
+export class AgentAuthenticationError extends CoreTextError {
   constructor(profile: AgentProfile) {
-    super(
-      `${profile.displayName} authentication required. Sign in with ${profile.capabilities.authenticationRequired.loginCommand}, then start another stint.`,
-    );
+    super({
+      code: "agent.loginRequired",
+      params: {
+        agent: profile.displayName,
+        command: profile.capabilities.authenticationRequired.loginCommand,
+      },
+    });
   }
 }

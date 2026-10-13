@@ -1,5 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  translateCoreText,
+  readResponseJson,
+  CoreTextError,
+  useErrorText,
+  ticketStatus,
+  useLanguage,
+} from "./i18n/language";
+
+import {
   builtInWorkflows,
   gateReadiness,
   type WorkflowDefinitions,
@@ -9,7 +18,7 @@ import {
 import { useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
-import { ticketStatus, useLanguage } from "./i18n/language";
+
 import { stageName } from "./i18n/workflow-names";
 
 export function GateView({
@@ -24,7 +33,7 @@ export function GateView({
   const { t } = useLanguage();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const gate = gateReadiness(item, workflows);
   const stages = workflows[item.workflow].stages;
   const position = stages.findIndex(({ id }) => id === item.stage);
@@ -47,13 +56,13 @@ export function GateView({
           body: JSON.stringify({}),
         },
       );
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? t.stints.changeGateFailed);
+      const result = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(result, t.stints.changeGateFailed);
       const next = stages.find(({ id }) => id === result.stage);
       const name = next ? stageName(workflows[item.workflow], next, t) : result.stage;
       setMessage(action === "approve" ? t.stints.gateApproved(name) : t.stints.gateReopened(name));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.stints.changeGateFailed);
+      setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
     } finally {
       setSaving(false);
     }
@@ -67,14 +76,16 @@ export function GateView({
       <h3 className="drawer-section-heading">
         {t.stints.gate(stageName(workflows[item.workflow], current, t))}
       </h3>
-      <p role="status">{gate.ready ? t.stints.readyToApprove : gate.reason}</p>
+      <p role="status">
+        {gate.ready ? t.stints.readyToApprove : translateCoreText(gate.reason, t)}
+      </p>
       {gate.conditions.length > 0 && (
         <ul aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}>
           {gate.conditions.map((condition) => (
             <li key={condition.id}>
-              <strong>{condition.label}</strong> ·{" "}
+              <strong>{translateCoreText(condition.label, t)}</strong> ·{" "}
               {condition.ready ? t.stints.ready : t.stints.blocked}
-              <p>{condition.ready ? t.stints.noAction : condition.action}</p>
+              <p>{condition.ready ? t.stints.noAction : translateCoreText(condition.action, t)}</p>
             </li>
           ))}
         </ul>

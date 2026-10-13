@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson } from "./i18n/language";
 import {
   applyStintLogEntry,
   parseWorkflowDefinition,
@@ -12,6 +13,7 @@ import {
   deriveAttentionItems,
   isCheckExecution,
   type ProjectSnapshot,
+  readCoreTextWire,
   type WorkflowStage,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
@@ -205,7 +207,7 @@ function readSnapshot(value: unknown): ProjectSnapshot {
     )
   )
     throw new Error("The project server returned an invalid snapshot.");
-  return value as ProjectSnapshot;
+  return readCoreTextWire(value) as ProjectSnapshot;
 }
 
 export function useProjectSnapshot() {
@@ -238,7 +240,7 @@ export function useProjectSnapshot() {
           cache: "no-store",
         });
         if (!response.ok) throw new Error(`Project request failed (${response.status}).`);
-        const next = readSnapshot(await response.json());
+        const next = readSnapshot(await readResponseJson(response));
         if (!disposed && startedAt === version) {
           setSnapshot(next);
           setError(undefined);

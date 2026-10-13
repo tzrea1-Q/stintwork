@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import {
   type BriefInput,
-  briefUnavailableReason,
+  briefAvailability,
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
@@ -10,14 +10,29 @@ import {
   stageAgent,
 } from "./index.js";
 
+test("brief availability keeps English and typed blockers in one message", () => {
+  const workItem = { type: "feature" as const, stage: "implement" };
+  const ticket = { resolved: false, blocked: true, blockedBy: [1, 12] };
+  expect(briefAvailability(workItem, ticket)).toEqual({
+    text: "Blocked by ticket 01, 12.",
+    code: "brief.blockedBy",
+    params: { tickets: "01, 12" },
+  });
+  expect(briefAvailability(workItem, ticket)?.text ?? null).toBe("Blocked by ticket 01, 12.");
+  expect(briefAvailability(workItem, { ...ticket, resolved: true })).toEqual({
+    text: "This ticket is resolved.",
+    code: "brief.ticketResolved",
+  });
+});
+
 test("a shipped work item has no stint brief, even if its stage is edited later", () => {
   expect(
-    briefUnavailableReason({
+    briefAvailability({
       type: "feature",
       workflow: "feature",
       stage: "review",
       merged: { at: "2026-10-10T10:00:00Z", commit: "a".repeat(40) },
-    }),
+    })?.text ?? null,
   ).toBe("This work item is shipped.");
 });
 
@@ -90,16 +105,48 @@ test("compiles real file pointers with reasons and the validated prompt order", 
   const brief = compileBrief(input());
   expect(brief.skill).toBe("/implement");
   expect(brief.pointers).toEqual([
-    { path: "AGENTS.md", reason: "Project conventions and agent instructions" },
-    { path: "GLOSSARY.md", reason: "Project vocabulary; use its terms in code and UI copy" },
-    { path: "docs/adr/0001-files.md", reason: "Decision record: Files are the source of truth" },
-    { path: "docs/adr/0002-agents.md", reason: "Decision record: Agents use ACP" },
-    { path: specPath, reason: "Work item scope and acceptance criteria" },
-    { path: ticketPath, reason: "This ticket's scope, status, blockers and comments" },
+    {
+      path: "AGENTS.md",
+      reason: { text: "Project conventions and agent instructions", code: "brief.conventions" },
+    },
+    {
+      path: "GLOSSARY.md",
+      reason: {
+        text: "Project vocabulary; use its terms in code and UI copy",
+        code: "brief.vocabulary",
+      },
+    },
+    {
+      path: "docs/adr/0001-files.md",
+      reason: {
+        text: "Decision record: Files are the source of truth",
+        code: "brief.decision",
+        params: { title: "Files are the source of truth" },
+      },
+    },
+    {
+      path: "docs/adr/0002-agents.md",
+      reason: {
+        text: "Decision record: Agents use ACP",
+        code: "brief.decision",
+        params: { title: "Agents use ACP" },
+      },
+    },
+    {
+      path: specPath,
+      reason: { text: "Work item scope and acceptance criteria", code: "brief.scope" },
+    },
+    {
+      path: ticketPath,
+      reason: {
+        text: "This ticket's scope, status, blockers and comments",
+        code: "brief.ticketScope",
+      },
+    },
   ]);
   expect(brief.prompt).toBe(
     `/implement ${ticketPath}\n\nRead first:\n` +
-      brief.pointers.map(({ path, reason }) => `- ${path} — ${reason}`).join("\n") +
+      brief.pointers.map(({ path, reason }) => `- ${path} — ${reason.text}`).join("\n") +
       "\n\nLast handoff: none — start from the project conventions and work item scope." +
       "\n\nChanged since the last handoff:\n- none\nWhere the handoff and the files disagree, the files win." +
       "\n\nWorking instructions:" +
@@ -207,14 +254,17 @@ test.each(["first-stint", "another-item"])(
     });
     const workItem = indexProject(files, { name: "Test" }).workItems[0];
     expect(workItem).toMatchObject({ spec: null, tickets: [] });
-    expect(briefUnavailableReason(workItem)).toBeNull();
+    expect(briefAvailability(workItem)?.text ?? null).toBeNull();
     const brief = compileBrief({ files, workItem, stage: builtInWorkflows.quick.stages[0] });
     expect(brief.skill).toBe("/implement");
     expect(brief.prompt.split("\n")[0]).toBe(`/implement .scratch/${slug}/`);
     expect(brief.prompt).toContain("What the developer asked for:\nChange the greeting to Hello.");
     expect(brief.prompt).toContain("No spec yet.");
     expect(brief.pointers).toEqual([
-      { path: "AGENTS.md", reason: "Project conventions and agent instructions" },
+      {
+        path: "AGENTS.md",
+        reason: { text: "Project conventions and agent instructions", code: "brief.conventions" },
+      },
     ]);
     expect(brief.prompt).toContain(
       `Work in the work item worktree on its branch, stintwork/${slug}.`,
@@ -303,23 +353,31 @@ test.each(["evidence", "merge"] as const)(
 test("implementation tickets must be unblocked and unresolved; skill stages can use tickets", () => {
   const ticket = { resolved: false, blocked: false, blockedBy: [] };
   for (const stage of ["implement", "fix", "do"] as const) {
-    expect(briefUnavailableReason({ type: "feature", stage }, ticket)).toBeNull();
+    expect(briefAvailability({ type: "feature", stage }, ticket)?.text ?? null).toBeNull();
   }
   expect(
-    briefUnavailableReason({ type: "feature", stage: "implement" }, { ...ticket, resolved: true }),
+    briefAvailability({ type: "feature", stage: "implement" }, { ...ticket, resolved: true })
+      ?.text ?? null,
   ).toBe("This ticket is resolved.");
   expect(
-    briefUnavailableReason(
+    briefAvailability(
       { type: "feature", stage: "implement" },
       { ...ticket, blocked: true, blockedBy: [1, 3] },
-    ),
+    )?.text ?? null,
   ).toBe("Blocked by ticket 01, 03.");
   for (const stage of ["clarify", "spec", "tickets", "review"] as const)
-    expect(briefUnavailableReason({ type: "feature", stage }, ticket)).toBeNull();
-  expect(briefUnavailableReason({ type: "feature", stage: "ship" }, ticket)).not.toBeNull();
-  expect(briefUnavailableReason({ type: "feature", stage: undefined }, ticket)).not.toBeNull();
+    expect(briefAvailability({ type: "feature", stage }, ticket)?.text ?? null).toBeNull();
   expect(
-    briefUnavailableReason({ type: "feature", workflow: "bug", stage: "diagnose" }, ticket),
+    briefAvailability({ type: "feature", stage: "ship" }, ticket)?.text ?? null,
+  ).not.toBeNull();
+  expect(
+    briefAvailability({ type: "feature", stage: undefined }, ticket)?.text ?? null,
+  ).not.toBeNull();
+  expect(
+    briefAvailability({ type: "feature", workflow: "bug", stage: "diagnose" }, ticket)?.text ??
+      null,
   ).toBeNull();
-  expect(briefUnavailableReason({ type: "effort", stage: undefined }, ticket)).not.toBeNull();
+  expect(
+    briefAvailability({ type: "effort", stage: undefined }, ticket)?.text ?? null,
+  ).not.toBeNull();
 });

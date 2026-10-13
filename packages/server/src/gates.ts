@@ -1,6 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
+import {
+  coreTextWire,
+  errorText,
+  coreText,
+  gateReadiness,
+  indexProject,
+  workflowGate,
+  type GateRecord,
+} from "@stintwork/core";
+
 import { execFileSync } from "node:child_process";
-import { gateReadiness, indexProject, workflowGate, type GateRecord } from "@stintwork/core";
+
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveWorkItemWorkflow } from "./workflow-writes.js";
@@ -21,31 +31,47 @@ export function addGateRoutes(
     app.post(`/api/work-items/:slug/gates/:stage/${action}`, async (context) => {
       const origin = context.req.header("origin");
       if (origin && origin !== new URL(context.req.url).origin)
-        return context.json({ reason: "Origin must match the project server." }, 403);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+          403,
+        );
       if (
         context.req.header("content-type")?.split(";")[0].trim().toLowerCase() !==
         "application/json"
       )
-        return context.json({ reason: "A JSON gate action is required." }, 400);
+        return context.json(coreTextWire({ reason: coreText({ code: "server.jsonGate" }) }), 400);
       try {
         const body: unknown = await context.req.json();
         if (!body || typeof body !== "object" || Array.isArray(body))
-          return context.json({ reason: "A JSON gate action is required." }, 400);
+          return context.json(coreTextWire({ reason: coreText({ code: "server.jsonGate" }) }), 400);
       } catch {
-        return context.json({ reason: "Invalid JSON." }, 400);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.invalidJson" }) }),
+          400,
+        );
       }
       const slug = context.req.param("slug");
       const project = readProjectFiles();
       const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
-      if (discoveryFailure) return context.json({ reason: discoveryFailure.message }, 503);
+      if (discoveryFailure)
+        return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
       const snapshot = indexProject(project.files, { name: "" });
       const item = snapshot.workItems.find((item) => item.slug === slug);
-      if (!item) return context.json({ reason: "Work item not found." }, 404);
-      if (item.merged) return context.json({ reason: "This work item is shipped." }, 409);
+      if (!item)
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
+          404,
+        );
+      if (item.merged)
+        return context.json(coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }), 409);
       const stages = snapshot.workflows[item.workflow].stages;
       const position = stages.findIndex(({ id }) => id === context.req.param("stage"));
       const stage = stages[position];
-      if (!stage || !item.stage) return context.json({ reason: "Stage not found." }, 400);
+      if (!stage || !item.stage)
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.stageNotFound" }) }),
+          400,
+        );
       if (
         snapshot.warnings.some(
           ({ path, message }) =>
@@ -53,12 +79,12 @@ export function addGateRoutes(
             message.startsWith("Invalid workflow.yaml:"),
         )
       )
-        return context.json({ reason: "workflow.yaml must be valid before changing a gate." }, 409);
-      if (item.activeStint || isStintActive(slug) || writing.has(slug))
         return context.json(
-          { reason: "A stint, check or workflow write is active for this work item." },
+          coreTextWire({ reason: coreText({ code: "gate.validWorkflowRequired" }) }),
           409,
         );
+      if (item.activeStint || isStintActive(slug) || writing.has(slug))
+        return context.json(coreTextWire({ reason: coreText({ code: "gate.activeWrite" }) }), 409);
       if (action === "approve" && stage.gate === "evidence")
         readReviewEvidence?.(project, snapshot);
       else if (action === "approve" && stage.column === "clarify")
@@ -67,10 +93,11 @@ export function addGateRoutes(
       if (action === "approve" && (item.stage !== stage.id || !gate.ready)) {
         refresh();
         return context.json(
-          {
-            reason: item.stage !== stage.id ? "This is not the current stage." : gate.reason,
+          coreTextWire({
+            reason:
+              item.stage !== stage.id ? coreText({ code: "gate.notCurrentStage" }) : gate.reason,
             conditions: gate.conditions,
-          },
+          }),
           409,
         );
       }
@@ -79,7 +106,10 @@ export function addGateRoutes(
         (position >= stages.findIndex(({ id }) => id === item.stage) ||
           !item.stages[stage.id]?.approved)
       )
-        return context.json({ reason: "Only an approved earlier stage can be reopened." }, 409);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "gate.reopenEarlier" }) }),
+          409,
+        );
       writing.add(slug);
       try {
         const worktree = project.worktreePaths.get(slug);
@@ -105,17 +135,16 @@ export function addGateRoutes(
           `${action === "approve" ? "Approve" : "Reopen"} ${stage.id} gate for ${slug}`,
         );
         refresh();
-        return context.json({
-          stage: action === "approve" ? gate.nextStage : stage.id,
-          record,
-          commit: workflowCommit,
-        });
+        return context.json(
+          coreTextWire({
+            stage: action === "approve" ? gate.nextStage : stage.id,
+            record,
+            commit: workflowCommit,
+          }),
+        );
       } catch (error) {
         refresh();
-        return context.json(
-          { reason: error instanceof Error ? error.message : String(error) },
-          503,
-        );
+        return context.json(coreTextWire({ reason: errorText(error) }), 503);
       } finally {
         writing.delete(slug);
       }

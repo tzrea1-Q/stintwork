@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
+import {
+  CoreTextError,
+  planSetup,
+  setupPaths,
+  type RepoFiles,
+  type SetupChange,
+} from "@stintwork/core";
 import { execFile, execFileSync } from "node:child_process";
 import { lstatSync, mkdirSync, readFileSync, rmdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import { planSetup, setupPaths, type RepoFiles, type SetupChange } from "@stintwork/core";
+
 import { commitWithIdentity, withRepoLock } from "@stintwork/git";
 
-export class SetupWriteRefusal extends Error {}
+export class SetupWriteRefusal extends CoreTextError {}
 
 const execute = promisify(execFile);
 
@@ -34,7 +41,7 @@ export function applySetup(root: string, files: RepoFiles, selected: readonly Se
       new Set(selected.map(({ path }) => path)).size !== selected.length ||
       selected.some(({ path }) => !setupPaths.includes(path))
     )
-      throw new Error("Select distinct proposed setup files.");
+      throw new CoreTextError({ code: "setup.distinctFiles" });
     const git = (args: string[]) =>
       execFileSync("git", args, {
         cwd: root,

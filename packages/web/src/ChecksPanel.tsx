@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import {
   evidenceStale,
   type CheckExecution,
@@ -6,7 +7,7 @@ import {
   type WorkItemChecks,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
-import { useLanguage } from "./i18n/language";
+
 import "./checks-panel.css";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
 
@@ -25,7 +26,7 @@ type ChecksItem = Pick<
 export function ChecksPanel({ item }: { item: ChecksItem }) {
   const { t } = useLanguage();
   const [data, setData] = useState<WorkItemChecks | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const [busy, setBusy] = useState(false);
   const endpoint = `/api/work-items/${encodeURIComponent(item.slug)}/checks`;
   const execution = item.checkExecution !== undefined ? item.checkExecution : data?.checkExecution;
@@ -50,15 +51,15 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
       request = controller;
       try {
         const response = await fetch(endpoint, { signal: controller.signal, cache: "no-store" });
-        const body = await response.json();
-        if (!response.ok) throw new Error(body.reason ?? t.review.checks.readError);
+        const body = await readResponseJson(response);
+        if (!response.ok) throw new CoreTextError(body, t.review.checks.readError);
         if (!disposed && !controller.signal.aborted) {
           setData(body);
           setError("");
         }
       } catch (cause) {
         if (!disposed && !controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : String(cause));
+          setError(cause instanceof Error ? cause : String(cause));
       }
     }
     setData(null);
@@ -69,21 +70,21 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
       clearInterval(poll);
       request?.abort();
     };
-  }, [endpoint, item.merged, t.review.checks.readError]);
+  }, [endpoint, item.merged, t.review.checks.readError, setError]);
 
   async function action(cancel: boolean) {
     setBusy(true);
     setError("");
     try {
       const response = await fetch(`${endpoint}${cancel ? "/cancel" : ""}`, { method: "POST" });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.reason ?? t.review.checks.updateError);
+      const body = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(body, t.review.checks.updateError);
       const next: CheckExecution = body.execution;
       setData((previous) =>
         previous ? { ...previous, checks: next.results, checkExecution: next } : previous,
       );
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(cause instanceof Error ? cause : String(cause));
     } finally {
       setBusy(false);
     }

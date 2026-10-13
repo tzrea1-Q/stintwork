@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
+import {
+  CoreTextError,
+  type PullRequest,
+  type PullRequestChecks,
+  type MergeMethod,
+} from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { lstat, mkdir, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
 import { ensureLocalIgnore } from "./stint-repo-writes.js";
-import type { PullRequest, PullRequestChecks, MergeMethod } from "@stintwork/core";
+
 import { createNodeRepoFiles } from "./repo-files.js";
 
 const execute = promisify(execFile);
@@ -35,15 +41,15 @@ async function gh(root: string, args: string[], checks = false) {
 export async function githubRepository(root: string, remote = "origin") {
   const urls = (await shipGit(root, ["remote", "get-url", "--push", "--all", remote])).split("\n");
   if (urls.length !== 1 || !urls[0] || urls[0].startsWith("-"))
-    throw new Error("Shipping requires one push URL for the origin remote.");
+    throw new CoreTextError({ code: "ship.pushUrl" });
   const remoteUrl = urls[0];
   if (remoteUrl.includes("://")) {
     const parsed = new URL(remoteUrl);
     if (parsed.password || (parsed.username && parsed.protocol !== "ssh:"))
-      throw new Error("Use a credential-free remote URL and the developer's own gh login.");
+      throw new CoreTextError({ code: "ship.credentialFree" });
   }
   if ((await shipGit(root, ["remote", "get-url", remote])) !== remoteUrl)
-    throw new Error("Shipping requires the same fetch and push URL for origin.");
+    throw new CoreTextError({ code: "ship.sameRemoteUrl" });
   const info = JSON.parse(
     await gh(root, [
       "repo",
@@ -58,7 +64,7 @@ export async function githubRepository(root: string, remote = "origin") {
     !/^[\w.-]+\/[\w.-]+$/.test(info.nameWithOwner) ||
     info.url !== `https://github.com/${info.nameWithOwner}`
   )
-    throw new Error("The origin remote must resolve to a GitHub repository through gh repo view.");
+    throw new CoreTextError({ code: "ship.githubRepository" });
   const allowed = (["merge", "squash", "rebase"] as const).filter(
     (method) => info[method === "merge" ? "mergeCommitAllowed" : `${method}MergeAllowed`] === true,
   );
@@ -67,7 +73,7 @@ export async function githubRepository(root: string, remote = "origin") {
       ? info.viewerDefaultMergeMethod.toLowerCase()
       : "";
   const method = allowed.find((method) => method === preferred) ?? allowed[0];
-  if (!method) throw new Error("The repository has no allowed pull request merge method.");
+  if (!method) throw new CoreTextError({ code: "ship.mergeMethods" });
   return { repo: info.nameWithOwner as string, remote, remoteUrl, method, allowedMethods: allowed };
 }
 
@@ -92,7 +98,7 @@ export async function pullRequestMergeMethod(
     (protection.required_linear_history !== undefined &&
       typeof protection.required_linear_history?.enabled !== "boolean")
   )
-    throw new Error("Cannot read the base branch's required linear history rule.");
+    throw new CoreTextError({ code: "ship.linearHistoryRule" });
   if (protection.required_linear_history?.enabled !== true) return repository.method;
   const allowed = repository.allowedMethods.filter((method) => method !== "merge");
   const method = allowed.find((method) => method === repository.method) ?? allowed[0];
@@ -130,7 +136,7 @@ export async function viewPullRequest(
     typeof info.baseRefName !== "string" ||
     info.isCrossRepository !== false
   )
-    throw new Error("Cannot read the pull request identity and head commit.");
+    throw new CoreTextError({ code: "ship.prIdentity" });
   return info as {
     number: number;
     url: string;
@@ -210,7 +216,7 @@ export async function fetchPullRequestChecks(
         ["pass", "fail", "pending", "skipping", "cancel"].includes(check.bucket),
     )
   )
-    throw new Error("Cannot read pull request CI checks.");
+    throw new CoreTextError({ code: "ship.ciUnreadable" });
   const after = await viewPullRequest(root, pr, String(pr.number));
   if (
     before.headRefOid !== after.headRefOid ||
@@ -220,7 +226,7 @@ export async function fetchPullRequestChecks(
     before.headRefName !== pr.branch ||
     before.baseRefName !== pr.base
   )
-    throw new Error("The pull request changed while reading CI checks. Refresh again.");
+    throw new CoreTextError({ code: "ship.changedCi" });
   const result = {
     number: pr.number,
     headCommit: after.headRefOid,
@@ -235,7 +241,7 @@ export async function fetchPullRequestChecks(
     await mkdir(directory, { recursive: true });
     const stat = await lstat(directory);
     if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error("CI evidence directories must be real directories.");
+      throw new CoreTextError({ code: "ship.ciDirectories" });
   }
   const path = join(directory, `${pr.number}.json`);
   const temporary = `${path}.${randomUUID()}.tmp`;
@@ -262,7 +268,7 @@ export function readPullRequestChecks(root: string, pr: PullRequest) {
         ["pass", "fail", "pending", "skipping", "cancel"].includes(check.bucket),
     )
   )
-    throw new Error("Invalid recorded pull request CI evidence.");
+    throw new CoreTextError({ code: "ship.recordedCiInvalid" });
   return value;
 }
 

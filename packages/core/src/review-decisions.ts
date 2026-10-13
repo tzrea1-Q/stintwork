@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "./core-text.js";
 import { parseDocument } from "yaml";
 import type { DeveloperNote } from "./developer-notes.js";
 
@@ -44,7 +45,7 @@ function isReviewDecision(value: unknown): value is ReviewDecision {
 function reviewDocument(text: string | undefined) {
   const document = parseDocument(text ?? "decisions: []\n");
   if (document.errors.length || document.warnings.length)
-    throw new Error("review.yaml must be valid before recording a decision.");
+    throw new CoreTextError({ code: "memory.validReviewRequired" });
   const value = document.toJS();
   if (
     !value ||

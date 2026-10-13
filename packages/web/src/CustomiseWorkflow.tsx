@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import { builtInWorkflows } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./create-work-item.css";
 import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
-import { useLanguage } from "./i18n/language";
 
 export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => void }) {
   const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [preview, setPreview] = useState<{ path: string; yaml: string } | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const [saving, setSaving] = useState(false);
   const endpoint = `/api/workflows/${encodeURIComponent(id)}/customise`;
   const workflow = builtInWorkflows[id as keyof typeof builtInWorkflows];
@@ -41,21 +41,21 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
           body: "{}",
           signal: controller.signal,
         });
-        const result = await response.json();
-        if (!response.ok) throw new Error(result.reason ?? en.planning.customise.errors.preview);
+        const result = await readResponseJson(response);
+        if (!response.ok) throw new CoreTextError(result, en.planning.customise.errors.preview);
         if (typeof result.path !== "string" || typeof result.yaml !== "string" || !result.yaml)
           throw new Error(en.planning.customise.errors.invalidPreview);
         if (!disposed) setPreview(result);
       } catch (cause) {
         if (!disposed)
-          setError(cause instanceof Error ? cause.message : en.planning.customise.errors.preview);
+          setError(cause instanceof Error ? cause : en.planning.customise.errors.preview);
       }
     })();
     return () => {
       disposed = true;
       controller.abort();
     };
-  }, [endpoint]);
+  }, [endpoint, setError]);
 
   async function customise() {
     if (saving || !preview) return;
@@ -67,11 +67,11 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
         headers: { "Content-Type": "application/json" },
         body: "{}",
       });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? en.planning.customise.errors.save);
+      const result = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(result, en.planning.customise.errors.save);
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : en.planning.customise.errors.save);
+      setError(cause instanceof Error ? cause : en.planning.customise.errors.save);
       setSaving(false);
     }
   }

@@ -13,7 +13,7 @@ const grok: AgentProfile = {
   ...attentionProfile,
   id: "grok",
   displayName: "Grok Build",
-  warnings: [warning],
+  warnings: [{ text: warning, code: "permission.grokAlwaysApprove" }],
   capabilities: {
     ...attentionProfile.capabilities,
     authenticationRequired: { message: "Authentication required", loginCommand: "grok login" },
@@ -37,7 +37,7 @@ test("choosing Grok in the brief preview shows the permission warning before Sta
       stage: builtInWorkflows.feature.stages[3],
     }),
     agent: "grok",
-    warnings: [warning],
+    warnings: [{ text: warning, code: "permission.grokAlwaysApprove" }],
   };
   vi.stubGlobal(
     "fetch",

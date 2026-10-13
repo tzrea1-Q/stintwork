@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readdirSync, statSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-import { describeAgents, type AgentRegistry } from "@stintwork/agents";
 import {
+  coreTextWire,
+  errorText,
+  coreText,
+  CoreTextError,
   knownSkillLocation,
   loadWorkflows,
   planSetup,
@@ -12,6 +12,12 @@ import {
   type RepoFiles,
   type SetupChange,
 } from "@stintwork/core";
+
+import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { describeAgents, type AgentRegistry } from "@stintwork/agents";
+
 import type { Hono } from "hono";
 import { applySetup, SetupWriteRefusal } from "./setup-writes.js";
 
@@ -69,21 +75,24 @@ export function addSetupRoutes(
   }
   app.get("/api/setup", (context) => {
     context.header("Cache-Control", "no-store");
-    return context.json(guide());
+    return context.json(coreTextWire(guide()));
   });
   app.post("/api/setup", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
-      return context.json({ reason: "Origin must match the project server." }, 403);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+        403,
+      );
     if (
       context.req.header("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json"
     )
-      return context.json({ reason: "A JSON setup selection is required." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "server.jsonSetup" }) }), 400);
     let body: unknown;
     try {
       body = await context.req.json();
     } catch {
-      return context.json({ reason: "Invalid JSON." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "server.invalidJson" }) }), 400);
     }
     if (
       !body ||
@@ -102,17 +111,19 @@ export function addSetupRoutes(
           typeof change.content !== "string",
       )
     )
-      return context.json({ reason: "Confirm a selection of proposed setup files." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "setup.confirmFiles" }) }), 400);
     try {
       const commit = await applySetup(root, files, body.changes as SetupChange[]);
       refresh();
-      return context.json({ commit, ...guide() });
+      return context.json(coreTextWire({ commit, ...guide() }));
     } catch (error) {
       return context.json(
-        { reason: error instanceof Error ? error.message : String(error) },
+        coreTextWire({ reason: errorText(error) }),
         error instanceof SetupWriteRefusal
           ? 409
-          : error instanceof Error && error.message === "Select distinct proposed setup files."
+          : error instanceof Error &&
+              error instanceof CoreTextError &&
+              error.coreText.code === "setup.distinctFiles"
             ? 400
             : 503,
       );

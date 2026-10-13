@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "./core-text.js";
 import { type Milestone, parseRoadmap } from "./roadmap.js";
 
 export type RoadmapChange =
@@ -16,9 +17,9 @@ function singleLine(value: unknown, label: string): string {
 
 export function serializeRoadmap(text: string, milestones: readonly Milestone[]): string {
   const original = parseRoadmap(text);
-  if (original.warnings.length) throw new Error("Fix roadmap warnings before editing it.");
+  if (original.warnings.length) throw new CoreTextError({ code: "roadmap.fixWarnings" });
   if (original.milestones.some(({ id }) => !milestones.some((entry) => entry.id === id)))
-    throw new Error("Removing milestones would discard hand-written text.");
+    throw new CoreTextError({ code: "roadmap.handwrittenText" });
   const newline = /\r\n|\r|\n/.exec(text)?.[0] ?? "\n";
   const lines = text.replace(/^\uFEFF/, "").split(/(?<=\n)|(?<=\r)(?!\n)/);
   const preamble: string[] = [];
@@ -109,15 +110,15 @@ export function serializeRoadmap(text: string, milestones: readonly Milestone[])
       );
     })
   )
-    throw new Error("The edited roadmap is invalid.");
+    throw new CoreTextError({ code: "roadmap.invalidEdit" });
   return result;
 }
 
 export function editRoadmap(text: string, change: unknown) {
   if (!change || typeof change !== "object" || Array.isArray(change) || !("kind" in change))
-    throw new Error("A roadmap action is required.");
+    throw new CoreTextError({ code: "roadmap.actionRequired" });
   const parsed = parseRoadmap(text);
-  if (parsed.warnings.length) throw new Error("Fix roadmap warnings before editing it.");
+  if (parsed.warnings.length) throw new CoreTextError({ code: "roadmap.fixWarnings" });
   let milestones = parsed.milestones;
   let message: string;
   switch (change.kind) {
@@ -139,20 +140,20 @@ export function editRoadmap(text: string, change: unknown) {
     case "rename":
     case "update": {
       const milestone = milestones.find((entry) => "id" in change && entry.id === change.id);
-      if (!milestone) throw new Error("Milestone not found.");
+      if (!milestone) throw new CoreTextError({ code: "roadmap.milestoneMissing" });
       if (change.kind === "rename") {
         milestone.name = singleLine("name" in change ? change.name : undefined, "Milestone name");
         message = `Rename milestone ${milestone.id} to ${milestone.name}`;
       } else {
         if (!("status" in change) && !("target" in change))
-          throw new Error("Choose a status or target date.");
+          throw new CoreTextError({ code: "roadmap.statusOrDate" });
         if ("status" in change) {
           if (
             change.status !== "planned" &&
             change.status !== "active" &&
             change.status !== "shipped"
           )
-            throw new Error("Choose planned, active or shipped.");
+            throw new CoreTextError({ code: "roadmap.statusChoice" });
           milestone.status = change.status;
         }
         if ("target" in change) {
@@ -164,7 +165,7 @@ export function editRoadmap(text: string, change: unknown) {
               !Number.isFinite(Date.parse(target)) ||
               new Date(target).toISOString().slice(0, 10) !== target)
           )
-            throw new Error("Target must be a valid YYYY-MM-DD date or null.");
+            throw new CoreTextError({ code: "roadmap.targetDate" });
           if (target === null) delete milestone.target;
           else milestone.target = target;
         }
@@ -180,10 +181,10 @@ export function editRoadmap(text: string, change: unknown) {
         new Set(change.ids).size !== milestones.length ||
         change.ids.some((id) => !milestones.some((entry) => entry.id === id))
       )
-        throw new Error("Provide every milestone id exactly once.");
+        throw new CoreTextError({ code: "roadmap.reorder" });
       milestones = change.ids.map((id) => {
         const milestone = milestones.find((entry) => entry.id === id);
-        if (!milestone) throw new Error("Milestone not found.");
+        if (!milestone) throw new CoreTextError({ code: "roadmap.milestoneMissing" });
         return milestone;
       });
       message = "Reorder milestones";
@@ -191,12 +192,13 @@ export function editRoadmap(text: string, change: unknown) {
     }
     case "move": {
       const slug = singleLine("workItem" in change ? change.workItem : undefined, "Work item slug");
-      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+        throw new CoreTextError({ code: "git.invalidSlug" });
       if (
         !("milestone" in change) ||
         (change.milestone !== null && !milestones.some(({ id }) => id === change.milestone))
       )
-        throw new Error("Milestone not found.");
+        throw new CoreTextError({ code: "roadmap.milestoneMissing" });
       for (const milestone of milestones) {
         if (milestone.id !== change.milestone)
           milestone.workItemSlugs = milestone.workItemSlugs.filter((entry) => entry !== slug);
@@ -206,7 +208,7 @@ export function editRoadmap(text: string, change: unknown) {
       break;
     }
     default:
-      throw new Error("Unknown roadmap action.");
+      throw new CoreTextError({ code: "roadmap.unknownAction" });
   }
   return {
     text: serializeRoadmap(text, milestones),

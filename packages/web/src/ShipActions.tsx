@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import { useState } from "react";
-import { useLanguage } from "./i18n/language";
+
 import {
   builtInWorkflows,
   evidenceStale,
@@ -19,7 +20,7 @@ export function ShipActions({
 }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useErrorText();
   const [paths, setPaths] = useState<string[]>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [message, setMessage] = useState("");
@@ -67,11 +68,11 @@ export function ShipActions({
           ),
         },
       );
-      const result = await response.json();
+      const result = await readResponseJson(response);
       if (!response.ok) {
         setConflicts(result.conflicts ?? []);
         setPaths(result.paths ?? []);
-        throw new Error(result.reason ?? t.review.ship.error);
+        throw new CoreTextError(result, t.review.ship.error);
       }
       if (name === "preview-pr") {
         setPreview(result.preview);
@@ -98,7 +99,7 @@ export function ShipActions({
     } catch (cause) {
       if (name === "open-pr") setPreview(null);
       if (name === "merge-pr") setMergeMethod(null);
-      setError(cause instanceof Error ? cause.message : t.review.ship.error);
+      setError(cause instanceof Error ? cause : t.review.ship.error);
     } finally {
       setBusy(false);
     }

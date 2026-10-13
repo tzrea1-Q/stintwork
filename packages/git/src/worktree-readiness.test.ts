@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { installWorktreeDependencies } from "./worktree-readiness.js";
+import type { CoreText } from "@stintwork/core";
 
 const fixtures: string[] = [];
 afterEach(async () => {
@@ -28,6 +29,35 @@ async function fixture(
   for (const [path, text] of Object.entries(files)) await writeFile(join(root, path), text);
   return root;
 }
+
+test("dependency notes carry typed manager and connection parameters but raw output does not", async () => {
+  const root = await fixture("pnpm", { "pnpm-lock.yaml": "" }, true);
+  const progress: CoreText[] = [];
+  await installWorktreeDependencies(root, (text) => progress.push(text));
+  expect(progress.filter(({ code }) => code)).toEqual([
+    {
+      text: "Installing worktree dependencies with pnpm (offline).\n",
+      code: "stream.installDependencies",
+      params: { manager: "pnpm", connection: "offline" },
+    },
+    {
+      text: "Offline dependency install unavailable; trying online.\n",
+      code: "stream.offlineUnavailable",
+    },
+    {
+      text: "Installing worktree dependencies with pnpm (online).\n",
+      code: "stream.installDependencies",
+      params: { manager: "pnpm", connection: "online" },
+    },
+    { text: "Worktree dependencies are ready.\n", code: "stream.dependenciesReady" },
+  ]);
+  expect(progress).toContainEqual({ text: "fixture output\n" });
+  expect(
+    progress
+      .filter(({ text }) => text === "fixture output\n")
+      .every(({ code }) => code === undefined),
+  ).toBe(true);
+});
 
 test.each([
   [
@@ -61,7 +91,7 @@ test.each([
   async (manager, files, offline, online) => {
     const root = await fixture(manager, files, true);
     const progress: string[] = [];
-    await installWorktreeDependencies(root, (text) => progress.push(text));
+    await installWorktreeDependencies(root, (text) => progress.push(text.text));
     expect((await readFile(join(root, "attempts"), "utf8")).trim().split("\n")).toEqual([
       offline,
       online,
@@ -69,7 +99,7 @@ test.each([
     expect(progress.join("")).toContain("fixture output");
     expect(progress.join("")).toContain("Offline dependency install unavailable; trying online.");
     expect(progress.at(-1)).toBe("Worktree dependencies are ready.\n");
-    await installWorktreeDependencies(root, (text) => progress.push(text));
+    await installWorktreeDependencies(root, (text) => progress.push(text.text));
     expect((await readFile(join(root, "attempts"), "utf8")).trim().split("\n")).toHaveLength(2);
   },
 );
@@ -99,9 +129,9 @@ test("does not install without a supported lockfile or when Yarn PnP is already 
 test("a failed online install is not reported ready", async () => {
   const root = await fixture("npm", { "package-lock.json": "{}" }, true, true);
   const progress: string[] = [];
-  await expect(installWorktreeDependencies(root, (text) => progress.push(text))).rejects.toThrow(
-    "npm dependency install failed (2)",
-  );
+  await expect(
+    installWorktreeDependencies(root, (text) => progress.push(text.text)),
+  ).rejects.toThrow("npm dependency install failed (2)");
   expect(progress.join("")).not.toContain("dependencies are ready");
   await mkdir(join(root, "node_modules"));
   await expect(installWorktreeDependencies(root, () => {}, true)).rejects.toThrow(
@@ -121,7 +151,7 @@ test("cancelling setup stops the installer without falling back online", async (
     installWorktreeDependencies(
       root,
       (text) => {
-        if (text.includes("waiting")) cancellation.abort();
+        if (text.text.includes("waiting")) cancellation.abort();
       },
       false,
       cancellation.signal,

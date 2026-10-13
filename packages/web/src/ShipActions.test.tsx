@@ -7,6 +7,8 @@ import { ShipActions } from "./ShipActions";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageSelect } from "./i18n/LanguageSelect";
 
 function project() {
   return indexProject(
@@ -37,9 +39,39 @@ const stint: StintSummary = {
   },
 };
 afterEach(() => {
+  localStorage.removeItem(languageStorageKey);
   vi.unstubAllGlobals();
   window.history.replaceState({}, "", "/");
 });
+
+test.each(["ship.running", "ship.future"])(
+  "Ship refusals render known codes and retain unknown English (%s)",
+  async (code) => {
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    const reason = "A stint is running on this work item. Finish or stop it before shipping.";
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ reason, reasonMessage: { code } }), { status: 409 }),
+        ),
+    );
+    render(
+      <LanguageProvider>
+        <LanguageSelect />
+        <ShipActions item={project().workItems[0]} />
+      </LanguageProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "本地合并" }));
+    expect(screen.getByRole("alert").textContent).toBe(
+      code === "ship.running" ? "此工作项有正在运行的 Stint。请先结束或停止，再交付。" : reason,
+    );
+    await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+    expect(screen.getByRole("alert").textContent).toBe(reason);
+  },
+);
 
 test("Merge locally sends a Ship action and reports the recorded commit", async () => {
   const user = userEvent.setup();

@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { lstatSync, mkdirSync, readFileSync, rmSync, rmdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commitWithIdentity } from "./checkpoints.js";
 import { withRepoLock } from "./index.js";
 
-export class WorkItemCreationRefusal extends Error {}
+export class WorkItemCreationRefusal extends CoreTextError {}
 
 type Creation = { slug: string; workflowText: string; roadmapText?: string };
 
@@ -22,39 +23,46 @@ export function checkWorkItemCreation(
   creation: Pick<Creation, "slug" | "roadmapText">,
 ) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(creation.slug) || creation.slug.length > 48)
-    throw new WorkItemCreationRefusal("Invalid work item slug.");
+    throw new WorkItemCreationRefusal({ code: "git.invalidSlug" });
   for (const directory of [
     ".scratch",
     ...(creation.roadmapText === undefined ? [] : [".stintwork"]),
   ]) {
     const stat = lstatSync(join(root, directory), { throwIfNoEntry: false });
     if (stat && (!stat.isDirectory() || stat.isSymbolicLink()))
-      throw new WorkItemCreationRefusal(`${directory} must be a real directory.`);
+      throw new WorkItemCreationRefusal(
+        directory === ".scratch"
+          ? { code: "creation.scratchDirectory" }
+          : { code: "server.projectDirectory" },
+      );
   }
   const folder = `.scratch/${creation.slug}`;
   if (lstatSync(join(root, folder), { throwIfNoEntry: false }))
-    throw new WorkItemCreationRefusal(`Work item ${creation.slug} already exists.`);
+    throw new WorkItemCreationRefusal({ code: "creation.exists", params: { slug: creation.slug } });
   const targets = [
     folder,
     ...(creation.roadmapText === undefined ? [] : [".stintwork/roadmap.md"]),
   ];
   if (git(root, ["status", "--porcelain=v1", "--untracked-files=all", "--", ...targets]))
-    throw new WorkItemCreationRefusal("Commit or discard hand edits to the creation paths first.");
+    throw new WorkItemCreationRefusal({ code: "creation.commitPaths" });
   if (git(root, ["ls-files", "--", folder]))
-    throw new WorkItemCreationRefusal(`Work item ${creation.slug} already exists in Git.`);
+    throw new WorkItemCreationRefusal({
+      code: "creation.existsInGit",
+      params: { slug: creation.slug },
+    });
   if (creation.roadmapText !== undefined) {
     const relative = ".stintwork/roadmap.md";
     const path = join(root, relative);
     const stat = lstatSync(path, { throwIfNoEntry: false });
     if (stat && (!stat.isFile() || stat.isSymbolicLink()))
-      throw new WorkItemCreationRefusal("roadmap.md must be a regular file.");
+      throw new WorkItemCreationRefusal({ code: "roadmap.regularFile" });
     if (
       stat &&
       (!git(root, ["ls-files", "--", relative]) ||
         git(root, ["hash-object", `--path=${relative}`, path]) !==
           git(root, ["rev-parse", `HEAD:${relative}`]))
     )
-      throw new WorkItemCreationRefusal("Commit or discard hand edits to roadmap.md first.");
+      throw new WorkItemCreationRefusal({ code: "creation.roadmapEdits" });
   }
 }
 

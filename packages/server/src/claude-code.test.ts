@@ -190,6 +190,10 @@ test.each([true, false])(
     expect(response.status).toBe(503);
     const refusal = await response.json();
     expect(refusal.reason).toContain("claude auth login");
+    expect(refusal.reasonMessage).toEqual({
+      code: "agent.loginRequired",
+      params: { agent: "Claude Code", command: "claude auth login" },
+    });
     const projectSnapshot = await snapshot(project);
     expect(projectSnapshot.agents[0].availability).toMatchObject({
       available: false,
@@ -279,7 +283,7 @@ test("WebSocket snapshots publish login attention and its removal after availabi
             available: false,
             kind: "login-required",
             checkedAt: "2026-10-09T10:00:00Z",
-            reason: "Sign in with claude auth login.",
+            reason: { text: "Sign in with claude auth login." },
           },
   });
   const server = await project.start();

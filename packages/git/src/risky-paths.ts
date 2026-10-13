@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 
 export type RiskyPath = {
@@ -44,7 +45,8 @@ function git(root: string, args: string[], input?: string) {
 }
 
 function commitRef(commit: string) {
-  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit)) throw new Error("Invalid commit.");
+  if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(commit))
+    throw new CoreTextError({ code: "git.invalidCommit" });
   return commit;
 }
 
@@ -66,7 +68,7 @@ export function scanRiskyPaths(root: string, base: string | null, head: string):
   const paths: { path: string; blob: string }[] = [];
   for (let index = 0; index < fields.length - 1; index += 2) {
     const metadata = /^:\d+ \d+ [a-f0-9]+ ([a-f0-9]+) [AMT]$/.exec(fields[index]);
-    if (!metadata) throw new Error("Cannot read risky path metadata.");
+    if (!metadata) throw new CoreTextError({ code: "git.riskyMetadata" });
     paths.push({ path: fields[index + 1], blob: metadata[1] });
   }
   const sizes = paths.length
@@ -80,7 +82,7 @@ export function scanRiskyPaths(root: string, base: string | null, head: string):
     : [];
   return paths.flatMap(({ path, blob }, index): RiskyPath[] => {
     const size = Number(sizes[index]);
-    if (!Number.isFinite(size)) throw new Error("Cannot read risky path size.");
+    if (!Number.isFinite(size)) throw new CoreTextError({ code: "git.riskySize" });
     const reasons = riskyPathReasons(path, size);
     return reasons.length ? [{ path, reasons, blob }] : [];
   });
@@ -127,7 +129,8 @@ export function committedRiskyPaths(root: string, base: string, head = "HEAD") {
 }
 
 export function branchRiskyPaths(root: string, slug: string) {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   let main = "HEAD";
   for (const candidate of ["main", "master"]) {
     try {
