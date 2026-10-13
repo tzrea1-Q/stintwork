@@ -128,7 +128,7 @@ test("the native launcher invokes grok agent stdio using the developer's PATH an
   const entry = fileURLToPath(new URL("./fake-agent.ts", import.meta.url));
   await writeFile(
     executable,
-    `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(join(cwd, "args.json"))}, JSON.stringify(process.argv.slice(2)));\nconst child = require('node:child_process').spawn(process.execPath, ['--import', ${JSON.stringify(createRequire(import.meta.url).resolve("tsx"))}, ${JSON.stringify(entry)}], { stdio: 'inherit' });\nchild.on('exit', code => process.exit(code));\n`,
+    `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(join(cwd, "args.json"))}, JSON.stringify(process.argv.slice(2)));\nconst child = require('node:child_process').spawn(process.execPath, ['--conditions=development', '--import', ${JSON.stringify(createRequire(import.meta.url).resolve("tsx"))}, ${JSON.stringify(entry)}], { stdio: 'inherit' });\nchild.on('exit', code => process.exit(code));\n`,
   );
   await chmod(executable, 0o755);
   vi.stubEnv("PATH", `${cwd}${delimiter}${process.env.PATH ?? ""}`);
