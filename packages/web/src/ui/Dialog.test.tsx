@@ -39,6 +39,44 @@ test("a conditionally mounted dialog returns focus without a DialogTrigger", asy
   await waitFor(() => expect(screen.getByRole("button", { name: "Preview" })).toHaveFocus());
 });
 
+test("backdrop clicks dismiss a reopened triggerless dialog and restore focus", async () => {
+  const user = userEvent.setup();
+  function Preview() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Preview
+        </button>
+        {open && (
+          <Dialog open onOpenChange={setOpen}>
+            <DialogContent aria-describedby={undefined}>
+              <DialogTitle>Preview item</DialogTitle>
+              <button type="button">Copy</button>
+            </DialogContent>
+          </Dialog>
+        )}
+      </>
+    );
+  }
+  render(<Preview />);
+  const trigger = screen.getByRole("button", { name: "Preview" });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await user.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Preview item" });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Copy" })).toHaveFocus());
+    const backdrop = dialog.previousElementSibling;
+    if (!backdrop) throw new Error("Dialog backdrop missing");
+    fireEvent(backdrop, new MouseEvent("pointerdown", { bubbles: true, button: 0 }));
+    fireEvent.mouseDown(backdrop);
+    fireEvent(backdrop, new MouseEvent("pointerup", { bubbles: true, button: 0 }));
+    fireEvent.mouseUp(backdrop);
+    fireEvent.click(backdrop);
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  }
+});
+
 test("a named modal traps focus, dismisses with Escape and restores its trigger", async () => {
   const user = userEvent.setup();
   const { container } = render(

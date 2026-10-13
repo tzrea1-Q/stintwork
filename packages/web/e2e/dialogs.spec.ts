@@ -390,10 +390,18 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(page.getByRole("dialog", { name: dialogItem.title })).toBeVisible();
           await page.keyboard.press("Escape");
           await trigger.click();
+          await expect(search).toBeFocused();
           await page.keyboard.press("Escape");
           await expect(trigger).toBeFocused();
           await trigger.click();
-          await page.mouse.click(4, 4);
+          await expect(search).toBeFocused();
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({
+              position: { x: 4, y: 4 },
+            });
+          await expect(dialog).not.toBeVisible();
           await expect(trigger).toBeFocused();
         });
       });
