@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { errorText, type AgentAvailability } from "@stintwork/core";
 import { spawn } from "node:child_process";
-import type { AgentAvailability } from "@stintwork/core";
+
 import { type AgentLauncher, createAgentLauncher } from "./index.js";
 import { readGrokConfig } from "./grok-config.js";
-import { AgentAuthenticationError } from "./authentication.js";
 import { grokProfile } from "./profiles.js";
 import type { RegisteredAgent } from "./registry.js";
 
@@ -43,10 +43,7 @@ export function createGrokAgent(
         const reason = error instanceof Error ? error.message : String(error);
         return {
           available: false,
-          reason,
-          ...(error instanceof AgentAuthenticationError
-            ? { reasonMessage: error.reasonMessage }
-            : {}),
+          reason: errorText(error),
           kind: /authentication required/i.test(reason)
             ? "login-required"
             : /not found/i.test(reason)

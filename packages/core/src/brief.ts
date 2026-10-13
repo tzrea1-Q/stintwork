@@ -4,9 +4,9 @@ import type { RepoFiles, Ticket, WorkItem } from "./work-items.js";
 import { builtInWorkflows, type WorkflowStage, type WorkflowDefinitions } from "./workflows.js";
 import type { DeveloperNote } from "./developer-notes.js";
 import type { PermissionLevel } from "./permission-levels.js";
-import { coreTextReason, type CoreTextMessage } from "./core-text.js";
+import { coreText, type CoreText } from "./core-text.js";
 
-export type BriefPointer = { path: string; reason: string; reasonMessage?: CoreTextMessage };
+export type BriefPointer = { path: string; reason: CoreText };
 export type BriefHandoff = {
   stint: string;
   agent: string;
@@ -17,8 +17,7 @@ export type BriefHandoff = {
 export type Brief = {
   permissionLevel?: PermissionLevel;
   agent?: string;
-  warnings?: readonly string[];
-  warningMessages?: readonly (CoreTextMessage | null)[];
+  warnings?: readonly CoreText[];
   skill: string | null;
   pointers: BriefPointer[];
   lastHandoff: BriefHandoff | null;
@@ -45,9 +44,8 @@ export function briefAvailability(
   ticket?: Pick<Ticket, "resolved" | "blocked" | "blockedBy"> | null,
   workflows: WorkflowDefinitions = builtInWorkflows,
 ) {
-  if (workItem.merged) return coreTextReason("This work item is shipped.");
-  if (workItem.type === "effort" || !workItem.stage)
-    return coreTextReason("This work item has no stint stage.");
+  if (workItem.merged) return coreText({ code: "workItem.shipped" });
+  if (workItem.type === "effort" || !workItem.stage) return coreText({ code: "brief.noStage" });
   const stage = workflows[workItem.workflow ?? "feature"]?.stages.find(
     (candidate) => candidate.id === workItem.stage,
   );
@@ -55,23 +53,14 @@ export function briefAvailability(
     stage?.column === "implement" ||
     (workItem.workflow === undefined && ["implement", "fix", "do"].includes(workItem.stage));
   if (!ticket || !implementation) {
-    return coreTextReason(stage?.skill ? null : "This stage has no stint skill.");
+    return stage?.skill ? null : coreText({ code: "brief.noSkill" });
   }
-  if (ticket.resolved) return coreTextReason("This ticket is resolved.");
+  if (ticket.resolved) return coreText({ code: "brief.ticketResolved" });
   if (ticket.blocked) {
     const tickets = ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", ");
-    return coreTextReason(`Blocked by ticket ${tickets}.`, {
-      code: "brief.blockedBy",
-      params: { tickets },
-    });
+    return coreText({ code: "brief.blockedBy", params: { tickets } });
   }
-  return coreTextReason(null);
-}
-
-export function briefUnavailableReason(
-  ...args: Parameters<typeof briefAvailability>
-): string | null {
-  return briefAvailability(...args).reason;
+  return null;
 }
 
 export function compileBrief({
@@ -86,12 +75,12 @@ export function compileBrief({
   reviewRange,
 }: BriefInput): Brief {
   const pointers: BriefPointer[] = [];
-  function addPointer(path: string, reason: string) {
-    if (files.read(path) !== undefined) pointers.push({ path, ...coreTextReason(reason) });
+  function addPointer(path: string, reason: CoreText) {
+    if (files.read(path) !== undefined) pointers.push({ path, reason });
   }
   const conventions = files.read("AGENTS.md") === undefined ? "CLAUDE.md" : "AGENTS.md";
-  addPointer(conventions, "Project conventions and agent instructions");
-  addPointer("GLOSSARY.md", "Project vocabulary; use its terms in code and UI copy");
+  addPointer(conventions, coreText({ code: "brief.conventions" }));
+  addPointer("GLOSSARY.md", coreText({ code: "brief.vocabulary" }));
   for (const path of [...files.list("docs/adr/")].sort()) {
     const text = files.read(path);
     if (text === undefined) continue;
@@ -99,16 +88,15 @@ export function compileBrief({
     const decisionTitle = title || path.split("/").at(-1) || "";
     pointers.push({
       path,
-      reason: `Decision record: ${decisionTitle}`,
-      reasonMessage: { code: "brief.decision", params: { title: decisionTitle } },
+      reason: coreText({ code: "brief.decision", params: { title: decisionTitle } }),
     });
   }
-  if (workItem.spec) addPointer(workItem.spec.path, "Work item scope and acceptance criteria");
-  if (ticket) addPointer(ticket.path, "This ticket's scope, status, blockers and comments");
+  if (workItem.spec) addPointer(workItem.spec.path, coreText({ code: "brief.scope" }));
+  if (ticket) addPointer(ticket.path, coreText({ code: "brief.ticketScope" }));
   if (stage.gate === "evidence") {
     for (const path of [...files.list(`.scratch/${workItem.slug}/issues/`)].sort()) {
       if (path.endsWith(".md") && path !== ticket?.path)
-        addPointer(path, "Review against this ticket's scope and acceptance criteria");
+        addPointer(path, coreText({ code: "brief.reviewScope" }));
     }
   }
 
@@ -128,7 +116,7 @@ export function compileBrief({
           ...(!workItem.spec ? ["No spec yet."] : []),
         ]
       : []),
-    ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason}`)].join("\n"),
+    ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason.text}`)].join("\n"),
     ...(stage.gate === "evidence"
       ? [
           `Review diff range: ${reviewRange ? `${reviewRange.mergeBase}...${reviewRange.headCommit}` : `main...stintwork/${workItem.slug}`} (merge base to reviewed commit).`,

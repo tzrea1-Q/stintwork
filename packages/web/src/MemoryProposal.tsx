@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
 import type { MemoryProposalAttentionItem } from "@stintwork/core";
 import { useState } from "react";
-import { CoreTextError, useLanguage } from "./i18n/language";
 
 export function MemoryProposal({
   item,
@@ -26,7 +26,7 @@ export function MemoryProposal({
         },
       );
       if (!response.ok) {
-        const body = await response.json();
+        const body = await readResponseJson(response);
         throw new CoreTextError(body, t.review.memory.error);
       }
       setSubmitted(true);

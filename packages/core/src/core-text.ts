@@ -1,5 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
+function template<const Shape extends Record<string, "string" | readonly string[]>>(
+  shape: Shape,
+  render: (
+    params: {
+      [Key in keyof Shape]: Shape[Key] extends readonly string[] ? Shape[Key][number] : string;
+    },
+  ) => string,
+) {
+  return Object.assign(render, { shape });
+}
 export const coreTextEnglish = {
+  "creation.invalidSlug":
+    "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+  "creation.exists": template(
+    { slug: "string" },
+    ({ slug }) => `Work item ${slug} already exists.`,
+  ),
+  "creation.existsInGit": template(
+    { slug: "string" },
+    ({ slug }) => `Work item ${slug} already exists in Git.`,
+  ),
+  "creation.scratchDirectory": ".scratch must be a real directory.",
+  "creation.commitPaths": "Commit or discard hand edits to the creation paths first.",
+  "creation.roadmapEdits": "Commit or discard hand edits to roadmap.md first.",
   "workItem.shipped": "This work item is shipped.",
   "gate.noApproval": "This stage has no approval gate.",
   "gate.running": "A stint is running on this work item. Finish or stop it before approving.",
@@ -10,11 +33,17 @@ export const coreTextEnglish = {
   "gate.manualApproval": "Developer approval; no file output required",
   "gate.approve": "Review the stage and approve when satisfied.",
   "gate.specOutput": "spec.md exists and parses",
-  "gate.writeSpec": ({ path, warning }: { path: string; warning: string }) =>
-    `Write or edit ${path} with a nonempty # heading.${warning ? ` ${warning}` : ""}`,
+  "gate.writeSpec": template(
+    { path: "string", warning: "string" },
+    ({ path, warning }) =>
+      `Write or edit ${path} with a nonempty # heading.${warning ? ` ${warning}` : ""}`,
+  ),
   "gate.ticketsOutput": "At least one ticket, no ticket warnings, valid dependency order",
-  "gate.writeTickets": ({ path, warning }: { path: string; warning: string }) =>
-    `Write or fix ${path} tickets with Status and Blocked by lines and valid dependencies.${warning ? ` ${warning}` : ""}`,
+  "gate.writeTickets": template(
+    { path: "string", warning: "string" },
+    ({ path, warning }) =>
+      `Write or fix ${path} tickets with Status and Blocked by lines and valid dependencies.${warning ? ` ${warning}` : ""}`,
+  ),
   "gate.reviewFinished": "Latest Review stint finished",
   "gate.recordFindings": "Start a new Review stint to record findings, or explicit no findings.",
   "gate.findingsDecided": "Every finding resolved or accepted",
@@ -35,43 +64,73 @@ export const coreTextEnglish = {
   "brief.scope": "Work item scope and acceptance criteria",
   "brief.ticketScope": "This ticket's scope, status, blockers and comments",
   "brief.reviewScope": "Review against this ticket's scope and acceptance criteria",
-  "brief.decision": ({ title }: { title: string }) => `Decision record: ${title}`,
+  "brief.decision": template({ title: "string" }, ({ title }) => `Decision record: ${title}`),
   "brief.noSkill": "This stage has no stint skill.",
   "brief.ticketResolved": "This ticket is resolved.",
-  "brief.blockedBy": ({ tickets }: { tickets: string }) => `Blocked by ticket ${tickets}.`,
+  "brief.blockedBy": template(
+    { tickets: "string" },
+    ({ tickets }) => `Blocked by ticket ${tickets}.`,
+  ),
   "permission.codexSandbox":
     "Codex’s sandbox can execute commands without asking. Stintwork only controls requests Codex sends; commands and access outside the worktree may not produce a request.",
-  "permission.unsupportedMode": ({ agent, mode }: { agent: string; mode: string }) =>
-    `${agent} does not offer the required ${mode} mode; it cannot honour this permission level.`,
-  "permission.alwaysApprove": ({ agent }: { agent: string }) =>
-    `${agent} has an always-approve config and never asks. Stintwork can only answer requests the agent sends and cannot enforce the worktree boundary.`,
+  "permission.unsupportedMode": template(
+    { agent: "string", mode: "string" },
+    ({ agent, mode }) =>
+      `${agent} does not offer the required ${mode} mode; it cannot honour this permission level.`,
+  ),
+  "permission.alwaysApprove": template(
+    { agent: "string" },
+    ({ agent }) =>
+      `${agent} has an always-approve config and never asks. Stintwork can only answer requests the agent sends and cannot enforce the worktree boundary.`,
+  ),
   "permission.grokAlwaysApprove":
     'Grok Build has permission_mode = "always-approve" in its config. Grok won’t ask for permissions, regardless of the stint’s permission level. Stintwork never changes this config.',
   "permission.grokConfigUnreadable":
     "Could not read Grok Build’s permission config. Its permission behaviour is unknown.",
   "agent.internalError": "Internal error",
-  "agent.notRegistered": ({ agent }: { agent: string }) => `Agent is not registered: ${agent}.`,
-  "agent.loginRequired": ({ agent, command }: { agent: string; command: string }) =>
-    `${agent} authentication required. Sign in with ${command}, then start another stint.`,
-  "agent.unavailable": ({ agent, command }: { agent: string; command: string }) =>
-    `${agent} is unavailable. ${command}`,
-  "stream.wroteWorkflow": ({ agent }: { agent: string }) =>
-    `Wrote workflow.yaml with the workflow, stage and ${agent} for this stage.\n`,
-  "stream.installDependencies": ({
-    manager,
-    connection,
-  }: {
-    manager: string;
-    connection: "offline" | "online";
-  }) => `Installing worktree dependencies with ${manager} (${connection}).\n`,
+  "agent.internalErrorDetail": template(
+    { detail: "string" },
+    ({ detail }): string => `${coreTextEnglish["agent.internalError"]}${detail}`,
+  ),
+  "agent.notRegistered": template(
+    { agent: "string" },
+    ({ agent }) => `Agent is not registered: ${agent}.`,
+  ),
+  "agent.loginRequired": template(
+    { agent: "string", command: "string" },
+    ({ agent, command }) =>
+      `${agent} authentication required. Sign in with ${command}, then start another stint.`,
+  ),
+  "agent.unavailable": template(
+    { agent: "string", command: "string" },
+    ({ agent, command }) => `${agent} is unavailable. ${command}`,
+  ),
+  "stream.wroteWorkflow": template(
+    { agent: "string" },
+    ({ agent }) => `Wrote workflow.yaml with the workflow, stage and ${agent} for this stage.\n`,
+  ),
+  "stream.installDependencies": template(
+    { manager: "string", connection: ["offline", "online"] },
+    ({ manager, connection }) =>
+      `Installing worktree dependencies with ${manager} (${connection}).\n`,
+  ),
   "server.jsonShip": "A JSON Ship action is required.",
-  "server.diffFailed": ({ detail }: { detail: string }) =>
-    `Could not read the work item diff: ${detail}`,
-  "server.reviewDiffFailed": ({ detail }: { detail: string }) =>
-    `Could not prepare the Review diff: ${detail}`,
-  "server.checkpointCompareFailed": ({ detail }: { detail: string }) =>
-    `Could not compare the last checkpoint: ${detail}`,
-  "server.recoveryFailed": ({ detail }: { detail: string }) => `Stint recovery failed: ${detail}`,
+  "server.diffFailed": template(
+    { detail: "string" },
+    ({ detail }) => `Could not read the work item diff: ${detail}`,
+  ),
+  "server.reviewDiffFailed": template(
+    { detail: "string" },
+    ({ detail }) => `Could not prepare the Review diff: ${detail}`,
+  ),
+  "server.checkpointCompareFailed": template(
+    { detail: "string" },
+    ({ detail }) => `Could not compare the last checkpoint: ${detail}`,
+  ),
+  "server.recoveryFailed": template(
+    { detail: "string" },
+    ({ detail }) => `Stint recovery failed: ${detail}`,
+  ),
   "server.jsonAgent": "A JSON agent choice is required.",
   "server.jsonFinding": "A JSON finding action is required.",
   "server.jsonGate": "A JSON gate action is required.",
@@ -200,8 +259,10 @@ export const coreTextEnglish = {
   "stint.reviewEndedEarly": "The Review stint ended before findings were collected.",
   "stint.findingsIncomplete": "The findings request did not complete.",
   "stint.handoffTimeout": "Handoff timed out.",
-  "stint.stopReason": ({ reason }: { reason: string }) =>
-    `Agent ended the stint with stop reason: ${reason}.`,
+  "stint.stopReason": template(
+    { reason: "string" },
+    ({ reason }) => `Agent ended the stint with stop reason: ${reason}.`,
+  ),
   "stint.receiptTimeout": "Receipt timed out.",
   "stream.offlineUnavailable": "Offline dependency install unavailable; trying online.\n",
   "stream.dependenciesReady": "Worktree dependencies are ready.\n",
@@ -298,34 +359,15 @@ export type CoreTextMessage = {
     : { code: Code };
 }[keyof typeof coreTextEnglish];
 
-const parameterKeys = {
-  "gate.writeSpec": ["path", "warning"],
-  "gate.writeTickets": ["path", "warning"],
-  "brief.blockedBy": ["tickets"],
-  "brief.decision": ["title"],
-  "permission.unsupportedMode": ["agent", "mode"],
-  "permission.alwaysApprove": ["agent"],
-  "agent.unavailable": ["agent", "command"],
-  "agent.notRegistered": ["agent"],
-  "agent.loginRequired": ["agent", "command"],
-  "stint.stopReason": ["reason"],
-  "server.diffFailed": ["detail"],
-  "server.reviewDiffFailed": ["detail"],
-  "server.checkpointCompareFailed": ["detail"],
-  "server.recoveryFailed": ["detail"],
-  "stream.wroteWorkflow": ["agent"],
-  "stream.installDependencies": ["manager", "connection"],
-} satisfies Record<Extract<CoreTextMessage, { params: unknown }>["code"], readonly string[]>;
+export type CoreText = { text: string } & (CoreTextMessage | { code?: undefined });
 
-const codes = new Map<string, CoreTextMessage["code"]>(
-  Object.entries(coreTextEnglish).flatMap(([code, text]) =>
-    typeof text === "string" ? [[text, code as CoreTextMessage["code"]]] : [],
-  ),
-);
-
-export function coreTextMessage(text: string | null | undefined): CoreTextMessage | undefined {
-  const code = text == null ? undefined : codes.get(text);
-  return code ? ({ code } as CoreTextMessage) : undefined;
+export function coreText(message: CoreTextMessage): CoreText {
+  const entry = coreTextEnglish[message.code];
+  const text =
+    typeof entry === "string"
+      ? entry
+      : Reflect.apply(entry, undefined, ["params" in message ? message.params : undefined]);
+  return { text, ...message };
 }
 
 export function isCoreTextMessage(value: unknown): value is CoreTextMessage {
@@ -337,27 +379,130 @@ export function isCoreTextMessage(value: unknown): value is CoreTextMessage {
     !Object.hasOwn(coreTextEnglish, value.code)
   )
     return false;
-  if (typeof coreTextEnglish[value.code as CoreTextMessage["code"]] === "string") return true;
-  if (!("params" in value) || !value.params || typeof value.params !== "object") return false;
+  const entry = coreTextEnglish[value.code as CoreTextMessage["code"]];
+  if (typeof entry === "string") return true;
   if (
-    value.code === "stream.installDependencies" &&
-    !(
-      "connection" in value.params &&
-      ["offline", "online"].includes(String(value.params.connection))
-    )
+    !("params" in value) ||
+    !value.params ||
+    typeof value.params !== "object" ||
+    Array.isArray(value.params)
   )
     return false;
-  const keys = parameterKeys[value.code as keyof typeof parameterKeys];
-  return keys.every(
-    (key) =>
-      Object.hasOwn(value.params as object, key) &&
-      typeof (value.params as Record<string, unknown>)[key] === "string",
+  return Object.entries(entry.shape).every(([key, type]) => {
+    if (!Object.hasOwn(value.params as object, key)) return false;
+    const parameter = (value.params as Record<string, unknown>)[key];
+    return (
+      typeof parameter === "string" &&
+      (type === "string" || type.some((allowed) => allowed === parameter))
+    );
+  });
+}
+
+export class CoreTextError extends Error {
+  readonly coreText: CoreText;
+  constructor(message: CoreTextMessage | CoreText | string, options?: ErrorOptions) {
+    const text =
+      typeof message === "string"
+        ? { text: message }
+        : "text" in message
+          ? message
+          : coreText(message);
+    super(text.text, options);
+    this.coreText = text;
+  }
+}
+
+export function errorText(error: unknown, stringify = false): CoreText {
+  if (error instanceof Error && "coreText" in error && isCoreTextMessage(error.coreText))
+    return { ...coreText(error.coreText), text: stringify ? String(error) : error.message };
+  return { text: !stringify && error instanceof Error ? error.message : String(error) };
+}
+
+export function coreTextFields<Field extends string>(
+  field: Field,
+  value: CoreText,
+): Record<Field, string> &
+  Partial<Record<Field extends "text" ? "message" : `${Field}Message`, CoreTextMessage>>;
+export function coreTextFields(field: string, value: CoreText | null): Record<string, unknown>;
+export function coreTextFields(field: string, value: CoreText | null) {
+  if (!value) return { [field]: null };
+  const { text, ...message } = value;
+  return {
+    [field]: text,
+    ...(value.code ? { [field === "text" ? "message" : `${field}Message`]: message } : {}),
+  };
+}
+
+export function coreTextWire(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(coreTextWire);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([key, entry]) => {
+      if (
+        ["reason", "label", "action", "error", "handoffError"].includes(key) &&
+        entry &&
+        typeof entry === "object" &&
+        "text" in entry &&
+        typeof entry.text === "string"
+      )
+        return Object.entries(coreTextFields(key, entry as CoreText));
+      if (
+        key === "warnings" &&
+        Array.isArray(entry) &&
+        entry.every(
+          (warning) => warning && typeof warning === "object" && typeof warning.text === "string",
+        )
+      )
+        return [
+          [key, entry.map((warning) => warning.text)],
+          [
+            "warningMessages",
+            entry.map(({ text: _text, ...message }) => (message.code ? message : null)),
+          ],
+        ];
+      return [[key, coreTextWire(entry)]];
+    }),
   );
 }
 
-export function coreTextReason<Reason extends string | null>(
-  reason: Reason,
-  reasonMessage = coreTextMessage(reason),
-) {
-  return { reason, ...(reasonMessage ? { reasonMessage } : {}) };
+export function readCoreTextWire(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(readCoreTextWire);
+  if (!value || typeof value !== "object") return value;
+  const record = value as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries(record)
+      .filter(
+        ([key]) =>
+          !["reasonMessage", "labelMessage", "actionMessage", "warningMessages"].includes(key),
+      )
+      .map(([key, entry]) => {
+        if (
+          ["reason", "label", "action"].includes(key) &&
+          typeof entry === "string" &&
+          (Object.hasOwn(record, `${key}Message`) ||
+            "available" in record ||
+            ("path" in record && !("status" in record)))
+        ) {
+          const message = record[`${key}Message`];
+          return [key, { text: entry, ...(isCoreTextMessage(message) ? message : {}) }];
+        }
+        if (
+          key === "warnings" &&
+          Array.isArray(entry) &&
+          entry.every((warning) => typeof warning === "string")
+        ) {
+          const messages = record.warningMessages;
+          return [
+            key,
+            entry.map((text, index) => ({
+              text,
+              ...(Array.isArray(messages) && isCoreTextMessage(messages[index])
+                ? messages[index]
+                : {}),
+            })),
+          ];
+        }
+        return [key, readCoreTextWire(entry)];
+      }),
+  );
 }

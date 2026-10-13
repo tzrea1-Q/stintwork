@@ -5,6 +5,9 @@ import { joinChinese, zhCN } from "./zh-CN";
 
 const unchanged = new Set(["Stintwork", "Claude Code", "Codex", "Grok Build", "Stint", "Agent"]);
 const samples: Record<string, unknown[][]> = {
+  "coreText.agent.internalErrorDetail": [[{ detail: ": Agent diagnostic 原文" }]],
+  "coreText.creation.exists": [[{ slug: "repo-name" }]],
+  "coreText.creation.existsInGit": [[{ slug: "repo-name" }]],
   "board.counts": [
     [0, 0],
     [1, 1],
@@ -32,9 +35,6 @@ const samples: Record<string, unknown[][]> = {
   "planning.setup.preview": [["Repo 原文"]],
   "planning.setup.write": [[0], [1], [2]],
   "planning.setup.agentSkills": [["Repo 原文"]],
-  "planning.create.exists": [["repo-name"]],
-  "planning.create.existsInGit": [["repo-name"]],
-  "planning.create.directory": [["repo-name"]],
   "planning.setup.installHint": [
     ["Codex", "/to-spec", undefined],
     ["Claude Code", "/to-tickets", "~/.claude/skills/, <project>/.agents/skills/"],

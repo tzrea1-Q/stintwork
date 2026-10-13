@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
 import {
   type Brief,
+  coreTextWire,
   foldStintLog,
   type ProjectSnapshot,
   type Stint,
@@ -210,7 +211,7 @@ test.each([undefined, null])(
       .trim()
       .split("\n")
       .map((line) => JSON.parse(line));
-    expect(foldStintLog(entries)).toEqual(finished);
+    expect(coreTextWire(foldStintLog(entries))).toEqual(finished);
     await project.stop();
     tracked.project = createProjectServer(root, join(root, "web"), {
       launchAgent: createFakeAgentLauncher(

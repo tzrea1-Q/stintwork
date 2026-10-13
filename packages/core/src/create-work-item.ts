@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "./core-text.js";
 import { stringify } from "yaml";
 import { editRoadmap } from "./roadmap-editing.js";
 import type { WorkflowDefinitions } from "./workflows.js";
@@ -11,16 +12,14 @@ export type WorkItemCreation = {
 
 export function deriveWorkItemSlug(title: unknown, explicitSlug?: unknown): string {
   if (typeof title !== "string" || !title.trim() || /[\p{Cc}\u2028\u2029\uFFFD]/u.test(title))
-    throw new Error("Title must be nonempty, single-line text.");
+    throw new CoreTextError({ code: "workItem.titleSingleLine" });
   if (explicitSlug !== undefined) {
     if (
       typeof explicitSlug !== "string" ||
       explicitSlug.length > 48 ||
       !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(explicitSlug)
     )
-      throw new Error(
-        "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
-      );
+      throw new CoreTextError({ code: "creation.invalidSlug" });
     return explicitSlug;
   }
   const slug = title
@@ -31,7 +30,7 @@ export function deriveWorkItemSlug(title: unknown, explicitSlug?: unknown): stri
     .replace(/^-/, "")
     .slice(0, 48)
     .replace(/-$/, "");
-  if (!slug) throw new Error("Title must produce a valid ASCII work item slug.");
+  if (!slug) throw new CoreTextError({ code: "workItem.titleSlug" });
   return slug;
 }
 
@@ -41,30 +40,30 @@ export function prepareWorkItemCreation(
   roadmap: string,
 ): WorkItemCreation {
   if (!input || typeof input !== "object" || Array.isArray(input))
-    throw new Error("A work item creation is required.");
-  if (!("title" in input)) throw new Error("A title is required.");
+    throw new CoreTextError({ code: "workItem.creationRequired" });
+  if (!("title" in input)) throw new CoreTextError({ code: "workItem.titleRequired" });
   const slug = deriveWorkItemSlug(input.title, "slug" in input ? input.slug : undefined);
   if (
     !("workflow" in input) ||
     typeof input.workflow !== "string" ||
     !Object.hasOwn(workflows, input.workflow)
   )
-    throw new Error("Choose a loaded workflow.");
+    throw new CoreTextError({ code: "workItem.workflowLoaded" });
   const workflow = workflows[input.workflow];
-  if (!workflow.stages.length) throw new Error("The workflow needs a first stage.");
+  if (!workflow.stages.length) throw new CoreTextError({ code: "workItem.firstStage" });
   const intent = "intent" in input ? input.intent : undefined;
   if (
     intent !== undefined &&
     (typeof intent !== "string" || /[\p{Cc}\uFFFD]/u.test(intent.replace(/[\t\r\n]/g, "")))
   )
-    throw new Error("Intent must be text.");
+    throw new CoreTextError({ code: "workItem.intentText" });
   const milestone = "milestone" in input ? input.milestone : undefined;
   if (milestone !== undefined && milestone !== null && typeof milestone !== "string")
-    throw new Error("Choose a milestone or no milestone.");
+    throw new CoreTextError({ code: "workItem.milestoneChoice" });
   return {
     slug,
     workflowText: stringify({
-      title: "slug" in input ? input.title : (input.title as string).trim(),
+      title: (input.title as string).trim(),
       workflow: workflow.id,
       stage: workflow.stages[0].id,
       ...(intent === undefined || !intent.trim() ? {} : { intent }),

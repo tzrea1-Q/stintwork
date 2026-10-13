@@ -1,10 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import {
-  agentUnavailable,
-  coreTextMessage,
-  type AgentAvailability,
-  type AgentProfile,
-} from "@stintwork/core";
+import type { AgentAvailability, AgentProfile } from "@stintwork/core";
 import type { AgentLauncher } from "./index.js";
 import { createCodexAgent } from "./codex.js";
 import { createClaudeCodeAgent } from "./claude-code.js";
@@ -58,22 +53,6 @@ export function createAgentRegistry(
 
 export function describeAgents(registry: AgentRegistry): AgentProfile[] {
   return [...registry.values()].map(
-    ({ launch: _launch, detectAvailability: _detect, ...profile }) => {
-      const reasonMessage = agentUnavailable(profile).reasonMessage;
-      return {
-        ...profile,
-        ...(profile.availability && reasonMessage
-          ? { availability: { ...profile.availability, reasonMessage } }
-          : {}),
-        ...(profile.warnings?.length
-          ? {
-              warningMessages: profile.warnings.map(
-                (warning, index) =>
-                  profile.warningMessages?.[index] ?? coreTextMessage(warning) ?? null,
-              ),
-            }
-          : {}),
-      };
-    },
+    ({ launch: _launch, detectAvailability: _detect, ...profile }) => profile,
   );
 }

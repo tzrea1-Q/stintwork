@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 export {
   scanRiskyPaths,
   committedRiskyPaths,
@@ -65,7 +66,7 @@ export async function ensureWorktree(
   workItemSlug: string,
 ): Promise<{ path: string; branch: string }> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItemSlug))
-    throw new Error("Invalid work item slug.");
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const root = await realpath(resolve(repoRoot));
   return withRepoLock(root, () => ensureWorktreeLocked(root, workItemSlug));
 }
@@ -86,14 +87,14 @@ async function ensureWorktreeLocked(
       !existing.split("\0").includes(`branch refs/heads/${branch}`) ||
       !(await lstat(path)).isDirectory()
     ) {
-      throw new Error("The work item's worktree is missing or is on a different branch.");
+      throw new CoreTextError({ code: "git.worktreeMissing" });
     }
     return { path, branch };
   }
   const parent = dirname(path);
   await mkdir(parent, { recursive: true });
   if ((await lstat(parent)).isSymbolicLink())
-    throw new Error("Worktree directory must not be a symlink.");
+    throw new CoreTextError({ code: "git.worktreeSymlink" });
   await execute("git", ["worktree", "add", "-b", branch, path, "HEAD"], { cwd: root });
   const { stdout: base } = await execute("git", ["rev-parse", "HEAD"], { cwd: path });
   await execute("git", ["config", "--local", `branch.${branch}.stintwork-base`, base.trim()], {

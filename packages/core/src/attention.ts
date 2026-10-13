@@ -203,7 +203,7 @@ export function deriveAttentionItems(
       stintId: null,
       title: `${agent.displayName} needs a login`,
       details:
-        agent.availability?.reason ??
+        agent.availability?.reason?.text ??
         `Sign in with ${agent.capabilities.authenticationRequired.loginCommand}.`,
       raisedAt: agent.availability?.checkedAt ?? "1970-01-01T00:00:00.000Z",
       loginCommand: agent.capabilities.authenticationRequired.loginCommand,

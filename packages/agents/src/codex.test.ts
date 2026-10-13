@@ -35,7 +35,7 @@ test.each(["missing", "non-executable", "directory"])(
     expect(agent.availability).toEqual({
       available: false,
       kind: "missing-executable",
-      reason: `Codex not found. ${codexProfile.installationHint}`,
+      reason: { text: `Codex not found. ${codexProfile.installationHint}` },
       checkedAt: expect.any(String),
     });
     expect(launch).not.toHaveBeenCalled();
@@ -62,7 +62,7 @@ test("login probes never prompt or authenticate, cache results, and refresh afte
   expect(agent.availability).toMatchObject({
     available: false,
     kind: "login-required",
-    reason: expect.stringContaining("codex login"),
+    reason: { text: expect.stringContaining("codex login") },
   });
   const checkedAt = agent.availability?.checkedAt;
   authRequired = false;
@@ -98,7 +98,7 @@ test.each([
     },
   });
   await refreshAgentAvailability(agent);
-  expect(agent.availability).toMatchObject({ available: false, kind, reason });
+  expect(agent.availability).toMatchObject({ available: false, kind, reason: { text: reason } });
 });
 
 test("a hung probe is cancelled and times out even when cancellation hangs", async () => {
@@ -116,6 +116,6 @@ test("a hung probe is cancelled and times out even when cancellation hangs", asy
   expect(agent.availability).toMatchObject({
     available: false,
     kind: "check-failed",
-    reason: expect.stringContaining("timed out"),
+    reason: { text: expect.stringContaining("timed out") },
   });
 });

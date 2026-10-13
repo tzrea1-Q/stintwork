@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreText, type AgentAvailability } from "@stintwork/core";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
-import type { AgentAvailability } from "@stintwork/core";
+
 import { AgentAuthenticationError } from "./authentication.js";
 import { createAgentLauncher } from "./index.js";
 import { claudeProfile } from "./profiles.js";
@@ -33,7 +34,7 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
         return {
           available: false,
           kind: "missing-executable",
-          reason: `Claude Code not found. ${claudeProfile.installationHint}`,
+          reason: { text: `Claude Code not found. ${claudeProfile.installationHint}` },
           checkedAt,
         };
       let stdout: string;
@@ -49,8 +50,7 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
           return {
             available: false,
             kind: "check-failed",
-            reason:
-              "Claude Code login check failed. Check claude auth status, then refresh agent availability.",
+            reason: coreText({ code: "agent.claudeLoginCheckFailed" }),
             checkedAt,
           };
         stdout = failure.stdout;
@@ -68,8 +68,7 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
         return {
           available: false,
           kind: "check-failed",
-          reason:
-            "Claude Code returned an invalid login status. Check claude auth status, then refresh agent availability.",
+          reason: coreText({ code: "agent.claudeInvalidLogin" }),
           checkedAt,
         };
       const authError = new AgentAuthenticationError(claudeProfile);
@@ -78,8 +77,7 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
         : {
             available: false,
             kind: "login-required",
-            reason: authError.message,
-            reasonMessage: authError.reasonMessage,
+            reason: authError.coreText,
             checkedAt,
           };
     },

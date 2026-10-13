@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "./core-text.js";
 import type { GateWorkItem } from "./gates.js";
 import { parseDocument } from "yaml";
 import { builtInWorkflows, type WorkflowDefinitions, type WorkflowId } from "./workflows.js";
@@ -60,7 +61,7 @@ export function workflowPullRequest(
       ? workflows[workflow].stages.find(({ id }) => id === document.get("stage"))
       : undefined;
   if (document.errors.length || document.warnings.length || stage?.gate !== "merge")
-    throw new Error("A valid Ship workflow is required before recording a pull request.");
+    throw new CoreTextError({ code: "ship.validWorkflowPr" });
   if (document.get("workflow") !== workflow) document.set("workflow", workflow);
   document.set("pullRequest", pullRequest);
   return document.toString();

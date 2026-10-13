@@ -8,7 +8,7 @@ import { HandoffAnswer } from "./HandoffAnswer";
 import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
 import { attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
-import { renderCoreText, useCoreTextError, useLanguage } from "./i18n/language";
+import { renderCoreText, useErrorText, useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
 import "./needs-you.css";
@@ -30,7 +30,7 @@ export function NeedsYouQueue({
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [now, setNow] = useState(Date.now);
-  const [answerError, setAnswerError] = useCoreTextError();
+  const [answerError, setAnswerError] = useErrorText();
   const [answerItem, setAnswerItem] = useState<AttentionItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -135,8 +135,8 @@ export function NeedsYouQueue({
                   item.details !== en.needsYou.loginInstructions(item.loginCommand) && (
                     <p>
                       {renderCoreText(
-                        profile?.availability?.reason === item.details
-                          ? profile.availability.reasonMessage
+                        profile?.availability?.reason?.text === item.details
+                          ? profile.availability.reason
                           : undefined,
                         item.details,
                         t,

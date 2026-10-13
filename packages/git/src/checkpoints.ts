@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
@@ -45,9 +46,11 @@ export async function commitStintworkSetup(
   files: readonly string[],
   message = `Stintwork setup for work item ${workItem}`,
 ): Promise<string | null> {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const allowed = new Set([".gitignore", `.scratch/${workItem}/workflow.yaml`]);
-  if (files.some((file) => !allowed.has(file))) throw new Error("Invalid Stintwork setup file.");
+  if (files.some((file) => !allowed.has(file)))
+    throw new CoreTextError({ code: "git.invalidSetupFile" });
   if (!files.length) return null;
 
   const git = async (args: string[]) =>
@@ -143,8 +146,9 @@ export async function changedSince(
   workItem: string,
 ): Promise<string[]> {
   if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(checkpointCommit))
-    throw new Error("Invalid checkpoint commit.");
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem)) throw new Error("Invalid work item slug.");
+    throw new CoreTextError({ code: "git.invalidCheckpoint" });
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const prefix = `.scratch/${workItem}/`;
   const paths = [`${prefix}spec.md`, `${prefix}issues/`];
   const outputs = await Promise.all(

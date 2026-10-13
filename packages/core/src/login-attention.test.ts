@@ -25,7 +25,7 @@ const profile: AgentProfile = {
     available: false,
     kind: "login-required",
     checkedAt: "2026-10-09T10:00:00Z",
-    reason: "Sign in with claude auth login.",
+    reason: { text: "Sign in with claude auth login." },
   },
 };
 
@@ -41,7 +41,11 @@ test.each([
       defaultMode: null,
       authenticationRequired: { message: "Authentication required", loginCommand: "grok login" },
     },
-    availability: { ...profile.availability, available: false, reason: "Sign in with grok login." },
+    availability: {
+      ...profile.availability,
+      available: false,
+      reason: { text: "Sign in with grok login." },
+    },
   },
   {
     ...profile,
@@ -54,7 +58,7 @@ test.each([
     availability: {
       ...profile.availability,
       available: false,
-      reason: "Sign in with other login.",
+      reason: { text: "Sign in with other login." },
     },
   },
 ])(
@@ -73,7 +77,7 @@ test.each([
         ticket: null,
         stintId: null,
         title: `${profile.displayName} needs a login`,
-        details: profile.availability?.reason,
+        details: profile.availability?.reason?.text,
         raisedAt: "2026-10-09T10:00:00Z",
         loginCommand: profile.capabilities.authenticationRequired.loginCommand,
       },

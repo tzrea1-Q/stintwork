@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test } from "vitest";
 import {
-  briefUnavailableReason,
+  briefAvailability,
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
   builtInWorkflows,
 } from "./index.js";
+import { expect, test } from "vitest";
 
 const spec = ".scratch/planning/spec.md";
 const ticketPath = ".scratch/planning/issues/01-work.md";
@@ -37,7 +37,9 @@ test.each(
   ({ workflow, stage }) => {
     const implementation = stage.column === "implement";
     for (const ticket of [null, { ...item.tickets[0], resolved: !implementation }]) {
-      expect(briefUnavailableReason({ ...item, workflow, stage: stage.id }, ticket)).toBeNull();
+      expect(
+        briefAvailability({ ...item, workflow, stage: stage.id }, ticket)?.text ?? null,
+      ).toBeNull();
       const brief = compileBrief({
         files,
         workItem: item,
@@ -53,8 +55,7 @@ test.each(
         expect(brief.prompt).toContain("Work item folder: .scratch/planning/");
       expect(brief.pointers).toContainEqual({
         path: spec,
-        reason: "Work item scope and acceptance criteria",
-        reasonMessage: { code: "brief.scope" },
+        reason: { text: "Work item scope and acceptance criteria", code: "brief.scope" },
       });
       expect(brief.lastHandoff).toEqual(handoff);
       expect(brief.prompt).toContain("Choose a limit.");
@@ -88,11 +89,13 @@ test("Clarify without a spec says so and uses project instructions plus the work
 test.each(["feature", "quick"])(
   "%s Ship cannot start a stage stint without a ticket",
   (workflow) => {
-    expect(briefUnavailableReason({ type: "feature", workflow, stage: "ship" })).not.toBeNull();
+    expect(
+      briefAvailability({ type: "feature", workflow, stage: "ship" })?.text ?? null,
+    ).not.toBeNull();
   },
 );
 
 test("efforts and work items with no declared stage cannot start a stage stint", () => {
-  expect(briefUnavailableReason({ type: "effort", stage: "spec" })).not.toBeNull();
-  expect(briefUnavailableReason({ type: "feature", stage: undefined })).not.toBeNull();
+  expect(briefAvailability({ type: "effort", stage: "spec" })?.text ?? null).not.toBeNull();
+  expect(briefAvailability({ type: "feature", stage: undefined })?.text ?? null).not.toBeNull();
 });

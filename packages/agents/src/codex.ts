@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AgentAvailability } from "@stintwork/core";
+import { errorText, CoreTextError, type AgentAvailability } from "@stintwork/core";
+
 import { AgentAuthenticationError } from "./authentication.js";
 import { findExecutable } from "./executable.js";
 import { type AgentLauncher, startAgentStint } from "./index.js";
@@ -24,7 +25,7 @@ export function createCodexAgent(
         return {
           available: false,
           kind: "missing-executable",
-          reason: `Codex not found. ${codexProfile.installationHint}`,
+          reason: { text: `Codex not found. ${codexProfile.installationHint}` },
           checkedAt,
         };
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -38,7 +39,7 @@ export function createCodexAgent(
         });
         const timeout = new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => {
-            reject(new Error("Codex availability check timed out. Refresh agent availability."));
+            reject(new CoreTextError({ code: "agent.codexTimeout" }));
             void stint.cancel().catch(() => {});
           }, options.timeoutMs ?? 20_000);
         });
@@ -54,10 +55,7 @@ export function createCodexAgent(
               : /not found/i.test(reason)
                 ? "missing-executable"
                 : "check-failed",
-          reason,
-          ...(error instanceof AgentAuthenticationError
-            ? { reasonMessage: error.reasonMessage }
-            : {}),
+          reason: errorText(error),
           checkedAt,
         };
       } finally {

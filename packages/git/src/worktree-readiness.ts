@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreText } from "@stintwork/core";
+import type { CoreText } from "@stintwork/core";
 import { execFile, spawn } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { CoreTextMessage } from "@stintwork/core";
 
 const execute = promisify(execFile);
 
@@ -18,7 +19,7 @@ export async function worktreeGitDirectories(worktree: string): Promise<string[]
 
 export async function installWorktreeDependencies(
   worktree: string,
-  progress: (text: string, message?: CoreTextMessage) => void,
+  progress: (text: CoreText) => void,
   reinstall = false,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -53,11 +54,10 @@ export async function installWorktreeDependencies(
         : ["install", "--frozen-lockfile"];
   async function install(offline: boolean) {
     progress(
-      `Installing worktree dependencies with ${manager} (${offline ? "offline" : "online"}).\n`,
-      {
+      coreText({
         code: "stream.installDependencies",
         params: { manager: manager as string, connection: offline ? "offline" : "online" },
-      },
+      }),
     );
     const child = spawn(
       manager as string,
@@ -72,8 +72,8 @@ export async function installWorktreeDependencies(
         },
       },
     );
-    child.stdout.setEncoding("utf8").on("data", progress);
-    child.stderr.setEncoding("utf8").on("data", progress);
+    child.stdout.setEncoding("utf8").on("data", (text: string) => progress({ text }));
+    child.stderr.setEncoding("utf8").on("data", (text: string) => progress({ text }));
     await new Promise<void>((resolveInstall, reject) => {
       let failure: Error | undefined;
       child.on("error", (error) => {
@@ -92,11 +92,9 @@ export async function installWorktreeDependencies(
     await install(true);
   } catch {
     signal?.throwIfAborted();
-    progress("Offline dependency install unavailable; trying online.\n", {
-      code: "stream.offlineUnavailable",
-    });
+    progress(coreText({ code: "stream.offlineUnavailable" }));
     await install(false);
   }
   signal?.throwIfAborted();
-  progress("Worktree dependencies are ready.\n", { code: "stream.dependenciesReady" });
+  progress(coreText({ code: "stream.dependenciesReady" }));
 }

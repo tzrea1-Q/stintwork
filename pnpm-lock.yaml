@@ -83,7 +83,11 @@ importers:
         specifier: 2.9.0
         version: 2.9.0
 
-  packages/git: {}
+  packages/git:
+    dependencies:
+      '@stintwork/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/server:
     dependencies:

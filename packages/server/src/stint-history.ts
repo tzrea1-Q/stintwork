@@ -1,13 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync } from "node:child_process";
-import { appendFileSync, realpathSync } from "node:fs";
-import { join } from "node:path";
 import {
+  coreTextWire,
+  coreText,
   indexStints,
   type CheckpointWarning,
   type RepoFiles,
   type StintLogEntry,
 } from "@stintwork/core";
+
+import { execFileSync } from "node:child_process";
+import { appendFileSync, realpathSync } from "node:fs";
+import { join } from "node:path";
+
 import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import { createCheckpoint, committedRiskyPaths } from "@stintwork/git";
 import type { Hono } from "hono";
@@ -101,6 +105,8 @@ export function addStintHistoryRoute(app: Hono, files: RepoFiles) {
     const stint = indexStints(files).stints.find(
       (candidate) => candidate.id === context.req.param("stintId"),
     );
-    return stint ? context.json({ stint }) : context.json({ reason: "Stint not found." }, 404);
+    return stint
+      ? context.json(coreTextWire({ stint }))
+      : context.json(coreTextWire({ reason: coreText({ code: "server.stintNotFound" }) }), 404);
   });
 }

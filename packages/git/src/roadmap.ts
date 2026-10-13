@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commitWithIdentity } from "./checkpoints.js";
 import { withRepoLock } from "./index.js";
 
-export class RoadmapWriteRefusal extends Error {}
+export class RoadmapWriteRefusal extends CoreTextError {}
 
 export function commitRoadmap(
   root: string,
@@ -23,10 +24,10 @@ export function commitRoadmap(
       }).trim();
     const parent = lstatSync(directory, { throwIfNoEntry: false });
     if (parent && (!parent.isDirectory() || parent.isSymbolicLink()))
-      throw new RoadmapWriteRefusal(".stintwork must be a real directory.");
+      throw new RoadmapWriteRefusal({ code: "server.projectDirectory" });
     const stat = lstatSync(path, { throwIfNoEntry: false });
     if (stat && (!stat.isFile() || stat.isSymbolicLink()))
-      throw new RoadmapWriteRefusal("roadmap.md must be a regular file.");
+      throw new RoadmapWriteRefusal({ code: "roadmap.regularFile" });
     const tracked = git(["ls-files", "--", relative]);
     if (
       git(["status", "--porcelain=v1", "--untracked-files=all", "--", relative]) ||
@@ -35,9 +36,7 @@ export function commitRoadmap(
         tracked &&
         git(["hash-object", `--path=${relative}`, path]) !== git(["rev-parse", `HEAD:${relative}`]))
     )
-      throw new RoadmapWriteRefusal(
-        "Commit or discard hand edits to roadmap.md before changing the roadmap.",
-      );
+      throw new RoadmapWriteRefusal({ code: "roadmap.commitHandEdits" });
     const original = stat ? readFileSync(path, "utf8") : undefined;
     const edited = update(original ?? "");
     if (edited.text === (original ?? "")) return null;

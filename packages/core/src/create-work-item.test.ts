@@ -51,7 +51,7 @@ test("uses an explicit folder slug while preserving a Chinese-only title", () =>
   expect(creation.roadmapText).toContain("- fix-login\n");
 });
 
-test("an explicit slug preserves title whitespace without bypassing title validation", () => {
+test("an explicit slug trims title whitespace without bypassing title validation", () => {
   expect(
     parse(
       prepareWorkItemCreation(
@@ -60,7 +60,7 @@ test("an explicit slug preserves title whitespace without bypassing title valida
         "",
       ).workflowText,
     ).title,
-  ).toBe(" 修复登录 ");
+  ).toBe("修复登录");
   for (const title of ["", " ", "修复\n登录", null])
     expect(() =>
       prepareWorkItemCreation({ title, slug: "fix-login", workflow: "bug" }, builtInWorkflows, ""),

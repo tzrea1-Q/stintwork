@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError, coreText, type CoreText } from "./core-text.js";
 import { parseDocument } from "yaml";
 import type { GateAttentionItem } from "./attention.js";
 import type { ProjectSnapshot } from "./project.js";
@@ -6,7 +7,6 @@ import type { StagedWorkItem } from "./stages.js";
 import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
 import { reviewGateConditions } from "./review-evidence.js";
 import { outputGateConditions, type GateCondition } from "./gate-output.js";
-import { coreTextMessage } from "./core-text.js";
 
 export type GateRecord = { by: string; at: string; commit: string };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
@@ -19,19 +19,19 @@ export function gateReadiness(
   const position = stages.findIndex(({ id }) => id === item.stage);
   const nextStage = stages[position + 1]?.id;
   const stageStint = item.stints.find((stint) => stint.stage === item.stage);
-  let reason: string | null = null;
-  if (item.merged) reason = "This work item is shipped.";
+  let reason: CoreText | null = null;
+  if (item.merged) reason = coreText({ code: "workItem.shipped" });
   else if (position < 0 || !nextStage || stages[position].gate === "merge")
-    reason = "This stage has no approval gate.";
+    reason = coreText({ code: "gate.noApproval" });
   else if (item.activeStint || item.stints.some(({ status }) => status === "running"))
-    reason = "A stint is running on this work item. Finish or stop it before approving.";
+    reason = coreText({ code: "gate.running" });
   else if (
     stages[position].column === "implement" &&
     stages[position].gate === "manual" &&
     (item.tickets.length > 0 || !stages[position].skill)
   ) {
     if (!item.tickets.every(({ resolved }) => resolved))
-      reason = "Every ticket must be resolved before approving.";
+      reason = coreText({ code: "gate.ticketsUnresolved" });
   } else {
     const evidenceAfter = [
       item.stages[item.stage ?? ""]?.reopened,
@@ -43,16 +43,16 @@ export function gateReadiness(
           : [],
       )
       .filter(Number.isFinite);
-    if (stageStint?.status !== "finished") reason = "The stage stint must finish before approving.";
+    if (stageStint?.status !== "finished") reason = coreText({ code: "gate.stintUnfinished" });
     else if (
       evidenceAfter.some((at) => !stageStint.endedAt || Date.parse(stageStint.endedAt) <= at)
     )
       reason =
         stages[position].gate === "evidence"
-          ? "Start a new Review stint after reopening or entering Review."
-          : "The stage stint must finish before approving.";
+          ? coreText({ code: "gate.reviewRestart" })
+          : coreText({ code: "gate.stintUnfinished" });
     else if (stages[position].gate !== "evidence" && !stageStint.handoff)
-      reason = "The finished stage stint needs a handoff before approving.";
+      reason = coreText({ code: "gate.handoffMissing" });
   }
   const stage = stages[position];
   const conditions: GateCondition[] =
@@ -65,9 +65,6 @@ export function gateReadiness(
   return {
     ready: reason === null,
     reason,
-    reasonMessage:
-      coreTextMessage(reason) ??
-      conditions.find((condition) => condition.action === reason)?.actionMessage,
     nextStage,
     stageStint: stageStint ?? null,
     conditions,
@@ -110,12 +107,12 @@ export function workflowGate(
 ): string {
   const document = parseDocument(text ?? "");
   if (document.errors.length || document.warnings.length)
-    throw new Error("workflow.yaml must be valid before changing a gate.");
+    throw new CoreTextError({ code: "gate.validWorkflowRequired" });
   const stages = workflows[item.workflow].stages;
   const position = stages.findIndex(({ id }) => id === stage);
   const nextStage = stages[position + 1]?.id;
   if (position < 0 || (action === "approve" && (item.stage !== stage || !nextStage)))
-    throw new Error("This stage has no current approval gate.");
+    throw new CoreTextError({ code: "gate.noCurrentApproval" });
   if (document.get("workflow") !== item.workflow) document.set("workflow", item.workflow);
   document.set("stage", action === "approve" ? nextStage : stage);
   document.setIn(["stages", stage, action === "approve" ? "approved" : "reopened"], record);

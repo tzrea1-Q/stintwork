@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { riskyPathReasons } from "./risky-paths.js";
@@ -97,7 +98,8 @@ export async function workItemDiff(
   slug: string,
   requestedMainBranch?: string,
 ): Promise<WorkItemDiff> {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const mainBranch = requestedMainBranch ?? (await defaultMainBranch(repoRoot));
   if (!mainBranch) throw new Error("Cannot find the main branch: neither main nor master exists.");
   const git = async (args: string[]) =>

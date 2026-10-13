@@ -52,7 +52,10 @@ async function fixture(workflow: string | null = original, hang = false) {
     },
     {
       ...fakeAgentProfiles.grok,
-      availability: { available: false, reason: "Authentication required. Use grok login." },
+      availability: {
+        available: false,
+        reason: { text: "Authentication required. Use grok login." },
+      },
       launch: createFakeAgentLauncher([], [], { profile: "grok" }),
     },
   ]);

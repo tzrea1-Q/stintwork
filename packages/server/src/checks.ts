@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { appendFileSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import {
+  errorText,
+  coreTextWire,
+  CoreTextError,
+  coreText,
   defaultCheckCommands,
   indexProject,
   isCheckExecution,
@@ -14,6 +13,13 @@ import {
   type CheckLiveMessage,
   type WorkItemChecks,
 } from "@stintwork/core";
+
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { appendFileSync, lstatSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { ensureLocalIgnore } from "./stint-repo-writes.js";
+
 import type { Hono } from "hono";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -63,7 +69,7 @@ function prepareLog(root: string, id: string) {
     directory = join(directory, part);
     const stat = lstatSync(directory, { throwIfNoEntry: false });
     if (stat && (!stat.isDirectory() || stat.isSymbolicLink()))
-      throw new Error("Check log directories must be real directories.");
+      throw new CoreTextError({ code: "checks.logDirectories" });
     if (!stat) mkdirSync(directory);
   }
   return join(directory, `${id}.jsonl`);
@@ -122,14 +128,14 @@ export function createChecks(
     }
   }
   function start(slug: string, worktree: string): CheckExecution {
-    if (closing) throw new Error("The project server is stopping.");
-    if (active.has(slug)) throw new Error("Checks are already active for this work item.");
+    if (closing) throw new CoreTextError({ code: "server.stopping" });
+    if (active.has(slug)) throw new CoreTextError({ code: "checks.alreadyActive" });
     if (git(worktree, "symbolic-ref", "--short", "HEAD") !== `stintwork/${slug}`)
-      throw new Error("The worktree is not on the work item branch.");
+      throw new CoreTextError({ code: "checks.worktreeBranch" });
     if (git(worktree, "status", "--porcelain", "--untracked-files=all"))
-      throw new Error("Commit worktree changes before checking a commit.");
+      throw new CoreTextError({ code: "checks.commitChanges" });
     const configured = commands(root);
-    if (!configured.length) throw new Error("No checks are configured for this project.");
+    if (!configured.length) throw new CoreTextError({ code: "checks.noneConfigured" });
     const commit = git(worktree, "rev-parse", "HEAD");
     const execution: CheckExecution = {
       id: randomUUID(),
@@ -178,7 +184,7 @@ export function createChecks(
         git(worktree, "rev-parse", "HEAD") !== commit ||
         git(worktree, "status", "--porcelain", "--untracked-files=all")
       )
-        throw new Error("The worktree changed during checks; commit the changes and check again.");
+        throw new CoreTextError({ code: "checks.worktreeChanged" });
     }
     async function executeChecks() {
       for (const result of execution.results) {
@@ -293,7 +299,10 @@ export function addCheckRoutes(
     context.header("Cache-Control", "no-store");
     const origin = context.req.header("origin");
     if (context.req.method !== "GET" && origin && origin !== new URL(context.req.url).origin)
-      return context.json({ reason: "Origin must match the project server." }, 403);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+        403,
+      );
     await next();
   });
   function locate(slug: string) {
@@ -303,23 +312,27 @@ export function addCheckRoutes(
     const item = indexProject(project.files, { name: "" }).workItems.find(
       (item) => item.slug === slug,
     );
-    if (!item) return { reason: "Work item not found.", status: 404 as const };
+    if (!item)
+      return { reason: coreText({ code: "server.workItemNotFound" }), status: 404 as const };
     if (item.merged) return { merged: item.merged };
     const worktree = project.worktreePaths.get(slug);
     return worktree
       ? { worktree }
-      : { reason: "This work item has no worktree to check.", status: 409 as const };
+      : { reason: coreText({ code: "checks.worktreeMissing" }), status: 409 as const };
   }
   app.get("/api/work-items/:slug/checks", (context) => {
     const slug = context.req.param("slug");
     const located = locate(slug);
-    if ("reason" in located) return context.json({ reason: located.reason }, located.status);
+    if ("reason" in located)
+      return context.json(coreTextWire({ reason: located.reason }), located.status);
     if (located.merged)
-      return context.json({
-        headCommit: located.merged.commit,
-        commands: checks.commands(),
-        ...checks.evidence(slug),
-      });
+      return context.json(
+        coreTextWire({
+          headCommit: located.merged.commit,
+          commands: checks.commands(),
+          ...checks.evidence(slug),
+        }),
+      );
     try {
       const body: WorkItemChecks = {
         headCommit: git(located.worktree, "rev-parse", "HEAD"),
@@ -331,31 +344,30 @@ export function addCheckRoutes(
         body.headCommit,
         body.checks.map((result) => result.commit),
       );
-      return context.json(body);
+      return context.json(coreTextWire(body));
     } catch (error) {
-      return context.json({ reason: String(error) }, 503);
+      return context.json(coreTextWire({ reason: errorText(error, true) }), 503);
     }
   });
   app.post("/api/work-items/:slug/checks", (context) => {
     const slug = context.req.param("slug");
     const located = locate(slug);
-    if ("reason" in located) return context.json({ reason: located.reason }, located.status);
-    if ("merged" in located) return context.json({ reason: "This work item is shipped." }, 409);
+    if ("reason" in located)
+      return context.json(coreTextWire({ reason: located.reason }), located.status);
+    if ("merged" in located)
+      return context.json(coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }), 409);
     if (isStintActive(slug))
-      return context.json(
-        { reason: "Finish the active stint or workflow write before checking a commit." },
-        409,
-      );
+      return context.json(coreTextWire({ reason: coreText({ code: "checks.activeStint" }) }), 409);
     try {
-      return context.json({ execution: checks.start(slug, located.worktree) }, 202);
+      return context.json(coreTextWire({ execution: checks.start(slug, located.worktree) }), 202);
     } catch (error) {
-      return context.json({ reason: String(error) }, 409);
+      return context.json(coreTextWire({ reason: errorText(error, true) }), 409);
     }
   });
   app.post("/api/work-items/:slug/checks/cancel", (context) => {
     const execution = checks.cancel(context.req.param("slug"));
     return execution
-      ? context.json({ execution }, 202)
-      : context.json({ reason: "No active checks for this work item." }, 409);
+      ? context.json(coreTextWire({ execution }), 202)
+      : context.json(coreTextWire({ reason: coreText({ code: "checks.notActive" }) }), 409);
   });
 }

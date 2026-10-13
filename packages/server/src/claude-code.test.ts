@@ -283,7 +283,7 @@ test("WebSocket snapshots publish login attention and its removal after availabi
             available: false,
             kind: "login-required",
             checkedAt: "2026-10-09T10:00:00Z",
-            reason: "Sign in with claude auth login.",
+            reason: { text: "Sign in with claude auth login." },
           },
   });
   const server = await project.start();

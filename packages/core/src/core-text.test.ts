@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { coreTextReason } from "./index.js";
+import { CoreTextError, coreText, errorText, type CoreTextMessage } from "./index.js";
 
 test.each([
   ["server.jsonShip", "A JSON Ship action is required."],
@@ -277,12 +277,20 @@ test.each([
   ["git.riskyMetadata", "Cannot read risky path metadata."],
   ["git.riskySize", "Cannot read risky path size."],
 ])("%s is returned alongside byte-identical English", (code, reason) => {
-  expect(coreTextReason(reason)).toEqual({ reason, reasonMessage: { code } });
+  expect(coreText({ code } as CoreTextMessage)).toEqual({ text: reason, code });
 });
 
 test.each(["Raw git output", "Parser warning 原文", "Agent raw error", "__proto__"])(
   "unknown text remains verbatim: %s",
   (reason) => {
-    expect(coreTextReason(reason)).toEqual({ reason });
+    expect(errorText(new Error(reason))).toEqual({ text: reason });
   },
 );
+
+test("stringified coded errors retain the legacy Error prefix", () => {
+  const error = new CoreTextError({ code: "server.stopping" });
+  expect(errorText(error, true)).toEqual({
+    text: "Error: The project server is stopping.",
+    code: "server.stopping",
+  });
+});
