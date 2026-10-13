@@ -1,6 +1,6 @@
 # 01 — Shared components, tokens and browser harness
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
