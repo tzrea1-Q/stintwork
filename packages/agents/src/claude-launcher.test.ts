@@ -25,6 +25,7 @@ vi.mock("node:child_process", async (importOriginal) => {
       return original.spawn(
         process.execPath,
         [
+          "--conditions=development",
           "--import",
           loader,
           "--input-type=module",

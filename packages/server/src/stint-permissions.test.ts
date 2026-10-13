@@ -401,6 +401,7 @@ test("a broken agent pipe returns an error even when the selected decision was l
     const child = spawn(
       process.execPath,
       [
+        "--conditions=development",
         "--import",
         createRequire(import.meta.url).resolve("tsx"),
         fileURLToPath(new URL("../../agents/src/fake-agent.ts", import.meta.url)),

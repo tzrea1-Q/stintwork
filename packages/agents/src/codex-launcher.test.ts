@@ -23,6 +23,7 @@ vi.mock("node:child_process", async (importOriginal) => {
       return original.spawn(
         process.execPath,
         [
+          "--conditions=development",
           "--import",
           require.resolve("tsx"),
           fileURLToPath(new URL("./fake-agent.ts", import.meta.url)),

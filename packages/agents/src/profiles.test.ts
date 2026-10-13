@@ -84,6 +84,7 @@ test.each(contracts)(
     const child = spawn(
       process.execPath,
       [
+        "--conditions=development",
         "--import",
         createRequire(import.meta.url).resolve("tsx"),
         fileURLToPath(new URL("./fake-agent.ts", import.meta.url)),
