@@ -1,0 +1,24 @@
+name: Feature idea
+description: Suggest a change to Stintwork.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+      description: How would this change help?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What else have you tried or considered? Write "none" if there are no alternatives.
+    validations:
+      required: true
