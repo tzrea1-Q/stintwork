@@ -2,6 +2,9 @@
 import type { ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./create-work-item.css";
+import { workflowName } from "./i18n/workflow-names";
+import { en } from "./i18n/en";
+import { useLanguage } from "./i18n/language";
 
 export function CreateWorkItem({
   snapshot,
@@ -12,6 +15,7 @@ export function CreateWorkItem({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [title, setTitle] = useState("");
@@ -50,13 +54,13 @@ export function CreateWorkItem({
           signal: controller.signal,
         });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.reason ?? "Could not preview the work item.");
+        if (!response.ok) throw new Error(result.reason ?? en.planning.create.errors.preview);
         if (typeof result.slug !== "string" || !result.slug)
-          throw new Error("Invalid slug preview.");
+          throw new Error(en.planning.create.errors.invalidPreview);
         if (!disposed) setPreview({ input, slug: result.slug });
       } catch (cause) {
         if (!disposed)
-          setError(cause instanceof Error ? cause.message : "Could not preview the work item.");
+          setError(cause instanceof Error ? cause.message : en.planning.create.errors.preview);
       }
     }, 150);
     return () => {
@@ -65,6 +69,22 @@ export function CreateWorkItem({
       controller.abort();
     };
   }, [input]);
+
+  function refusal(message: string) {
+    const key = (
+      Object.keys(en.planning.create.errors) as (keyof typeof en.planning.create.errors)[]
+    ).find((key) => en.planning.create.errors[key] === message);
+    if (key) return t.planning.create.errors[key];
+    const exists = /^Work item ([a-z0-9]+(?:-[a-z0-9]+)*) already exists( in Git)?\.$/.exec(
+      message,
+    );
+    if (exists)
+      return exists[2]
+        ? t.planning.create.existsInGit(exists[1])
+        : t.planning.create.exists(exists[1]);
+    const directory = /^(\.scratch|\.stintwork) must be a real directory\.$/.exec(message);
+    return directory ? t.planning.create.directory(directory[1]) : message;
+  }
 
   async function create() {
     if (saving || !slug) return;
@@ -77,10 +97,10 @@ export function CreateWorkItem({
         body: input,
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? "Could not create the work item.");
+      if (!response.ok) throw new Error(result.reason ?? en.planning.create.errors.save);
       onCreated();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the work item.");
+      setError(cause instanceof Error ? cause.message : en.planning.create.errors.save);
       setSaving(false);
     }
   }
@@ -102,7 +122,7 @@ export function CreateWorkItem({
         }
       }}
     >
-      <h2 id={titleId}>Create work item</h2>
+      <h2 id={titleId}>{t.planning.create.title}</h2>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -111,23 +131,23 @@ export function CreateWorkItem({
       >
         <fieldset disabled={saving}>
           <label>
-            Title
+            {t.planning.create.titleLabel}
             <input required value={title} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <label>
-            Workflow
+            {t.planning.create.workflow}
             <select value={workflow} onChange={(event) => setWorkflow(event.target.value)}>
               {Object.values(snapshot.workflows).map((entry) => (
                 <option key={entry.id} value={entry.id}>
-                  {entry.name}
+                  {workflowName(entry, t)}
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Milestone (optional)
+            {t.planning.create.milestone}
             <select value={milestone} onChange={(event) => setMilestone(event.target.value)}>
-              <option value="">No milestone</option>
+              <option value="">{t.planning.create.noMilestone}</option>
               {snapshot.milestones.map((entry) => (
                 <option key={entry.id} value={entry.id}>
                   {entry.name}
@@ -136,36 +156,34 @@ export function CreateWorkItem({
             </select>
           </label>
           <label>
-            Intent (optional)
+            {t.planning.create.intent}
             <textarea rows={4} value={intent} onChange={(event) => setIntent(event.target.value)} />
           </label>
           <p role="status">
             {slug ? (
               <>
-                Folder: <code>.scratch/{slug}/</code>
+                {t.planning.create.folder} <code>.scratch/{slug}/</code>
               </>
             ) : error ? (
-              "Folder preview unavailable."
+              t.planning.create.unavailable
             ) : title.trim() ? (
-              "Checking the folder name…"
+              t.planning.create.checking
             ) : (
-              "Enter a title to preview the folder name."
+              t.planning.create.enterTitle
             )}
           </p>
           {error && (
             <p role="alert" className="warning">
-              {error}
+              {refusal(error)}
             </p>
           )}
-          <p className="muted">
-            Creates workflow.yaml and, if selected, updates the roadmap in one commit.
-          </p>
+          <p className="muted">{t.planning.create.description}</p>
           <footer>
             <button type="button" className="top-button" onClick={onClose}>
-              Cancel
+              {t.planning.create.cancel}
             </button>
             <button type="submit" className="top-button" disabled={!slug}>
-              {saving ? "Creating…" : "Create work item"}
+              {saving ? t.planning.create.saving : t.planning.create.title}
             </button>
           </footer>
         </fieldset>

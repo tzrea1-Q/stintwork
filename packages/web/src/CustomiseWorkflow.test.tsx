@@ -10,6 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 function snapshot(id = "feature") {
@@ -32,9 +33,36 @@ function fetcher(id: keyof typeof builtInWorkflowYaml = "feature") {
   return fetch;
 }
 afterEach(() => {
+  localStorage.clear();
+  document.documentElement.lang = "en";
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.history.replaceState({}, "", "/");
+});
+
+test("Chinese customisation preserves the exact workflow YAML, path and commit message", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const fetch = fetcher();
+  const user = userEvent.setup();
+  const onClose = vi.fn();
+  render(
+    <LanguageProvider>
+      <CustomiseWorkflow id="feature" onClose={onClose} />
+    </LanguageProvider>,
+  );
+  const dialog = within(screen.getByRole("dialog", { name: "自定义功能工作流" }));
+  expect(await dialog.findByText(".stintwork/workflows/feature.yaml")).toBeInTheDocument();
+  expect(
+    dialog.getByRole("region", { name: "内置工作流 YAML" }).querySelector("code")?.textContent,
+  ).toBe(builtInWorkflowYaml.feature);
+  expect(dialog.getByText(/Customise workflow feature/)).toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: "取消" })).toBeInTheDocument();
+  await user.click(dialog.getByRole("button", { name: "确认自定义" }));
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/workflows/feature/customise",
+    expect.objectContaining({ method: "POST", body: "{}" }),
+  );
+  expect(onClose).toHaveBeenCalledOnce();
 });
 
 test.each(["drawer", "palette"])(

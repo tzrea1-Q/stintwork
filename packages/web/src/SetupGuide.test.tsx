@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { SetupGuide } from "./SetupGuide";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const original = "# Developer rules\nKeep this exactly.\n";
 function guide() {
@@ -73,8 +74,62 @@ function server() {
   return fetch;
 }
 afterEach(() => {
+  localStorage.clear();
+  document.documentElement.lang = "en";
   vi.unstubAllGlobals();
   window.history.replaceState({}, "", "/");
+});
+
+test("Chinese setup preserves proposed content, warnings, paths and skill commands", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const user = userEvent.setup();
+  const plan = guide();
+  const hint =
+    "Use npx skills@latest add mattpocock/skills, select Claude Code and /to-tickets. Expected locations: ~/.claude/skills/, <project>/.agents/skills/. For a custom skill, use its own source. Stintwork does not install skills.";
+  plan.skills[0].skills[1].installationHint = hint;
+  const warning = { path: "docs/中文.md", message: "Core warning 原文" };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async (_url: string, options?: RequestInit) =>
+        new Response(
+          JSON.stringify({
+            ...plan,
+            warnings: [warning],
+            ...(options?.method === "POST" ? { changes: [], commit: "a".repeat(40) } : {}),
+          }),
+        ),
+    ),
+  );
+  render(
+    <LanguageProvider>
+      <SetupGuide />
+    </LanguageProvider>,
+  );
+  expect(await screen.findByRole("checkbox", { name: "AGENTS.md (更改)" })).toBeChecked();
+  expect(screen.getByRole("alert")).toHaveTextContent("docs/中文.md: Core warning 原文");
+  await user.click(screen.getByText("预览 AGENTS.md"));
+  const change = within(screen.getByRole("region", { name: "更改 AGENTS.md" }));
+  expect(change.getByText("当前内容").nextElementSibling?.textContent).toBe(original);
+  expect(change.getByText("拟议内容").nextElementSibling?.textContent).toBe(
+    plan.changes.find(({ path }) => path === "AGENTS.md")?.content,
+  );
+  const skills = within(screen.getByRole("region", { name: "Claude Code 技能" }));
+  expect(skills.getByText("已找到")).toBeInTheDocument();
+  expect(skills.getByText("缺失")).toBeInTheDocument();
+  expect(skills.getByText(/使用 npx skills@latest add mattpocock\/skills/)).toHaveTextContent(
+    "选择 Claude Code 和 /to-tickets。预期位置：~/.claude/skills/, <project>/.agents/skills/。",
+  );
+  expect(skills.getByText("/to-spec")).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: "Grok Build 技能" })).toHaveTextContent(
+    "Team / Design: /design — 无法确定",
+  );
+  await user.click(screen.getByRole("button", { name: "审查所选更改" }));
+  const confirmation = within(screen.getByRole("region", { name: "确认设置" }));
+  expect(confirmation.getByText("Set up Stintwork")).toBeInTheDocument();
+  expect(confirmation.getByRole("button", { name: "返回选择" })).toBeInTheDocument();
+  await user.click(confirmation.getByRole("button", { name: "确认并应用设置" }));
+  expect(await screen.findByRole("status")).toHaveTextContent("设置已提交：aaaaaaa。");
 });
 
 test("the Setup chip opens exact current/proposed file content and a read-only stage skill report", async () => {

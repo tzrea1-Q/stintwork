@@ -3,6 +3,8 @@ import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { Command } from "cmdk";
 import { Check, Search, X } from "lucide-react";
 import { useEffect, useId, useRef } from "react";
+import { workflowName } from "./i18n/workflow-names";
+import { useLanguage } from "./i18n/language";
 
 export function CommandPalette({
   snapshot,
@@ -21,6 +23,7 @@ export function CommandPalette({
   onCustomiseWorkflow: (id: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const input = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -54,21 +57,21 @@ export function CommandPalette({
       }}
     >
       <h2 className="sr-only" id={titleId}>
-        Command palette
+        {t.planning.palette.title}
       </h2>
-      <Command label="Search work items and milestones" vimBindings={false}>
+      <Command label={t.planning.palette.search} vimBindings={false}>
         <div className="command-search">
           <Search size={16} className="muted" aria-hidden="true" />
           <Command.Input
             ref={input}
-            placeholder="Find a work item or milestone…"
-            aria-label="Search work items and milestones"
+            placeholder={t.planning.palette.placeholder}
+            aria-label={t.planning.palette.search}
           />
           <button
             type="button"
             className="top-button"
             onClick={onClose}
-            aria-label="Close command palette"
+            aria-label={t.planning.palette.close}
             onKeyDown={(event) => {
               if (event.key === "Enter") event.stopPropagation();
             }}
@@ -77,32 +80,32 @@ export function CommandPalette({
           </button>
         </div>
         <Command.List>
-          <Command.Empty>No work items or milestones found.</Command.Empty>
-          <Command.Group heading="Actions">
+          <Command.Empty>{t.planning.palette.empty}</Command.Empty>
+          <Command.Group heading={t.planning.palette.actions}>
             <Command.Item
-              value="Create work item"
+              value={t.planning.palette.create}
               onSelect={() => {
                 onClose();
                 onCreateItem();
               }}
             >
-              Create work item
+              {t.planning.palette.create}
             </Command.Item>
             {Object.values(builtInWorkflows).map((workflow) => (
               <Command.Item
                 key={workflow.id}
-                value={`Customise ${workflow.name} workflow`}
+                value={t.planning.palette.customise(workflowName(workflow, t))}
                 keywords={[workflow.id]}
                 onSelect={() => {
                   onClose();
                   onCustomiseWorkflow(workflow.id);
                 }}
               >
-                Customise {workflow.name} workflow
+                {t.planning.palette.customise(workflowName(workflow, t))}
               </Command.Item>
             ))}
           </Command.Group>
-          <Command.Group heading="Work items">
+          <Command.Group heading={t.planning.palette.workItems}>
             {snapshot.workItems.map((item) => (
               <Command.Item
                 key={item.slug}
@@ -118,8 +121,8 @@ export function CommandPalette({
               </Command.Item>
             ))}
           </Command.Group>
-          <Command.Group heading="Milestone filter">
-            {[{ id: "", name: "All" }, ...snapshot.milestones].map((entry) => (
+          <Command.Group heading={t.planning.palette.milestones}>
+            {[{ id: "", name: t.planning.palette.all }, ...snapshot.milestones].map((entry) => (
               <Command.Item
                 key={entry.id}
                 value={`milestone ${entry.id}`}
@@ -130,13 +133,15 @@ export function CommandPalette({
                 }}
               >
                 <span>{entry.name}</span>
-                {entry.id === milestone && <Check size={14} aria-label="Selected milestone" />}
+                {entry.id === milestone && (
+                  <Check size={14} aria-label={t.planning.palette.selected} />
+                )}
               </Command.Item>
             ))}
           </Command.Group>
         </Command.List>
         <footer className="command-footer">
-          <span>↑ ↓ to navigate · Enter to select</span>
+          <span>{t.planning.palette.navigation}</span>
           <kbd>Esc</kbd>
         </footer>
       </Command>
