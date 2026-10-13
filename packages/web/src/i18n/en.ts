@@ -713,6 +713,12 @@ export const en = {
       failed: "failed",
     },
   },
+  slugInput: {
+    label: "Folder name",
+    hint: "Enter a folder name using lowercase English letters, digits and single hyphens (up to 48 characters).",
+    invalid:
+      "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+  },
 };
 
 type Messages<Source> = {

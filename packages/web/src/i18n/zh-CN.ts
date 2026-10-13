@@ -734,4 +734,9 @@ export const zhCN: Catalog = {
     },
     progress: { pending: "待处理", in_progress: "进行中", completed: "已完成", failed: "失败" },
   },
+  slugInput: {
+    label: "文件夹名称",
+    hint: "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+    invalid: "文件夹名称必须使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+  },
 };
