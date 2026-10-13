@@ -18,3 +18,30 @@ Scan tracked files and reachable Git history for secrets and private paths befor
 - [ ] Preparation is merged before ticket 03. Visibility stays private until the maintainer changes it.
 
 ## Comments
+
+**Codex, 2026-10-13:**
+
+Added `.github/ISSUE_TEMPLATE/bug-report.yml`, `feature-idea.yml` and `config.yml`, plus `CONTRIBUTING.md` and `SECURITY.md`. The forms collect bug details or an idea's problem, proposed change and alternatives. Blank issues are disabled. Security reports point to GitHub private vulnerability reporting. The docs describe the existing ticket and coordinator process, source commands and local-agent limitations. `scripts/check-licence-headers.mjs` checks package source extensions, not `.md` or `.yml`; these files need no SPDX header.
+
+Scan method: a temporary Python standard-library regex scanner, not gitleaks or trufflehog. Read all 479 tracked files and their names at HEAD `4dfcc1a3a133074f6004e52ade0bc7b40333701c` with `git ls-tree -r -z --name-only HEAD` and `git show HEAD:<path>`. Scanned full reachable patch history with `git log -p --all --full-history -m --root --no-ext-diff --no-textconv --format=SCAN_COMMIT:%H`, including added, removed and context lines. All 221 unique commits from `git rev-list --all --count` appeared in the scan. Also checked author and committer email metadata with `git log --all --format=%H%x09%ae%x09%ce`; the 221 records have one expected identity pair. Email values are omitted. This covers locally reachable refs, not unfetched remote refs, reflogs or unreachable objects.
+
+Patterns covered AWS access-key IDs, GitHub token prefixes (`ghp_`, `gho_`, `github_pat_` and related prefixes), npm tokens, provider keys beginning `sk-`, private-key blocks, credential assignments with quoted or bare values, and `.env` filenames. Private-path patterns covered `/Users/`, `/home/` and Windows user directories. The username check excluded the GitHub handle `tzrea1-Q`. Matched values were not written to the scan results or this comment.
+
+Findings:
+
+- No AWS, GitHub, npm or provider keys, private-key blocks or tracked `.env` files matched at HEAD or in history. No real credential was found among assignment candidates.
+- No private absolute paths or machine-username occurrences outside the GitHub handle matched at HEAD or in history. There are no current tracked private paths to refer to the coordinator. Author and committer emails are expected Git metadata, not exposed credentials; no machine-username match occurred there.
+- Assignment candidates occurred in the six paths below, at HEAD and across 22 unique historical commits. Historical matches were compared with the reviewed HEAD lines. The only differing historical candidates were earlier UI label strings in `CheckpointWarnings.tsx`; those were inspected separately. Keep all six paths unchanged: the matches are a test fixture or syntax, not real credentials. No documentation example needed separate disposition.
+
+| Path | Historical commit example | Commits with patch matches | Disposition |
+|---|---|---|---|
+| `packages/agents/src/claude-code.test.ts` | `0e705a211177119dd454280360f1bcfb301e1ab0` | 8 | Synthetic login token used to test that credentials are not published. Keep the fixture. |
+| `packages/agents/src/grok-config.ts` | `3d58c8e1dfc72b997b8f80a646b0efd77eedf89c` | 6 | Parser parameter type, not a credential assignment. No action. |
+| `packages/core/src/safe-commands.ts` | `00be1cc8d68e628f585a234ce6a9ff0e0ea40884` | 2 | Command-parser variable and comparisons, not credentials. No action. |
+| `packages/web/src/CheckpointWarnings.tsx` | `026ba251a3b8f0dc66779b3d1dd052354351d990` | 7 | Warning label strings and translation references, not credentials. No action. |
+| `packages/web/src/i18n/en.ts` | `2fe4fc3ace8f61144f8bfdcbd14ab2056fdcd92a` | 3 | Warning label key and translation, not credentials. No action. |
+| `packages/web/src/i18n/zh-CN.ts` | `2f1a025de045413a2e3243a5ff4b88c437cc7143` | 5 | Warning label key and translation, not credentials. No action. |
+
+Checks run: `pnpm --config.verify-deps-before-run=false format:check` passed (307 files). `pnpm --config.verify-deps-before-run=false lint` passed (283 licence headers; 308 linted files), with one existing informational Biome deprecation notice. A Node check using the installed `yaml` parser passed for the forms' requested fields, unique field IDs, log warning, disabled blank issues and security contact URL. `git diff --check` passed. No typecheck, test suite or build was run.
+
+Open risks: regex scanning is not proof that no secret exists. The maintainer still needs to confirm that private vulnerability reporting is enabled and the route works before opening. GitHub rendering and access were not tested. Visibility is unchanged; no repo settings, history, commits or pushes were changed. Ticket Status is unchanged.
