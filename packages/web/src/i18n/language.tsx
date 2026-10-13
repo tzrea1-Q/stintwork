@@ -85,9 +85,19 @@ export function useErrorText<Key extends string = never>(labels?: Record<Key, st
       ? failure
       : failure instanceof CoreTextError
         ? renderCoreText(failure.reasonMessage, failure.message, t)
-        : failure instanceof Error
-          ? failure.message
-          : (labels?.[failure.key] ?? "");
+        : failure instanceof SyntaxError
+          ? t.connection.errors.invalidResponse
+          : failure instanceof Error || failure instanceof DOMException
+            ? failure.name === "NetworkError" ||
+              (failure instanceof TypeError &&
+                [
+                  "Failed to fetch",
+                  "Load failed",
+                  "NetworkError when attempting to fetch resource.",
+                ].includes(failure.message))
+              ? t.connection.errors.unreachable
+              : failure.message
+            : (labels?.[failure.key] ?? "");
   return [error, setFailure] as const;
 }
 

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "@playwright/test";
+import type { ProjectSnapshot } from "@stintwork/core";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
+import { dialogSnapshot, gate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
 
 for (const language of ["en", "zh-CN"] as const) {
@@ -114,6 +116,64 @@ for (const language of ["en", "zh-CN"] as const) {
         });
         expect(externalRequests).toEqual([]);
         await page.screenshot({ path: testInfo.outputPath("board.png"), fullPage: true });
+      });
+
+      test(`board states ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.addInitScript(
+          (choice) => localStorage.setItem("stintwork.language", choice),
+          language,
+        );
+        const request = gate();
+        const connected = gate();
+        let snapshot: ProjectSnapshot = { ...dialogSnapshot, workItems: [], attentionItems: [] };
+        let publish = () => {};
+        await page.routeWebSocket("**/api/live", (socket) => {
+          publish = () => socket.send(JSON.stringify(snapshot));
+          connected.release();
+        });
+        await page.route("**/api/project", async (route) => {
+          await request.ready;
+          await route.fulfill({ status: 503 });
+        });
+        await page.goto("/");
+        await expect(page.locator("html")).toHaveAttribute("lang", language);
+        await expect(page.getByRole("status")).toHaveText(t.connection.reading);
+        await assertLayout(page);
+        await page.screenshot({ path: testInfo.outputPath("board-loading.png"), fullPage: true });
+        request.release();
+        await expect(page.getByRole("status")).toHaveText(t.connection.unavailable);
+        await expect(page.getByRole("alert")).toHaveText(t.connection.errors.requestFailed(503));
+        await assertLayout(page);
+        await page.screenshot({ path: testInfo.outputPath("board-error.png"), fullPage: true });
+        await connected.ready;
+        publish();
+        await expect(page.getByRole("heading", { name: t.board.empty, exact: true })).toBeVisible();
+        await expect(page.getByRole("alert")).toHaveCount(0);
+        await expect(
+          page.getByRole("button", { name: t.planning.create.title, exact: true }),
+        ).toBeInViewport();
+        await assertLayout(page);
+        await page.screenshot({ path: testInfo.outputPath("board-empty.png"), fullPage: true });
+        snapshot = dialogSnapshot;
+        publish();
+        const milestone = page.locator(".top-milestone").getByRole("combobox");
+        await milestone.click();
+        const options = page.getByRole("listbox");
+        await expect(options).toHaveAttribute("data-state", "open");
+        await assertLayout(page, { region: '[role="listbox"]' });
+        await options.screenshot({ path: testInfo.outputPath("board-milestone-open.png") });
+        await options.getByRole("option", { name: "Next milestone", exact: true }).click();
+        await expect(milestone).toBeFocused();
+        await expect(page.getByText(t.board.emptyMilestone, { exact: true })).toBeVisible();
+        await expect(page.locator(".stage-column")).toHaveCount(6);
+        await expect(page.locator("[data-work-item]")).toHaveCount(0);
+        await assertLayout(page);
+        await page.screenshot({
+          path: testInfo.outputPath("board-empty-milestone.png"),
+          fullPage: true,
+        });
       });
     }
   }

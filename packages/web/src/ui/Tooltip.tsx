@@ -1,10 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as Primitive from "@radix-ui/react-tooltip";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { forwardRef, useState, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "./cn";
 
 export const TooltipProvider = Primitive.Provider;
-export const Tooltip = Primitive.Root;
+export function Tooltip({
+  open,
+  defaultOpen = false,
+  onOpenChange,
+  ...props
+}: ComponentPropsWithoutRef<typeof Primitive.Root>) {
+  const [currentOpen, setOpen] = useState(defaultOpen);
+  return (
+    <Primitive.Root
+      {...props}
+      open={open ?? currentOpen}
+      onOpenChange={(nextOpen) => {
+        const change = () => {
+          setOpen(nextOpen);
+          onOpenChange?.(nextOpen);
+        };
+        if (nextOpen) change();
+        else {
+          flushSync(change);
+          // Workaround: Radix 1.2 restores the parent Escape listener after tooltip dismissal too late; remove when upstream restores it synchronously.
+          flushSync(() => document.dispatchEvent(new CustomEvent("dismissableLayer.update")));
+        }
+      }}
+    />
+  );
+}
 export const TooltipTrigger = Primitive.Trigger;
 export const TooltipContent = forwardRef<
   ElementRef<typeof Primitive.Content>,

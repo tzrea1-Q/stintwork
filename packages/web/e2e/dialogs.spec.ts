@@ -4,19 +4,20 @@ import { builtInWorkflowYaml } from "@stintwork/core";
 import { codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
-import { dialogBrief, dialogDiff, dialogItem, dialogSnapshot } from "./dialogs.fixture";
+import {
+  dialogBrief,
+  dialogDiff,
+  dialogFinding,
+  dialogItem,
+  dialogReview,
+  dialogSnapshot,
+  gate,
+} from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
-
-function gate() {
-  let release = () => {};
-  const ready = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return { ready, release };
-}
 
 async function capture(page: Page, dialog: Locator, testInfo: TestInfo, state: string) {
   await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("data-state", "open");
   if (await dialog.getAttribute("class").then((value) => value?.includes("command-palette"))) {
     for (const region of [".command-search", "[cmdk-list]", ".command-footer"])
       await assertLayout(page, { region });
@@ -76,9 +77,15 @@ for (const language of ["en", "zh-CN"] as const) {
         }, testInfo) => {
           const preview = gate();
           const save = gate();
+          let previewAttempts = 0;
           await page.route("**/api/work-items/preview", async (route) => {
             await preview.ready;
-            await route.fulfill({ json: { slug: "dialog-example" } });
+            previewAttempts++;
+            await route.fulfill(
+              previewAttempts === 1
+                ? { status: 409, json: { reason: en.planning.create.errors.preview } }
+                : { json: { slug: "dialog-example" } },
+            );
           });
           await page.route("**/api/work-items", async (route) => {
             await save.ready;
@@ -121,6 +128,12 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(dialog.getByRole("status")).toHaveText(t.planning.create.checking);
           await capture(page, dialog, testInfo, "create-checking");
           preview.release();
+          await expect(dialog.getByRole("alert")).toHaveText(t.planning.create.errors.preview);
+          await expect(confirm).toBeDisabled();
+          await capture(page, dialog, testInfo, "create-preview-error");
+          await dialog
+            .getByRole("textbox", { name: t.planning.create.titleLabel })
+            .fill(`${dialogItem.title} retry`);
           await expect(confirm).toBeEnabled();
           await dialog
             .getByRole("textbox", { name: t.planning.create.intent })
@@ -132,8 +145,13 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(
             dialog.getByRole("button", { name: t.planning.create.saving }),
           ).toBeDisabled();
+          await dialog.focus();
+          await expect(dialog).toBeFocused();
           await page.keyboard.press("Escape");
-          await page.mouse.click(4, 4);
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await capture(page, dialog, testInfo, "create-saving");
           save.release();
           await expect(dialog.getByRole("alert")).toHaveText(
@@ -192,8 +210,13 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(
             dialog.getByRole("button", { name: t.planning.roadmap.close }),
           ).toBeDisabled();
+          await dialog.focus();
+          await expect(dialog).toBeFocused();
           await page.keyboard.press("Escape");
-          await page.mouse.click(4, 4);
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await capture(page, dialog, testInfo, "roadmap-saving");
           save.release();
           await expect(dialog.getByRole("alert")).toHaveText("Fixture roadmap refusal.");
@@ -210,7 +233,10 @@ for (const language of ["en", "zh-CN"] as const) {
             dialog.getByRole("button", { name: t.planning.roadmap.move }),
           ).toBeDisabled();
           await capture(page, dialog, testInfo, "roadmap-empty");
-          await page.mouse.click(4, 4);
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await expect(trigger).toBeFocused();
         });
 
@@ -242,8 +268,19 @@ for (const language of ["en", "zh-CN"] as const) {
           });
           await page.goto("/");
           const open = async () => {
-            await expect(page.locator("#command-palette-trigger")).toBeVisible();
+            await page.locator("#command-palette-trigger").focus();
+            await expect(page.locator("#command-palette-trigger")).toBeFocused();
             await page.keyboard.press("Control+k");
+            const palette = page.getByRole("dialog", { name: t.planning.palette.title });
+            await expect(
+              palette.getByRole("combobox", { name: t.planning.palette.search }),
+            ).toBeFocused();
+            await capture(
+              page,
+              palette,
+              testInfo,
+              previewError ? "customise-palette-retry" : "customise-palette-open",
+            );
             await page
               .getByRole("option", {
                 name: t.planning.palette.customise(t.workflows.feature.name),
@@ -276,8 +313,13 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(
             dialog.getByRole("button", { name: t.planning.customise.saving }),
           ).toBeDisabled();
+          await dialog.focus();
+          await expect(dialog).toBeFocused();
           await page.keyboard.press("Escape");
-          await page.mouse.click(4, 4);
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await capture(page, dialog, testInfo, "customise-saving");
           save.release();
           await expect(dialog.getByRole("alert")).toHaveText("Fixture customisation refusal.");
@@ -288,7 +330,10 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(dialog.getByRole("alert")).toHaveText("Fixture preview refusal.");
           await expect(confirm).toBeDisabled();
           await capture(page, dialog, testInfo, "customise-preview-error");
-          await page.mouse.click(4, 4);
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await expect(dialog).toBeHidden();
         });
 
@@ -296,8 +341,22 @@ for (const language of ["en", "zh-CN"] as const) {
           page,
         }, testInfo) => {
           const preview = gate();
+          const starting = gate();
+          let startAttempts = 0;
           let noAgents = true;
           let refuse = false;
+          await page.route("**/api/stints", async (route) => {
+            expect(route.request().postDataJSON()).toMatchObject({
+              workItem: dialogItem.slug,
+              agent: "codex",
+              ticket: null,
+            });
+            startAttempts++;
+            if (startAttempts === 1) {
+              await starting.ready;
+              await route.fulfill({ status: 409, json: { reason: "Fixture start refusal." } });
+            } else await route.fulfill({ json: { id: "fixture-started" } });
+          });
           await page.route("**/api/agents", (route) =>
             route.fulfill({ json: { agents: noAgents ? [] : [codexProfile] } }),
           );
@@ -353,7 +412,32 @@ for (const language of ["en", "zh-CN"] as const) {
             element.scrollTop = element.scrollHeight;
           });
           await capture(page, dialog, testInfo, "brief-long-bottom");
-          await page.mouse.click(4, 4);
+          await reachable(page, start);
+          await start.click();
+          await expect(
+            dialog.getByRole("button", { name: t.stints.starting, exact: true }),
+          ).toBeDisabled();
+          await capture(page, dialog, testInfo, "brief-starting");
+          starting.release();
+          const startError = dialog
+            .getByRole("alert")
+            .filter({ hasText: "Fixture start refusal." });
+          await expect(startError).toHaveCount(1);
+          await expect(startError).toHaveText("Fixture start refusal.");
+          await expect(dialog.getByRole("alert").filter({ hasText: "Codex" })).toHaveCount(1);
+          await expect(start).toBeEnabled();
+          await capture(page, dialog, testInfo, "brief-start-error");
+          await start.click();
+          await expect(dialog).toBeHidden();
+          await expect(trigger).toBeFocused();
+          expect(startAttempts).toBe(2);
+          await trigger.click();
+          await expect(start).toBeEnabled();
+          await expect(dialog.getByRole("button", { name: t.stints.closeBrief })).toBeFocused();
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await expect(trigger).toBeFocused();
           await expect(parent).toBeVisible();
           refuse = true;
@@ -410,7 +494,45 @@ for (const language of ["en", "zh-CN"] as const) {
           await refresh.click();
           const hunk = dialog.locator(".review-hunk");
           await expect(hunk).toBeVisible();
+          if (width < 768) {
+            const panes = dialog.getByRole("group", { name: t.review.diff.panes });
+            const diffButton = panes.getByRole("button", { name: t.review.diff.diff, exact: true });
+            await expect(diffButton).toHaveAttribute("aria-pressed", "true");
+            const diffRegion = dialog.getByRole("region", {
+              name: t.review.diff.workItemDiff,
+              exact: true,
+            });
+            await expect(dialog.locator(".review-files")).toBeHidden();
+            await expect(dialog.locator(".review-evidence")).toBeHidden();
+            expect((await diffRegion.boundingBox())?.height).toBeGreaterThanOrEqual(900 * 0.6);
+            const details = dialog.getByRole("button", {
+              name: t.review.diff.details,
+              exact: true,
+            });
+            await details.click();
+            await expect(details).toHaveAttribute("aria-expanded", "true");
+            await capture(page, dialog, testInfo, "review-details");
+            await details.click();
+            await expect(details).toHaveAttribute("aria-expanded", "false");
+            await panes.getByRole("button", { name: t.review.diff.files, exact: true }).click();
+            const files = dialog.getByRole("navigation", {
+              name: t.review.diff.changedFiles,
+              exact: true,
+            });
+            await expect(files).toBeVisible();
+            await expect(diffRegion).toBeHidden();
+            await capture(page, dialog, testInfo, "review-files-pane");
+            await files.getByRole("link").first().click();
+            await expect(diffButton).toHaveAttribute("aria-pressed", "true");
+            await expect(diffRegion).toBeVisible();
+            await expect(files).toBeHidden();
+            await expect(dialog.locator("[data-diff-path]").first()).toBeFocused();
+          }
           await hunk.scrollIntoViewIfNeeded();
+          const header = hunk.locator("h4 code");
+          await expect(header).toHaveText(dialogDiff.files[0].hunks[0].header);
+          const initialHeaderLeft = (await header.boundingBox())?.x;
+          expect(initialHeaderLeft).toBeDefined();
           expect(await hunk.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
             true,
           );
@@ -420,7 +542,32 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect
             .poll(() => hunk.evaluate((element) => element.scrollLeft))
             .toBeGreaterThan(0);
+          expect(
+            await hunk.evaluate((element, initialLeft) => {
+              const heading = element.querySelector("h4 code");
+              const line = element.querySelector(".review-line-text code");
+              const text = heading?.firstChild;
+              if (!text || !heading || !line || initialLeft === undefined) return null;
+              const headerLeft = heading.getBoundingClientRect().left;
+              const prefix = document.createRange();
+              prefix.setStart(text, 0);
+              prefix.setEnd(text, 2);
+              const visible = element.getBoundingClientRect();
+              const bounds = prefix.getBoundingClientRect();
+              return {
+                aligned: Math.abs(headerLeft - line.getBoundingClientRect().left) < 1,
+                scrollsWithCode: Math.abs(initialLeft - headerLeft - element.scrollLeft) < 1,
+                prefixVisible: bounds.left >= visible.left && bounds.right <= visible.right,
+              };
+            }, initialHeaderLeft),
+          ).toEqual({ aligned: true, scrollsWithCode: true, prefixVisible: true });
           await capture(page, dialog, testInfo, "review-long-diff");
+          if (width < 768) {
+            await dialog.getByRole("button", { name: t.review.diff.findings, exact: true }).click();
+            await expect(dialog.locator(".review-evidence")).toBeVisible();
+            await expect(dialog.locator(".review-diff")).toBeHidden();
+            await capture(page, dialog, testInfo, "review-findings-pane");
+          }
           const checks = dialog.getByRole("region", { name: t.review.diff.checks, exact: true });
           const output = checks.locator("pre");
           await output.scrollIntoViewIfNeeded();
@@ -459,9 +606,178 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(parent).toBeVisible();
           await trigger.click();
           await expect(dialog.getByRole("status")).toHaveText(t.review.diff.empty);
-          await page.mouse.click(4, 4);
+          await expect(dialog.getByRole("button", { name: t.review.diff.close })).toBeFocused();
+          await page
+            .locator('.bg-backdrop[data-state="open"]')
+            .last()
+            .click({ position: { x: 4, y: 4 } });
           await expect(trigger).toBeFocused();
           await expect(parent).toBeVisible();
+        });
+
+        test("review findings: long inline/outside findings, pending decision, refusal and malformed reply", async ({
+          page,
+        }, testInfo) => {
+          snapshot = {
+            ...dialogSnapshot,
+            workItems: [
+              {
+                ...dialogItem,
+                stage: "review",
+                column: "review",
+                headCommit: dialogDiff.headCommit,
+                stints: [dialogReview],
+              },
+            ],
+          };
+          const decision = gate();
+          let attempts = 0;
+          await page.route("**/api/work-items/dialog-item/diff", (route) =>
+            route.fulfill({ json: dialogDiff }),
+          );
+          await page.route("**/api/work-items/dialog-item/findings/decision", async (route) => {
+            const body = route.request().postDataJSON();
+            expect(body).toMatchObject({ id: dialogFinding.id, status: "resolved", reason: "" });
+            attempts++;
+            if (attempts === 1) {
+              await decision.ready;
+              await route.fulfill({
+                status: 409,
+                json: {
+                  reason: `Fixture decision refusal. ${"Long recovery detail 原文。 ".repeat(15)}`,
+                },
+              });
+            } else
+              await route.fulfill({
+                json: {
+                  decision: { ...body, kind: "finding", by: "You", at: "2026-10-13T10:10:00Z" },
+                },
+              });
+          });
+          await page.goto("/?item=dialog-item");
+          const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          await expect(parent).toHaveAttribute("data-state", "open");
+          const trigger = parent.getByRole("button", { name: t.stints.openReview, exact: true });
+          await trigger.click();
+          const dialog = page.locator(".review-overlay");
+          await expect(dialog.getByRole("button", { name: t.review.diff.close })).toBeFocused();
+          if (width < 768) {
+            const findingsButton = dialog.getByRole("button", {
+              name: t.review.diff.findings,
+              exact: true,
+            });
+            await findingsButton.click();
+            await expect(findingsButton).toHaveAttribute("aria-pressed", "true");
+            await expect(dialog.locator(".review-evidence")).toBeVisible();
+            await capture(page, dialog, testInfo, "review-findings-navigation");
+            await dialog
+              .locator(".review-evidence")
+              .getByRole("link", { name: dialogFinding.title, exact: true })
+              .click();
+            await expect(
+              dialog.getByRole("button", { name: t.review.diff.diff, exact: true }),
+            ).toHaveAttribute("aria-pressed", "true");
+            await expect(dialog.locator(".review-diff")).toBeVisible();
+            await expect(
+              dialog.getByRole("article", { name: dialogFinding.title, exact: true }),
+            ).toBeFocused();
+          }
+          for (const finding of dialogReview.findings?.findings ?? []) {
+            const card = dialog.getByRole("article", { name: finding.title, exact: true });
+            await expect(card).toBeVisible();
+            await card.scrollIntoViewIfNeeded();
+            await capture(page, dialog, testInfo, `review-finding-${finding.id.split(":")[1]}`);
+          }
+          const card = dialog.getByRole("article", { name: dialogFinding.title, exact: true });
+          const resolve = card.getByRole("button", {
+            name: t.review.findings.resolve,
+            exact: true,
+          });
+          await resolve.scrollIntoViewIfNeeded();
+          await resolve.focus();
+          await expect(resolve).toBeFocused();
+          await page.keyboard.press("Enter");
+          await expect(resolve).toBeDisabled();
+          await capture(page, dialog, testInfo, "review-decision-pending");
+          decision.release();
+          await expect(dialog.getByRole("alert")).toContainText("Fixture decision refusal.");
+          await expect(resolve).toBeEnabled();
+          await dialog.getByRole("alert").scrollIntoViewIfNeeded();
+          await capture(page, dialog, testInfo, "review-decision-error");
+          await resolve.click();
+          await expect(
+            card.getByText(t.review.findings.statuses.resolved, { exact: true }),
+          ).toBeVisible();
+          await expect(dialog.getByRole("alert")).toHaveCount(0);
+          await capture(page, dialog, testInfo, "review-decision-resolved");
+          expect(attempts).toBe(2);
+          await dialog.getByRole("button", { name: t.review.diff.close }).click();
+          await expect(trigger).toBeFocused();
+          snapshot = {
+            ...snapshot,
+            workItems: [
+              {
+                ...snapshot.workItems[0],
+                stints: [
+                  { ...dialogReview, findings: { commit: dialogDiff.headCommit, findings: [] } },
+                ],
+              },
+            ],
+          };
+          await page.reload();
+          await expect(parent).toHaveAttribute("data-state", "open");
+          await trigger.click();
+          await expect(dialog.getByRole("button", { name: t.review.diff.close })).toBeFocused();
+          if (width < 768) {
+            await dialog.getByRole("button", { name: t.review.diff.findings, exact: true }).click();
+            await expect(dialog.locator(".review-evidence")).toBeVisible();
+          }
+          await expect(dialog.getByText(t.review.findings.none, { exact: true })).toBeVisible();
+          await capture(page, dialog, testInfo, "review-no-findings");
+          await dialog.getByRole("button", { name: t.review.diff.close }).click();
+          await expect(trigger).toBeFocused();
+          snapshot = {
+            ...snapshot,
+            workItems: [
+              {
+                ...snapshot.workItems[0],
+                stints: [
+                  {
+                    ...dialogReview,
+                    findings: {
+                      commit: dialogDiff.headCommit,
+                      findings: null,
+                      error: "Malformed developer reply 原文。 ".repeat(12),
+                      rawReply: `raw ${"unbroken-reply-原文".repeat(120)}`,
+                    },
+                  },
+                ],
+              },
+            ],
+          };
+          await page.reload();
+          await expect(parent).toHaveAttribute("data-state", "open");
+          await trigger.click();
+          await expect(dialog.getByRole("button", { name: t.review.diff.close })).toBeFocused();
+          if (width < 768) {
+            await dialog.getByRole("button", { name: t.review.diff.findings, exact: true }).click();
+            await expect(dialog.locator(".review-evidence")).toBeVisible();
+          }
+          const evidence = dialog.getByRole("complementary", {
+            name: t.review.diff.evidence,
+            exact: true,
+          });
+          await expect(evidence.getByRole("alert")).toContainText(t.review.findings.unavailable);
+          await evidence.getByText(t.review.findings.rawReply, { exact: true }).click();
+          const rawReply = evidence.locator("pre");
+          await rawReply.scrollIntoViewIfNeeded();
+          await rawReply.focus();
+          await expect(rawReply).toBeFocused();
+          await page.keyboard.press("ArrowRight");
+          await expect
+            .poll(() => rawReply.evaluate((element) => element.scrollLeft))
+            .toBeGreaterThan(0);
+          await capture(page, dialog, testInfo, "review-malformed-reply");
         });
 
         test("palette: long names, empty search, keyboard navigation and focus return", async ({
@@ -479,9 +795,12 @@ for (const language of ["en", "zh-CN"] as const) {
           await capture(page, dialog, testInfo, "palette-empty");
           await search.fill("dialog-item");
           await expect(dialog.getByRole("option")).toHaveCount(1);
+          await expect(search).toBeFocused();
           await page.keyboard.press("ArrowDown");
           await page.keyboard.press("Enter");
-          await expect(page.getByRole("dialog", { name: dialogItem.title })).toBeVisible();
+          const drawer = page.locator(".work-item-drawer");
+          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          await capture(page, drawer, testInfo, "palette-navigation-drawer");
           await page.keyboard.press("Escape");
           await trigger.click();
           await expect(search).toBeFocused();

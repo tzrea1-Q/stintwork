@@ -7,6 +7,15 @@ export const en = {
     opening: "Opening your project",
     unavailable: "Connection unavailable. Retrying automatically…",
     reading: "Reading project files…",
+    errors: {
+      requestFailed: (status: number) => `Project request failed (${status}).`,
+      timeout: "Project request timed out.",
+      unreachable: "Could not reach the project server.",
+      invalidSnapshot: "The project server returned an invalid snapshot.",
+      invalidResponse: "The server returned an invalid response.",
+      invalidWorkflows: "Invalid project workflows.",
+      invalidWorkflowId: "Invalid project workflow id.",
+    },
   },
   topBar: {
     language: "Language",
@@ -305,6 +314,10 @@ export const en = {
       changedFiles: "Changed files",
       outside: "Outside the diff",
       workItemDiff: "Work item diff",
+      panes: "Review panes",
+      files: "Files",
+      diff: "Diff",
+      details: "Review details",
       renamed: "Renamed file — content not shown.",
       binaryHidden: "Binary file — content not shown.",
       riskyHidden:

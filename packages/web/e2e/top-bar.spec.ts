@@ -52,6 +52,11 @@ for (const language of ["en", "zh-CN"] as const) {
         let setupState: "populated" | "loading" | "error" | "empty" = "populated";
         let emptyWarnings = false;
         let applied: unknown;
+        let applyAttempts = 0;
+        let releaseApply = () => {};
+        const applying = new Promise<void>((resolve) => {
+          releaseApply = resolve;
+        });
         let releaseLoading = () => {};
         const loading = new Promise<void>((resolve) => {
           releaseLoading = resolve;
@@ -92,7 +97,14 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.route("**/api/setup", async (route) => {
           if (route.request().method() === "POST") {
             applied = route.request().postDataJSON();
-            await route.fulfill({ json: { ...guide, changes: [], commit: "a".repeat(40) } });
+            applyAttempts++;
+            if (applyAttempts === 1) {
+              await applying;
+              await route.fulfill({
+                status: 409,
+                json: { reason: en.planning.setup.errors.apply },
+              });
+            } else await route.fulfill({ json: { ...guide, changes: [], commit: "a".repeat(40) } });
           } else {
             const state = setupState;
             if (state === "loading") await loading;
@@ -130,7 +142,10 @@ for (const language of ["en", "zh-CN"] as const) {
         }
         const capture = async (name: string, overlay?: string) => {
           await assertLayout(page, { region: ".top-bar" });
-          if (overlay) await assertLayout(page, { region: overlay });
+          if (overlay) {
+            await expect(page.locator(overlay)).toHaveAttribute("data-state", "open");
+            await assertLayout(page, { region: overlay });
+          }
           await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
         };
         await capture("top-bar");
@@ -254,7 +269,24 @@ for (const language of ["en", "zh-CN"] as const) {
         await setup.getByRole("button", { name: t.planning.setup.back, exact: true }).click();
         await setup.getByRole("button", { name: t.planning.setup.review, exact: true }).click();
         await setup.getByRole("button", { name: t.planning.setup.apply, exact: true }).click();
+        await expect(
+          setup.getByRole("button", { name: t.planning.setup.apply, exact: true }),
+        ).toBeDisabled();
+        await expect(
+          setup.getByRole("button", { name: t.planning.setup.back, exact: true }),
+        ).toBeDisabled();
+        await capture("setup-applying", '[role="dialog"]');
+        releaseApply();
+        await expect(
+          setup.getByRole("alert").filter({ hasText: t.planning.setup.errors.apply }),
+        ).toBeVisible();
+        await expect(
+          setup.getByRole("button", { name: t.planning.setup.apply, exact: true }),
+        ).toBeEnabled();
+        await capture("setup-apply-error", '[role="dialog"]');
+        await setup.getByRole("button", { name: t.planning.setup.apply, exact: true }).click();
         await expect(setup.getByRole("status")).toHaveText(t.planning.setup.committed("aaaaaaa"));
+        expect(applyAttempts).toBe(2);
         expect(applied).toEqual({ confirmed: true, changes: [guide.changes[0]] });
         await capture("setup-applied", '[role="dialog"]');
         await page.keyboard.press("Escape");

@@ -14,6 +14,7 @@ import {
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
+import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import {
   attentionProfile,
   attentionSnapshot,
@@ -23,6 +24,70 @@ import {
 
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
   name: "Stintwork",
+});
+
+test.each([
+  ["en", "Project request failed (503)."],
+  ["zh-CN", "项目请求失败（503）。"],
+])("project HTTP failures use the %s catalog", async (language, expected) => {
+  localStorage.setItem(languageStorageKey, language);
+  vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
+  const { result } = renderHook(useProjectSnapshot, { wrapper: LanguageProvider });
+  await waitFor(() => expect(result.current.error).toBe(expected));
+  localStorage.removeItem(languageStorageKey);
+});
+
+test.each([
+  [
+    "en",
+    "Could not reach the project server.",
+    "The project server returned an invalid snapshot.",
+    "Project request timed out.",
+  ],
+  ["zh-CN", "无法连接项目服务器。", "项目服务器返回的快照无效。", "项目请求超时。"],
+])(
+  "%s project network, malformed response and timeout states are localized",
+  async (language, unreachable, invalid, timeout) => {
+    localStorage.setItem(languageStorageKey, language);
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("Failed to fetch"));
+    const network = renderHook(useProjectSnapshot, { wrapper: LanguageProvider });
+    await waitFor(() => expect(network.result.current.error).toBe(unreachable));
+    network.unmount();
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("{"));
+    const malformed = renderHook(useProjectSnapshot, { wrapper: LanguageProvider });
+    await waitFor(() => expect(malformed.result.current.error).toBe(invalid));
+    malformed.unmount();
+    vi.useFakeTimers();
+    vi.mocked(fetch).mockImplementation(
+      (_input, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("Aborted", "AbortError")),
+          );
+        }),
+    );
+    const pending = renderHook(useProjectSnapshot, { wrapper: LanguageProvider });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000);
+    });
+    expect(pending.result.current.error).toBe(timeout);
+    pending.unmount();
+    localStorage.removeItem(languageStorageKey);
+  },
+);
+
+test("a displayed project failure follows language changes without reconnecting", async () => {
+  localStorage.setItem(languageStorageKey, "en");
+  vi.mocked(fetch).mockResolvedValue({ ok: false, status: 503 } as Response);
+  const { result } = renderHook(() => ({ ...useProjectSnapshot(), ...useLanguage() }), {
+    wrapper: LanguageProvider,
+  });
+  await waitFor(() => expect(result.current.error).toBe("Project request failed (503)."));
+  act(() => result.current.setLanguage("zh-CN"));
+  expect(result.current.error).toBe("项目请求失败（503）。");
+  expect(fetch).toHaveBeenCalledOnce();
+  expect(TestSocket.instances).toHaveLength(1);
+  localStorage.removeItem(languageStorageKey);
 });
 
 test.each([false, true])(

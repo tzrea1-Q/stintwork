@@ -5,6 +5,7 @@ import type { EvidenceContext, ReviewDecision, StintSummary, RiskyPath } from "@
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { Button } from "./ui/Button";
+import { cn } from "./ui/cn";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { CheckpointWarnings } from "./CheckpointWarnings";
@@ -17,6 +18,7 @@ type ReviewSlots = {
   fileFindings?: (file: DiffFile) => ReactNode;
   outsideDiff?: { path: string; content: ReactNode }[];
 };
+type ReviewPane = "files" | "diff" | "findings";
 
 function Counts({ file }: { file: DiffFile }) {
   const { t } = useLanguage();
@@ -45,19 +47,30 @@ export function ReviewDiff({
   lineFindings,
   fileFindings,
   outsideDiff = [],
-}: { diff: WorkItemDiff } & Pick<ReviewSlots, "lineFindings" | "fileFindings" | "outsideDiff">) {
+  pane = "diff",
+  onSelectFile,
+}: { diff: WorkItemDiff; pane?: ReviewPane; onSelectFile?: () => void } & Pick<
+  ReviewSlots,
+  "lineFindings" | "fileFindings" | "outsideDiff"
+>) {
   const { t } = useLanguage();
   const id = useId();
   if (!diff.files.length && !outsideDiff.length)
     return (
-      <p className="review-empty p-8 md:col-span-2" role="status">
+      <p
+        className={cn("review-empty p-8 md:col-span-2", pane !== "diff" && "hidden md:block")}
+        role="status"
+      >
         {t.review.diff.empty}
       </p>
     );
   return (
     <>
       <nav
-        className="review-files p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_a]:grid [&_a]:gap-1 [&_a]:border-b [&_a]:border-border [&_a]:px-1 [&_a]:py-3 [&_a]:text-text [&_a]:no-underline [&_a]:[overflow-wrap:anywhere] [&_a:hover]:bg-surface-hover [&_small]:text-muted min-w-0 max-h-48 overflow-auto border-b border-border md:max-h-none md:border-b-0 md:border-r"
+        className={cn(
+          "review-files p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_a]:grid [&_a]:gap-1 [&_a]:border-b [&_a]:border-border [&_a]:px-1 [&_a]:py-3 [&_a]:text-text [&_a]:no-underline [&_a]:[overflow-wrap:anywhere] [&_a:hover]:bg-surface-hover [&_small]:text-muted min-w-0 overflow-auto border-b border-border md:border-b-0 md:border-r",
+          pane !== "files" && "hidden md:block",
+        )}
         aria-label={t.review.diff.changedFiles}
       >
         <h3>
@@ -69,7 +82,7 @@ export function ReviewDiff({
         <ul>
           {diff.files.map((file, index) => (
             <li key={file.path}>
-              <a href={`#${id}-file-${index}`}>
+              <a href={`#${id}-file-${index}`} onClick={onSelectFile}>
                 <code>{file.path}</code>
                 <small>{t.review.diff.fileStatuses[file.status]}</small>
                 <Counts file={file} />
@@ -78,7 +91,7 @@ export function ReviewDiff({
           ))}
           {outsideDiff.map((file, index) => (
             <li key={file.path}>
-              <a href={`#${id}-outside-${index}`}>
+              <a href={`#${id}-outside-${index}`} onClick={onSelectFile}>
                 <code>{file.path}</code>
                 <small>{t.review.diff.outside}</small>
               </a>
@@ -87,11 +100,16 @@ export function ReviewDiff({
         </ul>
       </nav>
       <section
-        className="review-diff min-w-0 overflow-auto"
+        className={cn("review-diff min-w-0 overflow-auto", pane !== "diff" && "hidden md:block")}
         aria-label={t.review.diff.workItemDiff}
       >
         {diff.files.map((file, fileIndex) => (
-          <section key={file.path} id={`${id}-file-${fileIndex}`} data-diff-path={file.path}>
+          <section
+            key={file.path}
+            id={`${id}-file-${fileIndex}`}
+            data-diff-path={file.path}
+            tabIndex={-1}
+          >
             <header className="review-file-header flex flex-wrap items-center gap-3 bg-surface-raised p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
               <h3>
                 <code>{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</code>
@@ -123,12 +141,9 @@ export function ReviewDiff({
               )}
             {file.hunks.map((hunk) => (
               <div
-                className="review-hunk [&_h4]:m-0 [&_h4]:whitespace-pre [&_h4]:bg-accent-soft [&_h4]:px-4 [&_h4]:py-2 [&_h4]:text-xs [&_h4]:text-muted [&_table]:w-full [&_table]:border-collapse [&_table]:font-mono [&_table]:text-sm [&_table]:leading-relaxed overflow-x-auto focus-visible:outline-accent"
+                className="review-hunk [&_h4]:m-0 [&_h4]:whitespace-pre [&_h4]:py-2 [&_h4]:text-xs [&_h4]:text-muted [&_table]:w-full [&_table]:border-collapse [&_table]:font-mono [&_table]:text-sm [&_table]:leading-relaxed overflow-x-auto focus-visible:outline-accent"
                 key={`${hunk.oldStart}:${hunk.newStart}`}
               >
-                <h4>
-                  <code>{hunk.header}</code>
-                </h4>
                 <table aria-label={`${file.path}: ${hunk.header}`}>
                   <thead className="sr-only">
                     <tr>
@@ -139,6 +154,14 @@ export function ReviewDiff({
                     </tr>
                   </thead>
                   <tbody>
+                    <tr className="bg-accent-soft">
+                      <td colSpan={3} />
+                      <td className="px-2">
+                        <h4>
+                          <code>{hunk.header}</code>
+                        </h4>
+                      </td>
+                    </tr>
                     {hunk.lines.map((line) => {
                       const finding = lineFindings?.(file, line, diff.headCommit);
                       return (
@@ -184,7 +207,12 @@ export function ReviewDiff({
           </section>
         ))}
         {outsideDiff.map((file, index) => (
-          <section key={file.path} id={`${id}-outside-${index}`} data-diff-path={file.path}>
+          <section
+            key={file.path}
+            id={`${id}-outside-${index}`}
+            data-diff-path={file.path}
+            tabIndex={-1}
+          >
             <header className="review-file-header flex flex-wrap items-center gap-3 bg-surface-raised p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
               <h3>
                 <code>{file.path}</code>
@@ -223,6 +251,9 @@ export function ReviewOverlay({
   const { t } = useLanguage();
   const closeButton = useRef<HTMLButtonElement>(null);
   const findingId = useId();
+  const detailsId = useId();
+  const [pane, setPane] = useState<ReviewPane>("diff");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
   const [error, setError] = useErrorText();
   const [decisions, setDecisions] = useState<ReviewDecision[]>(item.reviewDecisions ?? []);
@@ -353,6 +384,12 @@ export function ReviewOverlay({
     return () => request.current?.abort();
   }, [readDiff]);
 
+  const outsideFiles =
+    outsideDiff ??
+    [...new Set(evidence.findings.map((finding) => finding.path))]
+      .filter((path) => !diff?.files.some((file) => file.path === path))
+      .map((path) => ({ path, content: cards(path) }));
+
   return (
     <Dialog
       open
@@ -367,31 +404,47 @@ export function ReviewOverlay({
           closeButton.current?.focus();
         }}
       >
-        <header className="review-header flex shrink-0 flex-wrap justify-between gap-4 border-b border-border p-4 sm:p-6">
+        <header className="review-header flex shrink-0 flex-wrap justify-between gap-2 border-b border-border p-3 md:gap-4 md:p-6">
           <div className="min-w-0 flex-1 basis-96 [overflow-wrap:anywhere]">
             <p className="eyebrow text-xs uppercase tracking-widest text-muted">
               {t.review.diff.review} / <code>{item.slug}</code>
             </p>
-            <DialogTitle className="my-2 text-xl font-medium">{item.title}</DialogTitle>
-            <DialogDescription className="text-muted">{t.review.diff.readOnly}</DialogDescription>
-            {diff && (
-              <div className="review-range text-xs [overflow-wrap:anywhere]">
-                <p>
-                  <code>{diff.branch}</code>
-                  {t.review.diff.against}
-                  <code>{diff.mainBranch}</code>
-                </p>
-                <p>
-                  {t.review.diff.mergeBase}
-                  <code>{diff.mergeBase}</code> · {t.review.diff.branchHead}
-                  <code>{diff.headCommit}</code>
-                </p>
-              </div>
-            )}
+            <DialogTitle className="my-1 text-sm font-medium md:my-2 md:text-xl">
+              {item.title}
+            </DialogTitle>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="md:hidden"
+              aria-expanded={detailsOpen}
+              aria-controls={detailsId}
+              onClick={() => setDetailsOpen(!detailsOpen)}
+            >
+              {t.review.diff.details}
+            </Button>
+            <div id={detailsId} className={cn(!detailsOpen && "hidden md:block")}>
+              <DialogDescription className="text-muted">{t.review.diff.readOnly}</DialogDescription>
+              {diff && (
+                <div className="review-range text-xs [overflow-wrap:anywhere]">
+                  <p>
+                    <code>{diff.branch}</code>
+                    {t.review.diff.against}
+                    <code>{diff.mainBranch}</code>
+                  </p>
+                  <p>
+                    {t.review.diff.mergeBase}
+                    <code>{diff.mergeBase}</code> · {t.review.diff.branchHead}
+                    <code>{diff.headCommit}</code>
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
           <div className="review-header-actions flex flex-wrap items-start gap-2">
             <Button
               variant="primary"
+              size="sm"
+              className="md:min-h-8 md:px-3"
               disabled={
                 saving ||
                 sentBack ||
@@ -404,9 +457,20 @@ export function ReviewOverlay({
             >
               {t.review.diff.sendBack}
             </Button>
-            <Button onClick={() => void readDiff()}>{t.review.diff.refresh}</Button>
+            <Button
+              size="sm"
+              className="md:min-h-8 md:px-3"
+              onClick={() => {
+                setPane("diff");
+                void readDiff();
+              }}
+            >
+              {t.review.diff.refresh}
+            </Button>
             <Button
               variant="ghost"
+              size="sm"
+              className="md:min-h-8 md:px-3"
               ref={closeButton}
               onClick={onClose}
               aria-label={t.review.diff.close}
@@ -421,14 +485,42 @@ export function ReviewOverlay({
           </p>
         )}
         {message && <p role="status">{message}</p>}
-        <div className="review-grid grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)_260px]">
+        <fieldset
+          aria-label={t.review.diff.panes}
+          className="flex min-w-0 shrink-0 gap-1 border-b border-border px-3 py-2 md:hidden"
+        >
+          {(["files", "diff", "findings"] as const).map((choice) => (
+            <Button
+              key={choice}
+              size="sm"
+              variant={pane === choice ? "secondary" : "ghost"}
+              aria-pressed={pane === choice}
+              disabled={
+                choice === "files" &&
+                (!diff || (!diff.files.length && !outsideFiles.length) || !!error)
+              }
+              onClick={() => setPane(choice)}
+            >
+              {t.review.diff[choice]}
+            </Button>
+          ))}
+        </fieldset>
+        <div className="review-grid grid min-h-0 flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden md:grid-rows-none md:overflow-auto md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)_260px]">
           {error ? (
-            <p role="alert" className="review-empty p-8 warning text-warning md:col-span-2">
+            <p
+              role="alert"
+              className={cn(
+                "review-empty p-8 warning text-warning md:col-span-2",
+                pane !== "diff" && "hidden md:block",
+              )}
+            >
               {error}
             </p>
           ) : diff ? (
             <ReviewDiff
               diff={diff}
+              pane={pane}
+              onSelectFile={() => setPane("diff")}
               lineFindings={(file, line, head) => {
                 const pinned = line.newLine === null ? null : cards(file.path, line.newLine);
                 const supplied = lineFindings?.(file, line, head);
@@ -445,20 +537,24 @@ export function ReviewOverlay({
                   {fileFindings?.(file)}
                 </>
               )}
-              outsideDiff={
-                outsideDiff ??
-                [...new Set(evidence.findings.map((finding) => finding.path))]
-                  .filter((path) => !diff.files.some((file) => file.path === path))
-                  .map((path) => ({ path, content: cards(path) }))
-              }
+              outsideDiff={outsideFiles}
             />
           ) : (
-            <p role="status" className="review-empty p-8 muted text-muted md:col-span-2">
+            <p
+              role="status"
+              className={cn(
+                "review-empty p-8 muted text-muted md:col-span-2",
+                pane !== "diff" && "hidden md:block",
+              )}
+            >
               {t.review.diff.reading}
             </p>
           )}
           <aside
-            className="review-evidence p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 min-w-0 overflow-auto border-t border-border md:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0"
+            className={cn(
+              "review-evidence p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 min-w-0 overflow-auto border-t border-border md:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0",
+              pane !== "findings" && "hidden md:block",
+            )}
             aria-label={t.review.diff.evidence}
           >
             {item.riskyPaths && (
@@ -483,7 +579,13 @@ export function ReviewOverlay({
               ))}
             <section aria-label={t.review.diff.findings}>
               <h3>{t.review.diff.findings}</h3>
-              {findings ?? <FindingsRail {...evidence} anchor={anchor} />}
+              {findings ?? (
+                <FindingsRail
+                  {...evidence}
+                  anchor={anchor}
+                  onSelectFinding={() => setPane("diff")}
+                />
+              )}
             </section>
             <section aria-label={t.review.diff.checks}>
               <h3>{t.review.diff.checks}</h3>

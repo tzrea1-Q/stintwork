@@ -118,6 +118,18 @@ test("Chinese review decisions preserve agent findings, paths and diff text", as
     </LanguageProvider>,
   );
   expect(await screen.findByText("new code 原文")).toBeInTheDocument();
+  const diffButton = screen.getByRole("button", { name: "差异" });
+  expect(diffButton).toHaveAttribute("aria-pressed", "true");
+  const findingsButton = screen.getByRole("button", { name: "审查发现" });
+  await user.click(findingsButton);
+  expect(findingsButton).toHaveAttribute("aria-pressed", "true");
+  await user.click(screen.getByRole("link", { name: finding.title }));
+  expect(diffButton).toHaveAttribute("aria-pressed", "true");
+  expect(screen.getByRole("button", { name: "文件" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "审查详情" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   expect(screen.getByText("old code 原文")).toBeInTheDocument();
   expect(screen.getByRole("navigation", { name: "更改的文件" })).toHaveTextContent(finding.path);
   const card = within(screen.getByRole("article", { name: finding.title }));

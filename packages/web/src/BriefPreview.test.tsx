@@ -94,6 +94,44 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+test.each([
+  ["en", "Start stint", "Read first", "Start", "Codex’s sandbox"],
+  ["zh-CN", "开始 Stint", "先阅读", "开始", "Codex 的沙盒"],
+])(
+  "%s brief announces a start refusal once, separately from the safety warning",
+  async (language, open, ready, start, warning) => {
+    localStorage.setItem(languageStorageKey, language);
+    const load = previewFetch();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url === "/api/stints"
+          ? new Response(JSON.stringify({ reason: "Fixture start refusal." }), { status: 409 })
+          : load(url),
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <TicketBriefPreview item={item} ticket={ticket} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: open }));
+    await screen.findByRole("heading", { name: ready });
+    const action = screen.getByRole("button", { name: start });
+    await waitFor(() => expect(action).toBeEnabled());
+    await user.click(action);
+    await screen.findByText("Fixture start refusal.");
+    const alerts = screen.getAllByRole("alert");
+    expect(alerts).toHaveLength(2);
+    expect(alerts.filter((alert) => alert.textContent === "Fixture start refusal.")).toHaveLength(
+      1,
+    );
+    expect(alerts.filter((alert) => alert.textContent?.startsWith(warning))).toHaveLength(1);
+    expect(action).toBeEnabled();
+  },
+);
+
 test("Chinese brief translates the Codex permission warning, not the agent prompt", async () => {
   localStorage.setItem(languageStorageKey, "zh-CN");
   vi.stubGlobal("fetch", previewFetch());
