@@ -2,11 +2,14 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createAgentRegistry } from "@stintwork/agents";
-import { createFakeAgentLauncher, fakeAgentProfiles } from "@stintwork/agents/testing";
+import {
+  createFakeAgentLauncher,
+  fakeAgentProfiles,
+  sourceNodeArgs,
+} from "@stintwork/agents/testing";
 import {
   indexStints,
   summarizeStint,
@@ -118,10 +121,7 @@ test.each([false, true])(
     const { root, project, tracked } = await fixture();
     const child = spawn(
       process.execPath,
-      [
-        "--import",
-        createRequire(import.meta.url).resolve("tsx"),
-        "--conditions=development",
+      sourceNodeArgs(
         "--input-type=module",
         "--eval",
         `import { once } from 'node:events';
@@ -140,7 +140,7 @@ test.each([false, true])(
        const response = url ? await fetch(url + '/api/stints', request) : await project.app.request('/api/stints', request);
        process.send({status:response.status,body:await response.json()});
      } catch (error) { process.send({error:String(error)}); process.exit(1); }`,
-      ],
+      ),
       { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
     );
     tracked.children.push(child);

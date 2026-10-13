@@ -9,6 +9,7 @@ vi.mock("node:child_process", async (importOriginal) => {
   const original = await importOriginal<typeof import("node:child_process")>();
   const { default: Module } = await import("node:module");
   const { fileURLToPath } = await import("node:url");
+  const { sourceNodeArgs } = await import("./source-node-args.js");
   const require = Module.createRequire(import.meta.url);
   const adapter = require.resolve("@agentclientprotocol/codex-acp/dist/index.js");
   return {
@@ -22,12 +23,7 @@ vi.mock("node:child_process", async (importOriginal) => {
         throw new Error("Expected the pinned Codex ACP executable.");
       return original.spawn(
         process.execPath,
-        [
-          "--conditions=development",
-          "--import",
-          require.resolve("tsx"),
-          fileURLToPath(new URL("./fake-agent.ts", import.meta.url)),
-        ],
+        sourceNodeArgs(fileURLToPath(new URL("./fake-agent.ts", import.meta.url))),
         {
           ...options,
           env: {

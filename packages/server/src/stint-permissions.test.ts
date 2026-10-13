@@ -4,7 +4,6 @@ import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createRequire } from "node:module";
 import { Writable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import {
@@ -17,6 +16,7 @@ import {
   createFakeAgentLauncher,
   fakeAgentProfiles,
   type FakeAgentStep,
+  sourceNodeArgs,
 } from "@stintwork/agents/testing";
 import type { Stint, StintLiveMessage, StintLogEntry, ProjectSnapshot } from "@stintwork/core";
 import { Hono } from "hono";
@@ -400,12 +400,7 @@ test("a broken agent pipe returns an error even when the selected decision was l
   const launcher = createAgentLauncher((cwd) => {
     const child = spawn(
       process.execPath,
-      [
-        "--conditions=development",
-        "--import",
-        createRequire(import.meta.url).resolve("tsx"),
-        fileURLToPath(new URL("../../agents/src/fake-agent.ts", import.meta.url)),
-      ],
+      sourceNodeArgs(fileURLToPath(new URL("../../agents/src/fake-agent.ts", import.meta.url))),
       {
         cwd,
         stdio: "pipe",

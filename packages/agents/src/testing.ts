@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { spawn } from "node:child_process";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import type { RequestPermissionRequest } from "@agentclientprotocol/sdk";
 import { type AgentLauncher, createAgentLauncher } from "./index.js";
 import { fakeAgentProfiles } from "./profiles.js";
+import { sourceNodeArgs } from "./source-node-args.js";
 
 export { fakeAgentProfiles } from "./profiles.js";
+export { sourceNodeArgs } from "./source-node-args.js";
 
 export type FakeAgentStep =
   | { type: "message" | "thought"; text: string }
@@ -48,29 +49,16 @@ export function createFakeAgentLauncher(
   );
   return createAgentLauncher(
     (cwd) =>
-      spawn(
-        process.execPath,
-        [
-          ...(source
-            ? [
-                "--conditions=development",
-                "--import",
-                createRequire(import.meta.url).resolve("tsx"),
-              ]
-            : []),
-          entry,
-        ],
-        {
-          cwd,
-          stdio: "pipe",
-          env: {
-            ...process.env,
-            STINTWORK_FAKE_SCRIPT: JSON.stringify(script),
-            STINTWORK_FAKE_HANDOFF: JSON.stringify(handoff),
-            STINTWORK_FAKE_OPTIONS: JSON.stringify(options),
-          },
+      spawn(process.execPath, source ? sourceNodeArgs(entry) : [entry], {
+        cwd,
+        stdio: "pipe",
+        env: {
+          ...process.env,
+          STINTWORK_FAKE_SCRIPT: JSON.stringify(script),
+          STINTWORK_FAKE_HANDOFF: JSON.stringify(handoff),
+          STINTWORK_FAKE_OPTIONS: JSON.stringify(options),
         },
-      ),
+      }),
     { ...profile, id: options.agentId ?? profile.id },
   );
 }

@@ -4,7 +4,7 @@
 
 [The plan](docs/plan.md) groups work into milestones. Specs and tickets live in `.scratch/`, following [the issue-tracker conventions](docs/agents/issue-tracker.md).
 
-Coding agents implement tickets in stints. A coordinator reviews the changes, verifies `format:check`, `lint`, `typecheck`, `test` and `build`, then merges. A finished stint is not a Shipped work item; the change must be merged.
+Coding agents implement tickets in stints. A coordinator reviews the changes, verifies `format:check`, `lint`, `typecheck`, `test`, `build` and `smoke:package`, then merges. A finished stint is not a Shipped work item; the change must be merged.
 
 Read [AGENTS.md](AGENTS.md) before changing files. Use the terms in [GLOSSARY.md](GLOSSARY.md) and follow the [decision records](docs/adr/).
 
@@ -33,4 +33,7 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm smoke:package
 ```
+
+`pnpm smoke:package` packs and installs the package. It is slower and needs network access.
