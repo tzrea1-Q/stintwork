@@ -1,6 +1,6 @@
 # 06 — Check the Chinese UI in the real app
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, 03, 04, 05
 
 ## What to build
@@ -18,7 +18,7 @@ Fix any English text still showing in Stintwork's own chrome, any clipped or ove
 
 - [x] Comments record the check: screens visited, screenshots or notes, and fixes made.
 - [x] No untranslated Stintwork chrome remains in Chinese mode.
-- [ ] The native-speaker review is noted.
+- [x] The native-speaker review is noted.
 - [x] The plan and roadmap mention the work.
 - [x] All checks pass.
 
@@ -54,3 +54,5 @@ Left for follow-ups:
 - Sentences written by core and server (gate reasons, "This ticket is resolved.", agent warnings and status, stream notes): ticket 08, by the developer's decision.
 
 Still open: the native-speaker review of the Chinese catalog. That is the only unchecked criterion, so this ticket stays open until the developer has done it.
+
+**Coordinator, 2026-10-12:** The developer, a native Chinese speaker, reviewed the Chinese catalog and glossary terms and passed them.
