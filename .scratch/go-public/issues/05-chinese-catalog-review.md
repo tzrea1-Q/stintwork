@@ -15,3 +15,5 @@ A native speaker reviews the Chinese catalog for natural wording and the terms i
 - [ ] An unfinished review leaves M6 active and does not block M7's exit ticket.
 
 ## Comments
+
+**Coordinator, 2026-10-13:** The maintainer, a native Chinese speaker, reviewed the Chinese UI on main `beac99b` and approved it. That covers the 252 strings added since the 2026-10-12 review (ui-language 07's folder-name input and 08's core and server text). No wording fixes were requested. Layout problems found while switching language (the language menu, top-bar panels clipped at ~860px) are ui-language 09, not catalog findings. Still open for M6's exit: a real stint run end to end in Chinese by the maintainer.
