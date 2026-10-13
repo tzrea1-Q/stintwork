@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +12,7 @@ import {
   refreshAgentAvailability,
 } from "./index.js";
 import { grokPermissionWarning, readGrokConfig } from "./grok-config.js";
-import { createFakeAgentLauncher } from "./testing.js";
+import { createFakeAgentLauncher, sourceNodeArgs } from "./testing.js";
 
 const folders: string[] = [];
 async function fixture(config?: string) {
@@ -128,7 +127,7 @@ test("the native launcher invokes grok agent stdio using the developer's PATH an
   const entry = fileURLToPath(new URL("./fake-agent.ts", import.meta.url));
   await writeFile(
     executable,
-    `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(join(cwd, "args.json"))}, JSON.stringify(process.argv.slice(2)));\nconst child = require('node:child_process').spawn(process.execPath, ['--conditions=development', '--import', ${JSON.stringify(createRequire(import.meta.url).resolve("tsx"))}, ${JSON.stringify(entry)}], { stdio: 'inherit' });\nchild.on('exit', code => process.exit(code));\n`,
+    `#!${process.execPath}\nconst fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(join(cwd, "args.json"))}, JSON.stringify(process.argv.slice(2)));\nconst child = require('node:child_process').spawn(process.execPath, ${JSON.stringify(sourceNodeArgs(entry))}, { stdio: 'inherit' });\nchild.on('exit', code => process.exit(code));\n`,
   );
   await chmod(executable, 0o755);
   vi.stubEnv("PATH", `${cwd}${delimiter}${process.env.PATH ?? ""}`);
