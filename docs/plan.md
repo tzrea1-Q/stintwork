@@ -29,6 +29,7 @@ A TypeScript pnpm monorepo. The core is a deep module with no direct I/O; everyt
 - `core` gets fast unit tests on fixture repos.
 - Stint lifecycle tests run against the fake ACP agent from `spikes/acp-probe/`.
 - The probe becomes a contract test against the real agents, run manually and before releases.
+- Web behaviour stays in jsdom; Playwright checks layout in a real browser (ADR 0010).
 
 ## Milestones
 
@@ -112,11 +113,13 @@ A Chinese-speaking developer can use the whole web UI in Simplified Chinese. Spe
 
 ### Goal
 
-Developers outside the project use Stintwork on their own repos and keep using it. Go public, finally run the outside-developer test, and let their feedback come first. Then fit more repos (GitHub Issues), hold up better (stints survive restarts) and work with more agents.
+Developers outside the project use Stintwork on their own repos and keep using it. Go public, build the UI foundations before the outside-developer test, and let their feedback set the next scope. Then fit more repos (GitHub Issues), hold up better (stints survive restarts) and work with more agents.
 
-v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test moves to M7. M6's tickets are resolved, but its exit test still needs a native speaker's catalog review. Grok Build's end-to-end ticket (agent-polish 04) stays deferred until M11. `tzrea1-Q/stintwork` is still private.
+v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test moves to M7. M6 shipped after the maintainer approved the Chinese UI on 2026-10-13 (go-public 05 is resolved). Grok Build's end-to-end ticket (agent-polish 04) stays deferred until M12. `tzrea1-Q/stintwork` is still private.
 
-**Rule:** if M8 turns out large, M10 and M11 move to v0.3 rather than delaying v0.2.
+**Rule:** if M9 turns out large, M11 and M12 move to v0.3 rather than delaying v0.2.
+
+**Order:** M8 runs now, alongside active M7. go-public 01–03 can proceed. go-public 04 waits for M8's exit because the testers' first impression is this UI. This cross-work-item gate is recorded in ticket 04's Comments; its `Blocked by` line names only tickets in go-public.
 
 ### M7 · Go public · M
 
@@ -125,12 +128,23 @@ Open the repo and find out whether developers outside the project can use it. Sp
 - Make `tzrea1-Q/stintwork` public, with the maintainer's confirmation.
 - Issue templates and a short CONTRIBUTING explain how to report problems and how agents build the project. SECURITY points to private reporting. Scan tracked files and history before opening.
 - Link the repo from both READMEs and the npm package metadata.
-- Run the deferred M5 exit test with 3–5 outside developers and file findings as tickets.
+- After M8's exit, run the deferred M5 exit test with 3–5 outside developers and file findings as M9 tickets.
 - A native speaker's review of the Chinese catalog (M6 exit) can happen alongside.
 
 **Exit test:** 3–5 outside developers each start a real task in their own repo within a minute, without help, and their findings are triaged into tickets.
 
-### M8 · What they ran into · size set after M7
+### M8 · UI foundations · L
+
+Every screen fits the supported widths in English and Chinese, with shared controls and browser checks. Spec: `.scratch/ui-foundations/spec.md`. The frontend decision is ADR 0010; every web change follows `docs/agents/frontend.md`.
+
+- Wrap Radix primitives once in `packages/web/src/ui/`, styled with Tailwind utilities and shared CSS-variable tokens mapped into the theme.
+- Use the system font stack. Migrate existing overlays, controls and feature CSS to the shared components and tokens.
+- Check layout with Playwright at 1440, 1024, 768 and 390px in `en` and `zh-CN`; support a minimum width of 360px. Keep jsdom for behaviour.
+- Cover every screen, with both colour schemes at 1440 and 390px. Save screenshots for review, not pixel comparisons.
+
+**Exit test:** the browser suite passes in CI at all four widths in both languages, and the maintainer walks every screen at 1440, 768 and 390px in both languages without finding layout bugs. Only then is M8 set shipped.
+
+### M9 · What they ran into · size set after M7
 
 Fix what blocked the M7 developers.
 
@@ -139,7 +153,7 @@ Fix what blocked the M7 developers.
 
 **Exit test:** the same developers retry and the blocking findings are gone.
 
-### M9 · Stints survive restarts · M
+### M10 · Stints survive restarts · M
 
 An active stint resumes after a server restart or crash.
 
@@ -149,7 +163,7 @@ An active stint resumes after a server restart or crash.
 
 **Exit test:** kill the server partway through a real Codex stint and a real Claude Code stint. After restart both reach a handoff without a new brief.
 
-### M10 · GitHub Issues as a tracker · L
+### M11 · GitHub Issues as a tracker · L
 
 A repo whose tracker config says GitHub shows its issues as work items and tickets, read through `gh`.
 
@@ -159,7 +173,7 @@ A repo whose tracker config says GitHub shows its issues as work items and ticke
 
 **Exit test:** a real repo that tracks work in GitHub Issues takes one ticket from the board to a merged PR.
 
-### M11 · More agents · M
+### M12 · More agents · M
 
 Verify Grok Build and add Gemini CLI over ACP.
 
@@ -169,7 +183,7 @@ Verify Grok Build and add Gemini CLI over ACP.
 
 **Exit test:** one real stint each with Grok Build and Gemini CLI, each ending in a parsed handoff.
 
-### M12 · v0.2 release · S
+### M13 · v0.2 release · S
 
 Publish the release after its milestones pass.
 
@@ -181,7 +195,7 @@ Publish the release after its milestones pass.
 
 ### Open questions for v0.2
 
-1. **GitHub tracker files.** Where do the spec and `workflow.yaml` gate approvals live in an issue-tracked repo? The M10 research spike answers this before any spec.
+1. **GitHub tracker files.** Where do the spec and `workflow.yaml` gate approvals live in an issue-tracked repo? The M11 research spike answers this before any spec.
 2. **Outside developers.** Who are the 3–5 developers, and how are they recruited? The maintainer's call.
 
 ### Later (not in v0.2)
@@ -199,8 +213,8 @@ Publish the release after its milestones pass.
 |---|---|
 | ACP adapters change or regress | Pin adapter versions; run the probe as a contract test before each release (ADR 0002) |
 | Provider rules on subscription use change again | Use only the developer's own CLIs and logins (ADR 0003); support API-key login; the terminal fallback (now Later) would keep every agent usable |
-| State drifts after crashes or restarts | M9 resumes active stints through ACP; derive state from files and git, keep checkpoint and stint-log recovery when resume fails |
-| Scope creep toward a "platform" | The "Later" list and brief §12 bound scope; M8 follows outside-developer feedback, and a large M8 moves M10 and M11 to v0.3 |
+| State drifts after crashes or restarts | M10 resumes active stints through ACP; derive state from files and git, keep checkpoint and stint-log recovery when resume fails |
+| Scope creep toward a "platform" | The "Later" list and brief §12 bound scope; M9 follows outside-developer feedback, and a large M9 moves M11 and M12 to v0.3 |
 | One maintainer's bandwidth | Agents implement tickets via Stintwork itself from M2; Codex delegation for parallel work |
 
 ## Settled (2026-10-09)
