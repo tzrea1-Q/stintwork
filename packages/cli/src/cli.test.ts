@@ -2,12 +2,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { once } from "node:events";
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
-import { createRequire } from "node:module";
 import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
+import { sourceNodeArgs } from "../../agents/src/source-node-args.js";
 import { parseCliArguments } from "./arguments.js";
 import { listenOnAvailablePort } from "./port.js";
 import { findGitRoot } from "./project.js";
@@ -26,13 +26,7 @@ function temporaryDirectory() {
 function runCli(directory: string, args: string[]) {
   const result = spawnSync(
     process.execPath,
-    [
-      "--import",
-      pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href,
-      "--conditions=development",
-      fileURLToPath(new URL("./bin.ts", import.meta.url)),
-      ...args,
-    ],
+    sourceNodeArgs(fileURLToPath(new URL("./bin.ts", import.meta.url)), ...args),
     {
       cwd: directory,
       env: { ...process.env, INIT_CWD: directory },

@@ -1,0 +1,61 @@
+name: Bug report
+description: Report a problem with Stintwork.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For security problems, use private vulnerability reporting, not a public issue.
+        Do not paste secrets, tokens, credentials or private project data.
+  - type: input
+    id: stintwork-version
+    attributes:
+      label: Stintwork version
+      description: Run `npx stintwork --version` or check the installed package version.
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: Include the OS version.
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Run `node --version`.
+    validations:
+      required: true
+  - type: textarea
+    id: agents
+    attributes:
+      label: Agents and their versions
+      description: List the agent CLIs used in the stint and their versions. Write "none" if no agent was involved.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you did
+      description: Give the steps to reproduce the problem. Include the work item's workflow and stage if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Include relevant errors or logs if available. Remove secrets, tokens, credentials and private project data before pasting.
+      render: text

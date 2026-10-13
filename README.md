@@ -2,6 +2,8 @@
 
 English | [简体中文](README.zh-CN.md)
 
+Source and issues: [GitHub](https://github.com/tzrea1-Q/stintwork).
+
 Stintwork is a local workbench for one developer using their own coding agents on a real repository. It takes work through stages from an idea to a merged change, with a brief and handoff so another agent can pick up the next stint. Project intent and memory stay in the repo.
 
 ```bash

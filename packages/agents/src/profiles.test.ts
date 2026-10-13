@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Writable } from "node:stream";
@@ -11,7 +10,7 @@ import type { StintLogEvent } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { createAgentRegistry, describeAgents, startAgentStint } from "./index.js";
 import { toAcpReadable } from "./stdio.js";
-import { createFakeAgentLauncher, fakeAgentProfiles } from "./testing.js";
+import { createFakeAgentLauncher, fakeAgentProfiles, sourceNodeArgs } from "./testing.js";
 
 const fixtures: string[] = [];
 async function fixture() {
@@ -83,11 +82,7 @@ test.each(contracts)(
     const cwd = await fixture();
     const child = spawn(
       process.execPath,
-      [
-        "--import",
-        createRequire(import.meta.url).resolve("tsx"),
-        fileURLToPath(new URL("./fake-agent.ts", import.meta.url)),
-      ],
+      sourceNodeArgs(fileURLToPath(new URL("./fake-agent.ts", import.meta.url))),
       {
         cwd,
         stdio: "pipe",
