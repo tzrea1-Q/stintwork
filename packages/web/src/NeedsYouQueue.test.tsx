@@ -264,7 +264,9 @@ test("the queue spans all work items regardless of the board's milestone filter 
   const snapshot = attentionSnapshot();
   snapshot.milestones = [{ id: "other", name: "Other", status: "planned", workItemSlugs: [] }];
   render(<Board snapshot={snapshot} />);
-  await user.selectOptions(screen.getByRole("combobox", { name: "Milestone" }), "other");
+  const milestone = screen.getByRole("combobox", { name: "Milestone" });
+  milestone.focus();
+  await user.keyboard("{Enter}{End}{Enter}");
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
   await user.click(screen.getByRole("button", { name: "First work item · first" }));
   expect(screen.getByRole("dialog", { name: "First work item" })).toBeInTheDocument();
@@ -556,11 +558,11 @@ describe("Chinese Needs-you queue", () => {
     expect(notify).toHaveBeenCalledTimes(5);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "语言" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+    await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
     expect(document.title).toBe("(5) Project · Stintwork");
     expect(notify).toHaveBeenCalledTimes(5);
     await user.click(screen.getByRole("button", { name: "Language" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "Language" }), "zh-CN");
+    await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
     next.attentionItems = [
       {
         ...snapshot.attentionItems[0],
@@ -584,13 +586,13 @@ describe("Chinese Needs-you queue", () => {
     await user.click(screen.getByRole("button", { name: "待你处理 3" }));
     await user.type(screen.getByRole("textbox", { name: "开发者备注" }), "Developer draft 原文");
     await user.click(screen.getByRole("button", { name: "语言" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+    await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
     expect(screen.getByRole("dialog", { name: "Needs you 3" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Developer note" })).toHaveValue(
       "Developer draft 原文",
     );
     await user.click(screen.getByRole("button", { name: "Language" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "Language" }), "zh-CN");
+    await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
     expect(screen.getByRole("textbox", { name: "开发者备注" })).toHaveValue("Developer draft 原文");
   });
 

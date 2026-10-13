@@ -10,10 +10,12 @@ import {
   Search,
   Settings2,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import { SetupGuide } from "./SetupGuide";
 import { useLanguage } from "./i18n/language";
-import { LanguageSelect } from "./i18n/LanguageSelect";
+import { LanguageMenu } from "./i18n/LanguageMenu";
+import { Button } from "./ui/Button";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/Popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 
 export function TopBar({
   snapshot,
@@ -28,9 +30,7 @@ export function TopBar({
   onOpenPalette: () => void;
   onOpenNeedsYou: () => void;
 }) {
-  const { t, language } = useLanguage();
-  const [panel, setPanel] = useState<"warnings" | "setup" | "language" | null>(null);
-  const panels = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
   const setup = snapshot.setup;
   const checks = [
     {
@@ -53,183 +53,158 @@ export function TopBar({
   ];
   const ready = checks.filter((check) => check.ready).length;
 
-  useEffect(() => {
-    if (!panel) return;
-    function dismiss(event: PointerEvent) {
-      if (event.target instanceof Node && !panels.current?.contains(event.target)) setPanel(null);
-    }
-    function handleKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        panels.current?.querySelector<HTMLButtonElement>(`#${panel}-trigger`)?.focus();
-        setPanel(null);
-      }
-    }
-    document.addEventListener("pointerdown", dismiss);
-    document.addEventListener("keydown", handleKeydown);
-    return () => {
-      document.removeEventListener("pointerdown", dismiss);
-      document.removeEventListener("keydown", handleKeydown);
-    };
-  }, [panel]);
+  const selectedMilestone =
+    snapshot.milestones.find((entry) => entry.id === milestone)?.name ?? t.topBar.all;
 
   return (
-    <header className="top-bar">
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="project-icon">
-          <Layers3 size={17} aria-hidden="true" />
+    <header className="top-bar flex shrink-0 flex-col gap-3 border-b border-border bg-surface px-4 py-3 xl:flex-row xl:items-center xl:px-6">
+      <div className="top-project flex min-w-0 items-center gap-3 xl:flex-1">
+        <span className="grid size-8 shrink-0 place-items-center rounded-md bg-surface-raised text-muted">
+          <Layers3 className="size-icon-sm" aria-hidden="true" />
         </span>
-        <strong className="truncate text-sm tracking-tight" title={snapshot.name}>
+        <strong
+          className="min-w-0 truncate text-sm tracking-tight"
+          data-truncate
+          title={snapshot.name}
+        >
           {snapshot.name}
         </strong>
         {snapshot.branch && (
-          <span className="branch" title={snapshot.branch}>
-            <GitBranch size={12} aria-hidden="true" />
+          <span
+            className="flex min-w-0 max-w-[40%] items-center gap-1 border-l border-border-strong pl-3 font-mono text-xs text-muted"
+            data-truncate
+            title={snapshot.branch}
+          >
+            <GitBranch className="size-icon-sm shrink-0" aria-hidden="true" />
             <span className="truncate">{snapshot.branch}</span>
           </span>
         )}
       </div>
-      <div className="top-actions">
-        <button
-          type="button"
-          id="needs-you-trigger"
-          className={`top-button ${snapshot.attentionItems.length ? "warning" : ""}`}
-          aria-haspopup="dialog"
-          onClick={onOpenNeedsYou}
-        >
-          <Inbox size={14} aria-hidden="true" />
-          {t.topBar.needsYou} <span className="count">{snapshot.attentionItems.length}</span>
-        </button>
-        <button
-          type="button"
-          id="command-palette-trigger"
-          className="top-button"
-          aria-label={t.topBar.openPalette}
-          aria-haspopup="dialog"
-          onClick={onOpenPalette}
-        >
-          <Search size={13} aria-hidden="true" />
-          <span>{t.topBar.jumpTo}</span>
-          <kbd>⌘K / Ctrl+K</kbd>
-        </button>
-        <label className="milestone-filter">
-          <span className="muted text-[11px]">{t.topBar.milestone}</span>
-          <select
-            aria-label={t.topBar.milestone}
-            value={milestone}
-            onChange={(event) => onMilestoneChange(event.target.value)}
+      <div className="top-actions flex min-w-0 flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
+          <Button
+            id="needs-you-trigger"
+            variant="secondary"
+            aria-haspopup="dialog"
+            onClick={onOpenNeedsYou}
           >
-            <option value="">{t.topBar.all}</option>
-            {snapshot.milestones.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div className="relative flex items-center gap-2" ref={panels}>
-          <button
-            type="button"
-            className="top-button"
-            id="language-trigger"
-            aria-label={t.topBar.language}
-            aria-haspopup="listbox"
-            aria-expanded={panel === "language"}
-            aria-controls="language-panel"
-            onClick={() => setPanel(panel === "language" ? null : "language")}
-          >
-            <span lang={language}>{language === "en" ? "English" : "简体中文"}</span>
-          </button>
-          {panel === "language" && (
-            <div className="project-popover" id="language-panel">
-              <LanguageSelect
-                size={2}
-                onChange={() => {
-                  setPanel(null);
-                  panels.current?.querySelector<HTMLButtonElement>("#language-trigger")?.focus();
-                }}
-              />
-            </div>
-          )}
-          <button
-            type="button"
-            className={`top-button ${snapshot.warnings.length ? "warning" : "muted"}`}
-            id="warnings-trigger"
-            aria-expanded={panel === "warnings"}
-            aria-controls="warnings-panel"
-            onClick={() => setPanel(panel === "warnings" ? null : "warnings")}
-          >
-            <AlertTriangle size={13} aria-hidden="true" />
-            {t.topBar.warnings} <span className="count">{snapshot.warnings.length}</span>
-          </button>
-          <button
-            type="button"
-            className="top-button"
-            id="setup-trigger"
-            aria-expanded={panel === "setup"}
-            aria-controls="setup-panel"
-            onClick={() => setPanel(panel === "setup" ? null : "setup")}
-          >
-            <Settings2 size={13} aria-hidden="true" />
-            {t.topBar.setup}{" "}
-            <span className={ready === checks.length ? "success" : "muted"}>
-              {ready}/{checks.length}
-            </span>
-          </button>
-          {(panel === "warnings" || panel === "setup") && (
-            <section
-              className="project-popover"
-              id={`${panel}-panel`}
-              aria-label={panel === "warnings" ? t.topBar.projectWarnings : t.topBar.projectSetup}
+            <Inbox aria-hidden="true" />
+            {t.topBar.needsYou}{" "}
+            <span
+              className={`rounded-sm bg-surface-raised px-1 text-xs ${snapshot.attentionItems.length ? "text-warning" : "text-muted"}`}
             >
-              <h2 className="mb-4 text-xs font-semibold">
-                {panel === "warnings" ? t.topBar.projectWarnings : t.topBar.projectSetup}
-              </h2>
-              {panel === "warnings" ? (
-                snapshot.warnings.length ? (
-                  <ul className="space-y-4">
-                    {snapshot.warnings.map((warning) => (
-                      <li key={JSON.stringify([warning.path, warning.message])}>
-                        <code className="text-[11px] muted break-all">
-                          {warning.path || t.topBar.project}
-                        </code>
-                        <p className="mt-1 leading-5">{warning.message}</p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="muted">{t.topBar.noWarnings}</p>
-                )
-              ) : (
+              {snapshot.attentionItems.length}
+            </span>
+          </Button>
+          <Button
+            id="command-palette-trigger"
+            variant="ghost"
+            aria-label={t.topBar.openPalette}
+            aria-haspopup="dialog"
+            onClick={onOpenPalette}
+          >
+            <Search aria-hidden="true" />
+            <span>{t.topBar.jumpTo}</span>
+            <kbd className="hidden text-xs lg:inline">⌘K / Ctrl+K</kbd>
+          </Button>
+        </div>
+        <div className="top-milestone order-last flex w-full min-w-0 items-center gap-2 md:order-none md:w-56">
+          <span className="text-xs text-muted">{t.topBar.milestone}</span>
+          <Select
+            value={milestone ? `milestone:${milestone}` : "all"}
+            onValueChange={(value) =>
+              onMilestoneChange(value === "all" ? "" : value.slice("milestone:".length))
+            }
+          >
+            <SelectTrigger aria-label={t.topBar.milestone} className="flex-1">
+              <SelectValue className="truncate" data-truncate title={selectedMilestone} />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">{t.topBar.all}</SelectItem>
+              {snapshot.milestones.map((entry) => (
+                <SelectItem key={entry.id} value={`milestone:${entry.id}`}>
+                  {entry.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="top-utilities flex w-full flex-wrap items-center gap-2 lg:w-auto">
+          <LanguageMenu />
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" id="warnings-trigger">
+                <AlertTriangle aria-hidden="true" />
+                {t.topBar.warnings}{" "}
+                <span className={snapshot.warnings.length ? "text-warning" : "text-muted"}>
+                  {snapshot.warnings.length}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-96 [overflow-wrap:anywhere]"
+              aria-label={t.topBar.projectWarnings}
+            >
+              <h2 className="mb-4 text-xs font-semibold">{t.topBar.projectWarnings}</h2>
+              {snapshot.warnings.length ? (
                 <ul className="space-y-4">
-                  {checks.map((check) => (
-                    <li key={check.label} className="flex gap-2">
-                      {check.ready ? (
-                        <Check size={14} className="success mt-0.5 shrink-0" aria-hidden="true" />
-                      ) : (
-                        <Circle size={14} className="muted mt-0.5 shrink-0" aria-hidden="true" />
-                      )}
-                      <div>
-                        <p>
-                          {check.label}
-                          <span className="sr-only">
-                            : {check.ready ? t.topBar.found : t.topBar.missing}
-                          </span>
-                        </p>
-                        <code className="text-[10px] muted">{check.path}</code>
-                      </div>
+                  {snapshot.warnings.map((warning) => (
+                    <li key={JSON.stringify([warning.path, warning.message])}>
+                      <code className="text-xs text-muted break-all">
+                        {warning.path || t.topBar.project}
+                      </code>
+                      <p className="mt-1 leading-5">{warning.message}</p>
                     </li>
                   ))}
                 </ul>
-              )}
-              {panel === "setup" ? (
-                <SetupGuide workflows={snapshot.workflows} />
               ) : (
-                <p className="mt-4 border-t border-(--border) pt-3 text-[10px] muted">
-                  {t.topBar.readOnly}
-                </p>
+                <p className="text-muted">{t.topBar.noWarnings}</p>
               )}
-            </section>
-          )}
+              <p className="mt-4 border-t border-border pt-3 text-xs text-muted">
+                {t.topBar.readOnly}
+              </p>
+            </PopoverContent>
+          </Popover>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" id="setup-trigger">
+                <Settings2 aria-hidden="true" />
+                {t.topBar.setup}{" "}
+                <span className={ready === checks.length ? "text-success" : "text-muted"}>
+                  {ready}/{checks.length}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-xl [overflow-wrap:anywhere]"
+              aria-label={t.topBar.projectSetup}
+            >
+              <h2 className="mb-4 text-xs font-semibold">{t.topBar.projectSetup}</h2>
+              <ul className="space-y-4">
+                {checks.map((check) => (
+                  <li key={check.label} className="flex gap-2">
+                    {check.ready ? (
+                      <Check className="size-icon-sm text-success shrink-0" aria-hidden="true" />
+                    ) : (
+                      <Circle className="size-icon-sm text-muted shrink-0" aria-hidden="true" />
+                    )}
+                    <div className="min-w-0">
+                      <p>
+                        {check.label}
+                        <span className="sr-only">
+                          : {check.ready ? t.topBar.found : t.topBar.missing}
+                        </span>
+                      </p>
+                      <code className="text-xs text-muted">{check.path}</code>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <SetupGuide workflows={snapshot.workflows} />
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
     </header>

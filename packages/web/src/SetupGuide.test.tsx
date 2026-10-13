@@ -138,7 +138,7 @@ test("the Setup chip opens exact current/proposed file content and a read-only s
   render(<Board snapshot={indexProject(createMemoryRepoFiles({}), { name: "Project" })} />);
   const trigger = screen.getByRole("button", { name: /^Setup/ });
   await user.click(trigger);
-  const panel = within(screen.getByRole("region", { name: "Project setup" }));
+  const panel = within(await screen.findByRole("dialog", { name: "Project setup" }));
   expect(await panel.findByRole("checkbox", { name: "AGENTS.md (change)" })).toBeChecked();
   await user.click(panel.getByText("Preview AGENTS.md"));
   const agents = within(panel.getByRole("region", { name: "Change AGENTS.md" }));
@@ -169,7 +169,7 @@ test("the Setup chip opens exact current/proposed file content and a read-only s
   ).toBeInTheDocument();
   expect(fetch.mock.calls.every(([, options]) => options?.method !== "POST")).toBe(true);
   await user.keyboard("{Escape}");
-  expect(screen.queryByRole("region", { name: "Project setup" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Project setup" })).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
 });
 

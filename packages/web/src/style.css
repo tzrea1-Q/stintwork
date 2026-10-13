@@ -54,43 +54,6 @@ code,
   display: flex;
   flex-direction: column;
 }
-.top-bar {
-  min-height: 60px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 24px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-}
-.project-icon {
-  display: grid;
-  place-items: center;
-  width: 29px;
-  height: 29px;
-  border-radius: 6px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  flex-shrink: 0;
-}
-.branch {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding-left: 14px;
-  border-left: 1px solid var(--border-strong);
-  font-size: 10px;
-  color: var(--muted);
-  max-width: 220px;
-}
-.top-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 14px;
-}
 .milestone-filter {
   display: flex;
   align-items: center;
@@ -118,20 +81,6 @@ code,
 .top-button:hover,
 .top-button[aria-expanded="true"] {
   background: var(--surface-hover);
-}
-.project-popover {
-  position: absolute;
-  z-index: 10;
-  right: 0;
-  top: calc(100% + 14px);
-  width: min(360px, calc(100vw - 32px));
-  max-height: min(520px, 70dvh);
-  overflow: auto;
-  padding: 18px;
-  border: 1px solid var(--border-strong);
-  border-radius: 7px;
-  background: var(--surface);
-  box-shadow: 0 12px 40px #0004;
 }
 .pipeline-heading {
   display: flex;
@@ -342,14 +291,6 @@ code,
 }
 
 @media (max-width: 720px) {
-  .top-bar {
-    padding: 12px 16px;
-  }
-  .top-actions {
-    width: 100%;
-    justify-content: space-between;
-    gap: 8px;
-  }
   .milestone-filter > span {
     display: none;
   }

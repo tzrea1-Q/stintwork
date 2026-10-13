@@ -20,6 +20,12 @@ Object.defineProperties(HTMLDialogElement.prototype, {
   },
 });
 Object.defineProperty(Element.prototype, "scrollIntoView", { value() {}, configurable: true });
+Object.defineProperty(Element.prototype, "hasPointerCapture", {
+  value() {
+    return false;
+  },
+  configurable: true,
+});
 Object.defineProperty(globalThis, "ResizeObserver", {
   value: class {
     observe() {}
