@@ -54,7 +54,14 @@ test.each([
     expect(gateReadiness(item)).toMatchObject({
       ready: true,
       conditions: expect.arrayContaining([
-        { id: "output", ready: true, label: expect.any(String), action: expect.any(String) },
+        {
+          id: "output",
+          ready: true,
+          label: expect.any(String),
+          action: expect.any(String),
+          labelMessage: { code: "gate.manualApproval" },
+          actionMessage: { code: "gate.approve" },
+        },
       ]),
     });
   }
@@ -72,6 +79,71 @@ test.each([undefined, "", "No heading", "#   ", "# Spec\n\u0000", "# Spec\n\uFFF
     expect(deriveAttentionItems(snapshot).some(({ kind }) => kind === "gate-ready")).toBe(false);
   },
 );
+
+test("gate output carries typed paths and leaves parser warnings verbatim", () => {
+  const { item } = project("spec", { [specPath]: "No heading" });
+  const gate = gateReadiness(item);
+  expect(gate.conditions[0]).toEqual({
+    id: "output",
+    label: "spec.md exists and parses",
+    labelMessage: { code: "gate.specOutput" },
+    ready: false,
+    action: `Write or edit ${specPath} with a nonempty # heading. Spec has no nonempty # heading`,
+    actionMessage: {
+      code: "gate.writeSpec",
+      params: { path: specPath, warning: "Spec has no nonempty # heading" },
+    },
+  });
+  expect(gate.reasonMessage).toEqual(gate.conditions[0].actionMessage);
+});
+
+test("manual, Tickets and Review gate conditions carry messages alongside English", () => {
+  const manual = gateReadiness(project("clarify").item).conditions[0];
+  expect(manual).toEqual({
+    id: "output",
+    ready: true,
+    label: "Developer approval; no file output required",
+    labelMessage: { code: "gate.manualApproval" },
+    action: "Review the stage and approve when satisfied.",
+    actionMessage: { code: "gate.approve" },
+  });
+  const tickets = gateReadiness(project("tickets").item).conditions[0];
+  expect(tickets).toEqual({
+    id: "output",
+    ready: false,
+    label: "At least one ticket, no ticket warnings, valid dependency order",
+    labelMessage: { code: "gate.ticketsOutput" },
+    action:
+      "Write or fix .scratch/first/issues/NN-<slug>.md tickets with Status and Blocked by lines and valid dependencies.",
+    actionMessage: {
+      code: "gate.writeTickets",
+      params: { path: ".scratch/first/issues/NN-<slug>.md", warning: "" },
+    },
+  });
+  const review = gateReadiness(project("review").item).conditions;
+  expect(
+    review.map(({ labelMessage, actionMessage }) => ({ labelMessage, actionMessage })),
+  ).toEqual([
+    {
+      labelMessage: { code: "gate.reviewFinished" },
+      actionMessage: { code: "gate.recordFindings" },
+    },
+    {
+      labelMessage: { code: "gate.findingsDecided" },
+      actionMessage: { code: "gate.decideFindings" },
+    },
+    { labelMessage: { code: "gate.checksPassing" }, actionMessage: { code: "gate.runChecks" } },
+    {
+      labelMessage: { code: "gate.evidenceFresh" },
+      actionMessage: { code: "gate.refreshEvidence" },
+    },
+    { labelMessage: { code: "gate.memoryDecided" }, actionMessage: { code: "gate.decideMemory" } },
+    {
+      labelMessage: { code: "gate.riskyPathsHandled" },
+      actionMessage: { code: "gate.handleRiskyPaths" },
+    },
+  ]);
+});
 
 test("Spec uses existing parsing rules and scopes warnings to its own spec", () => {
   const { item } = project("spec", {

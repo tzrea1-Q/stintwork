@@ -13,6 +13,7 @@ import { StintStream } from "./StintStream";
 import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { attentionProfile } from "./attention-test-fixtures";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const request: Extract<StintLogEvent, { type: "permission_request" }> = {
   type: "permission_request",
@@ -53,7 +54,79 @@ function stint(events: StintLogEvent[] = []): Stint {
     ...events.map((event) => ({ type: "event" as const, at: "2026-10-09T10:00:01Z", event })),
   ]) as Stint;
 }
-afterEach(() => vi.unstubAllGlobals());
+
+test("Chinese stint replay translates authored diagnostics while old diagnostics remain verbatim", () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const recorded = stint();
+  recorded.status = "failed";
+  recorded.error = "Agent ended the stint with stop reason: max_tokens.";
+  recorded.errorMessage = { code: "stint.stopReason", params: { reason: "max_tokens" } };
+  const { rerender } = render(
+    <LanguageProvider>
+      <StintStream stint={recorded} replay />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("alert").textContent).toBe(
+    "Agent 结束了此 Stint，停止原因：max_tokens。",
+  );
+  rerender(
+    <LanguageProvider>
+      <StintStream stint={{ ...recorded, errorMessage: undefined }} replay />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("alert").textContent).toBe(recorded.error);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  localStorage.removeItem(languageStorageKey);
+});
+
+test.each([false, true])(
+  "Chinese stream translates structured notes, not old logs or unknown codes (replay=%s)",
+  (replay) => {
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    const english =
+      "Wrote workflow.yaml with the workflow, stage and Claude Code for this stage.\n";
+    const current = stint(
+      JSON.parse(
+        JSON.stringify([
+          {
+            type: "message",
+            id: "setup",
+            text: english,
+            message: { code: "stream.wroteWorkflow", params: { agent: "Claude Code" } },
+          },
+          { type: "message", id: "old", text: english },
+          {
+            type: "message",
+            id: "future",
+            text: "Future English note",
+            message: { code: "stream.future" },
+          },
+          {
+            type: "message",
+            id: "invalid",
+            text: "Malformed message stays English",
+            message: { code: "stream.wroteWorkflow", params: { agent: 42 } },
+          },
+          { type: "thought", id: "thought", text: "Agent thought 原文" },
+        ]),
+      ),
+    );
+    render(
+      <LanguageProvider>
+        <StintStream stint={current} replay={replay} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByText("已写入 workflow.yaml，包含此阶段的工作流、阶段和 Claude Code。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(english.trim())).toBeInTheDocument();
+    expect(screen.getByText("Future English note")).toBeInTheDocument();
+    expect(screen.getByText("Malformed message stays English")).toBeInTheDocument();
+    expect(screen.getByText("Agent thought 原文")).toBeInTheDocument();
+  },
+);
 
 test("an automatic request awaiting its receipt does not ask the developer for an answer", () => {
   const current = stint([{ ...request, automatic: true }]);

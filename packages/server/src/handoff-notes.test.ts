@@ -284,7 +284,10 @@ test("a corrupt stint log refuses an answer rather than claiming it was persiste
   await writeFile(path, `${original}{\n`);
   const response = await answer(state.project, stint.id, note);
   expect(response.status).toBe(503);
-  expect(await response.json()).toEqual({ reason: "The stint log has invalid entries." });
+  expect(await response.json()).toEqual({
+    reason: "The stint log has invalid entries.",
+    reasonMessage: { code: "stint.invalidLog" },
+  });
   expect(await readFile(path, "utf8")).toBe(`${original}{\n`);
   expect((await preview(state.project, 1)).developerNotes).toEqual([]);
 });

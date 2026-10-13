@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AgentRegistry } from "@stintwork/agents";
 import {
-  agentUnavailableReason,
+  agentUnavailable,
   indexProject,
   workflowStageAgent,
   type StagedWorkItem,
@@ -48,9 +48,16 @@ export function addStageAgentRoute(
     if (!body || typeof body !== "object" || !("agent" in body) || typeof body.agent !== "string")
       return context.json({ reason: "Choose a registered agent." }, 400);
     const agent = registry.get(body.agent);
-    if (!agent) return context.json({ reason: `Agent is not registered: ${body.agent}.` }, 400);
-    const unavailable = agentUnavailableReason(agent);
-    if (unavailable) return context.json({ reason: unavailable }, 409);
+    if (!agent)
+      return context.json(
+        {
+          reason: `Agent is not registered: ${body.agent}.`,
+          reasonMessage: { code: "agent.notRegistered", params: { agent: body.agent } },
+        },
+        400,
+      );
+    const unavailable = agentUnavailable(agent);
+    if (unavailable.reason) return context.json(unavailable, 409);
     const slug = context.req.param("slug");
     const project = readProjectFiles();
     const discoveryFailure = project.warnings.find(({ path }) => path === ".git");

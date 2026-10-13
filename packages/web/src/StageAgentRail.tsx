@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   type AgentProfile,
-  agentUnavailableReason,
+  agentUnavailable,
   builtInWorkflows,
   stageAgent,
   type StageId,
@@ -10,7 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./stage-agent-rail.css";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, useCoreTextError, renderCoreText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
 
 export function StageAgentRail({
@@ -28,7 +28,7 @@ export function StageAgentRail({
     agents: Partial<Record<StageId, string>>;
   }>({ source: item.stages, agents: {} });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | { key: "loadAgentsFailed" }>("");
+  const [error, setError] = useCoreTextError({ loadAgentsFailed: t.stints.loadAgentsFailed });
   useEffect(() => {
     const request = new AbortController();
     setAgents([]);
@@ -37,19 +37,17 @@ export function StageAgentRail({
       try {
         const response = await fetch("/api/agents", { signal: request.signal, cache: "no-store" });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.reason ?? "");
+        if (!response.ok) throw new CoreTextError(result, "");
         if (!Array.isArray(result.agents)) throw new Error();
         if (!request.signal.aborted) setAgents(result.agents);
       } catch (cause) {
         if (!request.signal.aborted)
-          setError(
-            cause instanceof Error && cause.message ? cause.message : { key: "loadAgentsFailed" },
-          );
+          setError(cause instanceof Error && cause.message ? cause : { key: "loadAgentsFailed" });
       }
     }
     void load();
     return () => request.abort();
-  }, []);
+  }, [setError]);
 
   async function choose(stage: StageId, agent: string) {
     setSaving(true);
@@ -64,7 +62,7 @@ export function StageAgentRail({
         },
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? t.stints.saveAgentFailed);
+      if (!response.ok) throw new CoreTextError(result, t.stints.saveAgentFailed);
       setChoices((choices) => ({
         source: item.stages,
         agents: {
@@ -73,7 +71,7 @@ export function StageAgentRail({
         },
       }));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t.stints.saveAgentFailed);
+      setError(cause instanceof Error ? cause : t.stints.saveAgentFailed);
     } finally {
       setSaving(false);
     }
@@ -102,7 +100,11 @@ export function StageAgentRail({
                   </option>
                 )}
                 {agents.map((agent) => {
-                  const reason = agentUnavailableReason(agent);
+                  const unavailable = agentUnavailable(agent);
+                  const reason =
+                    unavailable.reason === null
+                      ? null
+                      : renderCoreText(unavailable.reasonMessage, unavailable.reason, t);
                   return (
                     <option key={agent.id} value={agent.id} disabled={!!reason}>
                       {agent.displayName}
@@ -117,7 +119,7 @@ export function StageAgentRail({
       </ol>
       {error && (
         <p role="alert" className="warning">
-          {typeof error === "string" ? error : t.stints[error.key]}
+          {error}
         </p>
       )}
     </>

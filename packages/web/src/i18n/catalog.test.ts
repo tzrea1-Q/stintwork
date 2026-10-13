@@ -91,6 +91,42 @@ const samples: Record<string, unknown[][]> = {
   "stints.content": [["type/中文"]],
   "stints.automaticOutcome": [["Agent 原文"]],
   "stints.permissionTitle": [["git status 中文"]],
+  "coreText.gate.writeSpec": [
+    [{ path: ".scratch/功能/spec.md", warning: "" }],
+    [{ path: "spec.md", warning: "Repo 原文" }],
+  ],
+  "coreText.gate.writeTickets": [
+    [{ path: ".scratch/功能/issues/NN-<slug>.md", warning: "" }],
+    [{ path: "issues/", warning: "Repo 原文" }],
+  ],
+  "coreText.brief.blockedBy": [[{ tickets: "01" }], [{ tickets: "01, 12" }]],
+  "coreText.permission.unsupportedMode": [
+    [{ agent: "Codex", mode: "read-only" }],
+    [{ agent: "Agent 中文", mode: "custom" }],
+  ],
+  "coreText.permission.alwaysApprove": [[{ agent: "Grok Build" }], [{ agent: "Agent 中文" }]],
+  "coreText.agent.unavailable": [
+    [{ agent: "Codex", command: "codex login" }],
+    [{ agent: "Agent 中文", command: "agent login" }],
+  ],
+  "coreText.stream.wroteWorkflow": [
+    [{ agent: "Claude Code" }],
+    [{ agent: "Codex" }],
+    [{ agent: "Agent 中文" }],
+  ],
+  "coreText.stream.installDependencies": [
+    [{ manager: "pnpm", connection: "offline" }],
+    [{ manager: "npm", connection: "online" }],
+    [{ manager: "yarn", connection: "offline" }],
+  ],
+  "coreText.agent.notRegistered": [[{ agent: "codex" }]],
+  "coreText.brief.decision": [[{ title: "Agents use ACP" }]],
+  "coreText.stint.stopReason": [[{ reason: "max_tokens" }]],
+  "coreText.agent.loginRequired": [[{ agent: "Claude Code", command: "claude auth login" }]],
+  "coreText.server.diffFailed": [[{ detail: "git 原文" }]],
+  "coreText.server.reviewDiffFailed": [[{ detail: "git 原文" }]],
+  "coreText.server.checkpointCompareFailed": [[{ detail: "git 原文" }]],
+  "coreText.server.recoveryFailed": [[{ detail: "Error: 原文" }]],
 };
 
 test.each([

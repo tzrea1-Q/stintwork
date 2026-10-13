@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import "./create-work-item.css";
 import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
 
 export function CreateWorkItem({
   snapshot,
@@ -23,7 +23,7 @@ export function CreateWorkItem({
   const [milestone, setMilestone] = useState("");
   const [intent, setIntent] = useState("");
   const [preview, setPreview] = useState<{ input: string; slug: string } | null>(null);
-  const [error, setError] = useState("");
+  const [error, setError] = useCoreTextError();
   const [saving, setSaving] = useState(false);
   const input = JSON.stringify({ title, workflow, milestone: milestone || null, intent });
   const slug = preview?.input === input ? preview.slug : null;
@@ -54,13 +54,12 @@ export function CreateWorkItem({
           signal: controller.signal,
         });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.reason ?? en.planning.create.errors.preview);
+        if (!response.ok) throw new CoreTextError(result, en.planning.create.errors.preview);
         if (typeof result.slug !== "string" || !result.slug)
           throw new Error(en.planning.create.errors.invalidPreview);
         if (!disposed) setPreview({ input, slug: result.slug });
       } catch (cause) {
-        if (!disposed)
-          setError(cause instanceof Error ? cause.message : en.planning.create.errors.preview);
+        if (!disposed) setError(cause instanceof Error ? cause : en.planning.create.errors.preview);
       }
     }, 150);
     return () => {
@@ -68,7 +67,7 @@ export function CreateWorkItem({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [input]);
+  }, [input, setError]);
 
   function refusal(message: string) {
     const key = (
@@ -97,10 +96,10 @@ export function CreateWorkItem({
         body: input,
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? en.planning.create.errors.save);
+      if (!response.ok) throw new CoreTextError(result, en.planning.create.errors.save);
       onCreated();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : en.planning.create.errors.save);
+      setError(cause instanceof Error ? cause : en.planning.create.errors.save);
       setSaving(false);
     }
   }

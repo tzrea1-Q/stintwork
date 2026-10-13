@@ -69,6 +69,7 @@ export function addGateRoutes(
         return context.json(
           {
             reason: item.stage !== stage.id ? "This is not the current stage." : gate.reason,
+            reasonMessage: item.stage === stage.id ? gate.reasonMessage : undefined,
             conditions: gate.conditions,
           },
           409,

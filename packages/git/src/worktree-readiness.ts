@@ -3,6 +3,7 @@ import { execFile, spawn } from "node:child_process";
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import type { CoreTextMessage } from "@stintwork/core";
 
 const execute = promisify(execFile);
 
@@ -17,7 +18,7 @@ export async function worktreeGitDirectories(worktree: string): Promise<string[]
 
 export async function installWorktreeDependencies(
   worktree: string,
-  progress: (text: string) => void,
+  progress: (text: string, message?: CoreTextMessage) => void,
   reinstall = false,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -53,6 +54,10 @@ export async function installWorktreeDependencies(
   async function install(offline: boolean) {
     progress(
       `Installing worktree dependencies with ${manager} (${offline ? "offline" : "online"}).\n`,
+      {
+        code: "stream.installDependencies",
+        params: { manager: manager as string, connection: offline ? "offline" : "online" },
+      },
     );
     const child = spawn(
       manager as string,
@@ -87,9 +92,11 @@ export async function installWorktreeDependencies(
     await install(true);
   } catch {
     signal?.throwIfAborted();
-    progress("Offline dependency install unavailable; trying online.\n");
+    progress("Offline dependency install unavailable; trying online.\n", {
+      code: "stream.offlineUnavailable",
+    });
     await install(false);
   }
   signal?.throwIfAborted();
-  progress("Worktree dependencies are ready.\n");
+  progress("Worktree dependencies are ready.\n", { code: "stream.dependenciesReady" });
 }

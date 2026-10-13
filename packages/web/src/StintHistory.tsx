@@ -3,7 +3,7 @@ import type { Stint, StintSummary } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import { StintStream } from "./StintStream";
-import { useLanguage } from "./i18n/language";
+import { CoreTextError, renderCoreText, useCoreTextError, useLanguage } from "./i18n/language";
 
 function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   const { t, language } = useLanguage();
@@ -12,7 +12,10 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [replay, setReplay] = useState<Stint | null>(null);
-  const [error, setError] = useState<string | { key: "readHistoryFailed" | "staleHistory" }>("");
+  const [error, setError] = useCoreTextError({
+    readHistoryFailed: t.stints.readHistoryFailed,
+    staleHistory: t.stints.staleHistory,
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -27,7 +30,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
           signal: controller.signal,
         });
         const body = await response.json();
-        if (!response.ok) throw new Error(typeof body.reason === "string" ? body.reason : "");
+        if (!response.ok) throw new CoreTextError(body, "");
         if (stint.status !== "running" && body.stint.status === "running") {
           fallback = "staleHistory";
           throw new Error();
@@ -35,7 +38,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
         if (!controller.signal.aborted) setReplay(body.stint);
       } catch (cause) {
         if (!controller.signal.aborted) {
-          setError(cause instanceof Error && cause.message ? cause.message : { key: fallback });
+          setError(cause instanceof Error && cause.message ? cause : { key: fallback });
           setOpen(false);
         }
       } finally {
@@ -43,7 +46,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       }
     })();
     return () => controller.abort();
-  }, [open, stint.id, stint.status]);
+  }, [open, stint.id, stint.status, setError]);
 
   const recorded = open && replay?.status === stint.status ? replay : stint;
   return (
@@ -70,7 +73,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       </p>
       {recorded.error && (
         <p className="warning" role="alert">
-          {recorded.error}
+          {renderCoreText(recorded.errorMessage, recorded.error, t)}
         </p>
       )}
       <button
@@ -89,7 +92,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       </button>
       {error && (
         <p className="warning" role="alert">
-          {typeof error === "string" ? error : t.stints[error.key]}
+          {error}
         </p>
       )}
       <div id={replayId} hidden={!open}>

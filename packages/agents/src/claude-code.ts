@@ -72,12 +72,14 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
             "Claude Code returned an invalid login status. Check claude auth status, then refresh agent availability.",
           checkedAt,
         };
+      const authError = new AgentAuthenticationError(claudeProfile);
       return status.loggedIn
         ? { available: true, checkedAt }
         : {
             available: false,
             kind: "login-required",
-            reason: new AgentAuthenticationError(claudeProfile).message,
+            reason: authError.message,
+            reasonMessage: authError.reasonMessage,
             checkedAt,
           };
     },

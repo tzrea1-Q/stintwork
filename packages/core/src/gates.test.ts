@@ -45,6 +45,49 @@ function stint(stage: StageId, overrides: Partial<StintSummary> = {}): StintSumm
   };
 }
 
+test("gate refusal carries a stable message without changing its English reason", () => {
+  const workItem = item("implement");
+  workItem.tickets[0].resolved = false;
+  const gate = gateReadiness(workItem);
+  expect({ reason: gate.reason, reasonMessage: gate.reasonMessage }).toEqual({
+    reason: "Every ticket must be resolved before approving.",
+    reasonMessage: { code: "gate.ticketsUnresolved" },
+  });
+});
+
+test.each([
+  ["shipped", "This work item is shipped.", "workItem.shipped"],
+  ["ship", "This stage has no approval gate.", "gate.noApproval"],
+  [
+    "running",
+    "A stint is running on this work item. Finish or stop it before approving.",
+    "gate.running",
+  ],
+  ["unfinished", "The stage stint must finish before approving.", "gate.stintUnfinished"],
+  ["handoff", "The finished stage stint needs a handoff before approving.", "gate.handoffMissing"],
+  [
+    "reopened",
+    "Start a new Review stint after reopening or entering Review.",
+    "gate.reviewRestart",
+  ],
+])("%s gate refusal keeps English and supplies its code", (state, reason, code) => {
+  const workItem = item(state === "ship" ? "ship" : state === "reopened" ? "review" : "clarify");
+  if (state === "shipped") workItem.merged = { at: "now", commit: "head" };
+  if (state === "running") workItem.stints = [stint("clarify", { status: "running" })];
+  if (state === "handoff") workItem.stints = [stint("clarify", { handoff: null })];
+  if (state === "reopened") {
+    workItem.stints = [stint("review")];
+    workItem.stages.review = {
+      reopened: { at: "2026-10-09T10:06:00Z", by: "You", commit: "head" },
+    };
+  }
+  const gate = gateReadiness(workItem);
+  expect({ reason: gate.reason, reasonMessage: gate.reasonMessage }).toEqual({
+    reason,
+    reasonMessage: { code },
+  });
+});
+
 test.each([
   ["implement", "feature"],
   ["fix", "bug"],

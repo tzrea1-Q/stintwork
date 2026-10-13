@@ -16,12 +16,14 @@ import {
 import {
   foldStintLog,
   indexProject,
-  agentUnavailableReason,
+  agentUnavailable,
   type BriefHandoff,
   type ReviewFindings,
   type StintLiveMessage,
   type StintLogEntry,
   type CheckpointWarning,
+  type CoreTextMessage,
+  coreTextMessage,
 } from "@stintwork/core";
 import {
   commitStintworkSetup,
@@ -186,7 +188,13 @@ export function addStintRoutes(
       );
     }
     if ("agent" in body && !registry.has(body.agent as string))
-      return context.json({ reason: `Agent is not registered: ${body.agent}.` }, 400);
+      return context.json(
+        {
+          reason: `Agent is not registered: ${body.agent}.`,
+          reasonMessage: { code: "agent.notRegistered", params: { agent: body.agent } },
+        },
+        400,
+      );
     if (closing) return context.json({ reason: "The project server is stopping." }, 503);
     const result = await prepareStintBrief(
       readProjectFiles,
@@ -199,14 +207,24 @@ export function addStintRoutes(
     );
     refresh();
     if ("reason" in result)
-      return context.json({ reason: result.reason }, result.status === 404 ? 409 : result.status);
+      return context.json(
+        { reason: result.reason, reasonMessage: result.reasonMessage },
+        result.status === 404 ? 409 : result.status,
+      );
     const { workItem, ticket } = result;
     const agentId = "agent" in body ? (body.agent as string) : result.brief.agent;
     const agent = registry.get(agentId);
-    if (!agent) return context.json({ reason: `Agent is not registered: ${agentId}.` }, 400);
+    if (!agent)
+      return context.json(
+        {
+          reason: `Agent is not registered: ${agentId}.`,
+          reasonMessage: { code: "agent.notRegistered", params: { agent: agentId } },
+        },
+        400,
+      );
     await refreshAgentAvailability(agent);
-    const unavailable = agentUnavailableReason(agent);
-    if (unavailable) return context.json({ reason: unavailable }, 409);
+    const unavailable = agentUnavailable(agent);
+    if (unavailable.reason) return context.json(unavailable, 409);
     if (isChecking(workItem.slug))
       return context.json({ reason: "Cancel or finish checks before starting a stint." }, 409);
     if (active.has(workItem.slug) || stageAgents.isWriting(workItem.slug))
@@ -259,7 +277,7 @@ export function addStintRoutes(
       const id = randomUUID();
       state.id = id;
       const logs = prepareLogs(root);
-      const setupMessages: string[] = [];
+      const setupMessages: { text: string; message: CoreTextMessage }[] = [];
       const setupFiles: string[] = [];
       if (inheritedAgents) setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
       let setupError: unknown;
@@ -272,9 +290,10 @@ export function addStintRoutes(
           writeFirstStintWorkflow(worktree.path, workItem, stage.id, agent.id)
         ) {
           setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
-          setupMessages.push(
-            `Wrote workflow.yaml with the workflow, stage and ${agent.displayName} for this stage.\n`,
-          );
+          setupMessages.push({
+            text: `Wrote workflow.yaml with the workflow, stage and ${agent.displayName} for this stage.\n`,
+            message: { code: "stream.wroteWorkflow", params: { agent: agent.displayName } },
+          });
         }
         await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
       } catch (error) {
@@ -333,6 +352,7 @@ export function addStintRoutes(
         details: {
           stopReason?: string;
           error?: string;
+          errorMessage?: CoreTextMessage;
           handoff?: BriefHandoff | null;
           handoffError?: string;
           findings?: ReviewFindings;
@@ -357,6 +377,7 @@ export function addStintRoutes(
           );
         } catch (error) {
           status = "failed";
+          delete details.errorMessage;
           details.error = [
             details.error,
             `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`,
@@ -368,6 +389,7 @@ export function addStintRoutes(
           checkpointWarnings.push(...committedRiskyPaths(worktree.path, baseCommit));
         } catch (error) {
           status = "failed";
+          delete details.errorMessage;
           details.error = [details.error, `Cannot inspect stint commits: ${String(error)}`]
             .filter(Boolean)
             .join("\n");
@@ -385,6 +407,12 @@ export function addStintRoutes(
           status,
           handoff: null,
           ...details,
+          ...(coreTextMessage(details.error)
+            ? { errorMessage: coreTextMessage(details.error) }
+            : {}),
+          ...(coreTextMessage(details.handoffError)
+            ? { handoffErrorMessage: coreTextMessage(details.handoffError) }
+            : {}),
           ...(checkpointCommit ? { checkpointCommit } : {}),
           ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
         });
@@ -393,13 +421,18 @@ export function addStintRoutes(
       }
       try {
         let setupMessage = 0;
-        const progress = (text: string) =>
+        const progress = (text: string, message?: CoreTextMessage) =>
           append({
             type: "event",
             at: new Date().toISOString(),
-            event: { type: "message", id: `setup-${++setupMessage}`, text },
+            event: {
+              type: "message",
+              id: `setup-${++setupMessage}`,
+              text,
+              ...(message ? { message } : {}),
+            },
           });
-        for (const message of setupMessages) progress(message);
+        for (const { text, message } of setupMessages) progress(text, message);
         if (setupFailed) throw setupError;
         const previous = workItem.stints[0];
         await installWorktreeDependencies(
@@ -464,7 +497,10 @@ export function addStintRoutes(
                   ...(!state.stopRequested &&
                   stopReason !== "end_turn" &&
                   stopReason !== "cancelled"
-                    ? { error: `Agent ended the stint with stop reason: ${stopReason}.` }
+                    ? {
+                        error: `Agent ended the stint with stop reason: ${stopReason}.`,
+                        errorMessage: { code: "stint.stopReason", params: { reason: stopReason } },
+                      }
                     : {}),
                 },
               ),
@@ -474,10 +510,14 @@ export function addStintRoutes(
                   available: false,
                   kind: "login-required",
                   reason: error.message,
+                  reasonMessage: error.reasonMessage,
                   checkedAt: new Date().toISOString(),
                 };
               return end(closing ? "interrupted" : "failed", {
                 error: error instanceof Error ? error.message : String(error),
+                ...(error instanceof AgentAuthenticationError
+                  ? { errorMessage: error.reasonMessage }
+                  : {}),
               });
             },
           )
@@ -496,14 +536,37 @@ export function addStintRoutes(
         else
           await end(
             closing ? "interrupted" : state.stopRequested ? "stopped" : "failed",
-            state.stopRequested ? {} : { error: reason },
+            state.stopRequested
+              ? {}
+              : {
+                  error: reason,
+                  ...(error instanceof AgentAuthenticationError
+                    ? { errorMessage: error.reasonMessage }
+                    : {}),
+                },
           );
-        return context.json({ reason }, 503);
+        return context.json(
+          {
+            reason,
+            ...(error instanceof AgentAuthenticationError
+              ? { reasonMessage: error.reasonMessage }
+              : {}),
+          },
+          503,
+        );
       }
       return context.json({ stint: foldStintLog([started]) }, 201);
     } catch (error) {
       active.delete(workItem.slug);
-      return context.json({ reason: error instanceof Error ? error.message : String(error) }, 503);
+      return context.json(
+        {
+          reason: error instanceof Error ? error.message : String(error),
+          ...(error instanceof AgentAuthenticationError
+            ? { reasonMessage: error.reasonMessage }
+            : {}),
+        },
+        503,
+      );
     } finally {
       prepared();
     }

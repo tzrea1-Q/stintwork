@@ -87,19 +87,29 @@ test("a work item without a worktree returns a clear 409, not an empty diff", as
   const response = await project.app.request("/api/work-items/first/diff");
   expect(response.status).toBe(409);
   expect(response.headers.get("Cache-Control")).toBe("no-store");
-  expect(await response.json()).toEqual({ reason: "This work item has no worktree to review." });
+  expect(await response.json()).toEqual({
+    reason: "This work item has no worktree to review.",
+    reasonMessage: { code: "review.worktreeMissing" },
+  });
 });
 
 test("unknown work items return 404 and unavailable Git refs return a reason", async () => {
   const { root, project } = await fixture();
   const missing = await project.app.request("/api/work-items/missing/diff");
   expect(missing.status).toBe(404);
-  expect(await missing.json()).toEqual({ reason: "Work item not found." });
+  expect(await missing.json()).toEqual({
+    reason: "Work item not found.",
+    reasonMessage: { code: "server.workItemNotFound" },
+  });
   git(root, "update-ref", "-d", "refs/heads/main");
   const unavailable = await project.app.request("/api/work-items/first/diff");
   expect(unavailable.status).toBe(503);
   expect(await unavailable.json()).toEqual({
     reason: expect.stringContaining("Could not read the work item diff:"),
+    reasonMessage: {
+      code: "server.diffFailed",
+      params: { detail: expect.stringContaining("main") },
+    },
   });
 });
 

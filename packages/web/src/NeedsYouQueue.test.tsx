@@ -21,6 +21,60 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+test("permission answer refusals retain their code through the queue", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          reason: "This permission request's stint has ended.",
+          reasonMessage: { code: "permission.stintEnded" },
+        }),
+        { status: 409 },
+      ),
+    ),
+  );
+  render(
+    <LanguageProvider>
+      <Board snapshot={attentionSnapshot()} />
+    </LanguageProvider>,
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "待你处理 1" }));
+  await user.click(screen.getByRole("button", { name: new RegExp(attentionOptions[0].name) }));
+  expect(screen.getByRole("alert")).toHaveTextContent("此权限请求所属的 Stint 已结束。");
+  expect(screen.getByRole("alert")).not.toHaveTextContent("Error:");
+});
+
+test("login attention translates authored agent diagnostics and preserves the login command", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const snapshot = mixedAttentionSnapshot({
+    ...loginAttentionProfile,
+    availability: {
+      available: false,
+      kind: "login-required",
+      reason:
+        "Claude Code authentication required. Sign in with claude auth login, then start another stint.",
+      reasonMessage: {
+        code: "agent.loginRequired",
+        params: { agent: "Claude Code", command: "claude auth login" },
+      },
+    },
+  });
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 4" }));
+  expect(
+    screen.getByText(
+      "Claude Code 需要身份验证。请运行 claude auth login 登录，然后开始新的 Stint。",
+    ),
+  ).toBeInTheDocument();
+});
+
 test("the queue shows command and paths, with full permission JSON behind a disclosure", async () => {
   const snapshot = attentionSnapshot();
   const item = snapshot.attentionItems[0];

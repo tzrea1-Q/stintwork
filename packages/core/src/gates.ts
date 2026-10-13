@@ -6,6 +6,7 @@ import type { StagedWorkItem } from "./stages.js";
 import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
 import { reviewGateConditions } from "./review-evidence.js";
 import { outputGateConditions, type GateCondition } from "./gate-output.js";
+import { coreTextMessage } from "./core-text.js";
 
 export type GateRecord = { by: string; at: string; commit: string };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
@@ -61,7 +62,16 @@ export function gateReadiness(
         ? outputGateConditions(item, stage)
         : [];
   reason ??= conditions.find((condition) => !condition.ready)?.action ?? null;
-  return { ready: reason === null, reason, nextStage, stageStint: stageStint ?? null, conditions };
+  return {
+    ready: reason === null,
+    reason,
+    reasonMessage:
+      coreTextMessage(reason) ??
+      conditions.find((condition) => condition.action === reason)?.actionMessage,
+    nextStage,
+    stageStint: stageStint ?? null,
+    conditions,
+  };
 }
 
 export function deriveGateAttentionItems(

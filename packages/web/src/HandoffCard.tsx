@@ -5,7 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import "./handoff-card.css";
-import { useLanguage } from "./i18n/language";
+import { renderCoreText, useLanguage } from "./i18n/language";
 
 export function HandoffCard({ stint }: { stint: StintSummary }) {
   const { t } = useLanguage();
@@ -33,7 +33,11 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
         </dl>
       ) : (
         <p className="muted">
-          {stint.handoffError ? t.stints.noHandoffError(stint.handoffError) : t.stints.noHandoff}
+          {stint.handoffError
+            ? t.stints.noHandoffError(
+                renderCoreText(stint.handoffErrorMessage, stint.handoffError, t),
+              )
+            : t.stints.noHandoff}
         </p>
       )}
       <p>

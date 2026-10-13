@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ProjectSnapshot } from "@stintwork/core";
+import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
 import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { CheckpointWarnings } from "./CheckpointWarnings";
@@ -8,7 +8,7 @@ import { HandoffAnswer } from "./HandoffAnswer";
 import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
 import { attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
-import { useLanguage } from "./i18n/language";
+import { renderCoreText, useCoreTextError, useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
 import "./needs-you.css";
@@ -30,12 +30,14 @@ export function NeedsYouQueue({
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const [now, setNow] = useState(Date.now);
-  const [answerError, setAnswerError] = useState("");
+  const [answerError, setAnswerError] = useCoreTextError();
+  const [answerItem, setAnswerItem] = useState<AttentionItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   async function refreshAvailability() {
     setRefreshing(true);
     setAnswerError("");
+    setAnswerItem(null);
     try {
       const response = await fetch("/api/agents?refresh=true");
       if (!response.ok) throw new Error(t.needsYou.refreshFailed);
@@ -131,7 +133,15 @@ export function NeedsYouQueue({
                 </p>
                 {language !== "en" &&
                   item.details !== en.needsYou.loginInstructions(item.loginCommand) && (
-                    <p>{item.details}</p>
+                    <p>
+                      {renderCoreText(
+                        profile?.availability?.reason === item.details
+                          ? profile.availability.reasonMessage
+                          : undefined,
+                        item.details,
+                        t,
+                      )}
+                    </p>
                   )}
                 <pre>
                   <code>{item.loginCommand}</code>
@@ -205,19 +215,28 @@ export function NeedsYouQueue({
                   stintId={item.stintId}
                   request={item}
                   profile={profile}
-                  onError={(reason) => setAnswerError(reason ? `${title}: ${reason}` : "")}
+                  onError={(reason) => {
+                    setAnswerError(reason);
+                    setAnswerItem(reason ? item : null);
+                  }}
                 />
               )}
               {item.kind === "handoff-unresolved" && (
                 <HandoffAnswer
                   item={item}
-                  onError={(reason) => setAnswerError(reason ? `${title}: ${reason}` : "")}
+                  onError={(reason) => {
+                    setAnswerError(reason);
+                    setAnswerItem(reason ? item : null);
+                  }}
                 />
               )}
               {item.kind === "memory-proposal" && (
                 <MemoryProposal
                   item={item}
-                  onError={(reason) => setAnswerError(reason ? `${title}: ${reason}` : "")}
+                  onError={(reason) => {
+                    setAnswerError(reason);
+                    setAnswerItem(reason ? item : null);
+                  }}
                 />
               )}
               {item.kind === "gate-ready" && workItem && (
@@ -234,6 +253,7 @@ export function NeedsYouQueue({
       <footer className="needs-you-footer">
         {answerError && (
           <p role="alert" className="warning">
+            {answerItem && `${attentionTitle(answerItem, t, language)}: `}
             {answerError}
           </p>
         )}
