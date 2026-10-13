@@ -1011,4 +1011,9 @@ export const zhCN: Catalog = {
     "git.riskyMetadata": "无法读取风险路径的元数据。",
     "git.riskySize": "无法读取风险路径的大小。",
   },
+  slugInput: {
+    label: "文件夹名称",
+    hint: "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+    invalid: "文件夹名称必须使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+  },
 };

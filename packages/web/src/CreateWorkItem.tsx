@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ProjectSnapshot } from "@stintwork/core";
+import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./create-work-item.css";
 import { workflowName } from "./i18n/workflow-names";
@@ -18,15 +18,29 @@ export function CreateWorkItem({
   const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
+  const slugHintId = useId();
   const [title, setTitle] = useState("");
+  const [editedSlug, setEditedSlug] = useState<string | null>(null);
   const [workflow, setWorkflow] = useState(Object.keys(snapshot.workflows)[0] ?? "");
   const [milestone, setMilestone] = useState("");
   const [intent, setIntent] = useState("");
   const [preview, setPreview] = useState<{ input: string; slug: string } | null>(null);
   const [error, setError] = useCoreTextError();
   const [saving, setSaving] = useState(false);
-  const input = JSON.stringify({ title, workflow, milestone: milestone || null, intent });
-  const slug = preview?.input === input ? preview.slug : null;
+  let folderName = editedSlug ?? "";
+  let validSlug = false;
+  try {
+    folderName = deriveWorkItemSlug(title, editedSlug ?? undefined);
+    validSlug = true;
+  } catch {}
+  const input = JSON.stringify({
+    title,
+    workflow,
+    milestone: milestone || null,
+    intent,
+    ...(editedSlug === null ? {} : { slug: editedSlug }),
+  });
+  const slug = validSlug && preview?.input === input ? preview.slug : null;
 
   useEffect(() => {
     const previousFocus = document.activeElement;
@@ -42,7 +56,7 @@ export function CreateWorkItem({
   useEffect(() => {
     setPreview(null);
     setError("");
-    if (!JSON.parse(input).title.trim()) return;
+    if (!JSON.parse(input).title.trim() || (editedSlug !== null && !validSlug)) return;
     const controller = new AbortController();
     let disposed = false;
     const timer = setTimeout(async () => {
@@ -67,9 +81,11 @@ export function CreateWorkItem({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [input, setError]);
+  }, [input, validSlug, editedSlug, setError]);
 
   function refusal(message: string) {
+    if (message === en.slugInput.invalid) return t.slugInput.invalid;
+    if (!folderName && message === en.planning.create.errors.ascii) return t.slugInput.hint;
     const key = (
       Object.keys(en.planning.create.errors) as (keyof typeof en.planning.create.errors)[]
     ).find((key) => en.planning.create.errors[key] === message);
@@ -134,6 +150,19 @@ export function CreateWorkItem({
             <input required value={title} onChange={(event) => setTitle(event.target.value)} />
           </label>
           <label>
+            {t.slugInput.label}
+            <input
+              required
+              value={folderName}
+              aria-describedby={slugHintId}
+              aria-invalid={editedSlug !== null && !validSlug ? true : undefined}
+              onChange={(event) => setEditedSlug(event.target.value)}
+            />
+          </label>
+          <p id={slugHintId} className="muted">
+            {t.slugInput.hint}
+          </p>
+          <label>
             {t.planning.create.workflow}
             <select value={workflow} onChange={(event) => setWorkflow(event.target.value)}>
               {Object.values(snapshot.workflows).map((entry) => (
@@ -163,6 +192,12 @@ export function CreateWorkItem({
               <>
                 {t.planning.create.folder} <code>.scratch/{slug}/</code>
               </>
+            ) : !validSlug && title.trim() ? (
+              editedSlug ? (
+                t.slugInput.invalid
+              ) : (
+                t.planning.create.unavailable
+              )
             ) : error ? (
               t.planning.create.unavailable
             ) : title.trim() ? (

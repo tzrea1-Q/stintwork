@@ -9,9 +9,20 @@ export type WorkItemCreation = {
   roadmapText?: string;
 };
 
-export function deriveWorkItemSlug(title: unknown): string {
+export function deriveWorkItemSlug(title: unknown, explicitSlug?: unknown): string {
   if (typeof title !== "string" || !title.trim() || /[\p{Cc}\u2028\u2029\uFFFD]/u.test(title))
     throw new Error("Title must be nonempty, single-line text.");
+  if (explicitSlug !== undefined) {
+    if (
+      typeof explicitSlug !== "string" ||
+      explicitSlug.length > 48 ||
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(explicitSlug)
+    )
+      throw new Error(
+        "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+      );
+    return explicitSlug;
+  }
   const slug = title
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -32,7 +43,7 @@ export function prepareWorkItemCreation(
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw new Error("A work item creation is required.");
   if (!("title" in input)) throw new Error("A title is required.");
-  const slug = deriveWorkItemSlug(input.title);
+  const slug = deriveWorkItemSlug(input.title, "slug" in input ? input.slug : undefined);
   if (
     !("workflow" in input) ||
     typeof input.workflow !== "string" ||
@@ -53,7 +64,7 @@ export function prepareWorkItemCreation(
   return {
     slug,
     workflowText: stringify({
-      title: (input.title as string).trim(),
+      title: "slug" in input ? input.title : (input.title as string).trim(),
       workflow: workflow.id,
       stage: workflow.stages[0].id,
       ...(intent === undefined || !intent.trim() ? {} : { intent }),
