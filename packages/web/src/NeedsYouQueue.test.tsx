@@ -495,7 +495,7 @@ describe("Chinese Needs-you queue", () => {
     for (const body of [
       "权限请求：Check project request",
       "未解决的交接",
-      "implement阶段已就绪，等待批准",
+      "implement 阶段已就绪，等待批准",
       "custom-agent 需要登录",
       "分支中已提交风险文件",
     ])

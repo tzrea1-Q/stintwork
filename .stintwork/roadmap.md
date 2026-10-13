@@ -31,3 +31,9 @@ Id: m5
 Status: active
 
 - first-release
+
+## M6 · Chinese UI
+Id: m6
+Status: active
+
+- ui-language

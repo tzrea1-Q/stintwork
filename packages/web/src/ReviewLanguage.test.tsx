@@ -173,7 +173,7 @@ test("Chinese send back records the decision and preserves a custom stage name",
   );
   await user.click(screen.getByRole("button", { name: "退回" }));
   expect(await screen.findByRole("status")).toHaveTextContent(
-    "Custom implementation 原文 已重新打开。",
+    "Custom implementation 原文已重新打开。",
   );
   expect(screen.getByRole("article", { name: finding.title })).toHaveTextContent("已退回");
   expect(screen.getByRole("button", { name: "退回" })).toBeDisabled();
@@ -278,7 +278,7 @@ test.each(["merge", "squash", "rebase"])(
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await user.click(confirmation.getByRole("button", { name: `确认以 ${mergeMethod} 方式合并` }));
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "已通过拉取请求 #12交付，提交为 merged-sha。",
+      "已通过拉取请求 #12 交付，提交为 merged-sha。",
     );
     expect(fetchMock).toHaveBeenLastCalledWith(
       "/api/work-items/example/ship/merge-pr",

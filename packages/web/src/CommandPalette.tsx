@@ -79,7 +79,7 @@ export function CommandPalette({
             <X size={15} aria-hidden="true" />
           </button>
         </div>
-        <Command.List>
+        <Command.List label={t.planning.palette.suggestions}>
           <Command.Empty>{t.planning.palette.empty}</Command.Empty>
           <Command.Group heading={t.planning.palette.actions}>
             <Command.Item

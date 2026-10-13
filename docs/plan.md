@@ -97,6 +97,17 @@ Someone else can use it. Spec: `.scratch/first-release/spec.md`.
 
 **Exit test:** 3–5 developers outside the project install it and start a real task in their own repo within a minute, without help. Afterwards they say whether they'd keep using it.
 
+### M6 · Chinese UI · M
+
+A Chinese-speaking developer can use the whole web UI in Simplified Chinese. Spec: `.scratch/ui-language/spec.md`.
+
+- A language switcher with browser-language detection and a saved choice.
+- Chinese catalogs for the whole web UI, guarded by a catalog completeness test.
+- Chinese product terms in `GLOSSARY.md`, used consistently in the UI.
+- Follow-ups: Chinese-only titles (ticket 07) and translating text written by core and server (ticket 08).
+
+**Exit test:** a Chinese-speaking developer runs a real stint end to end in Chinese, and a native speaker has reviewed the catalog.
+
 ### Later (not in v0.1)
 
 - Grok Build verified end to end: the ACP probe and a real stint with a parsed handoff (deferred from M4, agent-polish 04). It is registered but unverified until then.

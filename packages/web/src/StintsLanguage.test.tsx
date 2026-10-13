@@ -17,6 +17,7 @@ import { StintHistory } from "./StintHistory";
 import { StintStream } from "./StintStream";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageSelect } from "./i18n/LanguageSelect";
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Developer conventions 原文",
@@ -245,6 +246,166 @@ test.each(["finished", "stopped", "failed", "interrupted"] as const)(
   },
 );
 
+test.each(["stream", "history"])(
+  "Chinese %s labels known ACP kinds and preserves agent titles and unknown kinds",
+  async (view) => {
+    const user = userEvent.setup();
+    const toolKinds = [
+      ["read", "读取"],
+      ["edit", "编辑"],
+      ["delete", "删除"],
+      ["move", "移动"],
+      ["search", "搜索"],
+      ["execute", "执行"],
+      ["think", "思考"],
+      ["fetch", "获取"],
+      ["switch_mode", "切换模式"],
+      ["other", "其他"],
+      ["vendor_tool_kind", "vendor_tool_kind"],
+      ["usage_update", "usage_update"],
+      ["constructor", "constructor"],
+      ["__proto__", "__proto__"],
+    ];
+    const updates = [
+      ["available_commands_update", "可用命令更新"],
+      ["config_option_update", "配置选项更新"],
+      ["usage_update", "用量更新"],
+      ["session_info_update", "会话信息更新"],
+      ["current_mode_update", "当前模式更新"],
+      ["vendor_session_update", "vendor_session_update"],
+      ["execute", "execute"],
+      ["constructor", "constructor"],
+      ["__proto__", "__proto__"],
+    ];
+    const recorded: Stint = {
+      ...finished,
+      events: [
+        ...toolKinds.map(([kind]) => ({
+          type: "tool_call" as const,
+          toolCallId: kind,
+          title: `Write greet.test.js · ${kind}`,
+          kind,
+          status: "completed" as const,
+        })),
+        ...updates.map(([kind]) => ({
+          type: "other" as const,
+          kind,
+          update: { sessionUpdate: kind, agentContent: "Agent payload 原文" },
+        })),
+        {
+          type: "permission_request",
+          requestId: "permission",
+          toolCallId: "permission-tool",
+          title: "Write greet.test.js",
+          kind: "edit",
+          options: [],
+          automatic: false,
+        },
+      ],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ stint: recorded }))),
+    );
+    render(
+      <LanguageProvider>
+        <LanguageSelect />
+        {view === "stream" ? (
+          <StintStream stint={recorded} />
+        ) : (
+          <StintHistory stints={[summarizeStint(recorded)]} />
+        )}
+      </LanguageProvider>,
+    );
+    if (view === "history")
+      await user.click(screen.getByRole("button", { name: "打开 Stint stint-中文" }));
+    const log = within(await screen.findByRole("log", { name: "Stint 消息" }));
+    for (const [kind, label] of toolKinds) {
+      expect(log.getByText(`Write greet.test.js · ${kind}`)).toBeInTheDocument();
+      expect(log.getByText(`${label} · 已完成`)).toBeInTheDocument();
+    }
+    for (const [, label] of updates)
+      expect(log.getByText(label, { selector: "summary" })).toBeInTheDocument();
+    const permission = log.getByRole("region", { name: "权限：Write greet.test.js" });
+    expect(permission).toHaveTextContent("Write greet.test.js · 编辑");
+    expect(log.getAllByText(/Agent payload 原文/, { selector: "pre" })).toHaveLength(
+      updates.length,
+    );
+    await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+    for (const [kind] of toolKinds)
+      expect(log.getByText(`${kind} · completed`)).toBeInTheDocument();
+    for (const [kind, label] of updates)
+      expect(
+        log.getByText(label === kind ? kind : kind.replaceAll("_", " "), {
+          selector: "summary",
+        }),
+      ).toBeInTheDocument();
+    expect(permission).toHaveTextContent("Write greet.test.js · edit");
+  },
+);
+
+test.each(["drawer", "gate"])(
+  "Chinese %s uses shared ticket statuses without changing repo content or unknown statuses",
+  async (view) => {
+    const user = userEvent.setup();
+    const statuses = [
+      ["resolved", "已解决"],
+      ["ready-for-agent", "待 Agent 处理"],
+      ["deferred", "已延期"],
+      ["Team_status 原文", "Team_status 原文"],
+      ["constructor", "constructor"],
+      ["__proto__", "__proto__"],
+    ];
+    const withTickets = indexProject(
+      createMemoryRepoFiles({
+        ".scratch/example/spec.md": "# Repo title 原文",
+        ".scratch/example/workflow.yaml": "workflow: feature\nstage: implement",
+        ...Object.fromEntries(
+          statuses.map(([status], index) => [
+            `.scratch/example/issues/0${index + 1}-work.md`,
+            `# Ticket ${index + 1} 原文\nStatus: ${status}\nBlocked by: none`,
+          ]),
+        ),
+      }),
+      { name: "Project 原文" },
+    ).workItems[0];
+    render(
+      <LanguageProvider>
+        {view === "drawer" ? (
+          <WorkItemDrawer item={withTickets} onClose={() => {}} />
+        ) : (
+          <>
+            <LanguageSelect />
+            <GateView item={withTickets} />
+          </>
+        )}
+      </LanguageProvider>,
+    );
+    const list = within(
+      view === "drawer"
+        ? screen.getByRole("region", { name: "工单 6" })
+        : screen.getByRole("region", { name: "实现关卡" }),
+    );
+    for (const [index, [, label]] of statuses.entries()) {
+      const number = index + 1;
+      expect(
+        list.getByText(view === "drawer" ? label : `${number} · Ticket ${number} 原文 · ${label}`),
+      ).toBeInTheDocument();
+      if (view === "drawer")
+        expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
+    }
+    await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+    for (const [index, [status]] of statuses.entries())
+      expect(
+        list.getByText(
+          view === "drawer"
+            ? status
+            : `${index + 1} · Ticket ${index + 1} 原文 · ${status === "resolved" ? "Resolved" : status}`,
+        ),
+      ).toBeInTheDocument();
+  },
+);
+
 test("Chinese gate approval keeps ticket titles, warning paths and warning messages verbatim", async () => {
   const user = userEvent.setup();
   vi.stubGlobal(
@@ -298,5 +459,5 @@ test("Chinese rail localizes chrome while custom workflow and stage names remain
     "Design 自定义",
   );
   expect(await screen.findByRole("combobox", { name: "Design 自定义 Agent" })).toHaveValue("codex");
-  expect(screen.getByRole("button", { name: "批准Design 自定义" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "批准 Design 自定义" })).toBeInTheDocument();
 });

@@ -46,3 +46,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 export function useLanguage() {
   return useContext(LanguageContext);
 }
+
+export function stintEventKind(kind: string, labels: Record<string, string>) {
+  return Object.hasOwn(labels, kind) ? labels[kind] : kind;
+}
+
+export function ticketStatus(status: string, t: Catalog, gateResolved = false) {
+  if (gateResolved) return t.stints.resolved;
+  const labels = t.stints.ticketStatuses;
+  return Object.hasOwn(labels, status) ? labels[status as keyof typeof labels] : status;
+}
