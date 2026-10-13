@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
 import { en } from "./en";
-import { zhCN } from "./zh-CN";
+import { joinChinese, zhCN } from "./zh-CN";
 
 const unchanged = new Set(["Stintwork", "Claude Code", "Codex", "Grok Build", "Stint", "Agent"]);
 const samples: Record<string, unknown[][]> = {
@@ -16,16 +16,16 @@ const samples: Record<string, unknown[][]> = {
   "card.attention": [[0], [1], [2]],
   "card.needsYou": [[0], [1], [2]],
   "card.progress": [["repo/中文"]],
-  "planning.palette.customise": [["Repo 原文"]],
+  "planning.palette.customise": [["Repo 原文"], ["功能"], ["Latin"]],
   "planning.roadmap.name": [["Repo 原文"]],
-  "planning.roadmap.rename": [["Repo 原文"]],
+  "planning.roadmap.rename": [["Repo 原文"], ["M1 · The board"], ["路线图"], ["（中文）"]],
   "planning.roadmap.status": [["Repo 原文"]],
   "planning.roadmap.setStatus": [["Repo 原文"]],
   "planning.roadmap.target": [["Repo 原文"]],
   "planning.roadmap.setTarget": [["Repo 原文"]],
-  "planning.roadmap.up": [["Repo 原文"]],
-  "planning.roadmap.down": [["Repo 原文"]],
-  "planning.customise.title": [["Repo 原文"]],
+  "planning.roadmap.up": [["Repo 原文"], ["M1 · The board"]],
+  "planning.roadmap.down": [["Repo 原文"], ["M1 · The board"]],
+  "planning.customise.title": [["Repo 原文"], ["功能"], ["Latin"]],
   "planning.customise.commit": [["Repo 原文"]],
   "planning.setup.committed": [["Repo 原文"]],
   "planning.setup.changeLabel": [["Repo 原文"]],
@@ -55,7 +55,10 @@ const samples: Record<string, unknown[][]> = {
   "review.diff.removedLines": [[0], [1], [2], [null]],
   "review.diff.outsideLabel": [["src/中文.ts"]],
   "review.diff.reopened": [["Implement 原文"]],
-  "review.diff.recorded": [["Finding", "resolved"]],
+  "review.diff.recorded": [
+    ["Finding", "resolved"],
+    ["审查发现", "已解决"],
+  ],
   "review.checks.commandOutput": [["npm test 原文"]],
   "review.checks.output": [["npm test 原文"]],
   "review.pr.heading": [[1], [23]],
@@ -72,11 +75,11 @@ const samples: Record<string, unknown[][]> = {
   "stints.copyPath": [["/repo/中文"]],
   "stints.stageStint": [["Stage 自定义"]],
   "stints.ticket": [[null], [1]],
-  "stints.gateApproved": [["Stage 自定义"]],
+  "stints.gateApproved": [["Stage 自定义"], ["审查"]],
   "stints.gateReopened": [["Stage 自定义"]],
   "stints.gate": [["Stage 自定义"]],
   "stints.gateConditions": [["Stage 自定义"]],
-  "stints.approve": [["Stage 自定义"]],
+  "stints.approve": [["Stage 自定义"], ["实现"]],
   "stints.reopen": [["Stage 自定义"]],
   "stints.workflowStages": [["Workflow 自定义"]],
   "stints.stageAgent": [["Stage 自定义"]],
@@ -89,6 +92,81 @@ const samples: Record<string, unknown[][]> = {
   "stints.automaticOutcome": [["Agent 原文"]],
   "stints.permissionTitle": [["git status 中文"]],
 };
+
+test.each([
+  [["重命名", "First"], "重命名 First"],
+  [["implement", "阶段"], "implement 阶段"],
+  [["自定义", "功能", "工作流"], "自定义功能工作流"],
+  [["Team workflow 自定义", "工作流阶段"], "Team workflow 自定义工作流阶段"],
+  [["工单", 12], "工单 12"],
+  [[12, "个工单"], "12 个工单"],
+  [["M", 1], "M1"],
+  [["名", "", "M1"], "名 M1"],
+  [["名 ", "M1"], "名 M1"],
+  [["名", " M1"], "名 M1"],
+  [["名\t", "M1"], "名\tM1"],
+  [["名", "\nM1"], "名\nM1"],
+  [["执行", "/cmd"], "执行 /cmd"],
+  [["/cmd", "命令"], "/cmd 命令"],
+  [["路径", "~/path"], "路径 ~/path"],
+  [["~/path", "路径"], "~/path 路径"],
+  [["工单", "#12"], "工单 #12"],
+  [["#12", "工单"], "#12 工单"],
+  [["中文", ""], "中文"],
+  [["", "中文"], "中文"],
+  [[], ""],
+  [["中文", "file."], "中文 file."],
+  [["中文", "."], "中文."],
+  [["file.", "中文"], "file. 中文"],
+  [["かな", "/cmd"], "かな /cmd"],
+  [["~/path", "カナ"], "~/path カナ"],
+  [["𠀀", "A"], "𠀀 A"],
+  [["A", "𠀀"], "A 𠀀"],
+  [["打开", "Repo中文Name", "。"], "打开 Repo中文Name。"],
+] as const)(
+  "Chinese joining preserves segments and spaces only mixed boundaries: %j",
+  (segments, expected) => {
+    expect(joinChinese(...segments)).toBe(expected);
+  },
+);
+
+test.each(["，", "。", "：", "；", "（", "）", "「", "」", "、", "！", "？", "《", "》"])(
+  "Chinese joining does not add spaces next to %s",
+  (punctuation) => {
+    expect(joinChinese("中文", punctuation, "Latin")).toBe(`中文${punctuation}Latin`);
+    expect(joinChinese("Latin", punctuation, "中文")).toBe(`Latin${punctuation}中文`);
+    expect(joinChinese("中文", punctuation, "中文")).toBe(`中文${punctuation}中文`);
+  },
+);
+
+test.each([",", ".", ";", ":", "!", "?", ")", "]", "}"])(
+  "Chinese joining keeps closing or separating ASCII punctuation %s attached",
+  (punctuation) => {
+    expect(joinChinese("中文", punctuation)).toBe(`中文${punctuation}`);
+    expect(joinChinese("かな", punctuation, "Latin")).toBe(`かな${punctuation}Latin`);
+  },
+);
+
+test.each(["(", "[", "{"])(
+  "Chinese joining keeps opening ASCII punctuation %s attached to following CJK",
+  (punctuation) => {
+    expect(joinChinese(punctuation, "中文")).toBe(`${punctuation}中文`);
+    expect(joinChinese(punctuation, "カナ")).toBe(`${punctuation}カナ`);
+    expect(joinChinese("中文", punctuation)).toBe(`中文 ${punctuation}`);
+  },
+);
+
+test("Chinese catalog interpolation follows the runtime boundary rule", () => {
+  expect(zhCN.planning.palette.customise("功能")).toBe("自定义功能工作流");
+  expect(zhCN.planning.palette.customise("Latin")).toBe("自定义 Latin 工作流");
+  expect(zhCN.planning.roadmap.rename("First")).toBe("重命名 First");
+  expect(zhCN.planning.roadmap.rename("（中文）")).toBe("重命名（中文）");
+  expect(zhCN.review.diff.recorded("审查发现", "已解决")).toBe("审查发现已记录为已解决。");
+  expect(zhCN.stints.gateApproved("审查")).toBe("关卡已批准。阶段推进至审查。");
+  expect(zhCN.stints.approve("实现")).toBe("批准实现");
+  expect(zhCN.stints.approve("Design 自定义")).toBe("批准 Design 自定义");
+  expect(zhCN.stints.workflowStages("Team workflow 自定义")).toBe("Team workflow 自定义工作流阶段");
+});
 
 test("Chinese catalogs have exactly the English keys and translated, nonempty entries", () => {
   function check(english: Record<string, unknown>, chinese: Record<string, unknown>, prefix = "") {

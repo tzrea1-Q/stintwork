@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AgentSkillAvailability, SetupPlan } from "@stintwork/core";
+import type { AgentSkillAvailability, SetupPlan, WorkflowDefinitions } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import "./setup-guide.css";
 import { en } from "./i18n/en";
 import { useLanguage } from "./i18n/language";
+import { stageName, uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
 
 type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
 
-export function SetupGuide() {
+export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions }) {
   const { t } = useLanguage();
   const [guide, setGuide] = useState<Guide | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
@@ -185,19 +186,30 @@ export function SetupGuide() {
               <h4>{agent.displayName}</h4>
               {agent.skills.length ? (
                 <ul>
-                  {agent.skills.map((skill) => (
-                    <li key={JSON.stringify([skill.workflowId, skill.stageId])}>
-                      {skill.workflow} / {skill.stage}: <code>{skill.skill}</code> —{" "}
-                      <strong>
-                        {skill.status === "unknown"
-                          ? t.planning.setup.unknown
-                          : skill.status === "found"
-                            ? t.planning.setup.found
-                            : t.planning.setup.missing}
-                      </strong>
-                      {skill.installationHint && <p>{installationHint(skill.installationHint)}</p>}
-                    </li>
-                  ))}
+                  {agent.skills.map((skill) => {
+                    const workflow = Object.hasOwn(workflows, skill.workflowId)
+                      ? workflows[skill.workflowId]
+                      : undefined;
+                    const builtIn = workflow && uncustomisedBuiltIn(workflow);
+                    const stage = workflow?.stages.find(({ id }) => id === skill.stageId);
+                    return (
+                      <li key={JSON.stringify([skill.workflowId, skill.stageId])}>
+                        {builtIn ? workflowName(workflow, t) : skill.workflow} /{" "}
+                        {builtIn && stage ? stageName(workflow, stage, t) : skill.stage}:{" "}
+                        <code>{skill.skill}</code> —{" "}
+                        <strong>
+                          {skill.status === "unknown"
+                            ? t.planning.setup.unknown
+                            : skill.status === "found"
+                              ? t.planning.setup.found
+                              : t.planning.setup.missing}
+                        </strong>
+                        {skill.installationHint && (
+                          <p>{installationHint(skill.installationHint)}</p>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               ) : (
                 <p>{t.planning.setup.noSkills}</p>

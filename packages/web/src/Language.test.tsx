@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { Board } from "./Board";
+import { CommandPalette } from "./CommandPalette";
+import { RoadmapEditor } from "./RoadmapEditor";
+import { LanguageSelect } from "./i18n/LanguageSelect";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const files = {
@@ -285,3 +288,158 @@ test("warnings and setup checklist chrome translate without changing core warnin
   expect(setup.getByText("Agent 指令")).toBeInTheDocument();
   expect(setup.getByText("docs/agents/issue-tracker.md")).toBeInTheDocument();
 });
+
+test("Chinese command suggestions have a catalog accessible name and retain repo titles", async () => {
+  const user = userEvent.setup();
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  render(
+    <LanguageProvider>
+      <LanguageSelect />
+      <CommandPalette
+        snapshot={project()}
+        milestone=""
+        onMilestoneChange={() => {}}
+        onOpenItem={() => {}}
+        onCreateItem={() => {}}
+        onCustomiseWorkflow={() => {}}
+        onClose={() => {}}
+      />
+    </LanguageProvider>,
+  );
+  const suggestions = within(screen.getByRole("listbox", { name: "建议" }));
+  expect(suggestions.getByText("Repo title 中文")).toBeInTheDocument();
+  expect(suggestions.getByText("Repo milestone 中文")).toBeInTheDocument();
+  expect(suggestions.getByRole("option", { name: "自定义功能工作流" })).toBeInTheDocument();
+  await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+  expect(screen.getByRole("listbox", { name: "Suggestions" })).toBeInTheDocument();
+});
+
+test("Chinese roadmap actions separate copy from Latin milestone names", async () => {
+  const user = userEvent.setup();
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  render(
+    <LanguageProvider>
+      <RoadmapEditor
+        snapshot={project({
+          ...files,
+          ".stintwork/roadmap.md":
+            "## M1 · The board\nId: m1\nStatus: active\n\n## M2 · The drawer\nId: m2\nStatus: planned",
+        })}
+      />
+    </LanguageProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "编辑路线图" }));
+  const roadmap = within(screen.getByRole("dialog", { name: "编辑路线图" }));
+  for (const name of ["M1 · The board", "M2 · The drawer"]) {
+    expect(roadmap.getByRole("region", { name })).toBeInTheDocument();
+    for (const action of ["重命名", "上移", "下移"])
+      expect(roadmap.getByRole("button", { name: `${action} ${name}` })).toBeInTheDocument();
+  }
+});
+
+test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
+  "Chinese setup receives snapshot workflows and preserves %s skill content",
+  async (customisation) => {
+    const user = userEvent.setup();
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    const workflow = structuredClone(builtInWorkflows.feature);
+    if (customisation === "custom-name") {
+      workflow.name = "Team workflow 原文";
+      workflow.stages[0].name = "Team clarification 原文";
+    }
+    if (customisation === "custom-skill") workflow.stages[0].skill = "/team-clarify";
+    if (customisation === "custom-agent") workflow.defaultAgent = "claude";
+    const snapshot = project({
+      ...files,
+      ".stintwork/workflows/feature.yaml": JSON.stringify(workflow),
+    });
+    const workflowSkills = [workflow, builtInWorkflows.bug, builtInWorkflows.quick].flatMap(
+      (definition) =>
+        definition.stages
+          .filter(({ skill }) => skill !== null)
+          .map((stage) => ({
+            workflowId: definition.id,
+            stageId: stage.id,
+            workflow: definition.name,
+            stage: stage.name,
+            skill: stage.skill,
+            status: "found",
+          })),
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              changes: [],
+              warnings: [],
+              skills: [
+                {
+                  agent: "codex",
+                  displayName: "Codex",
+                  skills: [
+                    ...workflowSkills,
+                    {
+                      workflowId: "team",
+                      stageId: "design",
+                      workflow: "Team 原文",
+                      stage: "Design 原文",
+                      skill: "/design",
+                      status: "unknown",
+                    },
+                    {
+                      workflowId: "constructor",
+                      stageId: "unknown",
+                      workflow: "Unknown 原文",
+                      stage: "Unknown stage 原文",
+                      skill: "/unknown",
+                      status: "unknown",
+                    },
+                    {
+                      workflowId: "feature",
+                      stageId: "unknown",
+                      workflow: workflow.name,
+                      stage: "Extra stage 原文",
+                      skill: "/extra",
+                      status: "unknown",
+                    },
+                  ],
+                },
+              ],
+            }),
+          ),
+      ),
+    );
+    render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: /^设置/ }));
+    const skills = within(await screen.findByRole("region", { name: "Codex 技能" }));
+    const rows = skills.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent(
+      customisation === "built-in"
+        ? "功能 / 澄清:"
+        : `${workflow.name} / ${workflow.stages[0].name}:`,
+    );
+    if (customisation === "built-in")
+      for (const name of ["澄清", "规格说明", "工单", "实现", "审查"])
+        expect(skills.getByText(`功能 / ${name}:`, { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("缺陷 / 诊断:", { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("快速 / 执行:", { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("Team 原文 / Design 原文:", { exact: false })).toBeInTheDocument();
+    expect(
+      skills.getByText("Unknown 原文 / Unknown stage 原文:", { exact: false }),
+    ).toBeInTheDocument();
+    expect(
+      skills.getByText(
+        `${customisation === "built-in" ? "功能" : workflow.name} / Extra stage 原文:`,
+        { exact: false },
+      ),
+    ).toBeInTheDocument();
+    for (const skill of workflowSkills)
+      expect(skills.getAllByText(skill.skill as string).length).toBeGreaterThan(0);
+  },
+);

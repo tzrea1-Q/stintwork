@@ -58,11 +58,11 @@ test("Chinese roadmap controls preserve milestone names, work item titles and th
   const status = sheet.getByRole("combobox", { name: "状态：First" });
   for (const name of ["已计划", "进行中", "已交付"])
     expect(within(status).getByRole("option", { name })).toBeInTheDocument();
-  expect(sheet.getByRole("button", { name: "重命名First" })).toBeInTheDocument();
+  expect(sheet.getByRole("button", { name: "重命名 First" })).toBeInTheDocument();
   expect(sheet.getByLabelText("目标日期：First")).toBeInTheDocument();
   expect(sheet.getByRole("button", { name: "设置目标日期：First" })).toBeInTheDocument();
-  expect(sheet.getByRole("button", { name: "上移First" })).toBeDisabled();
-  expect(sheet.getByRole("button", { name: "下移First" })).toBeEnabled();
+  expect(sheet.getByRole("button", { name: "上移 First" })).toBeDisabled();
+  expect(sheet.getByRole("button", { name: "下移 First" })).toBeEnabled();
   await user.selectOptions(status, "shipped");
   await user.click(sheet.getByRole("button", { name: "设置状态：First" }));
   expect(await sheet.findByRole("status")).toHaveTextContent("路线图已提交。");

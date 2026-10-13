@@ -7,7 +7,7 @@ import { readableToolOutput } from "./tool-output";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import "./stint-stream.css";
-import { useLanguage } from "./i18n/language";
+import { stintEventKind, useLanguage } from "./i18n/language";
 import type { Catalog } from "./i18n/en";
 
 function toolOutput(content: StintToolContent, t: Catalog): string {
@@ -59,7 +59,9 @@ function PermissionPrompt({
       aria-label={t.stints.permissionTitle(event.title ?? event.toolCallId)}
     >
       <strong>{event.title ?? t.stints.permissionRequested}</strong>
-      {event.kind && <span className="muted"> · {event.kind}</span>}
+      {event.kind && (
+        <span className="muted"> · {stintEventKind(event.kind, t.stints.toolKinds)}</span>
+      )}
       {pending ? (
         <>
           <p>{t.stints.waitingForAnswer}</p>
@@ -170,7 +172,7 @@ export function StintStream({
                     <Wrench size={14} aria-hidden="true" />
                     <strong>{event.title ?? event.toolCallId}</strong>
                     <span>
-                      {event.kind ?? t.stints.other} ·{" "}
+                      {stintEventKind(event.kind ?? "other", t.stints.toolKinds)} ·{" "}
                       {t.stints.progress[event.status ?? "pending"]}
                     </span>
                   </div>
@@ -218,7 +220,7 @@ export function StintStream({
               )}
               {event.type === "other" && (
                 <details>
-                  <summary>{event.kind.replaceAll("_", " ")}</summary>
+                  <summary>{stintEventKind(event.kind, t.stints.sessionUpdateKinds)}</summary>
                   <pre>{JSON.stringify(event.update, null, 2)}</pre>
                 </details>
               )}

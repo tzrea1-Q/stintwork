@@ -9,7 +9,7 @@ import {
 import { useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
-import { useLanguage } from "./i18n/language";
+import { ticketStatus, useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 
 export function GateView({
@@ -86,7 +86,7 @@ export function GateView({
       <ul>
         {item.tickets.map((ticket) => (
           <li key={ticket.path}>
-            {ticket.number} · {ticket.title} · {ticket.resolved ? t.stints.resolved : ticket.status}
+            {ticket.number} · {ticket.title} · {ticketStatus(ticket.status, t, ticket.resolved)}
           </li>
         ))}
       </ul>

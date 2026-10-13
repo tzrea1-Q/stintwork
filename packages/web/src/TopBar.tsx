@@ -222,7 +222,7 @@ export function TopBar({
                 </ul>
               )}
               {panel === "setup" ? (
-                <SetupGuide />
+                <SetupGuide workflows={snapshot.workflows} />
               ) : (
                 <p className="mt-4 border-t border-(--border) pt-3 text-[10px] muted">
                   {t.topBar.readOnly}

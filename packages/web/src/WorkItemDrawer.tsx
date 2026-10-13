@@ -22,7 +22,7 @@ import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { LanguageSelect } from "./i18n/LanguageSelect";
-import { useLanguage } from "./i18n/language";
+import { ticketStatus, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
 
 function Markdown({ text }: { text: string }) {
@@ -229,7 +229,7 @@ export function WorkItemDrawer({
                             {String(ticket.number).padStart(2, "0")} · {ticket.title}
                           </strong>
                           <small className={ticket.blocked ? "warning" : "muted"}>
-                            {ticket.status}
+                            {ticketStatus(ticket.status, t)}
                             {ticket.blockedBy.length > 0 && (
                               <>
                                 {" "}
