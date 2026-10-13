@@ -7,7 +7,10 @@ import { PermissionAnswer } from "./PermissionAnswer";
 import { HandoffAnswer } from "./HandoffAnswer";
 import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
-import type { useAttentionAlerts } from "./useAttentionAlerts";
+import { attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
+import { useLanguage } from "./i18n/language";
+import { stageName } from "./i18n/workflow-names";
+import { en } from "./i18n/en";
 import "./needs-you.css";
 import "./stint-stream.css";
 
@@ -22,6 +25,7 @@ export function NeedsYouQueue({
   onClose: () => void;
   onOpenItem: (slug: string) => void;
 }) {
+  const { t, language } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -34,9 +38,9 @@ export function NeedsYouQueue({
     setAnswerError("");
     try {
       const response = await fetch("/api/agents?refresh=true");
-      if (!response.ok) throw new Error("Could not refresh agent availability.");
+      if (!response.ok) throw new Error(t.needsYou.refreshFailed);
     } catch {
-      setAnswerError("Could not refresh agent availability. Try again.");
+      setAnswerError(t.needsYou.refreshRetry);
     } finally {
       setRefreshing(false);
     }
@@ -76,17 +80,17 @@ export function NeedsYouQueue({
     >
       <header className="needs-you-heading">
         <div>
-          <p className="eyebrow">Your attention</p>
+          <p className="eyebrow">{t.needsYou.yourAttention}</p>
           <h2 id={titleId}>
             <Inbox size={20} aria-hidden="true" />
-            Needs you <span className="count">{snapshot.attentionItems.length}</span>
+            {t.needsYou.heading} <span className="count">{snapshot.attentionItems.length}</span>
           </h2>
         </div>
         <button
           type="button"
           ref={closeButton}
           className="top-button"
-          aria-label="Close Needs you"
+          aria-label={t.needsYou.close}
           onClick={onClose}
         >
           <X size={18} aria-hidden="true" />
@@ -95,17 +99,40 @@ export function NeedsYouQueue({
       <div className="needs-you-content">
         {snapshot.attentionItems.length === 0 && (
           <p role="status" className="needs-you-empty">
-            Nothing needs you right now.
+            {t.needsYou.empty}
           </p>
         )}
         {snapshot.attentionItems.map((item) => {
           const profile = snapshot.agents.find((agent) => agent.id === item.agent);
+          const workItem = snapshot.workItems.find((entry) => entry.slug === item.workItem);
+          const workflow = workItem && snapshot.workflows[workItem.workflow];
+          const stage =
+            item.kind === "gate-ready" && workflow
+              ? workflow.stages.find((stage) => stage.id === item.stage)
+              : undefined;
+          const title = attentionTitle(
+            item,
+            t,
+            language,
+            profile?.displayName ?? item.agent ?? "",
+            workflow && stage ? stageName(workflow, stage, t) : undefined,
+          );
           if (item.kind === "login-required")
             return (
-              <article key={item.id} className="attention-item" aria-label={item.title}>
-                <p className="eyebrow">Login required · {profile?.displayName ?? item.agent}</p>
-                <h3>{item.title}</h3>
-                <p>{item.details}</p>
+              <article key={item.id} className="attention-item" aria-label={title}>
+                <p className="eyebrow">
+                  {t.needsYou.loginRequired} · {profile?.displayName ?? item.agent}
+                </p>
+                <h3>{title}</h3>
+                <p>
+                  {language === "en"
+                    ? item.details
+                    : t.needsYou.loginInstructions(item.loginCommand)}
+                </p>
+                {language !== "en" &&
+                  item.details !== en.needsYou.loginInstructions(item.loginCommand) && (
+                    <p>{item.details}</p>
+                  )}
                 <pre>
                   <code>{item.loginCommand}</code>
                 </pre>
@@ -115,30 +142,35 @@ export function NeedsYouQueue({
                   disabled={refreshing}
                   onClick={() => void refreshAvailability()}
                 >
-                  {refreshing ? "Checking login…" : "Refresh agent availability"}
+                  {refreshing ? t.needsYou.checkingLogin : t.needsYou.refreshAvailability}
                 </button>
               </article>
             );
-          const workItem = snapshot.workItems.find((entry) => entry.slug === item.workItem);
           const minutes = Math.max(0, Math.floor((now - Date.parse(item.raisedAt)) / 60_000));
           return (
-            <article key={item.id} className="attention-item" aria-label={item.title}>
+            <article key={item.id} className="attention-item" aria-label={title}>
               <p className="eyebrow">
                 {item.kind === "permission"
-                  ? "Permission"
+                  ? t.needsYou.permission
                   : item.kind === "handoff-unresolved"
-                    ? "Handoff"
+                    ? t.needsYou.handoff
                     : item.kind === "checkpoint-warning"
-                      ? "Checkpoint"
+                      ? t.needsYou.checkpoint
                       : item.kind === "memory-proposal"
-                        ? "Memory proposal"
-                        : "Gate ready"}
+                        ? t.needsYou.memoryProposal
+                        : t.needsYou.gateReady}
                 {item.agent && ` · ${profile?.displayName ?? item.agent}`}
               </p>
-              <h3>{item.title}</h3>
+              <h3>{title}</h3>
               {item.kind === "checkpoint-warning" && (
                 <>
-                  <p>{item.details}</p>
+                  <p>
+                    {language === "en"
+                      ? item.details
+                      : item.warnings.some((warning) => !warning.excluded)
+                        ? t.needsYou.committedRemediation
+                        : t.needsYou.excludedRemediation}
+                  </p>
                   <CheckpointWarnings warnings={item.warnings} />
                 </>
               )}
@@ -153,19 +185,19 @@ export function NeedsYouQueue({
                 {workItem?.title ?? item.workItem} · {item.workItem}
               </button>
               <p className="muted">
-                {item.ticket === null ? "No ticket" : `Ticket ${item.ticket}`}
+                {item.ticket === null ? t.needsYou.noTicket : t.needsYou.ticket(item.ticket)}
                 {item.stintId && (
                   <>
                     {" "}
-                    · Stint <code>{item.stintId}</code>
+                    · {t.needsYou.stint} <code>{item.stintId}</code>
                   </>
                 )}
               </p>
               <p className="muted">
                 <time dateTime={item.raisedAt} title={item.raisedAt}>
                   {item.raisedAt === "1970-01-01T00:00:00.000Z"
-                    ? "No readiness time recorded"
-                    : `Waiting ${minutes ? `${minutes} min` : "less than a minute"}`}
+                    ? t.needsYou.noReadinessTime
+                    : t.needsYou.waiting(minutes)}
                 </time>
               </p>
               {item.kind === "permission" && (
@@ -173,19 +205,19 @@ export function NeedsYouQueue({
                   stintId={item.stintId}
                   request={item}
                   profile={profile}
-                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                  onError={(reason) => setAnswerError(reason ? `${title}: ${reason}` : "")}
                 />
               )}
               {item.kind === "handoff-unresolved" && (
                 <HandoffAnswer
                   item={item}
-                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                  onError={(reason) => setAnswerError(reason ? `${title}: ${reason}` : "")}
                 />
               )}
               {item.kind === "memory-proposal" && (
                 <MemoryProposal
                   item={item}
-                  onError={(reason) => setAnswerError(reason ? `${item.title}: ${reason}` : "")}
+                  onError={(reason) => setAnswerError(reason ? `${title}: ${reason}` : "")}
                 />
               )}
               {item.kind === "gate-ready" && workItem && (
@@ -213,11 +245,9 @@ export function NeedsYouQueue({
           onClick={() => void alerts.toggle()}
         >
           <Bell size={14} aria-hidden="true" />
-          {alerts.enabled ? "Disable browser notifications" : "Enable browser notifications"}
+          {alerts.enabled ? t.needsYou.disableNotifications : t.needsYou.enableNotifications}
         </button>
-        {!alerts.supported && (
-          <p className="muted">Browser notifications are not supported here.</p>
-        )}
+        {!alerts.supported && <p className="muted">{t.needsYou.notificationsUnsupported}</p>}
         {alerts.error && (
           <p role="alert" className="warning">
             {alerts.error}

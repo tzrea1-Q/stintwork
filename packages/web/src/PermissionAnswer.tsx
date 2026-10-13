@@ -2,6 +2,7 @@
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
 import { PermissionDetails } from "./PermissionDetails";
+import { useLanguage } from "./i18n/language";
 
 export function PermissionAnswer({
   stintId,
@@ -17,6 +18,7 @@ export function PermissionAnswer({
   profile?: AgentProfile;
   onError?: (reason: string) => void;
 }) {
+  const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
@@ -37,13 +39,12 @@ export function PermissionAnswer({
       if (!response.ok) {
         const body = await response.json();
         throw new Error(
-          typeof body.reason === "string" ? body.reason : "Could not answer permission request.",
+          typeof body.reason === "string" ? body.reason : t.needsYou.permissionFailed,
         );
       }
       setSubmitted(true);
     } catch (cause) {
-      const reason =
-        cause instanceof Error ? cause.message : "Could not answer permission request.";
+      const reason = cause instanceof Error ? cause.message : t.needsYou.permissionFailed;
       if (onError) onError(reason);
       else setError(reason);
     } finally {
@@ -55,7 +56,7 @@ export function PermissionAnswer({
     <>
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
-        <p className="warning">Declining ends {profile.displayName}’s turn.</p>
+        <p className="warning">{t.needsYou.declineEndsTurn(profile.displayName)}</p>
       )}
       <div className="stint-permission-actions">
         {request.options.map((option) => (
@@ -67,16 +68,16 @@ export function PermissionAnswer({
           >
             <strong>
               {option.kind === "allow_once"
-                ? "Allow once"
+                ? t.needsYou.allowOnce
                 : option.kind === "allow_always"
-                  ? "Allow always"
-                  : "Deny"}
+                  ? t.needsYou.allowAlways
+                  : t.needsYou.deny}
             </strong>
             <span>{option.name}</span>
           </button>
         ))}
       </div>
-      {submitted && <p role="status">Answer sent.</p>}
+      {submitted && <p role="status">{t.needsYou.answerSent}</p>}
       {error && (
         <p role="alert" className="warning">
           {error}

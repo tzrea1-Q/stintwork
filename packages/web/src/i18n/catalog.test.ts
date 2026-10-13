@@ -39,6 +39,18 @@ const samples: Record<string, unknown[][]> = {
     ["Codex", "/to-spec", undefined],
     ["Claude Code", "/to-tickets", "~/.claude/skills/, <project>/.agents/skills/"],
   ],
+  "needsYou.permissionRequest": [["Agent title 原文"]],
+  "needsYou.stageReady": [["Stage 自定义"]],
+  "needsYou.loginTitle": [["Codex"]],
+  "needsYou.loginInstructions": [["codex login"]],
+  "needsYou.ticket": [[1], [2]],
+  "needsYou.waiting": [[0], [1], [2]],
+  "needsYou.declineEndsTurn": [["Codex"]],
+  "needsYou.tabTitle": [
+    [1, "Project 原文"],
+    [2, "Project 原文"],
+  ],
+  "needsYou.notificationTitle": [["Project 原文"]],
 };
 
 test("Chinese catalogs have exactly the English keys and translated, nonempty entries", () => {

@@ -1,10 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AttentionItem } from "@stintwork/core";
 import { useEffect, useRef, useState } from "react";
+import { en, type Catalog } from "./i18n/en";
+import { useLanguage, type Language } from "./i18n/language";
 
 const preferenceKey = "stintwork.attention-notifications";
 
+export function attentionTitle(
+  item: AttentionItem,
+  t: Catalog,
+  language: Language,
+  agent = item.agent ?? "",
+  stage = item.kind === "gate-ready" ? item.stage : "",
+) {
+  if (language === "en") return item.title;
+  switch (item.kind) {
+    case "permission":
+      return item.title === en.needsYou.permissionRequested
+        ? t.needsYou.permissionRequested
+        : t.needsYou.permissionRequest(item.title);
+    case "handoff-unresolved":
+      return t.needsYou.unresolvedHandoff;
+    case "gate-ready":
+      return t.needsYou.stageReady(stage);
+    case "login-required":
+      return t.needsYou.loginTitle(agent);
+    case "checkpoint-warning":
+      return item.warnings.some((warning) => !warning.excluded)
+        ? t.needsYou.riskyCommitted
+        : t.needsYou.riskyExcluded;
+    default:
+      return item.title;
+  }
+}
+
 export function useAttentionAlerts(items: AttentionItem[], projectName: string) {
+  const { t, language } = useLanguage();
   const [enabled, setEnabled] = useState(() => {
     try {
       return localStorage.getItem(preferenceKey) === "enabled";
@@ -25,8 +56,8 @@ export function useAttentionAlerts(items: AttentionItem[], projectName: string) 
   }, []);
 
   useEffect(() => {
-    document.title = `${items.length ? `(${items.length}) ` : ""}${projectName} · Stintwork`;
-  }, [items.length, projectName]);
+    document.title = t.needsYou.tabTitle(items.length, projectName);
+  }, [items.length, projectName, t]);
 
   useEffect(() => {
     const previous = seen.current;
@@ -40,14 +71,17 @@ export function useAttentionAlerts(items: AttentionItem[], projectName: string) 
         Notification.permission === "granted"
       ) {
         try {
-          new Notification(`${projectName} · Needs you`, { body: item.title, tag: item.id });
+          new Notification(t.needsYou.notificationTitle(projectName), {
+            body: attentionTitle(item, t, language),
+            tag: item.id,
+          });
         } catch {
-          setError("Browser notifications are unavailable. The Needs-you queue remains available.");
+          setError(t.needsYou.notificationsUnavailable);
         }
       }
       seen.current.add(item.id);
     }
-  }, [items, enabled, supported, projectName]);
+  }, [items, enabled, supported, projectName, t, language]);
 
   async function toggle() {
     if (!supported || requesting) return;
@@ -57,12 +91,9 @@ export function useAttentionAlerts(items: AttentionItem[], projectName: string) 
       setRequesting(true);
       try {
         next = (await Notification.requestPermission()) === "granted";
-        if (!next)
-          setError(
-            "Browser notifications were not enabled. Check this site's browser permissions to try again.",
-          );
+        if (!next) setError(t.needsYou.notificationsDenied);
       } catch {
-        setError("Could not enable browser notifications.");
+        setError(t.needsYou.notificationsFailed);
       } finally {
         setRequesting(false);
       }
@@ -72,7 +103,7 @@ export function useAttentionAlerts(items: AttentionItem[], projectName: string) 
       if (next) localStorage.setItem(preferenceKey, "enabled");
       else localStorage.removeItem(preferenceKey);
     } catch {
-      setError("Your notification preference could not be saved in this browser.");
+      setError(t.needsYou.preferenceFailed);
     }
   }
 
