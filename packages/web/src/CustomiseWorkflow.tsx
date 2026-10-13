@@ -92,7 +92,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
                 <code>{preview.path}</code>
                 {t.planning.customise.description}
               </p>
-              <section aria-label={t.planning.customise.yaml}>
+              <section aria-label={t.planning.customise.yaml} className="min-w-0">
                 <pre className="max-h-[50dvh] overflow-auto rounded-sm border border-border p-3 text-sm focus-visible:outline-accent">
                   <code>{preview.yaml}</code>
                 </pre>

@@ -70,10 +70,9 @@ for (const language of ["en", "zh-CN"] as const) {
         const sheet = page.locator(".work-item-drawer");
         const close = sheet.getByRole("button", { name: t.stints.closeWorkItem });
         await expect(close).toBeFocused();
-        await expect(sheet.getByRole("heading", { name: item.title, exact: true })).toHaveAttribute(
-          "title",
-          item.title,
-        );
+        await expect(
+          sheet.locator(".drawer-header").getByRole("heading", { name: item.title, exact: true }),
+        ).toHaveAttribute("title", item.title);
         await expect(sheet.getByRole("combobox").last()).toBeDisabled();
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-loading");
         releaseAgents();
@@ -230,7 +229,13 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(sheet).not.toBeVisible();
         await expect(trigger).toBeFocused();
         await trigger.click();
-        await page.mouse.click(4, 450);
+        await expect(close).toBeFocused();
+        await page
+          .locator('.bg-backdrop[data-state="open"]')
+          .last()
+          .click({
+            position: { x: 4, y: 450 },
+          });
         await expect(sheet).not.toBeVisible();
         await expect(trigger).toBeFocused();
       });

@@ -25,6 +25,7 @@ test("a select focuses its current option, navigates, selects and returns focus"
   const user = userEvent.setup();
   const { container } = render(<MilestoneSelect />);
   const trigger = screen.getByRole("combobox", { name: "Milestone" });
+  expect(trigger).toHaveClass("[&>span:first-child]:truncate");
   expect(trigger).toHaveTextContent("First milestone");
   await user.click(trigger);
   const current = await screen.findByRole("option", { name: "First milestone" });

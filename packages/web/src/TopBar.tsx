@@ -117,7 +117,7 @@ export function TopBar({
             }
           >
             <SelectTrigger aria-label={t.topBar.milestone} className="flex-1">
-              <SelectValue className="truncate" data-truncate title={selectedMilestone} />
+              <SelectValue data-truncate title={selectedMilestone} />
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t.topBar.all}</SelectItem>

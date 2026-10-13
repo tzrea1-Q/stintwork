@@ -151,6 +151,9 @@ for (const language of ["en", "zh-CN"] as const) {
         await capture("language-open", '[role="menu"]');
         const other = language === "en" ? "zh-CN" : "en";
         await page.keyboard.press(language === "en" ? "ArrowDown" : "ArrowUp");
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[other] }),
+        ).toBeFocused();
         await page.keyboard.press("Enter");
         await expect(page.locator("html")).toHaveAttribute("lang", other);
         await expect(languageTrigger).toBeFocused();

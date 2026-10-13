@@ -33,6 +33,14 @@ function fetcher(id: keyof typeof builtInWorkflowYaml = "feature") {
   return fetch;
 }
 
+test("the YAML grid item can shrink so code scrolls inside its preview", async () => {
+  fetcher();
+  render(<CustomiseWorkflow id="feature" onClose={vi.fn()} />);
+  const preview = await screen.findByRole("region", { name: "Built-in workflow YAML" });
+  expect(preview).toHaveClass("min-w-0");
+  expect(preview.querySelector("pre")).toHaveClass("overflow-auto");
+});
+
 test("customisation traps Tab and dismisses on an outside click", async () => {
   fetcher();
   const user = userEvent.setup();

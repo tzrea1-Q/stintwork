@@ -14,7 +14,12 @@ export const SelectTrigger = forwardRef<
 >(function SelectTrigger({ className, children, ...props }, ref) {
   return (
     <Primitive.Trigger {...props} ref={ref} asChild>
-      <Button className={cn("min-w-0 justify-between [&>span]:min-w-0", className)}>
+      <Button
+        className={cn(
+          "min-w-0 justify-between [&>span]:min-w-0 [&>span:first-child]:truncate",
+          className,
+        )}
+      >
         {children}
         <Primitive.Icon asChild>
           <ChevronDown className="shrink-0" aria-hidden="true" />
