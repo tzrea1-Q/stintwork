@@ -9,6 +9,7 @@ import {
   type StintSummary,
 } from "@stintwork/core";
 import { useState } from "react";
+import { useLanguage } from "./i18n/language";
 
 export type DisplayFinding = ReviewFinding & {
   commit: string;
@@ -70,13 +71,15 @@ export function FindingCard({
   ) => Promise<boolean>;
   saving?: boolean;
 }) {
+  const { t } = useLanguage();
   const [accepting, setAccepting] = useState(false);
   const [reason, setReason] = useState("");
   return (
     <article className="review-finding" id={anchor} aria-label={finding.title}>
       <h4>{finding.title}</h4>
       <p>
-        {finding.axis} · {finding.severity} · {finding.status}
+        {t.review.findings.axes[finding.axis]} · {t.review.findings.severities[finding.severity]} ·{" "}
+        {t.review.findings.statuses[finding.status]}
       </p>
       <p>
         <code>
@@ -84,11 +87,17 @@ export function FindingCard({
         </code>
       </p>
       <p className="review-finding-body">{finding.body}</p>
-      {finding.reason && <p>Reason: {finding.reason}</p>}
+      {finding.reason && (
+        <p>
+          {t.review.findings.reasonPrefix}
+          {finding.reason}
+        </p>
+      )}
       <p className="muted">
-        Reviewed commit <code>{finding.commit}</code>
-        {finding.stale && " · Stale"}
-        {finding.historical && " · History — not gate evidence"}
+        {t.review.findings.reviewedCommit}
+        <code>{finding.commit}</code>
+        {finding.stale && t.review.findings.stale}
+        {finding.historical && t.review.findings.history}
       </p>
       {onDecision && !finding.historical && (
         <div className="review-finding-actions">
@@ -99,7 +108,7 @@ export function FindingCard({
               disabled={saving}
               onClick={() => void onDecision(finding.id, "resolved")}
             >
-              Resolve
+              {t.review.findings.resolve}
             </button>
           )}
           {finding.status !== "accepted" && (
@@ -109,7 +118,7 @@ export function FindingCard({
               disabled={saving}
               onClick={() => setAccepting(true)}
             >
-              Accept with reason
+              {t.review.findings.accept}
             </button>
           )}
           {finding.status !== "open" && (
@@ -119,7 +128,7 @@ export function FindingCard({
               disabled={saving}
               onClick={() => void onDecision(finding.id, "open")}
             >
-              Reopen
+              {t.review.findings.reopen}
             </button>
           )}
           {accepting && (
@@ -131,7 +140,7 @@ export function FindingCard({
               }}
             >
               <label>
-                Acceptance reason
+                {t.review.findings.reason}
                 <textarea
                   required
                   value={reason}
@@ -139,7 +148,7 @@ export function FindingCard({
                 />
               </label>
               <button type="submit" className="top-button" disabled={saving || !reason.trim()}>
-                Save acceptance
+                {t.review.findings.save}
               </button>
               <button
                 type="button"
@@ -147,7 +156,7 @@ export function FindingCard({
                 disabled={saving}
                 onClick={() => setAccepting(false)}
               >
-                Cancel
+                {t.review.findings.cancel}
               </button>
             </form>
           )}
@@ -166,6 +175,7 @@ export function FindingsRail({
   reports: readonly (ReviewFindings & { stintId: string; stale: boolean; historical: boolean })[];
   anchor: (finding: DisplayFinding) => string;
 }) {
+  const { t } = useLanguage();
   const [axis, setAxis] = useState("");
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
@@ -179,67 +189,77 @@ export function FindingsRail({
     <>
       <div className="review-filters">
         <label>
-          Axis
+          {t.review.findings.axis}
           <select value={axis} onChange={(event) => setAxis(event.target.value)}>
-            <option value="">All axes</option>
-            {["Standards", "Spec"].map((value) => (
-              <option key={value}>{value}</option>
+            <option value="">{t.review.findings.allAxes}</option>
+            {(["Standards", "Spec"] as const).map((value) => (
+              <option key={value} value={value}>
+                {t.review.findings.axes[value]}
+              </option>
             ))}
           </select>
         </label>
         <label>
-          Severity
+          {t.review.findings.severity}
           <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
-            <option value="">All severities</option>
-            {["blocker", "major", "minor", "nit"].map((value) => (
-              <option key={value}>{value}</option>
+            <option value="">{t.review.findings.allSeverities}</option>
+            {(["blocker", "major", "minor", "nit"] as const).map((value) => (
+              <option key={value} value={value}>
+                {t.review.findings.severities[value]}
+              </option>
             ))}
           </select>
         </label>
         <label>
-          Status
+          {t.review.findings.status}
           <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">All statuses</option>
-            {["open", "resolved", "accepted", "sent-back"].map((value) => (
-              <option key={value}>{value}</option>
+            <option value="">{t.review.findings.allStatuses}</option>
+            {(["open", "resolved", "accepted", "sent-back"] as const).map((value) => (
+              <option key={value} value={value}>
+                {t.review.findings.statuses[value]}
+              </option>
             ))}
           </select>
         </label>
       </div>
-      {!reports.length && <p className="muted">No review findings recorded yet.</p>}
+      {!reports.length && <p className="muted">{t.review.findings.empty}</p>}
       {reports.map((report) =>
         report.error || report.findings?.length === 0 ? (
           <div key={report.stintId} className="review-finding">
             <p>
-              Reviewed commit <code>{report.commit}</code>
-              {report.stale && " · Stale"}
-              {report.historical && " · History — not gate evidence"}
+              {t.review.findings.reviewedCommit}
+              <code>{report.commit}</code>
+              {report.stale && t.review.findings.stale}
+              {report.historical && t.review.findings.history}
             </p>
             {report.error ? (
               <>
-                <p role="alert">Findings unavailable: {report.error}</p>
+                <p role="alert">
+                  {t.review.findings.unavailable}
+                  {report.error}
+                </p>
                 {report.rawReply !== undefined && (
                   <details>
-                    <summary>Raw findings reply</summary>
+                    <summary>{t.review.findings.rawReply}</summary>
                     <pre>{report.rawReply}</pre>
                   </details>
                 )}
               </>
             ) : (
-              <p role="status">No findings</p>
+              <p role="status">{t.review.findings.none}</p>
             )}
           </div>
         ) : null,
       )}
-      {!!findings.length && !filtered.length && (
-        <p role="status">No findings match these filters.</p>
-      )}
+      {!!findings.length && !filtered.length && <p role="status">{t.review.findings.noMatches}</p>}
       <ul className="review-findings-rail">
         {filtered.map((finding) => (
           <li key={finding.id}>
             <a href={`#${anchor(finding)}`}>{finding.title}</a>
             <p>
-              {finding.axis} · {finding.severity} · {finding.status}
+              {t.review.findings.axes[finding.axis]} ·{" "}
+              {t.review.findings.severities[finding.severity]} ·{" "}
+              {t.review.findings.statuses[finding.status]}
             </p>
             <p>
               <code>
@@ -247,9 +267,10 @@ export function FindingsRail({
               </code>
             </p>
             <p>
-              Reviewed commit <code>{finding.commit}</code>
-              {finding.stale && <span className="warning"> · Stale</span>}
-              {finding.historical && " · History — not gate evidence"}
+              {t.review.findings.reviewedCommit}
+              <code>{finding.commit}</code>
+              {finding.stale && <span className="warning">{t.review.findings.stale}</span>}
+              {finding.historical && t.review.findings.history}
             </p>
           </li>
         ))}

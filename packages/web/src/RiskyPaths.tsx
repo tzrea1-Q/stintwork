@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { riskyPathAccepted, type RiskyPath, type ReviewDecision } from "@stintwork/core";
 import { useState } from "react";
+import { useLanguage } from "./i18n/language";
 
 export function RiskyPaths({
   risks,
@@ -13,25 +14,24 @@ export function RiskyPaths({
   saving: boolean;
   onAccept: (risk: RiskyPath, reason: string) => Promise<boolean>;
 }) {
+  const { t } = useLanguage();
   const [accepting, setAccepting] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   return (
-    <section aria-label="Risky files on the branch">
-      <h3>No risky files on the branch</h3>
-      <p>
-        Remove risky files in a follow-up commit and add them to .gitignore, or deliberately Accept
-        each path with a reason. File contents are not shown.
-      </p>
-      {!risks.length && <p>No risky paths in the merge-base-to-head diff.</p>}
+    <section aria-label={t.review.risks.label}>
+      <h3>{t.review.risks.heading}</h3>
+      <p>{t.review.risks.explanation}</p>
+      {!risks.length && <p>{t.review.risks.empty}</p>}
       {risks.map((risk) => {
         const accepted = riskyPathAccepted(risk, decisions);
         return (
-          <article key={risk.path} aria-label={`Risky path ${risk.path}`}>
+          <article key={risk.path} aria-label={t.review.risks.path(risk.path)}>
             <h4>
               <code>{risk.path}</code>
             </h4>
             <p>
-              {risk.reasons.join(", ")} · {accepted ? "Accepted" : "Blocks shipping"}
+              {risk.reasons.map((reason) => t.review.risks.reasons[reason]).join(", ")} ·{" "}
+              {accepted ? t.review.risks.accepted : t.review.risks.blocks}
             </p>
             {accepted ? (
               <p>
@@ -51,7 +51,7 @@ export function RiskyPaths({
                   setReason("");
                 }}
               >
-                Accept
+                {t.review.risks.accept}
               </button>
             )}
             {!accepted && accepting === risk.path && (
@@ -62,7 +62,7 @@ export function RiskyPaths({
                 }}
               >
                 <label>
-                  Acceptance reason
+                  {t.review.risks.reason}
                   <textarea
                     required
                     value={reason}
@@ -70,7 +70,7 @@ export function RiskyPaths({
                   />
                 </label>
                 <button type="submit" className="top-button" disabled={saving || !reason.trim()}>
-                  Save acceptance
+                  {t.review.risks.save}
                 </button>
                 <button
                   type="button"
@@ -78,7 +78,7 @@ export function RiskyPaths({
                   disabled={saving}
                   onClick={() => setAccepting(null)}
                 >
-                  Cancel
+                  {t.review.risks.cancel}
                 </button>
               </form>
             )}
