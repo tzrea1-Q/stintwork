@@ -1,6 +1,6 @@
 # 01 — Repo ready to open
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: none
 
 ## What to build
@@ -45,3 +45,5 @@ Findings:
 Checks run: `pnpm --config.verify-deps-before-run=false format:check` passed (307 files). `pnpm --config.verify-deps-before-run=false lint` passed (283 licence headers; 308 linted files), with one existing informational Biome deprecation notice. A Node check using the installed `yaml` parser passed for the forms' requested fields, unique field IDs, log warning, disabled blank issues and security contact URL. `git diff --check` passed. No typecheck, test suite or build was run.
 
 Open risks: regex scanning is not proof that no secret exists. The maintainer still needs to confirm that private vulnerability reporting is enabled and the route works before opening. GitHub rendering and access were not tested. Visibility is unchanged; no repo settings, history, commits or pushes were changed. Ticket Status is unchanged.
+
+**Coordinator, 2026-10-13:** Built by Codex and verified on `go-public`. Codex's scan stopped at `4dfcc1a`. My own scan used `git grep` on HEAD and `git log -p --all` for absolute user paths, the machine username (other than the `tzrea1-Q` handle), GitHub, npm and `sk-` token prefixes and private-key blocks. It covered the later commits from this ticket, 02 and the CI fix, and found nothing. `spikes/acp-probe/runs/` (probe transcripts) is gitignored and untracked. Every commit's author and committer email is the maintainer's personal address, which becomes public with the repo; the maintainer decides this at ticket 03. On `go-public` with no `packages/*/dist`, in CI order: `format:check`, `lint`, `typecheck`, `test` (2100 passed), `build` and `smoke:package` passed. That includes the core tests that parse this repo's tickets. Code review: no hard violations. SECURITY's "Supported versions" section (latest published version only) goes beyond the ticket and needs the maintainer's agreement. Waiting on the maintainer to confirm GitHub private vulnerability reporting as the route; it is enabled at ticket 03.
