@@ -24,7 +24,8 @@ import {
 import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
-import "./brief-preview.css";
+import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 
 import { stageName as translatedStageName } from "./i18n/workflow-names";
 
@@ -70,7 +71,6 @@ function StintBriefAction({
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
   const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
   const availability = briefAvailability(item, ticket, workflows);
   const reason = item.activeStint
@@ -84,17 +84,14 @@ function StintBriefAction({
   }, [reason]);
 
   return (
-    <div className="brief-action">
-      <button
-        type="button"
-        className="top-button"
-        ref={trigger}
+    <div className="brief-action mb-4 flex flex-wrap items-center gap-3 text-sm">
+      <Button
         disabled={reason !== null}
         aria-describedby={reason ? reasonId : undefined}
         onClick={() => setOpen(true)}
       >
         {t.stints.startStint}
-      </button>
+      </Button>
       {reason && (
         <p id={reasonId} className="muted">
           {reason}
@@ -107,7 +104,6 @@ function StintBriefAction({
           stageName={stage ? translatedStageName(workflow, stage, t) : ""}
           onClose={() => {
             setOpen(false);
-            trigger.current?.focus();
           }}
         />
       )}
@@ -127,9 +123,7 @@ function BriefPreviewSheet({
   onClose: () => void;
 }) {
   const { t, language } = useLanguage();
-  const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const titleId = useId();
   const agentAvailabilityId = useId();
   const [brief, setBrief] = useState<Brief | null>(null);
   const [agents, setAgents] = useState<AgentProfile[]>([]);
@@ -154,13 +148,6 @@ function BriefPreviewSheet({
     : t.stints.agentNotRegistered;
   const policy = selectedAgent ? permissionPolicy(selectedAgent, permissionLevel) : null;
   const warnings = policy?.warnings ?? brief?.warnings ?? [];
-
-  useEffect(() => {
-    const element = dialog.current;
-    element?.showModal();
-    closeButton.current?.focus();
-    return () => element?.close();
-  }, []);
 
   useEffect(() => {
     const request = new AbortController();
@@ -235,248 +222,239 @@ function BriefPreviewSheet({
   }
 
   return (
-    <dialog
-      ref={dialog}
-      className="brief-preview-sheet"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          onClose();
-        }
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <header className="drawer-header">
-        <div className="flex items-center justify-between gap-3">
-          <h2 id={titleId} className="text-xl font-medium">
-            {t.stints.briefPreview}
-          </h2>
-          <button
-            type="button"
-            className="top-button"
-            ref={closeButton}
-            aria-label={t.stints.closeBrief}
-            onClick={onClose}
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
-        <p className="mt-3 muted">
-          {slug} · {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber)}
-        </p>
-      </header>
-      <div className="brief-preview-content">
-        <section>
-          <h3>{t.stints.agent}</h3>
-          <label>
-            <span className="sr-only">{t.stints.agent}</span>
-            <select
-              value={agent}
-              onChange={(event) => setAgent(event.target.value)}
-              aria-describedby={agentAvailabilityId}
-              disabled={!agents.length || starting}
+      <DialogContent
+        className="brief-preview-sheet flex h-[calc(100dvh-32px)] w-3xl flex-col p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          closeButton.current?.focus();
+        }}
+      >
+        <header className="shrink-0 border-b border-border p-4 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <DialogTitle className="text-xl font-medium">{t.stints.briefPreview}</DialogTitle>
+            <Button
+              variant="ghost"
+              ref={closeButton}
+              aria-label={t.stints.closeBrief}
+              onClick={onClose}
             >
-              {agent && !selectedAgent && (
-                <option value={agent} disabled>
-                  {agent} — {t.stints.notRegistered}
-                </option>
-              )}
-              {agents.map((candidate) => {
-                const availability = agentUnavailable(candidate);
-                const reason = availability === null ? null : translateCoreText(availability, t);
-                return (
-                  <option key={candidate.id} value={candidate.id} disabled={!!reason}>
-                    {candidate.displayName}
-                    {reason ? ` — ${reason}` : ""}
+              <X aria-hidden="true" /> {t.stints.closeBrief}
+            </Button>
+          </div>
+          <DialogDescription className="mt-3 break-words text-muted">
+            {slug} · {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber)}
+          </DialogDescription>
+        </header>
+        <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 [&_h3]:mb-2 [&_h3]:font-medium [&_select]:mb-2 [&_select]:w-full [&_select]:rounded-sm [&_select]:border [&_select]:border-border [&_select]:bg-surface-raised [&_select]:p-2 [&_ul]:list-disc [&_ul]:pl-5 [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2 [&_pre]:whitespace-pre-wrap [&_pre]:rounded-sm [&_pre]:border [&_pre]:border-border [&_pre]:bg-bg [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs">
+          <section>
+            <h3>{t.stints.agent}</h3>
+            <label>
+              <span className="sr-only">{t.stints.agent}</span>
+              <select
+                value={agent}
+                onChange={(event) => setAgent(event.target.value)}
+                aria-describedby={agentAvailabilityId}
+                disabled={!agents.length || starting}
+              >
+                {agent && !selectedAgent && (
+                  <option value={agent} disabled>
+                    {agent} — {t.stints.notRegistered}
                   </option>
-                );
-              })}
-            </select>
-          </label>
-          <p id={agentAvailabilityId} className="muted">
-            {brief
-              ? agents.length
-                ? (unavailable ?? t.stints.chooseAgent)
-                : t.stints.noAgents
-              : t.stints.readingAgents}
-          </p>
-          {warnings.map((warning) => (
-            <p key={warning.text} role="alert" className="warning">
-              {translateCoreText(warning, t)}
+                )}
+                {agents.map((candidate) => {
+                  const availability = agentUnavailable(candidate);
+                  const reason = availability === null ? null : translateCoreText(availability, t);
+                  return (
+                    <option key={candidate.id} value={candidate.id} disabled={!!reason}>
+                      {candidate.displayName}
+                      {reason ? ` — ${reason}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <p id={agentAvailabilityId} className="muted">
+              {brief
+                ? agents.length
+                  ? (unavailable ?? t.stints.chooseAgent)
+                  : t.stints.noAgents
+                : t.stints.readingAgents}
             </p>
-          ))}
-        </section>
-        <section>
-          <h3>{t.stints.permissionLevel}</h3>
-          <label>
-            <span className="sr-only">{t.stints.permissionLevel}</span>
-            <select
-              value={permissionLevel}
-              disabled={!brief || starting || savingDefault}
-              onChange={(event) => {
-                if (isPermissionLevel(event.target.value)) setPermissionLevel(event.target.value);
+            {warnings.map((warning) => (
+              <p key={warning.text} role="alert" className="warning">
+                {translateCoreText(warning, t)}
+              </p>
+            ))}
+          </section>
+          <section>
+            <h3>{t.stints.permissionLevel}</h3>
+            <label>
+              <span className="sr-only">{t.stints.permissionLevel}</span>
+              <select
+                value={permissionLevel}
+                disabled={!brief || starting || savingDefault}
+                onChange={(event) => {
+                  if (isPermissionLevel(event.target.value)) setPermissionLevel(event.target.value);
+                }}
+              >
+                {permissionLevels.map((level) => (
+                  <option key={level} value={level}>
+                    {t.stints.permissionLevels[level]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="muted">
+              {t.stints.projectDefault} {t.stints.permissionLevels[projectDefault]}
+            </p>
+            <Button
+              disabled={!brief || starting || savingDefault || permissionLevel === projectDefault}
+              onClick={async () => {
+                setSavingDefault(true);
+                setDefaultError("");
+                try {
+                  const response = await fetch("/api/project/permission-level", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ permissionLevel }),
+                  });
+                  if (!response.ok) {
+                    const body = await readResponseJson(response);
+                    throw new CoreTextError(body, t.stints.saveDefaultFailed);
+                  }
+                  setProjectDefault(permissionLevel);
+                } catch (error) {
+                  setDefaultError(error instanceof Error ? error : String(error));
+                } finally {
+                  setSavingDefault(false);
+                }
               }}
             >
-              {permissionLevels.map((level) => (
-                <option key={level} value={level}>
-                  {t.stints.permissionLevels[level]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <p className="muted">
-            {t.stints.projectDefault} {t.stints.permissionLevels[projectDefault]}
-          </p>
-          <button
-            type="button"
-            className="top-button"
-            disabled={!brief || starting || savingDefault || permissionLevel === projectDefault}
-            onClick={async () => {
-              setSavingDefault(true);
-              setDefaultError("");
-              try {
-                const response = await fetch("/api/project/permission-level", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ permissionLevel }),
-                });
-                if (!response.ok) {
-                  const body = await readResponseJson(response);
-                  throw new CoreTextError(body, t.stints.saveDefaultFailed);
-                }
-                setProjectDefault(permissionLevel);
-              } catch (error) {
-                setDefaultError(error instanceof Error ? error : String(error));
-              } finally {
-                setSavingDefault(false);
-              }
-            }}
-          >
-            {t.stints.useProjectDefault}
-          </button>
-          {defaultError && (
+              {t.stints.useProjectDefault}
+            </Button>
+            {defaultError && (
+              <p role="alert" className="warning">
+                {defaultError}
+              </p>
+            )}
+          </section>
+          {error ? (
             <p role="alert" className="warning">
-              {defaultError}
+              {error}
             </p>
-          )}
-        </section>
-        {error ? (
-          <p role="alert" className="warning">
-            {error}
-          </p>
-        ) : !brief ? (
-          <p role="status" className="muted">
-            {t.stints.readingBrief}
-          </p>
-        ) : (
-          <>
-            <section>
-              <h3>{t.stints.skill}</h3>
-              <code>{brief.skill ? brief.prompt.split("\n")[0] : t.stints.noSkill}</code>
-            </section>
-            <section>
-              <h3>{t.stints.readFirst}</h3>
-              <ul>
-                {brief.pointers.map(({ path, reason }) => (
-                  <li key={path}>
-                    <code>{path}</code> — {translateCoreText(reason, t)}
-                  </li>
-                ))}
-              </ul>
-            </section>
-            {brief.checkpointCommit && (
+          ) : !brief ? (
+            <p role="status" className="muted">
+              {t.stints.readingBrief}
+            </p>
+          ) : (
+            <>
               <section>
-                <h3>{t.stints.checkpointCommit}</h3>
-                <code>{brief.checkpointCommit}</code>
+                <h3>{t.stints.skill}</h3>
+                <code>{brief.skill ? brief.prompt.split("\n")[0] : t.stints.noSkill}</code>
               </section>
-            )}
-            <section>
-              <h3>
-                {t.stints.lastHandoff}
-                {brief.lastHandoff && ` (${brief.lastHandoff.stint}, ${brief.lastHandoff.agent})`}
-              </h3>
-              {brief.lastHandoff ? (
-                <dl className="brief-handoff">
-                  <dt>{t.stints.whereStopped}</dt>
-                  <dd>{brief.lastHandoff.stoppedAt}</dd>
-                  <dt>{t.stints.whatUnresolved}</dt>
-                  <dd>{brief.lastHandoff.unresolved}</dd>
-                  <dt>{t.stints.nextStep}</dt>
-                  <dd>{brief.lastHandoff.nextStep}</dd>
-                </dl>
-              ) : (
-                <p>{t.stints.firstHandoff}</p>
-              )}
-            </section>
-            {(brief.developerNotes ?? []).length > 0 && (
               <section>
-                <h3>{t.stints.developerNotes}</h3>
-                {brief.developerNotes?.map((note) => (
-                  <div key={note.id}>
-                    <time dateTime={note.at}>
-                      {language === "en"
-                        ? note.at
-                        : new Intl.DateTimeFormat(language, {
-                            dateStyle: "medium",
-                            timeStyle: "medium",
-                          }).format(new Date(note.at))}
-                    </time>
-                    <pre className="brief-prompt">{note.text}</pre>
-                  </div>
-                ))}
-              </section>
-            )}
-            <section>
-              <h3>{t.stints.changedPaths}</h3>
-              {brief.changedPaths.length ? (
+                <h3>{t.stints.readFirst}</h3>
                 <ul>
-                  {brief.changedPaths.map((path) => (
+                  {brief.pointers.map(({ path, reason }) => (
                     <li key={path}>
-                      <code>{path}</code>
+                      <code>{path}</code> — {translateCoreText(reason, t)}
                     </li>
                   ))}
                 </ul>
-              ) : (
-                <p>{t.stints.none}</p>
+              </section>
+              {brief.checkpointCommit && (
+                <section>
+                  <h3>{t.stints.checkpointCommit}</h3>
+                  <code>{brief.checkpointCommit}</code>
+                </section>
               )}
-              <p className="muted">{t.stints.filesWin}</p>
-            </section>
-            <section>
-              <div className="flex items-center justify-between gap-3">
-                <h3>{t.stints.fullPrompt}</h3>
-                <button type="button" className="top-button" onClick={copy}>
-                  <Copy size={13} aria-hidden="true" /> {t.stints.copyPrompt}
-                </button>
-              </div>
-              <span role="status" className="copy-status">
-                {copyStatus}
-              </span>
-              <pre className="brief-prompt">{brief.prompt}</pre>
-            </section>
-          </>
-        )}
-      </div>
-      <footer className="drawer-footer">
-        {startError && (
-          <p role="alert" className="warning">
-            {startError}
-          </p>
-        )}
-        <button
-          type="button"
-          className="top-button"
-          disabled={!brief || !agent || starting || !!error || !!unavailable}
-          onClick={() => void start()}
-        >
-          {starting ? t.stints.starting : t.stints.start}
-        </button>
-      </footer>
-    </dialog>
+              <section>
+                <h3>
+                  {t.stints.lastHandoff}
+                  {brief.lastHandoff && ` (${brief.lastHandoff.stint}, ${brief.lastHandoff.agent})`}
+                </h3>
+                {brief.lastHandoff ? (
+                  <dl className="brief-handoff">
+                    <dt>{t.stints.whereStopped}</dt>
+                    <dd>{brief.lastHandoff.stoppedAt}</dd>
+                    <dt>{t.stints.whatUnresolved}</dt>
+                    <dd>{brief.lastHandoff.unresolved}</dd>
+                    <dt>{t.stints.nextStep}</dt>
+                    <dd>{brief.lastHandoff.nextStep}</dd>
+                  </dl>
+                ) : (
+                  <p>{t.stints.firstHandoff}</p>
+                )}
+              </section>
+              {(brief.developerNotes ?? []).length > 0 && (
+                <section>
+                  <h3>{t.stints.developerNotes}</h3>
+                  {brief.developerNotes?.map((note) => (
+                    <div key={note.id}>
+                      <time dateTime={note.at}>
+                        {language === "en"
+                          ? note.at
+                          : new Intl.DateTimeFormat(language, {
+                              dateStyle: "medium",
+                              timeStyle: "medium",
+                            }).format(new Date(note.at))}
+                      </time>
+                      <pre className="brief-prompt">{note.text}</pre>
+                    </div>
+                  ))}
+                </section>
+              )}
+              <section>
+                <h3>{t.stints.changedPaths}</h3>
+                {brief.changedPaths.length ? (
+                  <ul>
+                    {brief.changedPaths.map((path) => (
+                      <li key={path}>
+                        <code>{path}</code>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>{t.stints.none}</p>
+                )}
+                <p className="muted">{t.stints.filesWin}</p>
+              </section>
+              <section>
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h3>{t.stints.fullPrompt}</h3>
+                  <Button onClick={copy}>
+                    <Copy aria-hidden="true" /> {t.stints.copyPrompt}
+                  </Button>
+                </div>
+                <span role="status" className="copy-status">
+                  {copyStatus}
+                </span>
+                <pre className="brief-prompt">{brief.prompt}</pre>
+              </section>
+            </>
+          )}
+        </div>
+        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border p-4 text-sm text-muted">
+          {startError && (
+            <p role="alert" className="warning">
+              {startError}
+            </p>
+          )}
+          <Button
+            variant="primary"
+            disabled={!brief || !agent || starting || !!error || !!unavailable}
+            onClick={() => void start()}
+          >
+            {starting ? t.stints.starting : t.stints.start}
+          </Button>
+        </footer>
+      </DialogContent>
+    </Dialog>
   );
 }

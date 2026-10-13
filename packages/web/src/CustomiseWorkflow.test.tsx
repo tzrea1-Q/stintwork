@@ -32,6 +32,20 @@ function fetcher(id: keyof typeof builtInWorkflowYaml = "feature") {
   vi.stubGlobal("fetch", fetch);
   return fetch;
 }
+
+test("customisation traps Tab and dismisses on an outside click", async () => {
+  fetcher();
+  const user = userEvent.setup();
+  const close = vi.fn();
+  render(<CustomiseWorkflow id="feature" onClose={close} />);
+  await screen.findByLabelText("Built-in workflow YAML");
+  await user.tab({ shift: true });
+  expect(screen.getByRole("button", { name: "Confirm customisation" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  fireEvent.pointerDown(document.body);
+  expect(close).toHaveBeenCalledOnce();
+});
 afterEach(() => {
   localStorage.clear();
   document.documentElement.lang = "en";
@@ -224,6 +238,7 @@ test("pending confirmation disables duplicate writes and dismissal", async () =>
   expect(screen.getByRole("button", { name: "Customising…" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await user.keyboard("{Escape}");
+  fireEvent.pointerDown(document.body);
   expect(close).not.toHaveBeenCalled();
   expect(fetch.mock.calls.filter(([path]) => path.endsWith("/customise"))).toHaveLength(1);
   await act(async () => finish(response({ commit: "a".repeat(40) }, 201)));

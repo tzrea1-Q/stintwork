@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { expect, test } from "vitest";
 import {
   Dialog,
@@ -11,6 +12,32 @@ import {
   DialogClose,
 } from "./Dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
+
+test("a conditionally mounted dialog returns focus without a DialogTrigger", async () => {
+  const user = userEvent.setup();
+  function Preview() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Preview
+        </button>
+        {open && (
+          <Dialog open onOpenChange={setOpen}>
+            <DialogContent aria-describedby={undefined}>
+              <DialogTitle>Preview item</DialogTitle>
+              <button type="button">Copy</button>
+            </DialogContent>
+          </Dialog>
+        )}
+      </>
+    );
+  }
+  render(<Preview />);
+  await user.click(screen.getByRole("button", { name: "Preview" }));
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Preview" })).toHaveFocus());
+});
 
 test("a named modal traps focus, dismisses with Escape and restores its trigger", async () => {
   const user = userEvent.setup();

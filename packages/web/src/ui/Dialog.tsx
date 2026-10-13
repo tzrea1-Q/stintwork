@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as Primitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { forwardRef, useRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
 import { cn } from "./cn";
 
 export const Dialog = Primitive.Root;
@@ -27,7 +27,11 @@ const contentVariants = cva(
 export const DialogContent = forwardRef<
   ElementRef<typeof Primitive.Content>,
   ComponentPropsWithoutRef<typeof Primitive.Content> & VariantProps<typeof contentVariants>
->(function DialogContent({ className, placement, ...props }, ref) {
+>(function DialogContent(
+  { className, placement, onOpenAutoFocus, onCloseAutoFocus, onEscapeKeyDown, ...props },
+  ref,
+) {
+  const previousFocus = useRef<HTMLElement | null>(null);
   return (
     <Primitive.Portal>
       <Primitive.Overlay className="fixed inset-0 z-50 bg-backdrop" />
@@ -35,6 +39,29 @@ export const DialogContent = forwardRef<
         {...props}
         ref={ref}
         className={cn(contentVariants({ placement }), className)}
+        onEscapeKeyDown={(event) => {
+          onEscapeKeyDown?.(event);
+          event.stopPropagation();
+        }}
+        onOpenAutoFocus={(event) => {
+          previousFocus.current =
+            document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          onOpenAutoFocus?.(event);
+        }}
+        onCloseAutoFocus={(event) => {
+          onCloseAutoFocus?.(event);
+          if (!event.defaultPrevented) {
+            event.preventDefault();
+            const active = document.activeElement;
+            if (
+              (active === document.body ||
+                (event.target instanceof HTMLElement && event.target.contains(active))) &&
+              previousFocus.current?.isConnected
+            ) {
+              previousFocus.current.focus();
+            }
+          }
+        }}
       />
     </Primitive.Portal>
   );
