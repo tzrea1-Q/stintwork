@@ -155,7 +155,7 @@ The web UI can be shown in English or Simplified Chinese (简体中文):
 ## Out of Scope
 
 - Languages other than English and Simplified Chinese, including Traditional Chinese. `zh-TW` and `zh-HK` get Simplified Chinese for now.
-- Translating CLI output, server error messages, core warnings and git or `gh` messages.
+- Translating CLI output, server error messages, core warnings and git or `gh` messages. (Updated 2026-10-12: core and server sentences the UI shows, such as gate reasons and stream notes, are now covered by ticket 08. The rest stays out of scope.)
 - Translating the skills, prompts or briefs sent to agents, or asking agents to reply in Chinese.
 - Translating repo content: specs, tickets, handoffs and workflow YAML.
 - Translating the documentation site, getting-started guide or ADRs. The README is already bilingual.
