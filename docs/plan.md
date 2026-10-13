@@ -1,6 +1,6 @@
-# Stintwork: production plan to v0.1
+# Stintwork: production plan
 
-Status: draft for discussion · 2026-10-09. Vocabulary follows [`GLOSSARY.md`](../GLOSSARY.md). Decisions are recorded in [`docs/adr/`](adr/). The product is described in [`docs/brief.md`](brief.md).
+Status: draft for discussion · 2026-10-13. Vocabulary follows [`GLOSSARY.md`](../GLOSSARY.md). Decisions are recorded in [`docs/adr/`](adr/). The product is described in [`docs/brief.md`](brief.md).
 
 ## Goal
 
@@ -108,13 +108,86 @@ A Chinese-speaking developer can use the whole web UI in Simplified Chinese. Spe
 
 **Exit test:** a Chinese-speaking developer runs a real stint end to end in Chinese, and a native speaker has reviewed the catalog.
 
-### Later (not in v0.1)
+## v0.2
 
-- Grok Build verified end to end: the ACP probe and a real stint with a parsed handoff (deferred from M4, agent-polish 04). It is registered but unverified until then.
+### Goal
+
+Developers outside the project use Stintwork on their own repos and keep using it. Go public, finally run the outside-developer test, and let their feedback come first. Then fit more repos (GitHub Issues), hold up better (stints survive restarts) and work with more agents.
+
+v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test moves to M7. M6's tickets are resolved, but its exit test still needs a native speaker's catalog review. Grok Build's end-to-end ticket (agent-polish 04) stays deferred until M11. `tzrea1-Q/stintwork` is still private.
+
+**Rule:** if M8 turns out large, M10 and M11 move to v0.3 rather than delaying v0.2.
+
+### M7 · Go public · M
+
+Open the repo and find out whether developers outside the project can use it. Spec: `.scratch/go-public/spec.md`.
+
+- Make `tzrea1-Q/stintwork` public, with the maintainer's confirmation.
+- Issue templates and a short CONTRIBUTING explain how to report problems and how agents build the project. SECURITY points to private reporting. Scan tracked files and history before opening.
+- Link the repo from both READMEs and the npm package metadata.
+- Run the deferred M5 exit test with 3–5 outside developers and file findings as tickets.
+- A native speaker's review of the Chinese catalog (M6 exit) can happen alongside.
+
+**Exit test:** 3–5 outside developers each start a real task in their own repo within a minute, without help, and their findings are triaged into tickets.
+
+### M8 · What they ran into · size set after M7
+
+Fix what blocked the M7 developers.
+
+- Scope is deliberately empty until M7 ends.
+- Triage the M7 findings, then set the size and write the spec and tickets.
+
+**Exit test:** the same developers retry and the blocking findings are gone.
+
+### M9 · Stints survive restarts · M
+
+An active stint resumes after a server restart or crash.
+
+- Resume through ACP `loadSession` in a new agent process. The 2026-10-09 spike showed resume passes for all three agents.
+- A permission request that was waiting reappears in Needs you.
+- If resume fails, today's behaviour applies: stop at a checkpoint, then start a new stint from the recorded state.
+
+**Exit test:** kill the server partway through a real Codex stint and a real Claude Code stint. After restart both reach a handoff without a new brief.
+
+### M10 · GitHub Issues as a tracker · L
+
+A repo whose tracker config says GitHub shows its issues as work items and tickets, read through `gh`.
+
+- Start with a research spike on mattpocock/skills' GitHub tracker layout, before writing a spec.
+- Proposed: agents write issues through their own skills and `gh`; Stintwork only reads. This keeps ADR 0005's reason for avoiding two-way sync.
+- A new decision record supersedes ADR 0005.
+
+**Exit test:** a real repo that tracks work in GitHub Issues takes one ticket from the board to a merged PR.
+
+### M11 · More agents · M
+
+Verify Grok Build and add Gemini CLI over ACP.
+
+- Grok Build verified end to end (agent-polish 04), subject to its API rate limits.
+- Gemini CLI: ACP probe, capability profile and permission mapping.
+- Touches only the `agents` package, so it can run alongside other milestones.
+
+**Exit test:** one real stint each with Grok Build and Gemini CLI, each ending in a parsed handoff.
+
+### M12 · v0.2 release · S
+
+Publish the release after its milestones pass.
+
+- Write release notes.
+- Run the ACP probe as a contract test against every agent.
+- Publish with the maintainer's confirmation.
+
+**Exit test:** the ACP contract tests pass for every agent and v0.2 is published on npm with release notes.
+
+### Open questions for v0.2
+
+1. **GitHub tracker files.** Where do the spec and `workflow.yaml` gate approvals live in an issue-tracked repo? The M10 research spike answers this before any spec.
+2. **Outside developers.** Who are the 3–5 developers, and how are they recruited? The maintainer's call.
+
+### Later (not in v0.2)
+
 - The terminal fallback for agents without ACP (moved from M5: it needs a native module, `node-pty`, that would make `npx` installs fragile, and every v0.1 agent works over ACP). Revisit if Claude's ACP billing risk materialises.
 - The Lists and Cockpit views.
-- Reading GitHub Issues.
-- More ACP agents (e.g. Gemini CLI).
 - A desktop wrapper.
 - Parallel stints on one work item.
 - A visual workflow editor.
@@ -126,8 +199,8 @@ A Chinese-speaking developer can use the whole web UI in Simplified Chinese. Spe
 |---|---|
 | ACP adapters change or regress | Pin adapter versions; run the probe as a contract test before each release (ADR 0002) |
 | Provider rules on subscription use change again | Use only the developer's own CLIs and logins (ADR 0003); support API-key login; the terminal fallback (now Later) would keep every agent usable |
-| State drifts after crashes or restarts | Derive state from files and git; checkpoints on every stop; stint logs as an append-only record |
-| Scope creep toward a "platform" | The "Later" list and brief §12 are explicit no's; each milestone has one exit test |
+| State drifts after crashes or restarts | M9 resumes active stints through ACP; derive state from files and git, keep checkpoint and stint-log recovery when resume fails |
+| Scope creep toward a "platform" | The "Later" list and brief §12 bound scope; M8 follows outside-developer feedback, and a large M8 moves M10 and M11 to v0.3 |
 | One maintainer's bandwidth | Agents implement tickets via Stintwork itself from M2; Codex delegation for parallel work |
 
 ## Settled (2026-10-09)

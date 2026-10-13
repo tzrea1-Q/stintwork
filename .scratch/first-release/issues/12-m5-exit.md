@@ -15,3 +15,5 @@ Prove v0.1 on people other than the author (`docs/plan.md` M5 exit test). 3–5 
 ## Comments
 
 **Coordinator, 2026-10-11:** Deferred by the maintainer, who will run the outside-developer test later and report back. stintwork@0.1.0 is already published to npm, so testers can start with `npx stintwork`. M5 stays `active` in the roadmap until this test passes.
+
+**Coordinator, 2026-10-13:** The maintainer moved the outside-developer test to v0.2 M7 (`.scratch/go-public/`). This ticket stays deferred; go-public 04 replaces it. M5 is marked shipped in the roadmap.
