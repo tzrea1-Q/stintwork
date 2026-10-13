@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
+import { Markdown } from "./ui/Markdown";
+import { Badge } from "./ui/Badge";
 import type { AgentProfile, Stint, StintEvent, StintToolContent } from "@stintwork/core";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { PermissionDetails } from "./PermissionDetails";
 import { readableToolOutput } from "./tool-output";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import "./stint-stream.css";
 import { renderCoreText, stintEventKind, useLanguage } from "./i18n/language";
 import type { Catalog } from "./i18n/en";
 
@@ -55,12 +55,15 @@ function PermissionPrompt({
   }
   return (
     <section
-      className="stint-permission"
+      className="stint-permission rounded-md border border-warning p-3"
       aria-label={t.stints.permissionTitle(event.title ?? event.toolCallId)}
     >
       <strong>{event.title ?? t.stints.permissionRequested}</strong>
       {event.kind && (
-        <span className="muted"> · {stintEventKind(event.kind, t.stints.toolKinds)}</span>
+        <span className="muted text-muted">
+          {" "}
+          · {stintEventKind(event.kind, t.stints.toolKinds)}
+        </span>
       )}
       {pending ? (
         <>
@@ -96,18 +99,22 @@ export function StintStream({
       ),
   );
   return (
-    <div className="stint-stream">
+    <div className="stint-stream min-w-0 [overflow-wrap:anywhere]">
       {stint.events
         .filter((event) => event.type === "plan")
         .map((event) => {
           const occurrences = new Map<string, number>();
           return (
             event.type === "plan" && (
-              <section key={event.id} className="stint-plan" aria-label={t.stints.stintPlan}>
+              <section
+                key={event.id}
+                className="stint-plan rounded-md border border-border-strong bg-surface-raised p-3 [&_h4]:mb-3 [&_h4]:flex [&_h4]:items-center [&_h4]:gap-2 [&_li]:flex [&_li]:items-center [&_li]:gap-2 [&_li]:py-1 [&_ol]:m-0 [&_ol]:list-none [&_ol]:p-0 [&_small]:ml-auto [&_small]:text-muted"
+                aria-label={t.stints.stintPlan}
+              >
                 <h4>
-                  <ListChecks size={15} aria-hidden="true" />
+                  <ListChecks className="size-icon-sm shrink-0" aria-hidden="true" />
                   {t.stints.plan}{" "}
-                  <span className="muted">
+                  <span className="muted text-muted">
                     {event.entries.filter((entry) => entry.status === "completed").length}/
                     {event.entries.length}
                   </span>
@@ -119,11 +126,27 @@ export function StintStream({
                     return (
                       <li
                         key={`${entry.content}:${occurrence}`}
-                        className={entry.status === "completed" ? "stint-step-completed" : ""}
+                        className={
+                          entry.status === "completed" ? "stint-step-completed text-success" : ""
+                        }
                       >
-                        {entry.status === "completed" && <Check size={14} aria-hidden="true" />}
+                        {entry.status === "completed" && (
+                          <Check className="size-icon-sm shrink-0" aria-hidden="true" />
+                        )}
                         <span>{entry.content}</span>
-                        <small>{t.stints.progress[entry.status]}</small>
+                        <small>
+                          <Badge
+                            variant={
+                              entry.status === "completed"
+                                ? "success"
+                                : entry.status === "in_progress"
+                                  ? "accent"
+                                  : "secondary"
+                            }
+                          >
+                            {t.stints.progress[entry.status]}
+                          </Badge>
+                        </small>
                       </li>
                     );
                   })}
@@ -133,7 +156,7 @@ export function StintStream({
           );
         })}
       <div
-        className="stint-messages stint-event-log"
+        className="stint-messages stint-event-log max-h-[440px] overflow-y-auto"
         role="log"
         aria-label={t.stints.messages}
         aria-live="polite"
@@ -157,25 +180,40 @@ export function StintStream({
                   ? `${event.type}:${event.toolCallId}:${"path" in event ? event.path : ""}`
                   : index;
           return (
-            <div className={`stint-event stint-event-${event.type}`} key={`${event.type}:${key}`}>
+            <div
+              className={`stint-event min-w-0 border-b border-border py-3 [overflow-wrap:anywhere] stint-event-${event.type}`}
+              key={`${event.type}:${key}`}
+            >
               {(event.type === "message" || event.type === "thought") && (
-                <div className={event.type === "thought" ? "markdown muted" : "markdown"}>
+                <div>
                   {event.type === "thought" && <small>{t.stints.agentThought}</small>}
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
+                  <Markdown className={event.type === "thought" ? "text-muted" : undefined}>
                     {event.type === "message"
                       ? renderCoreText(event.message, event.text, t)
                       : event.text}
-                  </ReactMarkdown>
+                  </Markdown>
                 </div>
               )}
               {event.type === "tool_call" && (
                 <div>
-                  <div className="stint-tool-heading">
-                    <Wrench size={14} aria-hidden="true" />
+                  <div className="stint-tool-heading flex flex-wrap items-start gap-2 [&>span]:ml-auto [&>span]:text-muted">
+                    <Wrench className="size-icon-sm shrink-0" aria-hidden="true" />
                     <strong>{event.title ?? event.toolCallId}</strong>
                     <span>
                       {stintEventKind(event.kind ?? "other", t.stints.toolKinds)} ·{" "}
-                      {t.stints.progress[event.status ?? "pending"]}
+                      <Badge
+                        variant={
+                          event.status === "completed"
+                            ? "success"
+                            : event.status === "failed"
+                              ? "danger"
+                              : event.status === "in_progress"
+                                ? "accent"
+                                : "secondary"
+                        }
+                      >
+                        {t.stints.progress[event.status ?? "pending"]}
+                      </Badge>
                     </span>
                   </div>
                   {event.locations?.map((location) => (
@@ -187,21 +225,21 @@ export function StintStream({
                     </p>
                   ))}
                   {event.content?.length || event.output ? (
-                    <details className="stint-tool-output">
+                    <details className="stint-tool-output [&_summary]:text-muted">
                       <summary>{t.stints.toolOutput}</summary>
                       {!!event.content?.length && (
-                        <pre>
+                        <CodeBlock>
                           {event.content.map((content) => toolOutput(content, t)).join("\n\n")}
-                        </pre>
+                        </CodeBlock>
                       )}
-                      {event.output && <pre>{readableToolOutput(event.output)}</pre>}
+                      {event.output && <CodeBlock>{readableToolOutput(event.output)}</CodeBlock>}
                     </details>
                   ) : null}
                 </div>
               )}
               {event.type === "file_edit" && (
-                <div className="stint-file-edit">
-                  <FileCode2 size={14} aria-hidden="true" />
+                <div className="stint-file-edit flex flex-wrap items-center gap-2 [&_code]:text-success">
+                  <FileCode2 className="size-icon-sm shrink-0" aria-hidden="true" />
                   <strong>{t.stints.fileEdit}</strong>
                   <code>{event.path}</code>
                 </div>
@@ -223,19 +261,19 @@ export function StintStream({
               {event.type === "other" && (
                 <details>
                   <summary>{stintEventKind(event.kind, t.stints.sessionUpdateKinds)}</summary>
-                  <pre>{JSON.stringify(event.update, null, 2)}</pre>
+                  <CodeBlock>{JSON.stringify(event.update, null, 2)}</CodeBlock>
                 </details>
               )}
             </div>
           );
         })}
         {stint.error && (
-          <p role="alert" className="warning">
+          <p role="alert" className="warning text-warning">
             {renderCoreText(stint.errorMessage, stint.error, t)}
           </p>
         )}
       </div>
-      <p className="stint-stream-status" role="status">
+      <p className="stint-stream-status text-accent" role="status" aria-label={t.stints.stint}>
         {stint.status === "running" && !replay ? (
           waitingForPermission ? (
             t.stints.waitingPermission
@@ -244,7 +282,18 @@ export function StintStream({
           )
         ) : (
           <>
-            {t.stints.stint} {t.stints.statuses[stint.status]}
+            {t.stints.stint}{" "}
+            <Badge
+              variant={
+                stint.status === "finished"
+                  ? "success"
+                  : stint.status === "failed"
+                    ? "danger"
+                    : "secondary"
+              }
+            >
+              {t.stints.statuses[stint.status]}
+            </Badge>
           </>
         )}
       </p>

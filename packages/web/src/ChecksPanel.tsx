@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
+import { Button } from "./ui/Button";
+import { Badge } from "./ui/Badge";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import {
   evidenceStale,
@@ -8,7 +11,6 @@ import {
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
 
-import "./checks-panel.css";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
 
 type ChecksItem = Pick<
@@ -93,49 +95,63 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
   return (
     <div className="checks-panel">
       <PullRequestChecksPanel item={item} />
-      <p className="muted">
+      <p className="muted text-muted">
         {item.merged ? t.review.checks.shippedEvidence : t.review.checks.commandsExplanation}
       </p>
       {!item.merged && (
-        <div className="checks-actions">
-          <button
+        <div className="checks-actions my-3 flex flex-wrap gap-2">
+          <Button
             type="button"
-            className="top-button"
+            variant="primary"
             disabled={busy || active || !data?.commands.length}
             onClick={() => void action(false)}
           >
             {t.review.checks.run}
-          </button>
+          </Button>
           {active && (
-            <button
-              type="button"
-              className="top-button"
-              disabled={busy}
-              onClick={() => void action(true)}
-            >
+            <Button type="button" disabled={busy} onClick={() => void action(true)}>
               {t.review.checks.cancel}
-            </button>
+            </Button>
           )}
         </div>
       )}
       {error && (
-        <p role="alert" className="warning">
+        <p role="alert" className="warning text-warning">
           {error}
         </p>
       )}
-      {!data && !error && !item.merged && <p className="muted">{t.review.checks.reading}</p>}
-      {data && !data.commands.length && <p className="muted">{t.review.checks.notConfigured}</p>}
-      {data && !results.length && data.commands.length > 0 && (
-        <p className="muted">{t.review.checks.noEvidence}</p>
+      {!data && !error && !item.merged && (
+        <p className="muted text-muted">{t.review.checks.reading}</p>
       )}
-      <ul className="check-results" aria-label={t.review.checks.latest}>
+      {data && !data.commands.length && (
+        <p className="muted text-muted">{t.review.checks.notConfigured}</p>
+      )}
+      {data && !results.length && data.commands.length > 0 && (
+        <p className="muted text-muted">{t.review.checks.noEvidence}</p>
+      )}
+      <ul
+        className="check-results list-none p-0 [&>li]:border-t [&>li]:border-border [&>li]:py-3 [&_code]:[overflow-wrap:anywhere] [&_pre]:max-h-60"
+        aria-label={t.review.checks.latest}
+      >
         {results.map((result) => (
           <li key={result.name}>
             <p>
               <strong>{result.name}</strong> ·{" "}
-              <span>{t.review.checks.statuses[result.status]}</span>
+              <Badge
+                variant={
+                  result.status === "passed"
+                    ? "success"
+                    : result.status === "failed"
+                      ? "danger"
+                      : result.status === "running"
+                        ? "accent"
+                        : "warning"
+                }
+              >
+                {t.review.checks.statuses[result.status]}
+              </Badge>
               {evidenceStale(evidence, result.commit) && (
-                <strong className="warning">{t.review.checks.stale}</strong>
+                <strong className="warning text-warning">{t.review.checks.stale}</strong>
               )}
             </p>
             <p>
@@ -149,7 +165,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
                 aria-label={t.review.checks.output(result.name)}
                 aria-live={result.status === "running" ? "polite" : "off"}
               >
-                <pre>{result.outputExcerpt || t.review.checks.noOutput}</pre>
+                <CodeBlock>{result.outputExcerpt || t.review.checks.noOutput}</CodeBlock>
               </div>
             </details>
           </li>

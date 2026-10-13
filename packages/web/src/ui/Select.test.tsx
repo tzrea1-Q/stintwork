@@ -33,6 +33,7 @@ test("a select focuses its current option, navigates, selects and returns focus"
   expect(current).toHaveAttribute("aria-selected", "true");
   expect(current.querySelector("svg")).toBeInTheDocument();
   expect(container).not.toContainElement(screen.getByRole("listbox"));
+  expect(screen.getByRole("listbox")).toHaveClass("w-[var(--radix-select-trigger-width)]");
   await user.keyboard("{ArrowDown}{Enter}");
   await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
   expect(trigger).toHaveTextContent("Next milestone");

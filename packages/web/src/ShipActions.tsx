@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
+import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   builtInWorkflows,
@@ -27,6 +30,8 @@ export function ShipActions({
   const [preview, setPreview] = useState<PullRequestPreview | null>(null);
   const [mergeMethod, setMergeMethod] = useState<MergeMethod | null>(null);
   const [opened, setOpened] = useState(item.pullRequest);
+  const publishingTrigger = useRef<HTMLButtonElement>(null);
+  const mergeTrigger = useRef<HTMLButtonElement>(null);
   const pullRequest = item.pullRequest ?? opened;
   const ci = item.pullRequestChecks;
   const stages = workflows[item.workflow].stages;
@@ -105,8 +110,11 @@ export function ShipActions({
     }
   }
   return (
-    <section aria-label={t.review.ship.label} className="handoff-card">
-      <h3 className="drawer-section-heading">
+    <section
+      aria-label={t.review.ship.label}
+      className="handoff-card my-3 rounded-sm border border-border bg-surface-raised p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
+    >
+      <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {item.merged ? t.review.ship.shipped : t.review.ship.ship}
       </h3>
       {item.merged ? (
@@ -142,99 +150,131 @@ export function ShipActions({
               </p>
               <p>{t.review.ship.rechecks}</p>
               {!mergeReady && <p>{t.review.ship.notReady}</p>}
-              <button
+              <Button
                 type="button"
-                className="top-button"
+                ref={mergeTrigger}
                 disabled={busy || blockers.length > 0 || !!message || !mergeReady}
                 onClick={() => void action("preview-merge-pr")}
               >
                 {t.review.ship.mergePr}
-              </button>
+              </Button>
               {mergeMethod && (
-                <section role="dialog" aria-modal="false" aria-label={t.review.ship.confirmMerge}>
-                  <h4>{t.review.ship.confirmMerge}</h4>
-                  <p>
-                    {t.review.ship.pullRequest(pullRequest.number)} →{" "}
-                    <code>{pullRequest.base}</code> · {t.review.ship.mergeMethod}{" "}
-                    <strong>{mergeMethod}</strong>
-                  </p>
-                  <button
-                    type="button"
-                    className="top-button"
-                    disabled={busy || blockers.length > 0 || !!message || !mergeReady}
-                    onClick={() => void action("merge-pr")}
+                <Dialog
+                  open
+                  onOpenChange={(open) => {
+                    if (!open && !busy) setMergeMethod(null);
+                  }}
+                >
+                  <DialogContent
+                    returnFocusRef={mergeTrigger}
+                    aria-describedby={undefined}
+                    className="[overflow-wrap:anywhere] [&_p]:my-3"
+                    onEscapeKeyDown={(event) => {
+                      if (busy) event.preventDefault();
+                    }}
+                    onPointerDownOutside={(event) => {
+                      if (busy) event.preventDefault();
+                    }}
                   >
-                    {t.review.ship.confirmMethod(mergeMethod)}
-                  </button>
-                  <button
-                    type="button"
-                    className="top-button"
-                    disabled={busy}
-                    onClick={() => setMergeMethod(null)}
-                  >
-                    {t.review.ship.cancel}
-                  </button>
-                </section>
+                    <DialogTitle className="text-lg font-medium">
+                      {t.review.ship.confirmMerge}
+                    </DialogTitle>
+                    <p>
+                      {t.review.ship.pullRequest(pullRequest.number)} →{" "}
+                      <code>{pullRequest.base}</code> · {t.review.ship.mergeMethod}{" "}
+                      <strong>{mergeMethod}</strong>
+                    </p>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      className="h-auto min-h-8 whitespace-normal py-1"
+                      disabled={busy || blockers.length > 0 || !!message || !mergeReady}
+                      onClick={() => void action("merge-pr")}
+                    >
+                      {t.review.ship.confirmMethod(mergeMethod)}
+                    </Button>
+                    <Button type="button" disabled={busy} onClick={() => setMergeMethod(null)}>
+                      {t.review.ship.cancel}
+                    </Button>
+                  </DialogContent>
+                </Dialog>
               )}
             </>
           ) : (
             <>
-              <button
+              <Button
                 type="button"
-                className="top-button"
+                variant="primary"
                 disabled={busy || blockers.length > 0 || !!message}
                 onClick={() => void action("merge-local")}
               >
                 {busy ? t.review.ship.working : t.review.ship.local}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                className="top-button"
+                ref={publishingTrigger}
                 disabled={busy || blockers.length > 0 || !!message}
                 onClick={() => void action("preview-pr")}
               >
                 {t.review.ship.openPr}
-              </button>
+              </Button>
             </>
           )}
           {preview && (
-            <section role="dialog" aria-modal="false" aria-label={t.review.ship.confirmPublishing}>
-              <h4>{t.review.ship.confirmPushTitle}</h4>
-              <p>{t.review.ship.pushWarning}</p>
-              <p>
-                {t.review.ship.remote}
-                <code>{preview.remote}</code> · <code>{preview.remoteUrl}</code>
-              </p>
-              <p>
-                {t.review.ship.branch}
-                <code>{preview.branch}</code> → <code>{preview.base}</code>
-              </p>
-              <p>
-                {t.review.ship.commit}
-                <code>{preview.headCommit}</code>
-              </p>
-              <p>
-                {t.review.ship.title}
-                {preview.title}
-              </p>
-              <pre>{preview.body}</pre>
-              <button
-                type="button"
-                className="top-button"
-                disabled={busy}
-                onClick={() => void action("open-pr")}
+            <Dialog
+              open
+              onOpenChange={(open) => {
+                if (!open && !busy) setPreview(null);
+              }}
+            >
+              <DialogContent
+                returnFocusRef={publishingTrigger}
+                aria-label={t.review.ship.confirmPublishing}
+                aria-describedby={undefined}
+                className="[overflow-wrap:anywhere] [&_p]:my-3"
+                onEscapeKeyDown={(event) => {
+                  if (busy) event.preventDefault();
+                }}
+                onPointerDownOutside={(event) => {
+                  if (busy) event.preventDefault();
+                }}
               >
-                {t.review.ship.confirmPush}
-              </button>
-              <button
-                type="button"
-                className="top-button"
-                disabled={busy}
-                onClick={() => setPreview(null)}
-              >
-                {t.review.ship.cancel}
-              </button>
-            </section>
+                <DialogTitle className="text-lg font-medium">
+                  {t.review.ship.confirmPublishing}
+                </DialogTitle>
+                <p>{t.review.ship.confirmPushTitle}</p>
+                <p>{t.review.ship.pushWarning}</p>
+                <p>
+                  {t.review.ship.remote}
+                  <code>{preview.remote}</code> · <code>{preview.remoteUrl}</code>
+                </p>
+                <p>
+                  {t.review.ship.branch}
+                  <code>{preview.branch}</code> → <code>{preview.base}</code>
+                </p>
+                <p>
+                  {t.review.ship.commit}
+                  <code>{preview.headCommit}</code>
+                </p>
+                <p>
+                  {t.review.ship.title}
+                  {preview.title}
+                </p>
+                <CodeBlock className="max-h-60">{preview.body}</CodeBlock>
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="h-auto min-h-8 whitespace-normal py-1"
+                  disabled={busy}
+                  onClick={() => void action("open-pr")}
+                >
+                  {t.review.ship.confirmPush}
+                </Button>
+                <Button type="button" disabled={busy} onClick={() => setPreview(null)}>
+                  {t.review.ship.cancel}
+                </Button>
+              </DialogContent>
+            </Dialog>
           )}
           {conflicts.length > 0 && (
             <section aria-label={t.review.ship.conflicts}>
@@ -246,14 +286,9 @@ export function ShipActions({
                   </li>
                 ))}
               </ul>
-              <button
-                type="button"
-                className="top-button"
-                disabled={busy}
-                onClick={() => void action("send-back")}
-              >
+              <Button type="button" disabled={busy} onClick={() => void action("send-back")}>
                 {t.review.ship.sendBack}
-              </button>
+              </Button>
             </section>
           )}
         </>
@@ -268,7 +303,7 @@ export function ShipActions({
         </ul>
       )}
       {error && (
-        <p role="alert" className="warning">
+        <p role="alert" className="warning text-warning">
           {error}
         </p>
       )}

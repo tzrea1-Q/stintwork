@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import {
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
 } from "@stintwork/core";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { StageAgentRail } from "./StageAgentRail";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
 const item = indexProject(
   createMemoryRepoFiles({
@@ -39,6 +41,45 @@ afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.removeItem(languageStorageKey);
 });
+
+test.each([200, 503])(
+  "a stage picker returns focus after its pending save settles (%s)",
+  async (status) => {
+    let finishSave = (_response: Response) => {};
+    const pendingSave = new Promise<Response>((resolve) => {
+      finishSave = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, options?: RequestInit) =>
+        options?.method === "POST" ? pendingSave : new Response(JSON.stringify({ agents })),
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <Sheet defaultOpen>
+        <SheetContent aria-describedby={undefined}>
+          <SheetTitle>Work item</SheetTitle>
+          <StageAgentRail item={item} />
+        </SheetContent>
+      </Sheet>,
+    );
+    const picker = screen.getByRole("combobox", { name: "Review agent" });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await user.click(picker);
+    await user.click(screen.getByRole("option", { name: "Claude Code" }));
+    expect(picker).toBeDisabled();
+    await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
+    finishSave(
+      new Response(
+        JSON.stringify(status === 200 ? { agent: "claude" } : { reason: "Could not save" }),
+        { status },
+      ),
+    );
+    await waitFor(() => expect(picker).toBeEnabled());
+    await waitFor(() => expect(picker).toHaveFocus());
+  },
+);
 
 test("Chinese agent picker translates an internal error and preserves unknown agent diagnostics", async () => {
   localStorage.setItem(languageStorageKey, "zh-CN");
@@ -76,10 +117,16 @@ test("Chinese agent picker translates an internal error and preserves unknown ag
     </LanguageProvider>,
   );
   const picker = screen.getByRole("combobox", { name: "实现 Agent" });
-  expect(await within(picker).findByRole("option", { name: "Codex — 内部错误" })).toBeDisabled();
-  expect(
-    within(picker).getByRole("option", { name: "Claude Code — Raw Agent error" }),
-  ).toBeDisabled();
+  await waitFor(() => expect(picker).toBeEnabled());
+  await userEvent.setup().click(picker);
+  expect(await screen.findByRole("option", { name: "Codex — 内部错误" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getByRole("option", { name: "Claude Code — Raw Agent error" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
 });
 
 test("the stage rail defaults to workflow agents, honours stage choices, disables unavailable agents with reasons and saves choices", async () => {
@@ -99,19 +146,23 @@ test("the stage rail defaults to workflow agents, honours stage choices, disable
   );
   render(<StageAgentRail item={item} />);
   const picker = screen.getByRole("combobox", { name: "Implement agent" });
-  await within(picker).findByRole("option", { name: "Claude Code" });
-  expect(picker).toHaveValue("claude");
+  await waitFor(() => expect(picker).toHaveTextContent("Claude Code"));
   expect(screen.getAllByRole("combobox")).toHaveLength(builtInWorkflows.feature.stages.length);
   const review = screen.getByRole("combobox", { name: "Review agent" });
-  expect(review).toHaveValue("codex");
-  expect(within(review).getByRole("option", { name: /Grok Build.*grok login/ })).toBeDisabled();
-  await user.selectOptions(review, "claude");
+  expect(review).toHaveTextContent("Codex");
+  await user.click(review);
+  expect(screen.getByRole("option", { name: /Grok Build.*grok login/ })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await user.keyboard("{ArrowDown}{Enter}");
   expect(fetch).toHaveBeenLastCalledWith("/api/work-items/first/stages/review/agent", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agent: "claude" }),
   });
-  expect(review).toHaveValue("claude");
+  await waitFor(() => expect(review).toHaveTextContent("Claude Code"));
+  expect(review).toHaveFocus();
 });
 
 test("failed saves leave the recorded selection visible and expose the server reason", async () => {
@@ -127,10 +178,10 @@ test("failed saves leave the recorded selection visible and expose the server re
   );
   render(<StageAgentRail item={item} />);
   const picker = screen.getByRole("combobox", { name: "Implement agent" });
-  await within(picker).findByRole("option", { name: "Claude Code" });
-  await userEvent.setup().selectOptions(picker, "codex");
+  await waitFor(() => expect(picker).toHaveTextContent("Claude Code"));
+  await chooseOption(userEvent.setup(), picker, "Codex");
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not commit workflow.yaml.");
-  expect(picker).toHaveValue("claude");
+  expect(picker).toHaveTextContent("Claude Code");
 });
 
 test("live workflow changes replace a saved local selection", async () => {
@@ -143,13 +194,13 @@ test("live workflow changes replace a saved local selection", async () => {
   );
   const { rerender } = render(<StageAgentRail item={item} />);
   const picker = screen.getByRole("combobox", { name: "Review agent" });
-  await within(picker).findByRole("option", { name: "Claude Code" });
-  await userEvent.setup().selectOptions(picker, "claude");
-  expect(picker).toHaveValue("claude");
+  await waitFor(() => expect(picker).toBeEnabled());
+  await chooseOption(userEvent.setup(), picker, "Claude Code");
+  expect(picker).toHaveTextContent("Claude Code");
   rerender(
     <StageAgentRail item={{ ...item, stages: { ...item.stages, review: { agent: "codex" } } }} />,
   );
-  expect(picker).toHaveValue("codex");
+  expect(picker).toHaveTextContent("Codex");
 });
 
 test("an unregistered stage agent remains visible instead of silently selecting another agent", async () => {
@@ -158,8 +209,20 @@ test("an unregistered stage agent remains visible instead of silently selecting 
     vi.fn(async () => new Response(JSON.stringify({ agents }))),
   );
   render(<StageAgentRail item={{ ...item, stages: { implement: { agent: "removed" } } }} />);
-  expect(await screen.findByRole("option", { name: "removed — Not registered" })).toBeDisabled();
-  expect(screen.getByRole("combobox", { name: "Implement agent" })).toHaveValue("removed");
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Implement agent" })).toHaveTextContent(
+      "removed — Not registered",
+    ),
+  );
+  await userEvent.setup().click(screen.getByRole("combobox", { name: "Implement agent" }));
+  expect(screen.getByRole("option", { name: "removed — Not registered" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await userEvent.setup().keyboard("{Escape}");
+  expect(screen.getByRole("combobox", { name: "Implement agent" })).toHaveTextContent(
+    /removed.*Not registered/,
+  );
 });
 
 test("the brief preview defaults to the persisted stage agent and starts that agent without changing its preference", async () => {
@@ -187,9 +250,16 @@ test("the brief preview defaults to the persisted stage agent and starts that ag
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
-  await sheet.findByRole("option", { name: "Claude Code" });
-  expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveValue("claude");
-  expect(sheet.getByRole("option", { name: /Grok Build.*grok login/ })).toBeDisabled();
+  await waitFor(() =>
+    expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveTextContent("Claude Code"),
+  );
+  expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveTextContent("Claude Code");
+  await user.click(sheet.getByRole("combobox", { name: "Agent" }));
+  expect(screen.getByRole("option", { name: /Grok Build.*grok login/ })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await user.keyboard("{Escape}");
   await user.click(sheet.getByRole("button", { name: "Start" }));
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
@@ -223,7 +293,7 @@ test("an unavailable default cannot start a stint and explains how to log in", a
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Start stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
-  await sheet.findByRole("option", { name: "Claude Code" });
+  await sheet.findByRole("heading", { name: "Full prompt" });
   expect(sheet.getByRole("button", { name: "Start" })).toBeDisabled();
   expect(sheet.getByText("Authentication required. Use grok login.")).toBeVisible();
 });

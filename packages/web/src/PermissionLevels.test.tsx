@@ -8,6 +8,8 @@ import {
 } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { chooseOption } from "./select-test-helper";
+import { en } from "./i18n/en";
 import { afterEach, expect, test, vi } from "vitest";
 import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
 import { StageBriefPreview } from "./BriefPreview";
@@ -39,9 +41,9 @@ test.each(permissionLevels)(
     const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
     await sheet.findByRole("heading", { name: "Full prompt" });
     const selector = sheet.getByRole("combobox", { name: "Permission level" });
-    expect(selector).toHaveValue(level);
+    expect(selector).toHaveTextContent(en.stints.permissionLevels[level]);
     expect(sheet.getByRole("button", { name: "Use as project default" })).toBeDisabled();
-    await user.selectOptions(selector, "autonomous");
+    await chooseOption(user, selector, "Autonomous");
     await user.click(sheet.getByRole("button", { name: "Start" }));
     expect(fetch).toHaveBeenCalledWith(
       "/api/stints",
@@ -80,8 +82,10 @@ test("Edit freely is the fallback and changing the project default is explicit a
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
   await sheet.findByRole("heading", { name: "Full prompt" });
-  expect(sheet.getByRole("combobox", { name: "Permission level" })).toHaveValue("edit-freely");
-  await user.selectOptions(sheet.getByRole("combobox", { name: "Permission level" }), "ask");
+  expect(sheet.getByRole("combobox", { name: "Permission level" })).toHaveTextContent(
+    "Edit freely",
+  );
+  await chooseOption(user, sheet.getByRole("combobox", { name: "Permission level" }), "Ask");
   expect(sheet.getByText("Project default: Edit freely")).toBeInTheDocument();
   expect(fetch.mock.calls).toHaveLength(2);
   await user.click(sheet.getByRole("button", { name: "Use as project default" }));
@@ -120,11 +124,15 @@ test("warnings follow the chosen agent and level before starting", async () => {
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
   await sheet.findByRole("heading", { name: "Full prompt" });
   expect(sheet.getByRole("alert")).toHaveTextContent("without asking");
-  await user.selectOptions(sheet.getByRole("combobox", { name: "Agent" }), "claude");
+  await chooseOption(user, sheet.getByRole("combobox", { name: "Agent" }), "Claude Code");
   expect(sheet.queryByRole("alert")).not.toBeInTheDocument();
-  await user.selectOptions(sheet.getByRole("combobox", { name: "Agent" }), "grok");
+  await chooseOption(user, sheet.getByRole("combobox", { name: "Agent" }), /Grok/);
   for (const level of permissionLevels) {
-    await user.selectOptions(sheet.getByRole("combobox", { name: "Permission level" }), level);
+    await chooseOption(
+      user,
+      sheet.getByRole("combobox", { name: "Permission level" }),
+      en.stints.permissionLevels[level],
+    );
     expect(sheet.getByRole("alert")).toHaveTextContent("always-approve");
     expect(sheet.getByRole("alert")).toHaveTextContent("cannot enforce the worktree boundary");
   }

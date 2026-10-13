@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import { builtInWorkflows, compileBrief, type AgentProfile } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -53,9 +54,13 @@ test("choosing Grok in the brief preview shows the permission warning before Sta
   const preview = within(screen.getByRole("dialog", { name: "Brief preview" }));
   expect(await preview.findByRole("alert")).toHaveTextContent(warning);
   expect(preview.getByRole("button", { name: "Start" })).toBeEnabled();
-  await user.selectOptions(preview.getByRole("combobox", { name: "Agent" }), attentionProfile.id);
+  await chooseOption(
+    user,
+    preview.getByRole("combobox", { name: "Agent" }),
+    attentionProfile.displayName,
+  );
   expect(preview.queryByText(warning)).not.toBeInTheDocument();
-  await user.selectOptions(preview.getByRole("combobox", { name: "Agent" }), "grok");
+  await chooseOption(user, preview.getByRole("combobox", { name: "Agent" }), /Grok/);
   expect(preview.getByRole("alert")).toHaveTextContent(warning);
 });
 

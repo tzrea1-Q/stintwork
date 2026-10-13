@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
+import { Button } from "./ui/Button";
+import { Badge } from "./ui/Badge";
 import {
   evidenceStale,
   latestReviewStint,
@@ -8,7 +11,8 @@ import {
   type ReviewFindings,
   type StintSummary,
 } from "@stintwork/core";
-import { useState } from "react";
+import { SelectField } from "./ui/SelectField";
+import { useId, useState } from "react";
 import { useLanguage } from "./i18n/language";
 
 export type DisplayFinding = ReviewFinding & {
@@ -75,61 +79,68 @@ export function FindingCard({
   const [accepting, setAccepting] = useState(false);
   const [reason, setReason] = useState("");
   return (
-    <article className="review-finding" id={anchor} aria-label={finding.title}>
+    <article
+      className="review-finding m-3 min-w-0 rounded-md border border-border p-3 [overflow-wrap:anywhere] [&_h4]:my-2 [&_p]:my-2"
+      id={anchor}
+      aria-label={finding.title}
+    >
       <h4>{finding.title}</h4>
       <p>
         {t.review.findings.axes[finding.axis]} · {t.review.findings.severities[finding.severity]} ·{" "}
-        {t.review.findings.statuses[finding.status]}
+        <Badge
+          variant={
+            finding.status === "resolved"
+              ? "success"
+              : finding.status === "accepted"
+                ? "accent"
+                : "warning"
+          }
+        >
+          {t.review.findings.statuses[finding.status]}
+        </Badge>
       </p>
       <p>
         <code>
           {finding.path}:{finding.line}
         </code>
       </p>
-      <p className="review-finding-body">{finding.body}</p>
+      <p className="review-finding-body whitespace-pre-wrap">{finding.body}</p>
       {finding.reason && (
         <p>
           {t.review.findings.reasonPrefix}
           {finding.reason}
         </p>
       )}
-      <p className="muted">
+      <p className="muted text-muted">
         {t.review.findings.reviewedCommit}
         <code>{finding.commit}</code>
         {finding.stale && t.review.findings.stale}
         {finding.historical && t.review.findings.history}
       </p>
       {onDecision && !finding.historical && (
-        <div className="review-finding-actions">
+        <div className="review-finding-actions flex flex-wrap gap-2 [&_form]:grid [&_form]:w-full [&_form]:gap-2 [&_label]:grid [&_label]:w-full [&_label]:gap-2 [&_textarea]:min-h-20 [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-bg [&_textarea]:p-2">
           {finding.status !== "resolved" && (
-            <button
+            <Button
               type="button"
-              className="top-button"
               disabled={saving}
               onClick={() => void onDecision(finding.id, "resolved")}
             >
               {t.review.findings.resolve}
-            </button>
+            </Button>
           )}
           {finding.status !== "accepted" && (
-            <button
-              type="button"
-              className="top-button"
-              disabled={saving}
-              onClick={() => setAccepting(true)}
-            >
+            <Button type="button" disabled={saving} onClick={() => setAccepting(true)}>
               {t.review.findings.accept}
-            </button>
+            </Button>
           )}
           {finding.status !== "open" && (
-            <button
+            <Button
               type="button"
-              className="top-button"
               disabled={saving}
               onClick={() => void onDecision(finding.id, "open")}
             >
               {t.review.findings.reopen}
-            </button>
+            </Button>
           )}
           {accepting && (
             <form
@@ -147,17 +158,12 @@ export function FindingCard({
                   onChange={(event) => setReason(event.target.value)}
                 />
               </label>
-              <button type="submit" className="top-button" disabled={saving || !reason.trim()}>
+              <Button type="submit" disabled={saving || !reason.trim()}>
                 {t.review.findings.save}
-              </button>
-              <button
-                type="button"
-                className="top-button"
-                disabled={saving}
-                onClick={() => setAccepting(false)}
-              >
+              </Button>
+              <Button type="button" disabled={saving} onClick={() => setAccepting(false)}>
                 {t.review.findings.cancel}
-              </button>
+              </Button>
             </form>
           )}
         </div>
@@ -176,6 +182,7 @@ export function FindingsRail({
   anchor: (finding: DisplayFinding) => string;
 }) {
   const { t } = useLanguage();
+  const selectId = useId();
   const [axis, setAxis] = useState("");
   const [severity, setSeverity] = useState("");
   const [status, setStatus] = useState("");
@@ -187,45 +194,63 @@ export function FindingsRail({
   );
   return (
     <>
-      <div className="review-filters">
-        <label>
+      <div className="review-filters mb-3 grid gap-2 [&_label]:grid [&_label]:min-w-0 [&_label]:gap-2">
+        <label htmlFor={`${selectId}-axis`}>
           {t.review.findings.axis}
-          <select value={axis} onChange={(event) => setAxis(event.target.value)}>
-            <option value="">{t.review.findings.allAxes}</option>
-            {(["Standards", "Spec"] as const).map((value) => (
-              <option key={value} value={value}>
-                {t.review.findings.axes[value]}
-              </option>
-            ))}
-          </select>
+          <SelectField
+            id={`${selectId}-axis`}
+            aria-label={t.review.findings.axis}
+            value={axis}
+            onValueChange={setAxis}
+            options={[
+              { value: "", label: t.review.findings.allAxes },
+              ...(["Standards", "Spec"] as const).map((value) => ({
+                value,
+                label: t.review.findings.axes[value],
+              })),
+            ]}
+          />
         </label>
-        <label>
+        <label htmlFor={`${selectId}-severity`}>
           {t.review.findings.severity}
-          <select value={severity} onChange={(event) => setSeverity(event.target.value)}>
-            <option value="">{t.review.findings.allSeverities}</option>
-            {(["blocker", "major", "minor", "nit"] as const).map((value) => (
-              <option key={value} value={value}>
-                {t.review.findings.severities[value]}
-              </option>
-            ))}
-          </select>
+          <SelectField
+            id={`${selectId}-severity`}
+            aria-label={t.review.findings.severity}
+            value={severity}
+            onValueChange={setSeverity}
+            options={[
+              { value: "", label: t.review.findings.allSeverities },
+              ...(["blocker", "major", "minor", "nit"] as const).map((value) => ({
+                value,
+                label: t.review.findings.severities[value],
+              })),
+            ]}
+          />
         </label>
-        <label>
+        <label htmlFor={`${selectId}-status`}>
           {t.review.findings.status}
-          <select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="">{t.review.findings.allStatuses}</option>
-            {(["open", "resolved", "accepted", "sent-back"] as const).map((value) => (
-              <option key={value} value={value}>
-                {t.review.findings.statuses[value]}
-              </option>
-            ))}
-          </select>
+          <SelectField
+            id={`${selectId}-status`}
+            aria-label={t.review.findings.status}
+            value={status}
+            onValueChange={setStatus}
+            options={[
+              { value: "", label: t.review.findings.allStatuses },
+              ...(["open", "resolved", "accepted", "sent-back"] as const).map((value) => ({
+                value,
+                label: t.review.findings.statuses[value],
+              })),
+            ]}
+          />
         </label>
       </div>
-      {!reports.length && <p className="muted">{t.review.findings.empty}</p>}
+      {!reports.length && <p className="muted text-muted">{t.review.findings.empty}</p>}
       {reports.map((report) =>
         report.error || report.findings?.length === 0 ? (
-          <div key={report.stintId} className="review-finding">
+          <div
+            key={report.stintId}
+            className="review-finding m-3 min-w-0 rounded-md border border-border p-3 [overflow-wrap:anywhere] [&_h4]:my-2 [&_p]:my-2"
+          >
             <p>
               {t.review.findings.reviewedCommit}
               <code>{report.commit}</code>
@@ -241,7 +266,7 @@ export function FindingsRail({
                 {report.rawReply !== undefined && (
                   <details>
                     <summary>{t.review.findings.rawReply}</summary>
-                    <pre>{report.rawReply}</pre>
+                    <CodeBlock>{report.rawReply}</CodeBlock>
                   </details>
                 )}
               </>
@@ -252,14 +277,24 @@ export function FindingsRail({
         ) : null,
       )}
       {!!findings.length && !filtered.length && <p role="status">{t.review.findings.noMatches}</p>}
-      <ul className="review-findings-rail">
+      <ul className="review-findings-rail m-0 list-none p-0 [&_li]:border-b [&_li]:border-border [&_li]:py-3 [&_li]:[overflow-wrap:anywhere] [&_a]:text-text">
         {filtered.map((finding) => (
           <li key={finding.id}>
             <a href={`#${anchor(finding)}`}>{finding.title}</a>
             <p>
               {t.review.findings.axes[finding.axis]} ·{" "}
               {t.review.findings.severities[finding.severity]} ·{" "}
-              {t.review.findings.statuses[finding.status]}
+              <Badge
+                variant={
+                  finding.status === "resolved"
+                    ? "success"
+                    : finding.status === "accepted"
+                      ? "accent"
+                      : "warning"
+                }
+              >
+                {t.review.findings.statuses[finding.status]}
+              </Badge>
             </p>
             <p>
               <code>
@@ -269,7 +304,9 @@ export function FindingsRail({
             <p>
               {t.review.findings.reviewedCommit}
               <code>{finding.commit}</code>
-              {finding.stale && <span className="warning">{t.review.findings.stale}</span>}
+              {finding.stale && (
+                <span className="warning text-warning">{t.review.findings.stale}</span>
+              )}
               {finding.historical && t.review.findings.history}
             </p>
           </li>

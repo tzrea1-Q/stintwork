@@ -206,11 +206,14 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
       selector: "p",
     }),
   ).toBeInTheDocument();
-  expect(preview.getByRole("combobox", { name: "Agent" })).toHaveValue("codex");
-  expect(preview.getByRole("option", { name: "Codex" })).toBeEnabled();
-  expect(
-    within(preview.getByRole("combobox", { name: "Agent" })).getAllByRole("option"),
-  ).toHaveLength(1);
+  expect(preview.getByRole("combobox", { name: "Agent" })).toHaveTextContent("Codex");
+  await user.click(preview.getByRole("combobox", { name: "Agent" }));
+  expect(screen.getByRole("option", { name: "Codex" })).not.toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  expect(screen.getAllByRole("option")).toHaveLength(1);
+  await user.keyboard("{Escape}");
   expect(preview.getByRole("button", { name: "Start" })).toBeEnabled();
   expect(preview.getByText(/Working instructions:/, { selector: "pre" }).textContent).toBe(
     brief.prompt,

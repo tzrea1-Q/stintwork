@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import {
   applyStintLogEntry,
   builtInWorkflows,
@@ -17,7 +18,7 @@ import { StintHistory } from "./StintHistory";
 import { StintStream } from "./StintStream";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
-import { LanguageSelect } from "./i18n/LanguageSelect";
+import { LanguageMenu } from "./i18n/LanguageMenu";
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Developer conventions 原文",
@@ -93,7 +94,7 @@ test("Chinese drawer sections, stage agents and Stop keep repo content verbatim"
   expect(sections.getByRole("link", { name: "规格说明" })).toHaveAttribute("href", "#drawer-spec");
   expect(sections.getByRole("link", { name: "工单 1" })).toHaveAttribute("href", "#drawer-tickets");
   expect(drawer.getByRole("list", { name: "功能工作流阶段" })).toHaveTextContent("实现");
-  expect(await drawer.findByRole("combobox", { name: "实现 Agent" })).toHaveValue("codex");
+  expect(await drawer.findByRole("combobox", { name: "实现 Agent" })).toHaveTextContent("Codex");
   expect(drawer.getByText("01 · Ticket title 原文")).toBeInTheDocument();
   expect(drawer.getByText("Spec body café 中文")).toBeInTheDocument();
   expect(drawer.getByRole("button", { name: "开始 Stint" })).toBeDisabled();
@@ -130,18 +131,19 @@ test("Chinese resume brief uses glossary permission names and preserves the prom
   await user.click(screen.getByRole("button", { name: "开始 Stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "简报预览" }));
   await sheet.findByRole("heading", { name: "完整提示词" });
-  const levels = within(sheet.getByRole("combobox", { name: "权限级别" }));
+  await user.click(sheet.getByRole("combobox", { name: "权限级别" }));
   for (const name of ["问询", "自由编辑", "自主"])
-    expect(levels.getByRole("option", { name })).toBeInTheDocument();
-  await user.selectOptions(sheet.getByRole("combobox", { name: "权限级别" }), "ask");
+    expect(screen.getByRole("option", { name })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await chooseOption(user, sheet.getByRole("combobox", { name: "权限级别" }), "问询");
   const requests = vi.mocked(fetch).mock.calls.length;
   act(() => changeLanguage("en"));
   expect(screen.getByRole("dialog", { name: "Brief preview" })).toBeInTheDocument();
-  expect(sheet.getByRole("combobox", { name: "Permission level" })).toHaveValue("ask");
+  expect(sheet.getByRole("combobox", { name: "Permission level" })).toHaveTextContent("Ask");
   act(() => changeLanguage("zh-CN"));
-  expect(sheet.getByRole("combobox", { name: "权限级别" })).toHaveValue("ask");
+  expect(sheet.getByRole("combobox", { name: "权限级别" })).toHaveTextContent("问询");
   expect(fetch).toHaveBeenCalledTimes(requests);
-  await user.selectOptions(sheet.getByRole("combobox", { name: "权限级别" }), "edit-freely");
+  await chooseOption(user, sheet.getByRole("combobox", { name: "权限级别" }), "自由编辑");
   expect(sheet.getByText("Handoff 原文 café")).toBeInTheDocument();
   expect(sheet.getByText("checkpoint-sha")).toBeInTheDocument();
   expect(
@@ -229,7 +231,7 @@ test("Chinese history formats dates with Intl and replays original non-ASCII out
     log.getByText("Tool output 原文 café", { exact: false, selector: "pre" }),
   ).toHaveTextContent("原文件内容： Old 原文 新文件内容： New 原文");
   expect(log.getByText("文件编辑")).toBeInTheDocument();
-  expect(screen.getByText("Stint 已结束")).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "Stint" })).toHaveTextContent("Stint 已结束");
 });
 
 test.each(["finished", "stopped", "failed", "interrupted"] as const)(
@@ -315,7 +317,7 @@ test.each(["stream", "history"])(
     );
     render(
       <LanguageProvider>
-        <LanguageSelect />
+        <LanguageMenu />
         {view === "stream" ? (
           <StintStream stint={recorded} />
         ) : (
@@ -328,7 +330,7 @@ test.each(["stream", "history"])(
     const log = within(await screen.findByRole("log", { name: "Stint 消息" }));
     for (const [kind, label] of toolKinds) {
       expect(log.getByText(`Write greet.test.js · ${kind}`)).toBeInTheDocument();
-      expect(log.getByText(`${label} · 已完成`)).toBeInTheDocument();
+      expect(log.getByText(`${label} ·`)).toHaveTextContent(`${label} · 已完成`);
     }
     for (const [, label] of updates)
       expect(log.getByText(label, { selector: "summary" })).toBeInTheDocument();
@@ -337,9 +339,10 @@ test.each(["stream", "history"])(
     expect(log.getAllByText(/Agent payload 原文/, { selector: "pre" })).toHaveLength(
       updates.length,
     );
-    await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+    await user.click(screen.getByRole("button", { name: "语言" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "English" }));
     for (const [kind] of toolKinds)
-      expect(log.getByText(`${kind} · completed`)).toBeInTheDocument();
+      expect(log.getByText(`${kind} ·`)).toHaveTextContent(`${kind} · completed`);
     for (const [kind, label] of updates)
       expect(
         log.getByText(label === kind ? kind : kind.replaceAll("_", " "), {
@@ -381,7 +384,7 @@ test.each(["drawer", "gate"])(
           <WorkItemDrawer item={withTickets} onClose={() => {}} />
         ) : (
           <>
-            <LanguageSelect />
+            <LanguageMenu />
             <GateView item={withTickets} />
           </>
         )}
@@ -400,7 +403,8 @@ test.each(["drawer", "gate"])(
       if (view === "drawer")
         expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
     }
-    await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+    await user.click(screen.getByRole("button", { name: "语言" }));
+    await user.click(screen.getByRole("menuitemradio", { name: "English" }));
     for (const [index, [status]] of statuses.entries())
       expect(
         list.getByText(
@@ -464,6 +468,8 @@ test("Chinese rail localizes chrome while custom workflow and stage names remain
   expect(screen.getByRole("list", { name: "Team workflow 自定义工作流阶段" })).toHaveTextContent(
     "Design 自定义",
   );
-  expect(await screen.findByRole("combobox", { name: "Design 自定义 Agent" })).toHaveValue("codex");
+  expect(await screen.findByRole("combobox", { name: "Design 自定义 Agent" })).toHaveTextContent(
+    "Codex",
+  );
   expect(screen.getByRole("button", { name: "批准 Design 自定义" })).toBeInTheDocument();
 });

@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "@playwright/test";
+import { en } from "../src/i18n/en";
+import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
 
 for (const language of ["en", "zh-CN"] as const) {
+  const t = language === "en" ? en : zhCN;
   for (const width of [1440, 1024, 768, 390, 360]) {
     for (const colorScheme of width === 1440 || width === 390
       ? (["light", "dark"] as const)
@@ -95,6 +98,17 @@ for (const language of ["en", "zh-CN"] as const) {
         if (width < 1200)
           expect(await stages.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
         await assertLayout(page, { region: ".pipeline-main" });
+        const inference = page.getByRole("button", { name: t.card.inferred, exact: true }).first();
+        await inference.hover();
+        const description = page.getByRole("tooltip");
+        await expect(description).toContainText(t.card.inference);
+        const tooltip = page
+          .locator("[data-radix-popper-content-wrapper]")
+          .filter({ has: description });
+        await assertLayout(page, { region: ".pipeline-main" });
+        await tooltip.screenshot({ path: testInfo.outputPath("inferred-tooltip.png") });
+        await page.mouse.move(0, 0, { steps: 10 });
+        await expect(description).toBeHidden();
         await stages.evaluate((element) => {
           element.scrollLeft = 0;
         });

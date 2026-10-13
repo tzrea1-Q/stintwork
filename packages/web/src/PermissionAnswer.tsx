@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Button } from "./ui/Button";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
@@ -59,12 +60,14 @@ export function PermissionAnswer({
     <>
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
-        <p className="warning">{t.needsYou.declineEndsTurn(profile.displayName)}</p>
+        <p className="warning text-warning">{t.needsYou.declineEndsTurn(profile.displayName)}</p>
       )}
-      <div className="stint-permission-actions">
+      <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
         {request.options.map((option) => (
-          <button
+          <Button
             type="button"
+            variant={option.kind === "allow_once" ? "primary" : "secondary"}
+            className="h-auto min-h-8 flex-col items-start whitespace-normal py-2 text-left"
             key={option.optionId}
             disabled={sending || submitted}
             onClick={() => void answer(option.optionId)}
@@ -77,12 +80,12 @@ export function PermissionAnswer({
                   : t.needsYou.deny}
             </strong>
             <span>{option.name}</span>
-          </button>
+          </Button>
         ))}
       </div>
       {submitted && <p role="status">{t.needsYou.answerSent}</p>}
       {error && (
-        <p role="alert" className="warning">
+        <p role="alert" className="warning text-warning">
           {error}
         </p>
       )}

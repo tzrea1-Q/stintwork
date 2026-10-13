@@ -16,6 +16,7 @@ export function joinChinese(...segments: (string | number | null | undefined)[])
 }
 
 export const zhCN: Catalog = {
+  codeBlock: "代码块",
   connection: {
     workbench: "Stintwork · 本地项目工作台",
     opening: "正在打开你的项目",

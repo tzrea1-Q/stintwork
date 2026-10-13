@@ -5,12 +5,13 @@ import {
   type PullRequest,
   type PullRequestPreview,
 } from "@stintwork/core";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ShipActions } from "./ShipActions";
 import { ChecksPanel } from "./ChecksPanel";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
+import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
 function item() {
   return indexProject(
@@ -49,6 +50,55 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test.each(["publish", "merge"])(
+  "a pending %s preview restores its opener inside a sheet",
+  async (kind) => {
+    let finishPreview = (_response: Response) => {};
+    const pendingPreview = new Promise<Response>((resolve) => {
+      finishPreview = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => pendingPreview),
+    );
+    const ready = item();
+    if (kind === "merge") {
+      ready.headCommit = pr.headCommit;
+      ready.stages.review = { approved: { commit: pr.headCommit } };
+      ready.pullRequest = pr;
+      ready.pullRequestChecks = { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] };
+    }
+    render(
+      <Sheet defaultOpen>
+        <SheetContent aria-describedby={undefined}>
+          <SheetTitle>Work item</SheetTitle>
+          <ShipActions item={ready} />
+        </SheetContent>
+      </Sheet>,
+    );
+    const user = userEvent.setup();
+    const opener = screen.getByRole("button", {
+      name: kind === "publish" ? "Open pull request" : "Merge pull request",
+    });
+    await user.click(opener);
+    expect(opener).toBeDisabled();
+    opener.blur();
+    screen.getByRole("dialog", { name: "Work item" }).focus();
+    finishPreview(
+      new Response(JSON.stringify(kind === "publish" ? { preview } : { mergeMethod: "squash" })),
+    );
+    const confirmation = await screen.findByRole("dialog", {
+      name: kind === "publish" ? "Confirm publishing pull request" : "Confirm pull request merge",
+    });
+    if (kind === "publish")
+      within(confirmation).getByRole("region", { name: "Code block" }).focus();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(confirmation).not.toBeInTheDocument());
+    expect(screen.getByRole("dialog", { name: "Work item" })).toBeVisible();
+    await waitFor(() => expect(opener).toHaveFocus());
+  },
+);
+
 test("Open pull request previews publishing; cancel does not publish, and confirmation carries the token", async () => {
   const user = userEvent.setup();
   const fetch = vi
@@ -73,9 +123,10 @@ test("Open pull request previews publishing; cancel does not publish, and confir
     expect(dialog).toHaveTextContent(text);
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(fetch.mock.calls[0][0]).toContain("preview-pr");
-  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await user.keyboard("{Escape}");
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Open pull request" })).toHaveFocus();
   await user.click(screen.getByRole("button", { name: "Open pull request" }));
   await user.click(
     await screen.findByRole("button", { name: "Confirm push and open pull request" }),

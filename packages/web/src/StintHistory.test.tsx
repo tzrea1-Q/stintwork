@@ -249,7 +249,7 @@ test("a stale replay cannot show a finished stint as still running, and retry re
   expect(screen.queryByRole("log")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Open stint stale" }));
   expect(await screen.findByRole("log")).toHaveTextContent("Full recorded stream");
-  expect(screen.getByText("Stint finished")).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "Stint" })).toHaveTextContent("Stint finished");
 });
 
 test("an open replay refreshes its stream, status and checkpoint when the snapshot records the stint ending", async () => {
@@ -279,5 +279,5 @@ test("an open replay refreshes its stream, status and checkpoint when the snapsh
   expect(screen.getByRole("article", { name: "Handoff" })).toHaveTextContent(
     "Checkpoint commit: checkpoint-changing",
   );
-  expect(screen.getByText("Stint interrupted")).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "Stint" })).toHaveTextContent("Stint interrupted");
 });

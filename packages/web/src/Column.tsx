@@ -33,16 +33,25 @@ export function Column({
   const { t } = useLanguage();
   const Icon = presentation[id];
   return (
-    <section className="stage-column" data-card-column={id} aria-labelledby={`stage-${id}`}>
-      <header className="stage-header">
+    <section className="stage-column min-w-0" data-card-column={id} aria-labelledby={`stage-${id}`}>
+      <header className="stage-header sticky top-0 z-10 bg-bg px-1 pb-4 pt-5">
         <div className="flex items-center gap-2">
-          <Icon className={id === "implement" ? "accent" : "muted"} size={14} aria-hidden="true" />
+          <Icon
+            className={
+              id === "implement"
+                ? "size-icon-sm accent text-accent"
+                : "size-icon-sm muted text-muted"
+            }
+            aria-hidden="true"
+          />
           <h2 id={`stage-${id}`} className="text-xs font-medium">
             {name}
           </h2>
-          <span className="count">{items.length}</span>
+          <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+            {items.length}
+          </span>
         </div>
-        <p className="mt-2 text-[10px] muted">{t.column.hints[id]}</p>
+        <p className="mt-2 text-xs muted text-muted">{t.column.hints[id]}</p>
       </header>
       <div className="flex flex-col gap-3">
         {items.length ? (
@@ -57,7 +66,9 @@ export function Column({
             />
           ))
         ) : (
-          <p className="empty-column">{t.column.empty(name)}</p>
+          <p className="empty-column rounded-md border border-dashed border-border px-2 py-5 text-center text-xs text-muted">
+            {t.column.empty(name)}
+          </p>
         )}
       </div>
     </section>

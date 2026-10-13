@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as Primitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
-import { forwardRef, useRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import {
+  forwardRef,
+  useRef,
+  type ComponentPropsWithoutRef,
+  type ElementRef,
+  type RefObject,
+} from "react";
 import { cn } from "./cn";
 
 export const Dialog = Primitive.Root;
@@ -26,9 +32,20 @@ const contentVariants = cva(
 
 export const DialogContent = forwardRef<
   ElementRef<typeof Primitive.Content>,
-  ComponentPropsWithoutRef<typeof Primitive.Content> & VariantProps<typeof contentVariants>
+  ComponentPropsWithoutRef<typeof Primitive.Content> &
+    VariantProps<typeof contentVariants> & {
+      returnFocusRef?: RefObject<HTMLElement>;
+    }
 >(function DialogContent(
-  { className, placement, onOpenAutoFocus, onCloseAutoFocus, onEscapeKeyDown, ...props },
+  {
+    className,
+    placement,
+    onOpenAutoFocus,
+    onCloseAutoFocus,
+    onEscapeKeyDown,
+    returnFocusRef,
+    ...props
+  },
   ref,
 ) {
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -51,14 +68,18 @@ export const DialogContent = forwardRef<
         onCloseAutoFocus={(event) => {
           onCloseAutoFocus?.(event);
           if (!event.defaultPrevented) {
-            event.preventDefault();
             const active = document.activeElement;
+            const target = returnFocusRef?.current ?? previousFocus.current;
             if (
-              (active === document.body ||
+              (returnFocusRef?.current ||
+                active === document.body ||
                 (event.target instanceof HTMLElement && event.target.contains(active))) &&
-              previousFocus.current?.isConnected
+              target?.isConnected &&
+              target !== document.body &&
+              !target.matches(":disabled")
             ) {
-              previousFocus.current.focus();
+              event.preventDefault();
+              target.focus({ preventScroll: true });
             }
           }
         }}

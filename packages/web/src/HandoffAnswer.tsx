@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Markdown } from "./ui/Markdown";
+import { Button } from "./ui/Button";
 import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
 import type { HandoffUnresolvedAttentionItem } from "@stintwork/core";
 import { useId, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-
-import "./handoff-answer.css";
 
 export function HandoffAnswer({
   item,
@@ -52,11 +50,7 @@ export function HandoffAnswer({
 
   return (
     <>
-      <div className="markdown">
-        <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-          {item.details}
-        </ReactMarkdown>
-      </div>
+      <Markdown>{item.details}</Markdown>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -70,14 +64,14 @@ export function HandoffAnswer({
           disabled={sending || submitted}
           onChange={(event) => setNote(event.target.value)}
         />
-        <p className="muted">{t.needsYou.noteHelp}</p>
-        <div className="stint-permission-actions">
-          <button type="submit" disabled={!note.trim() || sending || submitted}>
+        <p className="muted text-muted">{t.needsYou.noteHelp}</p>
+        <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
+          <Button variant="primary" type="submit" disabled={!note.trim() || sending || submitted}>
             {t.needsYou.saveNote}
-          </button>
-          <button type="button" disabled={sending || submitted} onClick={() => void answer(null)}>
+          </Button>
+          <Button type="button" disabled={sending || submitted} onClick={() => void answer(null)}>
             {t.needsYou.dismiss}
-          </button>
+          </Button>
         </div>
       </form>
       {submitted && <p role="status">{t.needsYou.handoffAnswered}</p>}

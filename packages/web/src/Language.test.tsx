@@ -134,13 +134,12 @@ test("switching persists the preference and preserves the open drawer and ticket
   const ticket = within(drawer).getByText("01 · Repo ticket 中文").closest("details");
   await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
   expect(ticket).toHaveAttribute("open");
-  const choices = within(drawer).getByRole("combobox", { name: "Language" });
-  expect(within(choices).getByRole("option", { name: "English" })).toHaveAttribute("lang", "en");
-  expect(within(choices).getByRole("option", { name: "简体中文" })).toHaveAttribute(
-    "lang",
-    "zh-CN",
-  );
-  await user.selectOptions(choices, "zh-CN");
+  const choices = within(drawer).getByRole("button", { name: "Language" });
+  await user.click(choices);
+  expect(screen.getByRole("menuitemradio", { name: "English" })).toHaveAttribute("lang", "en");
+  expect(screen.getByRole("menuitemradio", { name: "简体中文" })).toHaveAttribute("lang", "zh-CN");
+  await user.keyboard("{ArrowDown}{Enter}");
+  expect(choices).toHaveFocus();
   expect(screen.getByRole("heading", { name: /^流水线/, hidden: true })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: /^待你处理/, hidden: true })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "zh-CN");
@@ -150,16 +149,12 @@ test("switching persists the preference and preserves the open drawer and ticket
   expect(ticket).toHaveAttribute("open");
   expect(within(drawer).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
   expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
-  const drawerLanguage = within(drawer).getByRole("combobox", { name: "语言" });
-  expect(within(drawerLanguage).getByRole("option", { name: "English" })).toHaveAttribute(
-    "lang",
-    "en",
-  );
-  expect(within(drawerLanguage).getByRole("option", { name: "简体中文" })).toHaveAttribute(
-    "lang",
-    "zh-CN",
-  );
-  await user.selectOptions(drawerLanguage, "en");
+  const drawerLanguage = within(drawer).getByRole("button", { name: "语言" });
+  await user.click(drawerLanguage);
+  expect(screen.getByRole("menuitemradio", { name: "English" })).toHaveAttribute("lang", "en");
+  expect(screen.getByRole("menuitemradio", { name: "简体中文" })).toHaveAttribute("lang", "zh-CN");
+  await user.keyboard("{ArrowUp}{Enter}");
+  expect(drawerLanguage).toHaveFocus();
   expect(document.documentElement).toHaveAttribute("lang", "en");
   expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
   rendered.unmount();

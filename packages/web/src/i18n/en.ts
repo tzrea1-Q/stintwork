@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { coreTextEnglish } from "@stintwork/core";
 export const en = {
+  codeBlock: "Code block",
   connection: {
     workbench: "Stintwork · Local project workbench",
     opening: "Opening your project",

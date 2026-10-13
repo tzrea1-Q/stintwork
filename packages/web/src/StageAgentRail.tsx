@@ -17,7 +17,7 @@ import {
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
-import "./stage-agent-rail.css";
+import { SelectField } from "./ui/SelectField";
 
 import { stageName, workflowName } from "./i18n/workflow-names";
 
@@ -87,7 +87,10 @@ export function StageAgentRail({
 
   return (
     <>
-      <ol className="stage-rail" aria-label={t.stints.workflowStages(workflowName(workflow, t))}>
+      <ol
+        className="stage-rail flex shrink-0 gap-2 overflow-x-auto border-y border-border bg-bg px-4 py-4 sm:px-7 [&>li]:min-w-40 [&>li]:flex-1 [&>li]:border-t-2 [&>li]:border-border-strong [&>li]:p-2 [&>li]:text-xs [&>li]:text-muted [&>li[aria-current=step]]:border-accent [&>li[aria-current=step]]:bg-accent-soft [&>li[aria-current=step]]:text-accent [&_small]:mt-1 [&_small]:block [&_small]:text-xs"
+        aria-label={t.stints.workflowStages(workflowName(workflow, t))}
+      >
         {workflow.stages.map((stage) => {
           const chosen =
             (choices.source === item.stages ? choices.agents[stage.id] : undefined) ??
@@ -96,34 +99,39 @@ export function StageAgentRail({
             <li key={stage.id} aria-current={stage.id === item.stage ? "step" : undefined}>
               <span>{stageName(workflow, stage, t)}</span>
               {stage.id === item.stage && item.inferred && <small>{t.stints.inferred}</small>}
-              <select
+              <SelectField
                 aria-label={t.stints.stageAgent(stageName(workflow, stage, t))}
+                className="mt-2"
                 value={chosen}
                 disabled={saving || !!item.activeStint || !agents.length}
-                onChange={(event) => void choose(stage.id, event.target.value)}
-              >
-                {!agents.some(({ id }) => id === chosen) && (
-                  <option value={chosen} disabled>
-                    {chosen} — {agents.length ? t.stints.notRegistered : t.stints.readingAgents}
-                  </option>
-                )}
-                {agents.map((agent) => {
-                  const unavailable = agentUnavailable(agent);
-                  const reason = unavailable === null ? null : translateCoreText(unavailable, t);
-                  return (
-                    <option key={agent.id} value={agent.id} disabled={!!reason}>
-                      {agent.displayName}
-                      {reason ? ` — ${reason}` : ""}
-                    </option>
-                  );
-                })}
-              </select>
+                onValueChange={(agent) => void choose(stage.id, agent)}
+                options={[
+                  ...(!agents.some(({ id }) => id === chosen)
+                    ? [
+                        {
+                          value: chosen,
+                          disabled: true,
+                          label: `${chosen} — ${agents.length ? t.stints.notRegistered : t.stints.readingAgents}`,
+                        },
+                      ]
+                    : []),
+                  ...agents.map((agent) => {
+                    const unavailable = agentUnavailable(agent);
+                    const reason = unavailable === null ? null : translateCoreText(unavailable, t);
+                    return {
+                      value: agent.id,
+                      disabled: !!reason,
+                      label: `${agent.displayName}${reason ? ` — ${reason}` : ""}`,
+                    };
+                  }),
+                ]}
+              />
             </li>
           );
         })}
       </ol>
       {error && (
-        <p role="alert" className="warning">
+        <p role="alert" className="warning shrink-0 px-4 py-3 text-sm text-warning sm:px-7">
           {error}
         </p>
       )}

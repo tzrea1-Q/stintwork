@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
+import { Button } from "./ui/Button";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { AgentSkillAvailability, SetupPlan, WorkflowDefinitions } from "@stintwork/core";
 import { useEffect, useState } from "react";
-import "./setup-guide.css";
 import { en } from "./i18n/en";
 
 import { stageName, uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
@@ -77,7 +78,7 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
   }
 
   return (
-    <div className="setup-guide">
+    <div className="setup-guide mt-4 min-w-0 border-t border-border pt-3 [&_p]:my-3 [&_section]:my-3 [&_h3]:my-3 [&_h4]:my-3 [&_pre]:bg-surface-hover [&_label]:flex [&_label]:items-center [&_label]:gap-2 [&_label]:[overflow-wrap:anywhere] [&_ul]:list-disc [&_ul]:pl-4">
       <p>{t.planning.setup.description}</p>
       {error && (
         <p role="alert">
@@ -101,7 +102,7 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
           ))}
           {guide.changes.length ? (
             <>
-              <fieldset disabled={saving || confirming}>
+              <fieldset disabled={saving || confirming} className="min-w-0">
                 <legend>{t.planning.setup.changes}</legend>
                 {guide.changes.map((change) => (
                   <section key={change.path} aria-label={t.planning.setup.changeLabel(change.path)}>
@@ -125,11 +126,11 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
                       {change.before !== null && (
                         <>
                           <h3>{t.planning.setup.current}</h3>
-                          <pre>{change.before}</pre>
+                          <CodeBlock>{change.before}</CodeBlock>
                         </>
                       )}
                       <h3>{t.planning.setup.proposed}</h3>
-                      <pre>{change.content}</pre>
+                      <CodeBlock>{change.content}</CodeBlock>
                     </details>
                   </section>
                 ))}
@@ -149,32 +150,21 @@ export function SetupGuide({ workflows = {} }: { workflows?: WorkflowDefinitions
                     ))}
                   </ul>
                   <p>{t.planning.setup.refusal}</p>
-                  <button
-                    type="button"
-                    className="top-button"
-                    disabled={saving}
-                    onClick={() => void apply()}
-                  >
+                  <Button type="button" disabled={saving} onClick={() => void apply()}>
                     {t.planning.setup.apply}
-                  </button>
-                  <button
-                    type="button"
-                    className="top-button"
-                    disabled={saving}
-                    onClick={() => setConfirming(false)}
-                  >
+                  </Button>
+                  <Button type="button" disabled={saving} onClick={() => setConfirming(false)}>
                     {t.planning.setup.back}
-                  </button>
+                  </Button>
                 </section>
               ) : (
-                <button
+                <Button
                   type="button"
-                  className="top-button"
                   disabled={!selected.length}
                   onClick={() => setConfirming(true)}
                 >
                   {t.planning.setup.review}
-                </button>
+                </Button>
               )}
             </>
           ) : (

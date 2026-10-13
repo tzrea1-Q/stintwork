@@ -165,7 +165,7 @@ test("a stage preview defaults to its stage agent rather than the first register
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
   await sheet.findByRole("heading", { name: "Full prompt" });
-  expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveValue("claude");
+  expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveTextContent("Claude Code");
   await user.click(sheet.getByRole("button", { name: "Start" }));
   expect(fetch).toHaveBeenCalledWith(
     "/api/stints",
@@ -210,8 +210,10 @@ test("a stage preview keeps an unavailable stage agent selected and explains the
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   const sheet = within(screen.getByRole("dialog", { name: "Brief preview" }));
   await sheet.findByRole("heading", { name: "Full prompt" });
-  expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveValue("grok");
-  expect(sheet.getByRole("option", { name: /Grok/ })).toBeDisabled();
+  expect(sheet.getByRole("combobox", { name: "Agent" })).toHaveTextContent(/Grok/);
+  await user.click(sheet.getByRole("combobox", { name: "Agent" }));
+  expect(screen.getByRole("option", { name: /Grok/ })).toHaveAttribute("aria-disabled", "true");
+  await user.keyboard("{Escape}");
   expect(sheet.getByRole("button", { name: "Start" })).toBeDisabled();
   expect(sheet.getByText("Authentication required. Use grok login.")).toBeInTheDocument();
   expect(fetch.mock.calls.some(([url]) => url === "/api/stints")).toBe(false);
