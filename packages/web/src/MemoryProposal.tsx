@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { MemoryProposalAttentionItem } from "@stintwork/core";
 import { useState } from "react";
+import { useLanguage } from "./i18n/language";
 
 export function MemoryProposal({
   item,
@@ -9,6 +10,7 @@ export function MemoryProposal({
   item: MemoryProposalAttentionItem;
   onError: (reason: string) => void;
 }) {
+  const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   async function decide(status: "accepted" | "rejected") {
@@ -25,13 +27,11 @@ export function MemoryProposal({
       );
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(
-          typeof body.reason === "string" ? body.reason : "Could not decide memory proposal.",
-        );
+        throw new Error(typeof body.reason === "string" ? body.reason : t.review.memory.error);
       }
       setSubmitted(true);
     } catch (error) {
-      onError(error instanceof Error ? error.message : "Could not decide memory proposal.");
+      onError(error instanceof Error ? error.message : t.review.memory.error);
     } finally {
       setSending(false);
     }
@@ -39,10 +39,8 @@ export function MemoryProposal({
   return (
     <>
       <p>{item.details}</p>
-      <p className="muted">
-        Reject restores the whole file to the stint's base, including any later committed changes.
-      </p>
-      <section aria-label={`Diff for ${item.path}`}>
+      <p className="muted">{t.review.memory.rejectWarning}</p>
+      <section aria-label={t.review.memory.diff(item.path)}>
         <pre className="permission-details">
           <code>{item.diff}</code>
         </pre>
@@ -53,17 +51,17 @@ export function MemoryProposal({
           disabled={sending || submitted}
           onClick={() => void decide("accepted")}
         >
-          Accept memory proposal
+          {t.review.memory.accept}
         </button>
         <button
           type="button"
           disabled={sending || submitted}
           onClick={() => void decide("rejected")}
         >
-          Reject memory proposal
+          {t.review.memory.reject}
         </button>
       </div>
-      {submitted && <p role="status">Memory proposal decision recorded.</p>}
+      {submitted && <p role="status">{t.review.memory.recorded}</p>}
     </>
   );
 }

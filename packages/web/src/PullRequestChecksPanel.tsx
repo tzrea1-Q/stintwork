@@ -6,6 +6,7 @@ import {
   type EvidenceContext,
 } from "@stintwork/core";
 import { useCallback, useEffect, useState } from "react";
+import { useLanguage } from "./i18n/language";
 
 export function PullRequestChecksPanel({
   item,
@@ -16,6 +17,7 @@ export function PullRequestChecksPanel({
     merged?: unknown;
   };
 }) {
+  const { t } = useLanguage();
   const [checks, setChecks] = useState(item.pullRequestChecks);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,19 +34,19 @@ export function PullRequestChecksPanel({
           signal,
         });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.reason ?? "Could not refresh PR CI checks.");
+        if (!response.ok) throw new Error(body.reason ?? t.review.pr.refreshError);
         if (!signal?.aborted) {
           setChecks(body.checks);
           setError("");
         }
       } catch (cause) {
         if (!signal?.aborted)
-          setError(cause instanceof Error ? cause.message : "Could not refresh PR CI checks.");
+          setError(cause instanceof Error ? cause.message : t.review.pr.refreshError);
       } finally {
         if (!signal?.aborted) setBusy(false);
       }
     },
-    [endpoint],
+    [endpoint, t.review.pr.refreshError],
   );
   useEffect(() => {
     setChecks(item.pullRequestChecks);
@@ -60,11 +62,11 @@ export function PullRequestChecksPanel({
   }, [refresh, number, item.merged]);
   if (!item.pullRequest) return null;
   return (
-    <section aria-label="Pull request CI checks">
-      <h4>Pull request #{number} · CI checks</h4>
+    <section aria-label={t.review.pr.label}>
+      <h4>{t.review.pr.heading(number)}</h4>
       {!item.merged && (
         <button type="button" className="top-button" disabled={busy} onClick={() => void refresh()}>
-          Refresh PR checks
+          {t.review.pr.refresh}
         </button>
       )}
       {error && (
@@ -72,21 +74,27 @@ export function PullRequestChecksPanel({
           {error}
         </p>
       )}
-      {!checks && <p className="muted">No PR CI evidence yet. Refresh to fetch checks.</p>}
+      {!checks && <p className="muted">{t.review.pr.noEvidence}</p>}
       {checks && (
         <>
           <p>
-            {checks.state} · <code>{checks.headCommit}</code> ·{" "}
+            {Object.hasOwn(t.review.pr.states, checks.state)
+              ? t.review.pr.states[checks.state as keyof typeof t.review.pr.states]
+              : checks.state}{" "}
+            · <code>{checks.headCommit}</code> ·{" "}
             <time dateTime={checks.fetchedAt}>{checks.fetchedAt}</time>
             {evidenceStale(item, checks.headCommit) && (
-              <strong className="warning"> · Stale</strong>
+              <strong className="warning">{t.review.pr.stale}</strong>
             )}
           </p>
-          {!checks.checks.length && <p>No PR CI checks reported; merging is blocked.</p>}
-          <ul aria-label="PR CI results">
+          {!checks.checks.length && <p>{t.review.pr.empty}</p>}
+          <ul aria-label={t.review.pr.results}>
             {checks.checks.map((check) => (
               <li key={`${check.name}:${check.link}`}>
-                {check.name} · {check.bucket}
+                {check.name} ·{" "}
+                {Object.hasOwn(t.review.pr.buckets, check.bucket)
+                  ? t.review.pr.buckets[check.bucket as keyof typeof t.review.pr.buckets]
+                  : check.bucket}
               </li>
             ))}
           </ul>

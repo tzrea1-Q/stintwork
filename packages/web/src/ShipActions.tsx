@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { useLanguage } from "./i18n/language";
 import {
   builtInWorkflows,
   evidenceStale,
@@ -16,6 +17,7 @@ export function ShipActions({
   item: BoardWorkItem;
   workflows?: WorkflowDefinitions;
 }) {
+  const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [paths, setPaths] = useState<string[]>([]);
@@ -37,12 +39,10 @@ export function ShipActions({
   if (stages.find(({ id }) => id === item.stage)?.gate !== "merge" && !item.merged) return null;
   const blockers = [
     ...(item.activeStint || item.stints.some(({ status }) => status === "running")
-      ? ["Finish or stop the running stint before shipping."]
+      ? [t.review.ship.running]
       : []),
-    ...(item.memoryProposals?.length
-      ? ["Accept or reject every open memory proposal before shipping."]
-      : []),
-    ...(item.checkExecution?.endedAt === null ? ["Cancel or finish checks before shipping."] : []),
+    ...(item.memoryProposals?.length ? [t.review.ship.memory] : []),
+    ...(item.checkExecution?.endedAt === null ? [t.review.ship.checks] : []),
     ...(item.reviewEvidenceError ? [item.reviewEvidenceError] : []),
   ];
   async function action(
@@ -71,7 +71,7 @@ export function ShipActions({
       if (!response.ok) {
         setConflicts(result.conflicts ?? []);
         setPaths(result.paths ?? []);
-        throw new Error(result.reason ?? "Could not ship the work item.");
+        throw new Error(result.reason ?? t.review.ship.error);
       }
       if (name === "preview-pr") {
         setPreview(result.preview);
@@ -88,40 +88,44 @@ export function ShipActions({
       }
       setMessage(
         name === "merge-local" || name === "merge-pr"
-          ? `Shipped ${name === "merge-pr" ? `through pull request #${pullRequest?.number}` : "locally"} at ${result.merged.commit}.`
-          : `Sent back to ${result.stageName}.`,
+          ? t.review.ship.shippedAt(
+              name === "merge-pr" ? pullRequest?.number : undefined,
+              result.merged.commit,
+            )
+          : t.review.ship.sentBack(result.stageName),
       );
       setMergeMethod(null);
     } catch (cause) {
       if (name === "open-pr") setPreview(null);
       if (name === "merge-pr") setMergeMethod(null);
-      setError(cause instanceof Error ? cause.message : "Could not ship the work item.");
+      setError(cause instanceof Error ? cause.message : t.review.ship.error);
     } finally {
       setBusy(false);
     }
   }
   return (
-    <section aria-label="Ship actions" className="handoff-card">
-      <h3 className="drawer-section-heading">{item.merged ? "Shipped" : "Ship"}</h3>
+    <section aria-label={t.review.ship.label} className="handoff-card">
+      <h3 className="drawer-section-heading">
+        {item.merged ? t.review.ship.shipped : t.review.ship.ship}
+      </h3>
       {item.merged ? (
         <p>
-          Merged at <time dateTime={item.merged.at}>{item.merged.at}</time> ·{" "}
+          {t.review.ship.mergedAt}
+          <time dateTime={item.merged.at}>{item.merged.at}</time> ·{" "}
           <code>{item.merged.commit}</code>
           {item.merged.pr && (
             <>
               {" "}
-              · Pull request #{item.merged.pr}
+              · {t.review.ship.pullRequest(item.merged.pr)}
               {item.merged.method && <> ({item.merged.method})</>}
             </>
           )}
         </p>
       ) : (
         <>
-          <p>
-            Merge into the main checkout, record the merge, then remove the worktree and branch.
-          </p>
+          <p>{t.review.ship.localExplanation}</p>
           {blockers.length > 0 && (
-            <ul aria-label="Shipping refusals">
+            <ul aria-label={t.review.ship.refusals}>
               {blockers.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
@@ -130,29 +134,28 @@ export function ShipActions({
           {pullRequest ? (
             <>
               <p>
-                Pull request #{pullRequest.number} ·{" "}
+                {t.review.ship.pullRequest(pullRequest.number)} ·{" "}
                 <a href={pullRequest.url} target="_blank" rel="noreferrer">
-                  View on GitHub
+                  {t.review.ship.view}
                 </a>
               </p>
-              <p>Merge rechecks every CI check and the approved Review gate.</p>
-              {!mergeReady && (
-                <p>Approve the Review gate and refresh passing PR CI checks before merging.</p>
-              )}
+              <p>{t.review.ship.rechecks}</p>
+              {!mergeReady && <p>{t.review.ship.notReady}</p>}
               <button
                 type="button"
                 className="top-button"
                 disabled={busy || blockers.length > 0 || !!message || !mergeReady}
                 onClick={() => void action("preview-merge-pr")}
               >
-                Merge pull request
+                {t.review.ship.mergePr}
               </button>
               {mergeMethod && (
-                <section role="dialog" aria-modal="false" aria-label="Confirm pull request merge">
-                  <h4>Confirm pull request merge</h4>
+                <section role="dialog" aria-modal="false" aria-label={t.review.ship.confirmMerge}>
+                  <h4>{t.review.ship.confirmMerge}</h4>
                   <p>
-                    Pull request #{pullRequest.number} → <code>{pullRequest.base}</code> · Merge
-                    method: <strong>{mergeMethod}</strong>
+                    {t.review.ship.pullRequest(pullRequest.number)} →{" "}
+                    <code>{pullRequest.base}</code> · {t.review.ship.mergeMethod}{" "}
+                    <strong>{mergeMethod}</strong>
                   </p>
                   <button
                     type="button"
@@ -160,7 +163,7 @@ export function ShipActions({
                     disabled={busy || blockers.length > 0 || !!message || !mergeReady}
                     onClick={() => void action("merge-pr")}
                   >
-                    Confirm {mergeMethod} merge
+                    {t.review.ship.confirmMethod(mergeMethod)}
                   </button>
                   <button
                     type="button"
@@ -168,7 +171,7 @@ export function ShipActions({
                     disabled={busy}
                     onClick={() => setMergeMethod(null)}
                   >
-                    Cancel
+                    {t.review.ship.cancel}
                   </button>
                 </section>
               )}
@@ -181,7 +184,7 @@ export function ShipActions({
                 disabled={busy || blockers.length > 0 || !!message}
                 onClick={() => void action("merge-local")}
               >
-                {busy ? "Working…" : "Merge locally"}
+                {busy ? t.review.ship.working : t.review.ship.local}
               </button>
               <button
                 type="button"
@@ -189,24 +192,30 @@ export function ShipActions({
                 disabled={busy || blockers.length > 0 || !!message}
                 onClick={() => void action("preview-pr")}
               >
-                Open pull request
+                {t.review.ship.openPr}
               </button>
             </>
           )}
           {preview && (
-            <section role="dialog" aria-modal="false" aria-label="Confirm publishing pull request">
-              <h4>Confirm push and pull request</h4>
-              <p>Publishing sends this code to the remote. Nothing is pushed until you confirm.</p>
+            <section role="dialog" aria-modal="false" aria-label={t.review.ship.confirmPublishing}>
+              <h4>{t.review.ship.confirmPushTitle}</h4>
+              <p>{t.review.ship.pushWarning}</p>
               <p>
-                Remote: <code>{preview.remote}</code> · <code>{preview.remoteUrl}</code>
+                {t.review.ship.remote}
+                <code>{preview.remote}</code> · <code>{preview.remoteUrl}</code>
               </p>
               <p>
-                Branch: <code>{preview.branch}</code> → <code>{preview.base}</code>
+                {t.review.ship.branch}
+                <code>{preview.branch}</code> → <code>{preview.base}</code>
               </p>
               <p>
-                Commit: <code>{preview.headCommit}</code>
+                {t.review.ship.commit}
+                <code>{preview.headCommit}</code>
               </p>
-              <p>Title: {preview.title}</p>
+              <p>
+                {t.review.ship.title}
+                {preview.title}
+              </p>
               <pre>{preview.body}</pre>
               <button
                 type="button"
@@ -214,7 +223,7 @@ export function ShipActions({
                 disabled={busy}
                 onClick={() => void action("open-pr")}
               >
-                Confirm push and open pull request
+                {t.review.ship.confirmPush}
               </button>
               <button
                 type="button"
@@ -222,13 +231,13 @@ export function ShipActions({
                 disabled={busy}
                 onClick={() => setPreview(null)}
               >
-                Cancel
+                {t.review.ship.cancel}
               </button>
             </section>
           )}
           {conflicts.length > 0 && (
-            <section aria-label="Merge conflicts">
-              <h4>Merge conflicts</h4>
+            <section aria-label={t.review.ship.conflicts}>
+              <h4>{t.review.ship.conflicts}</h4>
               <ul>
                 {conflicts.map((path) => (
                   <li key={path}>
@@ -242,14 +251,14 @@ export function ShipActions({
                 disabled={busy}
                 onClick={() => void action("send-back")}
               >
-                Send back
+                {t.review.ship.sendBack}
               </button>
             </section>
           )}
         </>
       )}
       {paths.length > 0 && (
-        <ul aria-label="Uncommitted merge paths">
+        <ul aria-label={t.review.ship.paths}>
           {paths.map((path) => (
             <li key={path}>
               <code>{path}</code>

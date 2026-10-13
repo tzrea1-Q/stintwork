@@ -51,6 +51,24 @@ const samples: Record<string, unknown[][]> = {
     [2, "Project 原文"],
   ],
   "needsYou.notificationTitle": [["Project 原文"]],
+  "review.diff.addedLines": [[0], [1], [2], [null]],
+  "review.diff.removedLines": [[0], [1], [2], [null]],
+  "review.diff.outsideLabel": [["src/中文.ts"]],
+  "review.diff.reopened": [["Implement 原文"]],
+  "review.diff.recorded": [["Finding", "resolved"]],
+  "review.checks.commandOutput": [["npm test 原文"]],
+  "review.checks.output": [["npm test 原文"]],
+  "review.pr.heading": [[1], [23]],
+  "review.memory.diff": [["GLOSSARY.md"]],
+  "review.ship.shippedAt": [
+    [undefined, "head"],
+    [12, "head"],
+  ],
+  "review.ship.sentBack": [["Custom stage 原文"]],
+  "review.ship.pullRequest": [[1], [23]],
+  "review.ship.confirmMethod": [["squash"], ["merge"], ["rebase"]],
+  "review.risks.path": [[".env"]],
+  "review.checks.duration": [[0], [12]],
 };
 
 test("Chinese catalogs have exactly the English keys and translated, nonempty entries", () => {

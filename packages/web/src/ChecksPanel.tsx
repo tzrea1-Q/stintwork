@@ -6,6 +6,7 @@ import {
   type WorkItemChecks,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
+import { useLanguage } from "./i18n/language";
 import "./checks-panel.css";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
 
@@ -22,6 +23,7 @@ type ChecksItem = Pick<
 >;
 
 export function ChecksPanel({ item }: { item: ChecksItem }) {
+  const { t } = useLanguage();
   const [data, setData] = useState<WorkItemChecks | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -49,7 +51,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
       try {
         const response = await fetch(endpoint, { signal: controller.signal, cache: "no-store" });
         const body = await response.json();
-        if (!response.ok) throw new Error(body.reason ?? "Could not read checks.");
+        if (!response.ok) throw new Error(body.reason ?? t.review.checks.readError);
         if (!disposed && !controller.signal.aborted) {
           setData(body);
           setError("");
@@ -67,7 +69,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
       clearInterval(poll);
       request?.abort();
     };
-  }, [endpoint, item.merged]);
+  }, [endpoint, item.merged, t.review.checks.readError]);
 
   async function action(cancel: boolean) {
     setBusy(true);
@@ -75,7 +77,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
     try {
       const response = await fetch(`${endpoint}${cancel ? "/cancel" : ""}`, { method: "POST" });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.reason ?? "Could not update checks.");
+      if (!response.ok) throw new Error(body.reason ?? t.review.checks.updateError);
       const next: CheckExecution = body.execution;
       setData((previous) =>
         previous ? { ...previous, checks: next.results, checkExecution: next } : previous,
@@ -91,9 +93,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
     <div className="checks-panel">
       <PullRequestChecksPanel item={item} />
       <p className="muted">
-        {item.merged
-          ? "Recorded check evidence for this shipped work item."
-          : "Commands execute in the work item worktree, on the recorded commit."}
+        {item.merged ? t.review.checks.shippedEvidence : t.review.checks.commandsExplanation}
       </p>
       {!item.merged && (
         <div className="checks-actions">
@@ -103,7 +103,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
             disabled={busy || active || !data?.commands.length}
             onClick={() => void action(false)}
           >
-            Run checks
+            {t.review.checks.run}
           </button>
           {active && (
             <button
@@ -112,7 +112,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
               disabled={busy}
               onClick={() => void action(true)}
             >
-              Cancel checks
+              {t.review.checks.cancel}
             </button>
           )}
         </div>
@@ -122,32 +122,33 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
           {error}
         </p>
       )}
-      {!data && !error && !item.merged && <p className="muted">Reading checks…</p>}
-      {data && !data.commands.length && <p className="muted">No checks configured.</p>}
+      {!data && !error && !item.merged && <p className="muted">{t.review.checks.reading}</p>}
+      {data && !data.commands.length && <p className="muted">{t.review.checks.notConfigured}</p>}
       {data && !results.length && data.commands.length > 0 && (
-        <p className="muted">No check evidence yet.</p>
+        <p className="muted">{t.review.checks.noEvidence}</p>
       )}
-      <ul className="check-results" aria-label="Latest checks">
+      <ul className="check-results" aria-label={t.review.checks.latest}>
         {results.map((result) => (
           <li key={result.name}>
             <p>
-              <strong>{result.name}</strong> · <span>{result.status}</span>
+              <strong>{result.name}</strong> ·{" "}
+              <span>{t.review.checks.statuses[result.status]}</span>
               {evidenceStale(evidence, result.commit) && (
-                <strong className="warning"> · Stale</strong>
+                <strong className="warning">{t.review.checks.stale}</strong>
               )}
             </p>
             <p>
-              <code>{result.commit}</code> · {result.durationMs} ms
+              <code>{result.commit}</code> · {t.review.checks.duration(result.durationMs)}
             </p>
             <details open={result.status === "running" || result.status === "failed"}>
-              <summary>Command and output: {result.name}</summary>
+              <summary>{t.review.checks.commandOutput(result.name)}</summary>
               <code>{result.command}</code>
               <div
                 role="log"
-                aria-label={`Output: ${result.name}`}
+                aria-label={t.review.checks.output(result.name)}
                 aria-live={result.status === "running" ? "polite" : "off"}
               >
-                <pre>{result.outputExcerpt || "No output yet."}</pre>
+                <pre>{result.outputExcerpt || t.review.checks.noOutput}</pre>
               </div>
             </details>
           </li>
