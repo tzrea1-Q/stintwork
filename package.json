@@ -3,6 +3,14 @@
   "version": "0.1.1",
   "description": "A local workbench for handing software work between coding agents in stints",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tzrea1-Q/stintwork.git"
+  },
+  "homepage": "https://github.com/tzrea1-Q/stintwork#readme",
+  "bugs": {
+    "url": "https://github.com/tzrea1-Q/stintwork/issues"
+  },
   "type": "module",
   "bin": {
     "stintwork": "dist/bin.js"
