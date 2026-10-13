@@ -1,6 +1,6 @@
 # 05 — Chinese catalog review
 
-Status: ready-for-human
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -17,3 +17,5 @@ A native speaker reviews the Chinese catalog for natural wording and the terms i
 ## Comments
 
 **Coordinator, 2026-10-13:** The maintainer, a native Chinese speaker, reviewed the Chinese UI on main `beac99b` and approved it. That covers the 252 strings added since the 2026-10-12 review (ui-language 07's folder-name input and 08's core and server text). No wording fixes were requested. Layout problems found while switching language (the language menu, top-bar panels clipped at ~860px) are ui-language 09, not catalog findings. Still open for M6's exit: a real stint run end to end in Chinese by the maintainer.
+
+**Coordinator, 2026-10-13:** The maintainer approved the Chinese UI and asked to move on to the remaining work. M6 is set to `shipped` on that approval. A real stint run end to end in Chinese was not recorded separately. Layout problems go to the v0.2 UI milestone, not to a catalog follow-up.

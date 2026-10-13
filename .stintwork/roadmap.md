@@ -34,7 +34,7 @@ Status: shipped
 
 ## M6 · Chinese UI
 Id: m6
-Status: active
+Status: shipped
 
 - ui-language
 
