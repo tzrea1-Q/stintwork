@@ -142,6 +142,26 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.getByRole("option", { name: milestoneName, exact: true }).click();
         await expect(milestone).toBeFocused();
         await expect(milestone.locator("[data-truncate]")).toHaveAttribute("title", milestoneName);
+        const boardMilestone = page.locator(".board-milestone-label [data-truncate]");
+        await expect(boardMilestone).toHaveAttribute("title", milestoneName);
+        await expect(boardMilestone).toHaveText(milestoneName);
+        expect(
+          await boardMilestone.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return {
+              whitespace: style.whiteSpace,
+              ellipsis: style.textOverflow,
+              height: element.getBoundingClientRect().height,
+              lineHeight: Number.parseFloat(style.lineHeight),
+            };
+          }),
+        ).toMatchObject({ whitespace: "nowrap", ellipsis: "ellipsis" });
+        if (width <= 390)
+          expect(
+            await boardMilestone.evaluate((element) => element.scrollWidth > element.clientWidth),
+          ).toBe(true);
+        await assertLayout(page, { region: ".pipeline-main" });
+        await capture("board-long-milestone");
 
         const languageTrigger = header.locator('button[aria-haspopup="menu"]');
         await languageTrigger.click();
@@ -161,13 +181,20 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect
           .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
           .toBe(other);
-        await header
-          .getByRole("button", {
-            name: other === "en" ? en.topBar.language : zhCN.topBar.language,
-            exact: true,
-          })
-          .click();
-        await page.getByRole("menuitemradio", { name: t.topBar.languages[language] }).click();
+        await languageTrigger.click();
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[other] }),
+        ).toBeFocused();
+        await page.keyboard.press(language === "en" ? "ArrowUp" : "ArrowDown");
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[language] }),
+        ).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(page.locator("html")).toHaveAttribute("lang", language);
+        await expect(languageTrigger).toBeFocused();
+        await expect
+          .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
+          .toBe(language);
 
         const warningsTrigger = header.locator("#warnings-trigger");
         await warningsTrigger.click();
@@ -194,6 +221,20 @@ for (const language of ["en", "zh-CN"] as const) {
         ).toBeChecked();
         await capture("setup-open", '[role="dialog"]');
         await setup.getByText(t.planning.setup.preview("AGENTS.md"), { exact: true }).click();
+        const proposedCode = setup
+          .getByRole("region", { name: t.planning.setup.changeLabel("AGENTS.md"), exact: true })
+          .getByRole("region", { name: t.codeBlock, exact: true })
+          .last();
+        await expect(proposedCode).toBeVisible();
+        await expect(proposedCode).toHaveText(guide.changes[0].content);
+        expect(
+          await proposedCode.evaluate((element) => element.scrollWidth > element.clientWidth),
+        ).toBe(true);
+        await proposedCode.focus();
+        await page.keyboard.press("ArrowRight");
+        await expect
+          .poll(() => proposedCode.evaluate((element) => element.scrollLeft))
+          .toBeGreaterThan(0);
         await expect(setup.getByText(guide.changes[0].content, { exact: true })).toBeVisible();
         await capture("setup-preview-open", '[role="dialog"]');
         await setup.evaluate((element) => {

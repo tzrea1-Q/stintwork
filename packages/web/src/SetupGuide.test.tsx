@@ -80,6 +80,38 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
+test("opening the AGENTS.md preview keeps the roadmap preview collapsed", async () => {
+  const proposed = `# Proposed instructions\n${"Keep the original developer content 原文. ".repeat(100)}`;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            changes: [
+              { path: "AGENTS.md", before: original, content: proposed },
+              { path: ".stintwork/roadmap.md", before: null, content: "# Proposed roadmap" },
+            ],
+            warnings: [],
+            skills: [],
+          }),
+        ),
+    ),
+  );
+  render(<SetupGuide />);
+  await screen.findByRole("checkbox", { name: "AGENTS.md (change)" });
+  const user = userEvent.setup();
+  await user.click(screen.getByText("Preview AGENTS.md"));
+  const instructions = screen.getByRole("region", { name: "Change AGENTS.md" });
+  expect(instructions.querySelector("details")).toHaveAttribute("open");
+  expect(
+    within(instructions).getAllByRole("region", { name: "Code block" }).at(-1)?.textContent,
+  ).toBe(proposed);
+  const roadmap = screen.getByRole("region", { name: "Change .stintwork/roadmap.md" });
+  expect(roadmap.querySelector("details")).not.toHaveAttribute("open");
+  expect(roadmap.querySelector("pre")?.textContent).toBe("# Proposed roadmap");
+});
+
 test("Chinese setup preserves proposed content, warnings, paths and skill commands", async () => {
   localStorage.setItem(languageStorageKey, "zh-CN");
   const user = userEvent.setup();
@@ -110,6 +142,9 @@ test("Chinese setup preserves proposed content, warnings, paths and skill comman
   expect(screen.getByRole("alert")).toHaveTextContent("docs/中文.md: Core warning 原文");
   await user.click(screen.getByText("预览 AGENTS.md"));
   const change = within(screen.getByRole("region", { name: "更改 AGENTS.md" }));
+  expect(
+    screen.getByRole("checkbox", { name: "AGENTS.md (更改)" }).closest("fieldset"),
+  ).toHaveClass("min-w-0");
   expect(change.getByText("当前内容").nextElementSibling?.textContent).toBe(original);
   expect(change.getByText("拟议内容").nextElementSibling?.textContent).toBe(
     plan.changes.find(({ path }) => path === "AGENTS.md")?.content,

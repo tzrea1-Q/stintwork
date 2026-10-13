@@ -97,6 +97,24 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(confirm).toBeDisabled();
           await expect(dialog.getByRole("status")).toHaveText(t.planning.create.enterTitle);
           await capture(page, dialog, testInfo, "create-empty");
+          for (const [label, selection] of [
+            [t.planning.create.workflow, t.workflows.feature.name],
+            [t.planning.create.milestone, snapshot.milestones[0].name],
+          ]) {
+            const picker = dialog.getByRole("combobox", { name: label, exact: true });
+            await picker.click();
+            const list = page.getByRole("listbox");
+            await capture(
+              page,
+              list,
+              testInfo,
+              label === t.planning.create.workflow
+                ? "create-workflow-open"
+                : "create-milestone-open",
+            );
+            await page.getByRole("option", { name: selection, exact: true }).click();
+            await expect(picker).toBeFocused();
+          }
           await dialog
             .getByRole("textbox", { name: t.planning.create.titleLabel })
             .fill(dialogItem.title);
@@ -147,6 +165,24 @@ for (const language of ["en", "zh-CN"] as const) {
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
           await capture(page, dialog, testInfo, "roadmap-long");
+          for (const label of [
+            t.planning.roadmap.status(snapshot.milestones[0].name),
+            t.planning.roadmap.workItem,
+            t.planning.roadmap.destination,
+          ]) {
+            const picker = dialog.getByRole("combobox", { name: label, exact: true });
+            await picker.scrollIntoViewIfNeeded();
+            await picker.click();
+            await capture(
+              page,
+              page.getByRole("listbox"),
+              testInfo,
+              `roadmap-select-${label === t.planning.roadmap.workItem ? "work-item" : label === t.planning.roadmap.destination ? "destination" : "status"}`,
+            );
+            await page.keyboard.press("Escape");
+            await expect(picker).toBeFocused();
+            await expect(dialog).toBeVisible();
+          }
           await dialog
             .getByRole("textbox", { name: t.planning.roadmap.newName })
             .fill("New milestone 原文");
@@ -292,6 +328,20 @@ for (const language of ["en", "zh-CN"] as const) {
           await trigger.click();
           const start = dialog.getByRole("button", { name: t.stints.start, exact: true });
           await expect(start).toBeEnabled();
+          for (const label of [t.stints.agent, t.stints.permissionLevel]) {
+            const picker = dialog.getByRole("combobox", { name: label, exact: true });
+            await picker.scrollIntoViewIfNeeded();
+            await picker.click();
+            await capture(
+              page,
+              page.getByRole("listbox"),
+              testInfo,
+              label === t.stints.agent ? "brief-agent-open" : "brief-permission-level-open",
+            );
+            await page.keyboard.press("Escape");
+            await expect(picker).toBeFocused();
+            await expect(dialog).toBeVisible();
+          }
           await reachable(page, start);
           const content = dialog.locator(".brief-preview-content");
           expect(
@@ -318,6 +368,25 @@ for (const language of ["en", "zh-CN"] as const) {
         }, testInfo) => {
           const load = gate();
           let state: "empty" | "long" | "error" = "empty";
+          await page.route("**/api/work-items/dialog-item/checks", (route) =>
+            route.fulfill({
+              json: {
+                commands: [{ name: "Fixture check", command: "node fixture-check.js" }],
+                checks: [
+                  {
+                    name: "Fixture check",
+                    command: "node fixture-check.js",
+                    status: "failed",
+                    commit: dialogDiff.headCommit,
+                    durationMs: 12,
+                    outputExcerpt: `Error: ${"Long check output 原文 ".repeat(100)}`,
+                  },
+                ],
+                checkExecution: null,
+                headCommit: dialogDiff.headCommit,
+              },
+            }),
+          );
           await page.route("**/api/work-items/dialog-item/diff", async (route) => {
             await load.ready;
             await route.fulfill(
@@ -352,6 +421,31 @@ for (const language of ["en", "zh-CN"] as const) {
             .poll(() => hunk.evaluate((element) => element.scrollLeft))
             .toBeGreaterThan(0);
           await capture(page, dialog, testInfo, "review-long-diff");
+          const checks = dialog.getByRole("region", { name: t.review.diff.checks, exact: true });
+          const output = checks.locator("pre");
+          await output.scrollIntoViewIfNeeded();
+          await expect(output).toHaveCSS("white-space", "pre");
+          expect(
+            await output.evaluate((element) => element.scrollWidth > element.clientWidth),
+          ).toBe(true);
+          await output.focus();
+          await page.keyboard.press("ArrowRight");
+          await expect
+            .poll(() => output.evaluate((element) => element.scrollLeft))
+            .toBeGreaterThan(0);
+          await capture(page, dialog, testInfo, "review-check-output");
+          for (const [label, kind] of [
+            [t.review.findings.axis, "axis"],
+            [t.review.findings.severity, "severity"],
+            [t.review.findings.status, "status"],
+          ]) {
+            const filter = dialog.getByRole("combobox", { name: label, exact: true });
+            await filter.click();
+            await capture(page, page.getByRole("listbox"), testInfo, `review-filter-${kind}`);
+            await page.keyboard.press("Escape");
+            await expect(filter).toBeFocused();
+            await expect(dialog).toBeVisible();
+          }
           await reachable(page, refresh);
           state = "error";
           await refresh.click();

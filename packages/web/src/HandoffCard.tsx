@@ -1,17 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Markdown } from "./ui/Markdown";
 import type { StintSummary } from "@stintwork/core";
 import { useId } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { CheckpointWarnings } from "./CheckpointWarnings";
-import "./handoff-card.css";
 import { renderCoreText, useLanguage } from "./i18n/language";
 
 export function HandoffCard({ stint }: { stint: StintSummary }) {
   const { t } = useLanguage();
   const title = useId();
   return (
-    <article className="handoff-card" aria-labelledby={title}>
+    <article
+      className="handoff-card my-3 rounded-sm border border-border bg-surface-raised p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
+      aria-labelledby={title}
+    >
       <h4 id={title}>{t.stints.handoff}</h4>
       <CheckpointWarnings warnings={stint.checkpointWarnings} />
       {stint.handoff ? (
@@ -23,16 +24,14 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
           ].map(([heading, text]) => (
             <div key={heading}>
               <dt>{heading}</dt>
-              <dd className="markdown">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-                  {text}
-                </ReactMarkdown>
+              <dd>
+                <Markdown>{text}</Markdown>
               </dd>
             </div>
           ))}
         </dl>
       ) : (
-        <p className="muted">
+        <p className="muted text-muted">
           {stint.handoffError
             ? t.stints.noHandoffError(
                 renderCoreText(stint.handoffErrorMessage, stint.handoffError, t),

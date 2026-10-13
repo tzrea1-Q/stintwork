@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { en } from "./i18n/en";
 import { Button } from "./ui/Button";
+import { SelectField } from "./ui/SelectField";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
@@ -28,6 +29,7 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
 
 function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClose: () => void }) {
   const { t } = useLanguage();
+  const selectId = useId();
   const [milestones, setMilestones] = useState(snapshot.milestones);
   const [name, setName] = useState("");
   const [workItem, setWorkItem] = useState(snapshot.workItems[0]?.slug ?? "");
@@ -76,7 +78,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
       }}
     >
       <DialogContent
-        className="roadmap-editor w-3xl [&_fieldset]:mt-5 [&_fieldset]:min-w-0 [&_form]:mb-3 [&_form]:flex [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-3 [&_label]:grid [&_label]:min-w-0 [&_label]:flex-1 [&_label]:basis-48 [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_select]:w-full [&_select]:rounded-sm [&_select]:border [&_select]:border-border [&_select]:bg-surface [&_select]:p-2 [&_button]:max-w-full [&_button]:h-auto [&_button]:min-h-8 [&_button]:whitespace-normal [&_button]:py-1"
+        className="roadmap-editor w-3xl [&_fieldset]:mt-5 [&_fieldset]:min-w-0 [&_form]:mb-3 [&_form]:flex [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-3 [&_label]:grid [&_label]:min-w-0 [&_label]:flex-1 [&_label]:basis-48 [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_button]:max-w-full [&_button]:h-auto [&_button]:min-h-8 [&_button]:whitespace-normal [&_button]:py-1"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -94,7 +96,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
           {t.planning.roadmap.description}
         </DialogDescription>
         {error && (
-          <p role="alert" className="warning">
+          <p role="alert" className="warning text-warning">
             {Object.entries(en.planning.roadmap.errors).reduce(
               (message, [key, original]) =>
                 message === original
@@ -140,26 +142,36 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
         >
           <fieldset disabled={saving || !snapshot.workItems.length}>
             <legend>{t.planning.roadmap.moveHeading}</legend>
-            <label>
+            <label htmlFor={`${selectId}-workItem`}>
               {t.planning.roadmap.workItem}
-              <select value={workItem} onChange={(event) => setWorkItem(event.target.value)}>
-                {snapshot.workItems.map((item) => (
-                  <option key={item.slug} value={item.slug}>
-                    {item.title}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                id={`${selectId}-workItem`}
+                aria-label={t.planning.roadmap.workItem}
+                value={workItem}
+                onValueChange={setWorkItem}
+                disabled={saving || !snapshot.workItems.length}
+                options={snapshot.workItems.map((item) => ({
+                  value: item.slug,
+                  label: item.title,
+                }))}
+              />
             </label>
-            <label>
+            <label htmlFor={`${selectId}-destination`}>
               {t.planning.roadmap.destination}
-              <select value={destination} onChange={(event) => setDestination(event.target.value)}>
-                <option value="">{t.planning.roadmap.noMilestone}</option>
-                {milestones.map((milestone) => (
-                  <option key={milestone.id} value={milestone.id}>
-                    {milestone.name}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                id={`${selectId}-destination`}
+                aria-label={t.planning.roadmap.destination}
+                value={destination}
+                onValueChange={setDestination}
+                disabled={saving || !snapshot.workItems.length}
+                options={[
+                  { value: "", label: t.planning.roadmap.noMilestone },
+                  ...milestones.map((milestone) => ({
+                    value: milestone.id,
+                    label: milestone.name,
+                  })),
+                ]}
+              />
             </label>
             <Button type="submit">{t.planning.roadmap.move}</Button>
           </fieldset>
@@ -184,6 +196,7 @@ function MilestoneFields({
 }) {
   const { t } = useLanguage();
   const [name, setName] = useState(milestone.name);
+  const selectId = useId();
   const [status, setStatus] = useState(milestone.status);
   const [target, setTarget] = useState(milestone.target ?? "");
   return (
@@ -192,7 +205,7 @@ function MilestoneFields({
       aria-label={milestone.name}
     >
       <h3 className="mb-3 font-medium">
-        {milestone.name} <small className="muted">{milestone.id}</small>
+        {milestone.name} <small className="muted text-muted">{milestone.id}</small>
       </h3>
       <form
         onSubmit={(event) => {
@@ -214,16 +227,18 @@ function MilestoneFields({
           void onSave({ kind: "update", id: milestone.id, status });
         }}
       >
-        <label>
+        <label htmlFor={`${selectId}-status`}>
           {t.planning.roadmap.status(milestone.name)}
-          <select
+          <SelectField
+            id={`${selectId}-status`}
+            aria-label={t.planning.roadmap.status(milestone.name)}
             value={status}
-            onChange={(event) => setStatus(event.target.value as Milestone["status"])}
-          >
-            <option value="planned">{t.planning.roadmap.planned}</option>
-            <option value="active">{t.planning.roadmap.active}</option>
-            <option value="shipped">{t.planning.roadmap.shipped}</option>
-          </select>
+            onValueChange={(value) => setStatus(value as Milestone["status"])}
+            options={(["planned", "active", "shipped"] as const).map((value) => ({
+              value,
+              label: t.planning.roadmap[value],
+            }))}
+          />
         </label>
         <Button type="submit" disabled={status === milestone.status}>
           {t.planning.roadmap.setStatus(milestone.name)}

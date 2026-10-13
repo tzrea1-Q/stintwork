@@ -129,5 +129,5 @@ test("a failed stint shows its error in history and in the stream, with its chec
   expect(
     within(screen.getByRole("log", { name: "Stint messages" })).getByRole("alert"),
   ).toHaveTextContent(failed.error as string);
-  expect(screen.getByText("Stint failed")).toBeInTheDocument();
+  expect(screen.getByRole("status", { name: "Stint" })).toHaveTextContent("Stint failed");
 });

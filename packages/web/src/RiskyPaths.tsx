@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Button } from "./ui/Button";
 import { riskyPathAccepted, type RiskyPath, type ReviewDecision } from "@stintwork/core";
 import { useState } from "react";
 import { useLanguage } from "./i18n/language";
@@ -42,9 +43,8 @@ export function RiskyPaths({
                 }
               </p>
             ) : (
-              <button
+              <Button
                 type="button"
-                className="top-button"
                 disabled={saving}
                 onClick={() => {
                   setAccepting(risk.path);
@@ -52,7 +52,7 @@ export function RiskyPaths({
                 }}
               >
                 {t.review.risks.accept}
-              </button>
+              </Button>
             )}
             {!accepted && accepting === risk.path && (
               <form
@@ -69,17 +69,12 @@ export function RiskyPaths({
                     onChange={(event) => setReason(event.target.value)}
                   />
                 </label>
-                <button type="submit" className="top-button" disabled={saving || !reason.trim()}>
+                <Button type="submit" disabled={saving || !reason.trim()}>
                   {t.review.risks.save}
-                </button>
-                <button
-                  type="button"
-                  className="top-button"
-                  disabled={saving}
-                  onClick={() => setAccepting(null)}
-                >
+                </Button>
+                <Button type="button" disabled={saving} onClick={() => setAccepting(null)}>
                   {t.review.risks.cancel}
-                </button>
+                </Button>
               </form>
             )}
           </article>

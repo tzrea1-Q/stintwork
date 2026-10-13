@@ -2,6 +2,7 @@
 import { createMemoryRepoFiles, editRoadmap, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { chooseOption } from "./select-test-helper";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { RoadmapEditor } from "./RoadmapEditor";
@@ -68,14 +69,16 @@ test("Chinese roadmap controls preserve milestone names, work item titles and th
   expect(sheet.getByRole("region", { name: "First" })).toBeInTheDocument();
   expect(sheet.getByRole("textbox", { name: "名称：First" })).toHaveValue("First");
   const status = sheet.getByRole("combobox", { name: "状态：First" });
+  await user.click(status);
   for (const name of ["已计划", "进行中", "已交付"])
-    expect(within(status).getByRole("option", { name })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
   expect(sheet.getByRole("button", { name: "重命名 First" })).toBeInTheDocument();
   expect(sheet.getByLabelText("目标日期：First")).toBeInTheDocument();
   expect(sheet.getByRole("button", { name: "设置目标日期：First" })).toBeInTheDocument();
   expect(sheet.getByRole("button", { name: "上移 First" })).toBeDisabled();
   expect(sheet.getByRole("button", { name: "下移 First" })).toBeEnabled();
-  await user.selectOptions(status, "shipped");
+  await chooseOption(user, status, "已交付");
   await user.click(sheet.getByRole("button", { name: "设置状态：First" }));
   expect(await sheet.findByRole("status")).toHaveTextContent("路线图已提交。");
   expect(fetch).toHaveBeenLastCalledWith(
@@ -87,7 +90,9 @@ test("Chinese roadmap controls preserve milestone names, work item titles and th
   expect(sheet.getByRole("textbox", { name: "新里程碑名称" })).toBeInTheDocument();
   expect(sheet.getByRole("button", { name: "添加里程碑" })).toBeInTheDocument();
   expect(sheet.getByRole("combobox", { name: "工作项" })).toHaveTextContent("Board work item");
-  expect(sheet.getByRole("combobox", { name: "目标里程碑" })).toHaveTextContent("Second");
+  await user.click(sheet.getByRole("combobox", { name: "目标里程碑" }));
+  expect(screen.getByRole("option", { name: "Second" })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
   expect(sheet.getByRole("button", { name: "移动工作项" })).toBeInTheDocument();
 });
 
@@ -134,7 +139,11 @@ test("renames without changing the displayed stable id", async () => {
 test.each(["planned", "shipped"])("sets milestone status to %s explicitly", async (status) => {
   const fetch = mockServer();
   const { user, sheet } = await open();
-  await user.selectOptions(sheet.getByRole("combobox", { name: "Status for First" }), status);
+  await chooseOption(
+    user,
+    sheet.getByRole("combobox", { name: "Status for First" }),
+    status === "planned" ? "Planned" : "Shipped",
+  );
   expect(fetch).not.toHaveBeenCalled();
   await user.click(sheet.getByRole("button", { name: "Set status for First" }));
   await waitFor(() =>
@@ -145,7 +154,9 @@ test.each(["planned", "shipped"])("sets milestone status to %s explicitly", asyn
     id: "first",
     status,
   });
-  expect(sheet.getByRole("combobox", { name: "Status for First" })).toHaveValue(status);
+  expect(sheet.getByRole("combobox", { name: "Status for First" })).toHaveTextContent(
+    status === "planned" ? "Planned" : "Shipped",
+  );
 });
 
 test("sets a target date and clears it in separate writes", async () => {
@@ -196,10 +207,11 @@ test("reorders up and down with disabled boundary controls", async () => {
 test("moves a work item to another milestone or no milestone", async () => {
   const fetch = mockServer();
   const { user, sheet } = await open();
-  expect(sheet.getByRole("combobox", { name: "Work item" })).toHaveValue("board");
-  await user.selectOptions(
+  expect(sheet.getByRole("combobox", { name: "Work item" })).toHaveTextContent("Board work item");
+  await chooseOption(
+    user,
     sheet.getByRole("combobox", { name: "Destination milestone" }),
-    "second",
+    "Second",
   );
   await user.click(sheet.getByRole("button", { name: "Move work item" }));
   expect(await sheet.findByRole("status")).toHaveTextContent("Roadmap committed.");
@@ -208,7 +220,11 @@ test("moves a work item to another milestone or no milestone", async () => {
     workItem: "board",
     milestone: "second",
   });
-  await user.selectOptions(sheet.getByRole("combobox", { name: "Destination milestone" }), "");
+  await chooseOption(
+    user,
+    sheet.getByRole("combobox", { name: "Destination milestone" }),
+    "No milestone",
+  );
   await user.click(sheet.getByRole("button", { name: "Move work item" }));
   await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   expect(JSON.parse(fetch.mock.calls[1][1].body as string)).toEqual({

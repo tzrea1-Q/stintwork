@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Button } from "./ui/Button";
+import { Badge } from "./ui/Badge";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import {
   type PullRequest,
@@ -64,16 +66,16 @@ export function PullRequestChecksPanel({
     <section aria-label={t.review.pr.label}>
       <h4>{t.review.pr.heading(number)}</h4>
       {!item.merged && (
-        <button type="button" className="top-button" disabled={busy} onClick={() => void refresh()}>
+        <Button type="button" disabled={busy} onClick={() => void refresh()}>
           {t.review.pr.refresh}
-        </button>
+        </Button>
       )}
       {error && (
-        <p role="alert" className="warning">
+        <p role="alert" className="warning text-warning">
           {error}
         </p>
       )}
-      {!checks && <p className="muted">{t.review.pr.noEvidence}</p>}
+      {!checks && <p className="muted text-muted">{t.review.pr.noEvidence}</p>}
       {checks && (
         <>
           <p>
@@ -83,7 +85,7 @@ export function PullRequestChecksPanel({
             · <code>{checks.headCommit}</code> ·{" "}
             <time dateTime={checks.fetchedAt}>{checks.fetchedAt}</time>
             {evidenceStale(item, checks.headCommit) && (
-              <strong className="warning">{t.review.pr.stale}</strong>
+              <strong className="warning text-warning">{t.review.pr.stale}</strong>
             )}
           </p>
           {!checks.checks.length && <p>{t.review.pr.empty}</p>}
@@ -91,9 +93,19 @@ export function PullRequestChecksPanel({
             {checks.checks.map((check) => (
               <li key={`${check.name}:${check.link}`}>
                 {check.name} ·{" "}
-                {Object.hasOwn(t.review.pr.buckets, check.bucket)
-                  ? t.review.pr.buckets[check.bucket as keyof typeof t.review.pr.buckets]
-                  : check.bucket}
+                <Badge
+                  variant={
+                    check.bucket === "pass"
+                      ? "success"
+                      : check.bucket === "fail"
+                        ? "danger"
+                        : "warning"
+                  }
+                >
+                  {Object.hasOwn(t.review.pr.buckets, check.bucket)
+                    ? t.review.pr.buckets[check.bucket as keyof typeof t.review.pr.buckets]
+                    : check.bucket}
+                </Badge>
               </li>
             ))}
           </ul>

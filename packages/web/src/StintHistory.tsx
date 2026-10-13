@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Button } from "./ui/Button";
+import { Badge } from "./ui/Badge";
 import {
   readResponseJson,
   CoreTextError,
@@ -60,9 +62,19 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       <p>
         {recorded.agent} ·{" "}
         {recorded.ticket === null ? t.stints.noTicket : t.stints.ticket(recorded.ticket)} ·{" "}
-        <strong>{t.stints.statuses[recorded.status]}</strong>
+        <Badge
+          variant={
+            recorded.status === "finished"
+              ? "success"
+              : recorded.status === "failed"
+                ? "danger"
+                : "secondary"
+          }
+        >
+          {t.stints.statuses[recorded.status]}
+        </Badge>
       </p>
-      <p className="muted">
+      <p className="muted text-muted">
         {t.stints.started}{" "}
         <time dateTime={recorded.startedAt}>
           {language === "en" ? recorded.startedAt : date.format(new Date(recorded.startedAt))}
@@ -78,13 +90,12 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
         )}
       </p>
       {recorded.error && (
-        <p className="warning" role="alert">
+        <p className="warning text-warning" role="alert">
           {renderCoreText(recorded.errorMessage, recorded.error, t)}
         </p>
       )}
-      <button
+      <Button
         type="button"
-        className="action"
         aria-expanded={open}
         aria-controls={replayId}
         disabled={loading}
@@ -95,9 +106,9 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
           : open
             ? t.stints.closeStint(stint.id)
             : t.stints.openStint(stint.id)}
-      </button>
+      </Button>
       {error && (
-        <p className="warning" role="alert">
+        <p className="warning text-warning" role="alert">
           {error}
         </p>
       )}
@@ -107,7 +118,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       {recorded.status !== "running" ? (
         <HandoffCard stint={recorded} />
       ) : (
-        <p className="muted">{t.stints.noCheckpoint}</p>
+        <p className="muted text-muted">{t.stints.noCheckpoint}</p>
       )}
     </li>
   );
@@ -122,6 +133,6 @@ export function StintHistory({ stints }: { stints: StintSummary[] }) {
       ))}
     </ol>
   ) : (
-    <p className="muted">{t.stints.noStints}</p>
+    <p className="muted text-muted">{t.stints.noStints}</p>
   );
 }

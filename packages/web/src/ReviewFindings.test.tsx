@@ -9,6 +9,7 @@ import {
 import type { WorkItemDiff } from "@stintwork/git";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { chooseOption } from "./select-test-helper";
 import { afterEach, expect, test, vi } from "vitest";
 import { ReviewOverlay } from "./ReviewOverlay";
 
@@ -147,7 +148,7 @@ test.each([
       body: JSON.stringify({ id: finding.id, status, reason: "" }),
     }),
   );
-  expect(within(card).getByText(`Standards · major · ${status}`)).toBeInTheDocument();
+  expect(card).toHaveTextContent(`Standards · major · ${status}`);
   expect(screen.getByRole("navigation", { name: "Changed files" })).toBeInTheDocument();
 });
 
@@ -175,7 +176,7 @@ test("accept requires a nonblank reason, stores it, and updates the pinned findi
   );
   expect(within(card).getByText("Reason: Compatibility requires it.")).toBeInTheDocument();
   expect(within(card).queryByRole("textbox")).not.toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox", { name: "Status" }), "accepted");
+  await chooseOption(user, screen.getByRole("combobox", { name: "Status" }), "accepted");
   expect(screen.getByRole("link", { name: finding.title })).toBeInTheDocument();
 });
 
@@ -191,11 +192,9 @@ test("send back posts the open findings action and confirms the next implement b
   );
   expect(screen.getByText(/Implement reopened/)).toHaveTextContent("next implement brief");
   expect(sendBack).toBeDisabled();
-  expect(
-    within(screen.getByRole("article", { name: finding.title })).getByText(
-      "Standards · major · sent-back",
-    ),
-  ).toBeInTheDocument();
+  expect(screen.getByRole("article", { name: finding.title })).toHaveTextContent(
+    "Standards · major · sent-back",
+  );
 });
 
 test("send back is unavailable when no findings are open", async () => {
@@ -212,11 +211,9 @@ test.each(["Resolve", "Send back"])(
     await screen.findByRole("article", { name: finding.title });
     await user.click(screen.getByRole("button", { name: button }));
     expect(screen.getByRole("alert")).toHaveTextContent("A stint is active.");
-    expect(
-      within(screen.getByRole("article", { name: finding.title })).getByText(
-        "Standards · major · open",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: finding.title })).toHaveTextContent(
+      "Standards · major · open",
+    );
   },
 );
 
@@ -252,7 +249,7 @@ test.each(["open", "resolved", "accepted", "sent-back"] as const)(
     );
     await screen.findByRole("article", { name: "Validate input" });
     const rail = within(screen.getByRole("region", { name: "Findings" }));
-    await user.selectOptions(rail.getByRole("combobox", { name: "Status" }), status);
+    await chooseOption(user, rail.getByRole("combobox", { name: "Status" }), status);
     expect(rail.getAllByRole("link")).toHaveLength(1);
     expect(rail.getByRole("link", { name: "Validate input" })).toBeInTheDocument();
   },
@@ -331,17 +328,17 @@ test("the rail combines axis, severity and status filters without hiding pinned 
   );
   await screen.findByRole("article", { name: "Validate input" });
   const rail = within(screen.getByRole("region", { name: "Findings" }));
-  await user.selectOptions(rail.getByRole("combobox", { name: "Axis" }), "Spec");
+  await chooseOption(user, rail.getByRole("combobox", { name: "Axis" }), "Spec");
   expect(rail.queryByRole("link", { name: "Validate input" })).not.toBeInTheDocument();
   expect(screen.getByRole("article", { name: "Validate input" })).toBeInTheDocument();
-  await user.selectOptions(rail.getByRole("combobox", { name: "Severity" }), "minor");
-  await user.selectOptions(rail.getByRole("combobox", { name: "Status" }), "resolved");
+  await chooseOption(user, rail.getByRole("combobox", { name: "Severity" }), "minor");
+  await chooseOption(user, rail.getByRole("combobox", { name: "Status" }), "resolved");
   expect(rail.getAllByRole("link")).toHaveLength(1);
   expect(rail.getByRole("link", { name: "Resolved finding" })).toBeInTheDocument();
   expect(
     within(screen.getByRole("article", { name: "Resolved finding" })).getByText("Reason: Fixed"),
   ).toBeInTheDocument();
-  await user.selectOptions(rail.getByRole("combobox", { name: "Severity" }), "blocker");
+  await chooseOption(user, rail.getByRole("combobox", { name: "Severity" }), "blocker");
   expect(rail.getByRole("status")).toHaveTextContent("No findings match these filters.");
 });
 

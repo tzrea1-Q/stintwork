@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import { createMemoryRepoFiles, indexProject, prepareWorkItemCreation } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -398,11 +399,13 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
   );
   const dialog = within(screen.getByRole("dialog", { name: "创建工作项" }));
   await user.type(dialog.getByRole("textbox", { name: "标题" }), "中文计划 API");
-  await user.selectOptions(dialog.getByRole("combobox", { name: "工作流" }), "team");
-  expect(dialog.getByRole("option", { name: "Team workflow" })).toBeInTheDocument();
-  expect(dialog.getByRole("option", { name: "功能" })).toBeInTheDocument();
-  await user.selectOptions(dialog.getByRole("combobox", { name: "里程碑（可选）" }), "first");
-  expect(dialog.getByRole("option", { name: "First" })).toBeInTheDocument();
+  await chooseOption(user, dialog.getByRole("combobox", { name: "工作流" }), "Team workflow");
+  await user.click(dialog.getByRole("combobox", { name: "工作流" }));
+  expect(screen.getByRole("option", { name: "Team workflow" })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "功能" })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await chooseOption(user, dialog.getByRole("combobox", { name: "里程碑（可选）" }), "First");
+  expect(dialog.getByRole("combobox", { name: "里程碑（可选）" })).toHaveTextContent("First");
   await user.type(dialog.getByRole("textbox", { name: "意图（可选）" }), "Developer intent 原文");
   expect(await dialog.findByText(".scratch/api/")).toBeInTheDocument();
   expect(dialog.getByRole("button", { name: "取消" })).toBeInTheDocument();
@@ -506,12 +509,19 @@ test("previews on the server, offers all loaded workflows and submits optional m
   const rendered = render(<Board snapshot={snapshot()} />);
   await user.keyboard("c");
   const dialog = within(screen.getByRole("dialog", { name: "Create work item" }));
-  expect(dialog.getAllByRole("option").map((entry) => entry.textContent)).toEqual(
-    expect.arrayContaining(["Feature", "Bug", "Quick", "Team workflow", "No milestone", "First"]),
+  const workflow = dialog.getByRole("combobox", { name: "Workflow" });
+  await user.click(workflow);
+  expect(screen.getAllByRole("option").map((entry) => entry.textContent)).toEqual(
+    expect.arrayContaining(["Feature", "Bug", "Quick", "Team workflow"]),
   );
+  await user.keyboard("{Escape}");
+  expect(workflow).toHaveFocus();
   await user.type(dialog.getByRole("textbox", { name: "Title" }), "New Idea");
-  await user.selectOptions(dialog.getByRole("combobox", { name: "Workflow" }), "team");
-  await user.selectOptions(dialog.getByRole("combobox", { name: "Milestone (optional)" }), "first");
+  await user.click(workflow);
+  await user.click(screen.getByRole("option", { name: "Team workflow" }));
+  await user.click(dialog.getByRole("combobox", { name: "Milestone (optional)" }));
+  expect(screen.getByRole("option", { name: "No milestone" })).toBeInTheDocument();
+  await user.click(screen.getByRole("option", { name: "First" }));
   await user.type(
     dialog.getByRole("textbox", { name: "Intent (optional)" }),
     "Keep the current look.",

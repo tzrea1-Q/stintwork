@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import {
   builtInWorkflowYaml,
   builtInWorkflows,
@@ -47,8 +48,13 @@ test("customisation traps Tab and dismisses on an outside click", async () => {
   const close = vi.fn();
   render(<CustomiseWorkflow id="feature" onClose={close} />);
   await screen.findByLabelText("Built-in workflow YAML");
+  screen.getByRole("button", { name: "Cancel" }).focus();
+  await user.tab({ shift: true });
+  expect(document.activeElement?.tagName).toBe("PRE");
   await user.tab({ shift: true });
   expect(screen.getByRole("button", { name: "Confirm customisation" })).toHaveFocus();
+  await user.tab();
+  expect(document.activeElement?.tagName).toBe("PRE");
   await user.tab();
   expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
   fireEvent.pointerDown(document.body);
@@ -268,9 +274,8 @@ test("new workflow ids appear in the create dialog without a built-in copy actio
   render(<Board snapshot={project} />);
   await user.keyboard("c");
   const create = within(screen.getByRole("dialog", { name: "Create work item" }));
-  expect(create.getByRole("option", { name: "Team" })).toHaveValue("team");
-  await user.selectOptions(create.getByRole("combobox", { name: "Workflow" }), "team");
-  expect(create.getByRole("combobox", { name: "Workflow" })).toHaveValue("team");
+  await chooseOption(user, create.getByRole("combobox", { name: "Workflow" }), "Team");
+  expect(create.getByRole("combobox", { name: "Workflow" })).toHaveTextContent("Team");
   await user.click(create.getByRole("button", { name: "Cancel" }));
   await user.click(screen.getByRole("button", { name: "Open example: Example" }));
   expect(screen.getByText("Workflow: Team")).toBeInTheDocument();

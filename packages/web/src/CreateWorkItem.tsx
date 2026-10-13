@@ -6,6 +6,7 @@ import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { SelectField } from "./ui/SelectField";
 
 export function CreateWorkItem({
   snapshot,
@@ -18,6 +19,7 @@ export function CreateWorkItem({
 }) {
   const { t } = useLanguage();
   const slugHintId = useId();
+  const selectId = useId();
   const [title, setTitle] = useState("");
   const [editedSlug, setEditedSlug] = useState<string | null>(null);
   const [workflow, setWorkflow] = useState(Object.keys(snapshot.workflows)[0] ?? "");
@@ -103,7 +105,7 @@ export function CreateWorkItem({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_select]:w-full [&_select]:rounded-sm [&_select]:border [&_select]:border-border [&_select]:bg-surface [&_select]:p-2 [&_textarea]:w-full [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-surface [&_textarea]:p-2"
+        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-surface [&_textarea]:p-2"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -134,30 +136,37 @@ export function CreateWorkItem({
               />
             </label>
             {!derivedSlug && (
-              <p id={slugHintId} className="muted">
+              <p id={slugHintId} className="muted text-muted">
                 {t.slugInput.hint}
               </p>
             )}
-            <label>
+            <label htmlFor={`${selectId}-workflow`}>
               {t.planning.create.workflow}
-              <select value={workflow} onChange={(event) => setWorkflow(event.target.value)}>
-                {Object.values(snapshot.workflows).map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {workflowName(entry, t)}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                id={`${selectId}-workflow`}
+                aria-label={t.planning.create.workflow}
+                value={workflow}
+                onValueChange={setWorkflow}
+                disabled={saving}
+                options={Object.values(snapshot.workflows).map((entry) => ({
+                  value: entry.id,
+                  label: workflowName(entry, t),
+                }))}
+              />
             </label>
-            <label>
+            <label htmlFor={`${selectId}-milestone`}>
               {t.planning.create.milestone}
-              <select value={milestone} onChange={(event) => setMilestone(event.target.value)}>
-                <option value="">{t.planning.create.noMilestone}</option>
-                {snapshot.milestones.map((entry) => (
-                  <option key={entry.id} value={entry.id}>
-                    {entry.name}
-                  </option>
-                ))}
-              </select>
+              <SelectField
+                id={`${selectId}-milestone`}
+                aria-label={t.planning.create.milestone}
+                value={milestone}
+                onValueChange={setMilestone}
+                disabled={saving}
+                options={[
+                  { value: "", label: t.planning.create.noMilestone },
+                  ...snapshot.milestones.map((entry) => ({ value: entry.id, label: entry.name })),
+                ]}
+              />
             </label>
             <label>
               {t.planning.create.intent}
@@ -187,11 +196,11 @@ export function CreateWorkItem({
               )}
             </p>
             {error && (
-              <p role="alert" className="warning">
+              <p role="alert" className="warning text-warning">
                 {error}
               </p>
             )}
-            <p className="muted">{t.planning.create.description}</p>
+            <p className="muted text-muted">{t.planning.create.description}</p>
             <footer className="flex flex-wrap justify-end gap-3">
               <Button onClick={onClose}>{t.planning.create.cancel}</Button>
               <Button variant="primary" type="submit" disabled={!slug}>

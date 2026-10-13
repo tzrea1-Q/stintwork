@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
 import { useLanguage } from "./i18n/language";
 
 export function PermissionDetails({ details }: { details?: string }) {
@@ -10,7 +11,7 @@ export function PermissionDetails({ details }: { details?: string }) {
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
     tool = value as Record<string, unknown>;
   } catch {
-    return <pre className="permission-details">{details}</pre>;
+    return <CodeBlock className="permission-details">{details}</CodeBlock>;
   }
   const input =
     tool.rawInput && typeof tool.rawInput === "object" && !Array.isArray(tool.rawInput)
@@ -28,7 +29,9 @@ export function PermissionDetails({ details }: { details?: string }) {
   ].filter((path): path is string => typeof path === "string");
   return (
     <>
-      {typeof command === "string" && <pre className="permission-details">{command}</pre>}
+      {typeof command === "string" && (
+        <CodeBlock className="permission-details">{command}</CodeBlock>
+      )}
       {[...new Set(paths)].map((path) => (
         <p key={path}>
           <code>{path}</code>
@@ -36,7 +39,7 @@ export function PermissionDetails({ details }: { details?: string }) {
       ))}
       <details>
         <summary>{t.needsYou.fullPermissionJson}</summary>
-        <pre className="permission-details">{details}</pre>
+        <CodeBlock className="permission-details">{details}</CodeBlock>
       </details>
     </>
   );

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import {
   applyStintLogEntry,
   createMemoryRepoFiles,
@@ -7,7 +8,7 @@ import {
   type Stint,
   type StintLogEntry,
 } from "@stintwork/core";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { WorkItemDrawer } from "./WorkItemDrawer";
@@ -69,10 +70,10 @@ test("the picker renders registry names and posts the selected registered agent 
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   const picker = await screen.findByRole("combobox", { name: "Agent" });
-  await screen.findByRole("option", { name: "Second agent" });
-  expect(picker).toHaveValue("first-agent");
+  await waitFor(() => expect(picker).toHaveTextContent("First agent"));
+  expect(picker).toHaveTextContent("First agent");
   expect(screen.queryByRole("option", { name: "Codex" })).not.toBeInTheDocument();
-  await user.selectOptions(picker, "second-agent");
+  await chooseOption(user, picker, "Second agent");
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",

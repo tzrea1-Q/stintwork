@@ -145,7 +145,7 @@ export function Board({
   }, [openItem, paletteOpen, needsYouOpen, createOpen, customiseId]);
 
   return (
-    <div className="pipeline-app">
+    <div className="pipeline-app flex h-dvh min-w-0 flex-col">
       <TopBar
         snapshot={snapshot}
         onOpenNeedsYou={() => setNeedsYouOpen(true)}
@@ -153,18 +153,23 @@ export function Board({
         onMilestoneChange={setSelectedMilestone}
         onOpenPalette={() => setPaletteOpen(true)}
       />
-      <main className="pipeline-main">
-        <div className="pipeline-heading">
+      <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="pipeline-heading flex flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6">
           <div>
-            <p className="eyebrow">{t.board.workbench}</p>
-            <h1 className="mt-1 flex items-center gap-3 text-[26px] font-medium tracking-tight">
-              {t.board.pipeline} <span className="heading-count">{visible.length}</span>
+            <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+              {t.board.workbench}
+            </p>
+            <h1 className="mt-1 flex items-center gap-3 text-xl font-medium tracking-tight">
+              {t.board.pipeline}{" "}
+              <span className="heading-count grid min-w-6 place-items-center rounded-sm border border-border-strong px-1 text-xs text-muted">
+                {visible.length}
+              </span>
             </h1>
-            <p className="mt-1 text-xs muted">{t.board.description}</p>
+            <p className="mt-1 text-xs muted text-muted">{t.board.description}</p>
           </div>
-          <p className="connection-status" role="status">
+          <p className="connection-status flex items-center gap-2 text-xs text-muted" role="status">
             <span
-              className={`status-dot ${connection === "live" ? "is-live" : "is-reconnecting"}`}
+              className={`status-dot size-1 rounded-full ${connection === "live" ? "is-live bg-success" : "is-reconnecting bg-warning"}`}
             />
             {connection === "live"
               ? t.board.live
@@ -174,16 +179,25 @@ export function Board({
           </p>
         </div>
         {error && (
-          <p className="connection-error" role="alert">
+          <p
+            className="connection-error bg-accent-soft px-4 py-3 text-xs text-warning sm:px-6"
+            role="alert"
+          >
             {error}
             {t.board.lastAvailable}
           </p>
         )}
         <div className="board-toolbar flex flex-col gap-3 border-y border-border px-4 py-3 text-xs text-muted lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
-            <span className="board-milestone-label flex min-w-0 items-center gap-2 break-words">
+            <span className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
               <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
-              {selected?.name ?? t.board.allMilestones}
+              <span
+                className="min-w-0 truncate"
+                data-truncate
+                title={selected?.name ?? t.board.allMilestones}
+              >
+                {selected?.name ?? t.board.allMilestones}
+              </span>
             </span>
             <span className="board-stats whitespace-nowrap">
               {t.board.counts(active.length, shipped.length)}
@@ -229,16 +243,20 @@ export function Board({
             </TooltipProvider>
           </div>
         </div>
-        <section className="board-scroll" ref={scroll} aria-label={t.board.stages}>
+        <section
+          className="board-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
+          ref={scroll}
+          aria-label={t.board.stages}
+        >
           {snapshot.workItems.length === 0 ? (
-            <section className="empty-project">
-              <FolderOpen size={27} className="muted" aria-hidden="true" />
+            <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
+              <FolderOpen className="size-icon-lg muted text-muted" aria-hidden="true" />
               <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
-              <p className="mt-2 muted">
+              <p className="mt-2 muted text-muted">
                 {t.board.startWithSpec}
                 <code>.scratch/&lt;work-item&gt;/spec.md</code>.
               </p>
-              <p className="mt-2 text-xs muted">
+              <p className="mt-2 text-xs muted text-muted">
                 {t.board.addTickets}
                 <code>.scratch/&lt;work-item&gt;/issues/</code>
                 {t.board.updatesAsYouEdit}
@@ -247,7 +265,7 @@ export function Board({
           ) : (
             <>
               {visible.length === 0 && (
-                <p className="mt-4 muted" role="status">
+                <p className="mt-4 muted text-muted" role="status">
                   {t.board.emptyMilestone}
                 </p>
               )}
@@ -272,12 +290,14 @@ export function Board({
               </div>
               {unstaged.length > 0 && (
                 <section
-                  className="unstaged"
+                  className="unstaged mt-5"
                   data-card-column="unstaged"
                   aria-label={t.board.unstaged}
                 >
-                  <h2 className="mb-3 text-xs muted">{t.board.unstagedCount(unstaged.length)}</h2>
-                  <div className="auxiliary-items">
+                  <h2 className="mb-3 text-xs muted text-muted">
+                    {t.board.unstagedCount(unstaged.length)}
+                  </h2>
+                  <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3">
                     {unstaged.map((item) => (
                       <WorkItemCard
                         workflow={snapshot.workflows[item.workflow]}
@@ -296,15 +316,20 @@ export function Board({
               )}
             </>
           )}
-          <details className="shipped-lane">
+          <details className="shipped-lane mt-5 border-t border-border pt-4 [&>summary]:flex [&>summary]:w-fit [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-2 [&>summary]:text-xs [&>summary::-webkit-details-marker]:hidden [&[open]_.shipped-chevron]:rotate-90">
             <summary>
-              <ChevronRight size={13} className="shipped-chevron" aria-hidden="true" />
-              <CheckCheck size={14} className="success" aria-hidden="true" />
+              <ChevronRight className="shipped-chevron size-icon-sm" aria-hidden="true" />
+              <CheckCheck className="size-icon-sm success text-success" aria-hidden="true" />
               <h2>{t.board.shipped}</h2>
-              <span className="count">{shipped.length}</span>
+              <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+                {shipped.length}
+              </span>
             </summary>
             {shipped.length ? (
-              <div className="auxiliary-items mt-3" data-card-column="shipped">
+              <div
+                className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3"
+                data-card-column="shipped"
+              >
                 {shipped.map((item) => (
                   <WorkItemCard
                     workflow={snapshot.workflows[item.workflow]}
@@ -319,7 +344,7 @@ export function Board({
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-xs muted">{t.board.emptyShipped}</p>
+              <p className="py-4 text-xs muted text-muted">{t.board.emptyShipped}</p>
             )}
           </details>
         </section>

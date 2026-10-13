@@ -33,7 +33,7 @@ test("the drawer is portalled, contains keyboard focus and returns it after dism
   const drawer = screen.getByRole("dialog", { name: "First" });
   expect(container).not.toContainElement(drawer);
   expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
-  const first = within(drawer).getByRole("combobox", { name: "Language" });
+  const first = within(drawer).getByRole("button", { name: "Language" });
   first.focus();
   await user.tab({ shift: true });
   expect(drawer).toContainElement(document.activeElement as HTMLElement);

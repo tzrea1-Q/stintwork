@@ -5,7 +5,7 @@ import { forwardRef, type ComponentPropsWithoutRef } from "react";
 import { cn } from "./cn";
 
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
+  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal rounded-md border text-sm font-medium [overflow-wrap:anywhere] transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
   {
     variants: {
       variant: {
@@ -13,9 +13,15 @@ const buttonVariants = cva(
         secondary: "border-border bg-surface text-text hover:bg-surface-hover",
         ghost:
           "border-transparent bg-transparent text-muted hover:bg-surface-hover hover:text-text",
+        link: "border-transparent bg-transparent text-text hover:text-accent",
         danger: "border-transparent bg-danger text-on-danger hover:opacity-90",
       },
-      size: { sm: "h-7 px-2", md: "h-8 px-3", lg: "h-10 px-4", icon: "size-8" },
+      size: {
+        sm: "min-h-7 px-2 py-1",
+        md: "min-h-8 px-3 py-1",
+        lg: "min-h-10 px-4 py-2",
+        icon: "size-8",
+      },
     },
     defaultVariants: { variant: "secondary", size: "md" },
   },

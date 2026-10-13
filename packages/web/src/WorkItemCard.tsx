@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Button } from "./ui/Button";
 import type { Milestone, ProjectSnapshot, WorkflowDefinition } from "@stintwork/core";
 import { Bug, Info, Layers3, LockKeyhole, Sparkles, Zap } from "lucide-react";
-import { useId } from "react";
-import "./stint-stream.css";
+import { Badge } from "./ui/Badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
 
@@ -22,7 +23,6 @@ export function WorkItemCard({
   workflow?: WorkflowDefinition;
 }) {
   const { t } = useLanguage();
-  const tooltipId = useId();
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
   const open = item.tickets.filter((ticket) => !ticket.resolved);
   const blocked = open.length > 0 && open.every((ticket) => ticket.blocked);
@@ -57,76 +57,90 @@ export function WorkItemCard({
       : t.card.noFiles;
 
   return (
-    <article className="work-item" aria-label={`${item.slug}: ${item.title}`}>
+    <article
+      className="work-item relative min-w-0 rounded-md border border-border-strong bg-surface p-3 shadow-card hover:border-accent has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-accent"
+      aria-label={`${item.slug}: ${item.title}`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <span className="work-item-id" title={typeName}>
-          <TypeIcon size={13} aria-hidden="true" />
+        <span
+          className="work-item-id inline-flex min-w-0 items-center gap-2 font-mono text-xs text-muted [&_svg]:size-icon-sm [&_svg]:shrink-0"
+          title={typeName}
+        >
+          <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
           <span className="sr-only">{typeName}: </span>
           <span className="break-all">{item.slug}</span>
         </span>
         {item.milestone && (
-          <span className="milestone-tag" title={milestone?.name}>
+          <span
+            className="milestone-tag shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted"
+            title={milestone?.name}
+          >
             {milestone?.id ?? item.milestone}
           </span>
         )}
       </div>
-      <h3 className="my-3 text-[13px] leading-5 font-medium break-words">
-        <button
+      <h3 className="my-3 text-base leading-5 font-medium break-words">
+        <Button
+          variant="link"
           type="button"
-          className="work-item-open"
+          className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left after:absolute after:inset-0 after:rounded-md"
           data-work-item={item.slug}
           aria-label={t.card.open(item.slug, item.title)}
           aria-haspopup="dialog"
           onClick={() => onOpen(item.slug)}
         >
           {item.title}
-        </button>
+        </Button>
       </h3>
       {item.activeStint?.status === "running" && (
-        <span className="stint-running" role="status">
-          <span className="stint-running-dot" aria-hidden="true" />
+        <span
+          className="stint-running mb-3 flex items-center gap-2 text-xs text-accent"
+          role="status"
+        >
+          <span className="stint-running-dot size-1 rounded-full bg-current" aria-hidden="true" />
           {t.card.running}
         </span>
       )}
-      {item.merged && <span className="badge success">{t.card.shipped}</span>}
+      {item.merged && <Badge variant="success">{t.card.shipped}</Badge>}
       {(blocked || item.inferred || attentionCount > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
           {attentionCount > 0 && (
-            <span
-              role="status"
-              className="badge warning"
-              aria-label={t.card.attention(attentionCount)}
-            >
+            <Badge role="status" variant="warning" aria-label={t.card.attention(attentionCount)}>
               {t.card.needsYou(attentionCount)}
-            </span>
+            </Badge>
           )}
           {blocked && (
-            <span className="badge warning">
-              <LockKeyhole size={11} aria-hidden="true" />
+            <Badge variant="warning">
+              <LockKeyhole className="size-icon-sm shrink-0" aria-hidden="true" />
               {t.card.blocked}
-            </span>
+            </Badge>
           )}
           {item.inferred && (
-            <span className="inference">
-              <button type="button" className="badge muted" aria-describedby={tooltipId}>
-                <Info size={11} aria-hidden="true" />
-                {t.card.inferred}
-              </button>
-              <span className="inference-tooltip" role="tooltip" id={tooltipId}>
-                {t.card.inference}
-                {reason}
-                {item.workflow === "bug" && t.card.bugInference}
-              </span>
-            </span>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" className="relative z-10">
+                    <Info aria-hidden="true" />
+                    {t.card.inferred}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {t.card.inference}
+                  {reason}
+                  {item.workflow === "bug" && t.card.bugInference}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       )}
-      <div className="ticket-progress">
+      <div className="ticket-progress flex items-center justify-between gap-2 text-xs text-muted">
         <span>
           {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
           {t.card.tickets}
         </span>
         <progress
+          className="h-1 w-11 appearance-none overflow-hidden rounded-sm border-0 bg-surface-hover [&::-webkit-progress-bar]:bg-surface-hover [&::-webkit-progress-value]:bg-accent [&::-moz-progress-bar]:bg-accent"
           aria-label={t.card.progress(item.slug)}
           max={Math.max(1, item.tickets.length)}
           value={resolved}

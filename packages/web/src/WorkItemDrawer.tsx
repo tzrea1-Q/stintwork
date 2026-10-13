@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Markdown } from "./ui/Markdown";
+import { Badge } from "./ui/Badge";
 import {
   builtInWorkflows,
   type WorkflowDefinitions,
@@ -8,8 +10,6 @@ import {
 } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
@@ -21,22 +21,12 @@ import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
-import { LanguageSelect } from "./i18n/LanguageSelect";
+import { LanguageMenu } from "./i18n/LanguageMenu";
 import { ticketStatus, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
-
-function Markdown({ text }: { text: string }) {
-  return (
-    <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml>
-        {text}
-      </ReactMarkdown>
-    </div>
-  );
-}
 
 function FilePath({ path }: { path: string }) {
   const { t } = useLanguage();
@@ -52,7 +42,7 @@ function FilePath({ path }: { path: string }) {
   }
 
   return (
-    <div className="file-path">
+    <div className="file-path mb-4 mt-2 flex flex-wrap items-center gap-2 text-xs text-muted [&_code]:min-w-0 [&_code]:[overflow-wrap:anywhere]">
       <code>{path}</code>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -62,7 +52,7 @@ function FilePath({ path }: { path: string }) {
         </TooltipTrigger>
         <TooltipContent>{t.stints.copyPath(path)}</TooltipContent>
       </Tooltip>
-      <span className="copy-status" role="status">
+      <span className="copy-status text-xs" role="status">
         {message}
       </span>
     </div>
@@ -129,13 +119,13 @@ export function WorkItemDrawer({
             if (reviewOpen) event.preventDefault();
           }}
         >
-          <header className="drawer-header">
+          <header className="drawer-header shrink-0 px-4 py-6 sm:px-7">
             <div className="flex items-center justify-between gap-3">
-              <p className="eyebrow min-w-0 break-words">
+              <p className="eyebrow text-xs uppercase tracking-widest text-muted min-w-0 break-words">
                 {type} / <code>{item.slug}</code>
               </p>
               <div className="flex shrink-0 items-center gap-2">
-                <LanguageSelect />
+                <LanguageMenu />
                 <Tooltip>
                   <TooltipTrigger
                     asChild
@@ -182,7 +172,7 @@ export function WorkItemDrawer({
             </p>
             {item.worktreePath && (
               <div className="mt-3">
-                <p className="text-xs muted">{t.stints.worktreeFiles}</p>
+                <p className="text-xs muted text-muted">{t.stints.worktreeFiles}</p>
                 <FilePath path={item.worktreePath} />
                 <Button size="sm" onClick={() => setReviewOpen(true)}>
                   {t.stints.openReview}
@@ -193,15 +183,23 @@ export function WorkItemDrawer({
           {item.stage && !item.merged ? (
             <StageAgentRail key={item.slug} item={item} workflows={workflows} />
           ) : !item.merged ? (
-            <p className="drawer-stage-note muted">{t.stints.noStage}</p>
+            <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted">
+              {t.stints.noStage}
+            </p>
           ) : null}
-          <nav className="drawer-sections" aria-label={t.stints.sections}>
+          <nav
+            className="drawer-sections flex shrink-0 gap-6 border-b border-border px-4 py-3 text-xs sm:px-7 [&_a:hover]:text-accent"
+            aria-label={t.stints.sections}
+          >
             <a href="#drawer-spec">{t.stints.spec}</a>
             <a href="#drawer-tickets">
-              {t.stints.tickets} <span className="count">{item.tickets.length}</span>
+              {t.stints.tickets}{" "}
+              <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+                {item.tickets.length}
+              </span>
             </a>
           </nav>
-          <div className="drawer-content">
+          <div className="drawer-content min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 py-6 sm:px-7 [&_section+section]:mt-8 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-6">
             <ShipActions item={item} workflows={workflows} />
             {!item.merged && (
               <GateView
@@ -215,28 +213,37 @@ export function WorkItemDrawer({
               !item.merged &&
               (!item.tickets.length || stage?.column !== "implement") && (
                 <section aria-label={t.stints.stageStintSection}>
-                  <h3 className="drawer-section-heading">
+                  <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
                     {t.stints.stageStint(stage ? stageName(workflow, stage, t) : "")}
                   </h3>
                   <StageBriefPreview item={item} workflows={workflows} />
                 </section>
               )}
             <section id="drawer-spec" aria-labelledby="drawer-spec-title">
-              <h3 id="drawer-spec-title" className="drawer-section-heading">
+              <h3
+                id="drawer-spec-title"
+                className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+              >
                 {t.stints.spec}
               </h3>
               {item.spec ? (
                 <>
                   <FilePath path={item.spec.path} />
-                  <Markdown text={item.spec.text} />
+                  <Markdown>{item.spec.text}</Markdown>
                 </>
               ) : (
-                <p className="muted">{t.stints.noSpec}</p>
+                <p className="muted text-muted">{t.stints.noSpec}</p>
               )}
             </section>
             <section id="drawer-tickets" aria-labelledby="drawer-tickets-title">
-              <h3 id="drawer-tickets-title" className="drawer-section-heading">
-                {t.stints.tickets} <span className="count">{item.tickets.length}</span>
+              <h3
+                id="drawer-tickets-title"
+                className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+              >
+                {t.stints.tickets}{" "}
+                <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+                  {item.tickets.length}
+                </span>
               </h3>
               {item.tickets.length ? (
                 <ol className="drawer-tickets">
@@ -248,21 +255,38 @@ export function WorkItemDrawer({
                         : Circle;
                     return (
                       <li key={ticket.path}>
-                        <details className="drawer-ticket">
+                        <details className="drawer-ticket rounded-md border border-border p-3 [&>summary]:flex [&>summary]:list-none [&>summary]:items-start [&>summary]:gap-3 [&>summary::-webkit-details-marker]:hidden [&>summary::after]:ml-auto [&>summary::after]:text-muted [&>summary::after]:content-['+'] [&[open]>summary::after]:content-['−']">
                           <summary>
                             <StatusIcon
-                              size={15}
                               className={
-                                ticket.resolved ? "success" : ticket.blocked ? "warning" : "muted"
+                                ticket.resolved
+                                  ? "size-icon-sm shrink-0 text-success"
+                                  : ticket.blocked
+                                    ? "size-icon-sm shrink-0 text-warning"
+                                    : "size-icon-sm shrink-0 text-muted"
                               }
                               aria-hidden="true"
                             />
-                            <span className="ticket-title">
+                            <span className="ticket-title grid min-w-0 gap-1 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
                               <strong>
                                 {String(ticket.number).padStart(2, "0")} · {ticket.title}
                               </strong>
-                              <small className={ticket.blocked ? "warning" : "muted"}>
-                                {ticketStatus(ticket.status, t)}
+                              <small
+                                className={
+                                  ticket.blocked ? "warning text-warning" : "muted text-muted"
+                                }
+                              >
+                                <Badge
+                                  variant={
+                                    ticket.resolved
+                                      ? "success"
+                                      : ticket.blocked
+                                        ? "warning"
+                                        : "secondary"
+                                  }
+                                >
+                                  {ticketStatus(ticket.status, t)}
+                                </Badge>
                                 {ticket.blockedBy.length > 0 && (
                                   <>
                                     {" "}
@@ -275,7 +299,7 @@ export function WorkItemDrawer({
                               </small>
                             </span>
                           </summary>
-                          <Markdown text={ticket.body} />
+                          <Markdown>{ticket.body}</Markdown>
                         </details>
                         <FilePath path={ticket.path} />
                         {!item.merged && (
@@ -286,17 +310,20 @@ export function WorkItemDrawer({
                   })}
                 </ol>
               ) : (
-                <p className="muted">{t.stints.noTickets}</p>
+                <p className="muted text-muted">{t.stints.noTickets}</p>
               )}
             </section>
             {item.activeStint && (
               <section aria-labelledby="drawer-live-stint-title">
-                <h3 id="drawer-live-stint-title" className="drawer-section-heading">
+                <h3
+                  id="drawer-live-stint-title"
+                  className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+                >
                   {t.stints.liveStint}
                 </h3>
                 <p role="status">
                   {item.activeStint.agent} · {t.stints.ticket(item.activeStint.ticket)} ·{" "}
-                  {t.stints.statuses[item.activeStint.status]}
+                  <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
                 </p>
                 <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
                 <StintStream
@@ -307,7 +334,10 @@ export function WorkItemDrawer({
               </section>
             )}
             <section aria-labelledby="drawer-stint-history-title">
-              <h3 id="drawer-stint-history-title" className="drawer-section-heading">
+              <h3
+                id="drawer-stint-history-title"
+                className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+              >
                 {t.stints.history}
               </h3>
               <StintHistory stints={item.stints} />
@@ -315,7 +345,9 @@ export function WorkItemDrawer({
             {item.merged && (
               <>
                 <section aria-label={t.stints.reviewFindings}>
-                  <h3 className="drawer-section-heading">{t.stints.reviewFindings}</h3>
+                  <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
+                    {t.stints.reviewFindings}
+                  </h3>
                   <FindingsRail {...archived} anchor={(finding) => `archived-${finding.id}`} />
                   {archived.findings.map((finding) => (
                     <FindingCard
@@ -326,13 +358,15 @@ export function WorkItemDrawer({
                   ))}
                 </section>
                 <section aria-label={t.stints.recordedChecks}>
-                  <h3 className="drawer-section-heading">{t.stints.checks}</h3>
+                  <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
+                    {t.stints.checks}
+                  </h3>
                   <ChecksPanel item={item} />
                 </section>
               </>
             )}
           </div>
-          <footer className="drawer-footer">
+          <footer className="drawer-footer flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted sm:px-7">
             <span>{t.stints.tracker}</span>
             <span>
               <kbd>Esc</kbd>

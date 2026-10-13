@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { Button } from "./ui/Button";
 import {
   translateCoreText,
   readResponseJson,
@@ -71,9 +72,9 @@ export function GateView({
   return (
     <section
       aria-label={t.stints.gate(stageName(workflows[item.workflow], current, t))}
-      className="handoff-card"
+      className="handoff-card my-3 rounded-sm border border-border bg-surface-raised p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
     >
-      <h3 className="drawer-section-heading">
+      <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {t.stints.gate(stageName(workflows[item.workflow], current, t))}
       </h3>
       <p role="status">
@@ -119,29 +120,28 @@ export function GateView({
         <p>{t.stints.noWarnings}</p>
       )}
       {gate.nextStage && (
-        <button
+        <Button
           type="button"
-          className="top-button"
+          variant="primary"
           disabled={!gate.ready || saving || !!message}
           onClick={() => void act(current.id, "approve")}
         >
           {t.stints.approve(stageName(workflows[item.workflow], current, t))}
-        </button>
+        </Button>
       )}
       {earlier.map((stage) => (
-        <button
+        <Button
           key={stage.id}
           type="button"
-          className="top-button"
           disabled={saving || !!message || !!item.activeStint}
           onClick={() => void act(stage.id, "reopen")}
         >
           {t.stints.reopen(stageName(workflows[item.workflow], stage, t))}
-        </button>
+        </Button>
       ))}
       {message && <p role="status">{message}</p>}
       {error && (
-        <p role="alert" className="warning">
+        <p role="alert" className="warning text-warning">
           {error}
         </p>
       )}

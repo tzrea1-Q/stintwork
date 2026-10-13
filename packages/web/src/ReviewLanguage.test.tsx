@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { chooseOption } from "./select-test-helper";
 import {
   createMemoryRepoFiles,
   indexProject,
@@ -130,7 +131,7 @@ test("Chinese review decisions preserve agent findings, paths and diff text", as
   await user.click(card.getByRole("button", { name: "保存接受决定" }));
   expect(await screen.findByRole("status")).toHaveTextContent("审查发现已记录为已接受。");
   expect(card.getByText(/Developer reason 原文/)).toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox", { name: "状态" }), "accepted");
+  await chooseOption(user, screen.getByRole("combobox", { name: "状态" }), "已接受");
   expect(card.getByText(finding.body)).toBeInTheDocument();
   expect(fetchMock).toHaveBeenLastCalledWith(
     "/api/work-items/example/findings/decision",

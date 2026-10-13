@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import type { ProjectSnapshot } from "@stintwork/core";
+import { codexProfile, claudeProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
@@ -79,9 +80,58 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           sheet.getByRole("alert").filter({ hasText: t.stints.loadAgentsFailed }),
         ).toBeVisible();
+        const warning = sheet.getByRole("alert").filter({ hasText: t.stints.loadAgentsFailed });
+        const insets = await sheet.locator(".drawer-header").evaluate((element) => ({
+          left:
+            element.getBoundingClientRect().left +
+            Number.parseFloat(getComputedStyle(element).paddingLeft),
+          right:
+            element.getBoundingClientRect().right -
+            Number.parseFloat(getComputedStyle(element).paddingRight),
+        }));
+        const warningText = await warning.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const bounds = range.getBoundingClientRect();
+          return { left: bounds.left, right: bounds.right };
+        });
+        expect(warningText.left).toBeGreaterThanOrEqual(insets.left - 1);
+        expect(warningText.right).toBeLessThanOrEqual(insets.right + 1);
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-error");
         const content = sheet.locator(".drawer-content");
         await sheet.locator(".drawer-ticket summary").click();
+        const languageTrigger = sheet.locator('.drawer-header button[aria-haspopup="menu"]');
+        await languageTrigger.click();
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[language] }),
+        ).toBeFocused();
+        await captureSheet(page, testInfo, '[role="menu"]', "drawer-language-open");
+        const other = language === "en" ? "zh-CN" : "en";
+        await page.keyboard.press(language === "en" ? "ArrowDown" : "ArrowUp");
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[other] }),
+        ).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(page.locator("html")).toHaveAttribute("lang", other);
+        await expect(languageTrigger).toBeFocused();
+        await expect(sheet.locator(".drawer-ticket")).toHaveAttribute("open", "");
+        await expect
+          .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
+          .toBe(other);
+        await languageTrigger.click();
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[other] }),
+        ).toBeFocused();
+        await page.keyboard.press(language === "en" ? "ArrowUp" : "ArrowDown");
+        await expect(
+          page.getByRole("menuitemradio", { name: t.topBar.languages[language] }),
+        ).toBeFocused();
+        await page.keyboard.press("Enter");
+        await expect(page.locator("html")).toHaveAttribute("lang", language);
+        await expect(languageTrigger).toBeFocused();
+        await expect
+          .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
+          .toBe(language);
         await scrollContent(content);
         const code = content.locator(".markdown pre").first();
         await code.scrollIntoViewIfNeeded();
@@ -92,6 +142,25 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(close).toBeInViewport();
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-long-scrolled");
         await close.click();
+        await expect(sheet).not.toBeVisible();
+        await expect(trigger).toBeFocused();
+
+        await page.route("**/api/agents", (route) =>
+          route.fulfill({ json: { agents: [codexProfile, claudeProfile] } }),
+        );
+        await page.route("**/api/work-items/*/stages/*/agent", (route) =>
+          route.fulfill({ json: { agent: route.request().postDataJSON().agent } }),
+        );
+        await page.reload();
+        await trigger.click();
+        const picker = sheet.locator(".stage-rail").getByRole("combobox").first();
+        await expect(picker).toBeEnabled();
+        await picker.click();
+        await captureSheet(page, testInfo, '[role="listbox"]', "drawer-agent-open");
+        await page.getByRole("option", { name: "Claude Code", exact: true }).click();
+        await expect(picker).toContainText("Claude Code");
+        await expect(picker).toBeFocused();
+        await page.keyboard.press("Escape");
         await expect(sheet).not.toBeVisible();
         await expect(trigger).toBeFocused();
 
@@ -184,6 +253,20 @@ for (const language of ["en", "zh-CN"] as const) {
         const content = sheet.locator(".needs-you-content");
         const first = sheet.getByRole("article").first();
         await first.getByText(t.needsYou.fullPermissionJson, { exact: true }).click();
+        for (const code of await first.locator(".permission-details").all()) {
+          await code.scrollIntoViewIfNeeded();
+          expect(await code.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe(
+            "pre",
+          );
+          expect(await code.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+            true,
+          );
+          await code.focus();
+          await page.keyboard.press("ArrowRight");
+          await expect
+            .poll(() => code.evaluate((element) => element.scrollLeft))
+            .toBeGreaterThan(0);
+        }
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-long");
         const answer = first.getByRole("button", { name: new RegExp(`^${t.needsYou.allowOnce}`) });
         await answer.focus();

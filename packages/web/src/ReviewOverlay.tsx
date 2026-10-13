@@ -10,8 +10,6 @@ import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { RiskyPaths } from "./RiskyPaths";
 
-import "./review-overlay.css";
-
 type ReviewSlots = {
   findings?: ReactNode;
   checks?: ReactNode;
@@ -23,16 +21,16 @@ type ReviewSlots = {
 function Counts({ file }: { file: DiffFile }) {
   const { t } = useLanguage();
   return (
-    <span className="review-counts">
+    <span className="review-counts inline-flex gap-2 whitespace-nowrap font-mono">
       {file.binary ? (
-        <span className="muted">{t.review.diff.binary}</span>
+        <span className="muted text-muted">{t.review.diff.binary}</span>
       ) : (
         <>
-          <span className="success">
+          <span className="success text-success">
             <span aria-hidden="true">+{file.additions}</span>
             <span className="sr-only">{t.review.diff.addedLines(file.additions)}</span>
           </span>
-          <span className="review-removed-count">
+          <span className="review-removed-count text-danger">
             <span aria-hidden="true">−{file.deletions}</span>
             <span className="sr-only">{t.review.diff.removedLines(file.deletions)}</span>
           </span>
@@ -52,18 +50,21 @@ export function ReviewDiff({
   const id = useId();
   if (!diff.files.length && !outsideDiff.length)
     return (
-      <p className="review-empty md:col-span-2" role="status">
+      <p className="review-empty p-8 md:col-span-2" role="status">
         {t.review.diff.empty}
       </p>
     );
   return (
     <>
       <nav
-        className="review-files min-w-0 max-h-48 overflow-auto border-b border-border md:max-h-none md:border-b-0 md:border-r"
+        className="review-files p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_a]:grid [&_a]:gap-1 [&_a]:border-b [&_a]:border-border [&_a]:px-1 [&_a]:py-3 [&_a]:text-text [&_a]:no-underline [&_a]:[overflow-wrap:anywhere] [&_a:hover]:bg-surface-hover [&_small]:text-muted min-w-0 max-h-48 overflow-auto border-b border-border md:max-h-none md:border-b-0 md:border-r"
         aria-label={t.review.diff.changedFiles}
       >
         <h3>
-          {t.review.diff.changedFiles} <span className="count">{diff.files.length}</span>
+          {t.review.diff.changedFiles}{" "}
+          <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+            {diff.files.length}
+          </span>
         </h3>
         <ul>
           {diff.files.map((file, index) => (
@@ -91,28 +92,38 @@ export function ReviewDiff({
       >
         {diff.files.map((file, fileIndex) => (
           <section key={file.path} id={`${id}-file-${fileIndex}`} data-diff-path={file.path}>
-            <header className="review-file-header">
+            <header className="review-file-header flex flex-wrap items-center gap-3 bg-surface-raised p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
               <h3>
                 <code>{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</code>
               </h3>
-              <span className="muted">{t.review.diff.fileStatuses[file.status]}</span>
+              <span className="muted text-muted">{t.review.diff.fileStatuses[file.status]}</span>
               <Counts file={file} />
             </header>
             {fileFindings?.(file)}
             {file.status === "renamed" && (
-              <p className="review-file-note">{t.review.diff.renamed}</p>
+              <p className="review-file-note m-0 px-4 py-5 text-muted">{t.review.diff.renamed}</p>
             )}
-            {file.binary && <p className="review-file-note">{t.review.diff.binaryHidden}</p>}
-            {file.contentsHidden && <p className="review-file-note">{t.review.diff.riskyHidden}</p>}
+            {file.binary && (
+              <p className="review-file-note m-0 px-4 py-5 text-muted">
+                {t.review.diff.binaryHidden}
+              </p>
+            )}
+            {file.contentsHidden && (
+              <p className="review-file-note m-0 px-4 py-5 text-muted">
+                {t.review.diff.riskyHidden}
+              </p>
+            )}
             {!file.contentsHidden &&
               !file.binary &&
               file.status !== "renamed" &&
               !file.hunks.length && (
-                <p className="review-file-note">{t.review.diff.metadataOnly}</p>
+                <p className="review-file-note m-0 px-4 py-5 text-muted">
+                  {t.review.diff.metadataOnly}
+                </p>
               )}
             {file.hunks.map((hunk) => (
               <div
-                className="review-hunk overflow-x-auto focus-visible:outline-accent"
+                className="review-hunk [&_h4]:m-0 [&_h4]:whitespace-pre [&_h4]:bg-accent-soft [&_h4]:px-4 [&_h4]:py-2 [&_h4]:text-xs [&_h4]:text-muted [&_table]:w-full [&_table]:border-collapse [&_table]:font-mono [&_table]:text-sm [&_table]:leading-relaxed overflow-x-auto focus-visible:outline-accent"
                 key={`${hunk.oldStart}:${hunk.newStart}`}
               >
                 <h4>
@@ -133,27 +144,33 @@ export function ReviewDiff({
                       return (
                         <Fragment key={`${line.kind}:${line.oldLine}:${line.newLine}`}>
                           <tr
-                            className={`review-line review-line-${line.kind}`}
+                            className={`review-line [&_td]:px-2 [&_td]:py-0 [&_td]:align-top review-line-${line.kind} ${line.kind === "added" ? "bg-success/10" : line.kind === "removed" ? "bg-danger/10" : ""}`}
                             data-old-line={line.oldLine ?? undefined}
                             data-new-line={line.newLine ?? undefined}
                           >
-                            <td className="review-line-number">{line.oldLine}</td>
-                            <td className="review-line-number">{line.newLine}</td>
+                            <td className="review-line-number w-[4ch] select-none text-right text-muted">
+                              {line.oldLine}
+                            </td>
+                            <td className="review-line-number w-[4ch] select-none text-right text-muted">
+                              {line.newLine}
+                            </td>
                             <td
-                              className="review-line-marker"
+                              className="review-line-marker w-[1ch] select-none"
                               aria-label={t.review.diff.lineKinds[line.kind]}
                             >
                               {line.kind === "added" ? "+" : line.kind === "removed" ? "−" : " "}
                             </td>
-                            <td className="review-line-text">
+                            <td className="review-line-text whitespace-pre">
                               <code>{line.text}</code>
                               {line.noNewline && (
-                                <span className="review-no-newline">{t.review.diff.noNewline}</span>
+                                <span className="review-no-newline block italic text-muted">
+                                  {t.review.diff.noNewline}
+                                </span>
                               )}
                             </td>
                           </tr>
                           {finding && (
-                            <tr className="review-line-findings">
+                            <tr className="review-line-findings [&_td]:px-4 [&_td]:py-3">
                               <td colSpan={4}>{finding}</td>
                             </tr>
                           )}
@@ -168,7 +185,7 @@ export function ReviewDiff({
         ))}
         {outsideDiff.map((file, index) => (
           <section key={file.path} id={`${id}-outside-${index}`} data-diff-path={file.path}>
-            <header className="review-file-header">
+            <header className="review-file-header flex flex-wrap items-center gap-3 bg-surface-raised p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
               <h3>
                 <code>{file.path}</code>
               </h3>
@@ -295,7 +312,10 @@ export function ReviewOverlay({
       (finding) => finding.path === file.path && !lines.has(finding.line),
     );
     return matches.length ? (
-      <section className="review-outside" aria-label={t.review.diff.outsideLabel(file.path)}>
+      <section
+        className="review-outside m-3 min-w-0 rounded-md border border-border p-3 [overflow-wrap:anywhere]"
+        aria-label={t.review.diff.outsideLabel(file.path)}
+      >
         <h4>{t.review.diff.outsideFindings}</h4>
         {matches.map((finding) => (
           <FindingCard
@@ -349,13 +369,13 @@ export function ReviewOverlay({
       >
         <header className="review-header flex shrink-0 flex-wrap justify-between gap-4 border-b border-border p-4 sm:p-6">
           <div className="min-w-0 flex-1 basis-96 [overflow-wrap:anywhere]">
-            <p className="eyebrow">
+            <p className="eyebrow text-xs uppercase tracking-widest text-muted">
               {t.review.diff.review} / <code>{item.slug}</code>
             </p>
             <DialogTitle className="my-2 text-xl font-medium">{item.title}</DialogTitle>
             <DialogDescription className="text-muted">{t.review.diff.readOnly}</DialogDescription>
             {diff && (
-              <div className="review-range">
+              <div className="review-range text-xs [overflow-wrap:anywhere]">
                 <p>
                   <code>{diff.branch}</code>
                   {t.review.diff.against}
@@ -396,14 +416,14 @@ export function ReviewOverlay({
           </div>
         </header>
         {actionError && (
-          <p role="alert" className="warning">
+          <p role="alert" className="warning text-warning">
             {actionError}
           </p>
         )}
         {message && <p role="status">{message}</p>}
         <div className="review-grid grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)_260px]">
           {error ? (
-            <p role="alert" className="review-empty warning md:col-span-2">
+            <p role="alert" className="review-empty p-8 warning text-warning md:col-span-2">
               {error}
             </p>
           ) : diff ? (
@@ -433,12 +453,12 @@ export function ReviewOverlay({
               }
             />
           ) : (
-            <p role="status" className="review-empty muted md:col-span-2">
+            <p role="status" className="review-empty p-8 muted text-muted md:col-span-2">
               {t.review.diff.reading}
             </p>
           )}
           <aside
-            className="review-evidence min-w-0 overflow-auto border-t border-border md:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0"
+            className="review-evidence p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 min-w-0 overflow-auto border-t border-border md:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0"
             aria-label={t.review.diff.evidence}
           >
             {item.riskyPaths && (
@@ -467,7 +487,7 @@ export function ReviewOverlay({
             </section>
             <section aria-label={t.review.diff.checks}>
               <h3>{t.review.diff.checks}</h3>
-              {checks ?? <p className="muted">{t.review.diff.checksPlaceholder}</p>}
+              {checks ?? <p className="muted text-muted">{t.review.diff.checksPlaceholder}</p>}
             </section>
           </aside>
         </div>

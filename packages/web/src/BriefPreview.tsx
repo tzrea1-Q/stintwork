@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
 import {
   translateCoreText,
   readResponseJson,
@@ -25,6 +26,7 @@ import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import { Button } from "./ui/Button";
+import { SelectField } from "./ui/SelectField";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 
 import { stageName as translatedStageName } from "./i18n/workflow-names";
@@ -93,7 +95,7 @@ function StintBriefAction({
         {t.stints.startStint}
       </Button>
       {reason && (
-        <p id={reasonId} className="muted">
+        <p id={reasonId} className="muted text-muted">
           {reason}
         </p>
       )}
@@ -125,6 +127,7 @@ function BriefPreviewSheet({
   const { t, language } = useLanguage();
   const closeButton = useRef<HTMLButtonElement>(null);
   const agentAvailabilityId = useId();
+  const selectId = useId();
   const [brief, setBrief] = useState<Brief | null>(null);
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [agent, setAgent] = useState("");
@@ -251,35 +254,42 @@ function BriefPreviewSheet({
             {slug} · {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber)}
           </DialogDescription>
         </header>
-        <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 [&_h3]:mb-2 [&_h3]:font-medium [&_select]:mb-2 [&_select]:w-full [&_select]:rounded-sm [&_select]:border [&_select]:border-border [&_select]:bg-surface-raised [&_select]:p-2 [&_ul]:list-disc [&_ul]:pl-5 [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2 [&_pre]:whitespace-pre-wrap [&_pre]:rounded-sm [&_pre]:border [&_pre]:border-border [&_pre]:bg-bg [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs">
+        <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 [&_h3]:mb-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2">
           <section>
             <h3>{t.stints.agent}</h3>
-            <label>
+            <label htmlFor={`${selectId}-agent`}>
               <span className="sr-only">{t.stints.agent}</span>
-              <select
+              <SelectField
+                id={`${selectId}-agent`}
+                aria-label={t.stints.agent}
                 value={agent}
-                onChange={(event) => setAgent(event.target.value)}
+                onValueChange={setAgent}
                 aria-describedby={agentAvailabilityId}
                 disabled={!agents.length || starting}
-              >
-                {agent && !selectedAgent && (
-                  <option value={agent} disabled>
-                    {agent} — {t.stints.notRegistered}
-                  </option>
-                )}
-                {agents.map((candidate) => {
-                  const availability = agentUnavailable(candidate);
-                  const reason = availability === null ? null : translateCoreText(availability, t);
-                  return (
-                    <option key={candidate.id} value={candidate.id} disabled={!!reason}>
-                      {candidate.displayName}
-                      {reason ? ` — ${reason}` : ""}
-                    </option>
-                  );
-                })}
-              </select>
+                options={[
+                  ...(agent && !selectedAgent
+                    ? [
+                        {
+                          value: agent,
+                          disabled: true,
+                          label: `${agent} — ${t.stints.notRegistered}`,
+                        },
+                      ]
+                    : []),
+                  ...agents.map((candidate) => {
+                    const availability = agentUnavailable(candidate);
+                    const reason =
+                      availability === null ? null : translateCoreText(availability, t);
+                    return {
+                      value: candidate.id,
+                      disabled: !!reason,
+                      label: `${candidate.displayName}${reason ? ` — ${reason}` : ""}`,
+                    };
+                  }),
+                ]}
+              />
             </label>
-            <p id={agentAvailabilityId} className="muted">
+            <p id={agentAvailabilityId} className="muted text-muted">
               {brief
                 ? agents.length
                   ? (unavailable ?? t.stints.chooseAgent)
@@ -287,30 +297,30 @@ function BriefPreviewSheet({
                 : t.stints.readingAgents}
             </p>
             {warnings.map((warning) => (
-              <p key={warning.text} role="alert" className="warning">
+              <p key={warning.text} role="alert" className="warning text-warning">
                 {translateCoreText(warning, t)}
               </p>
             ))}
           </section>
           <section>
             <h3>{t.stints.permissionLevel}</h3>
-            <label>
+            <label htmlFor={`${selectId}-permissionLevel`}>
               <span className="sr-only">{t.stints.permissionLevel}</span>
-              <select
+              <SelectField
+                id={`${selectId}-permissionLevel`}
+                aria-label={t.stints.permissionLevel}
                 value={permissionLevel}
                 disabled={!brief || starting || savingDefault}
-                onChange={(event) => {
-                  if (isPermissionLevel(event.target.value)) setPermissionLevel(event.target.value);
+                onValueChange={(value) => {
+                  if (isPermissionLevel(value)) setPermissionLevel(value);
                 }}
-              >
-                {permissionLevels.map((level) => (
-                  <option key={level} value={level}>
-                    {t.stints.permissionLevels[level]}
-                  </option>
-                ))}
-              </select>
+                options={permissionLevels.map((level) => ({
+                  value: level,
+                  label: t.stints.permissionLevels[level],
+                }))}
+              />
             </label>
-            <p className="muted">
+            <p className="muted text-muted">
               {t.stints.projectDefault} {t.stints.permissionLevels[projectDefault]}
             </p>
             <Button
@@ -339,17 +349,17 @@ function BriefPreviewSheet({
               {t.stints.useProjectDefault}
             </Button>
             {defaultError && (
-              <p role="alert" className="warning">
+              <p role="alert" className="warning text-warning">
                 {defaultError}
               </p>
             )}
           </section>
           {error ? (
-            <p role="alert" className="warning">
+            <p role="alert" className="warning text-warning">
               {error}
             </p>
           ) : !brief ? (
-            <p role="status" className="muted">
+            <p role="status" className="muted text-muted">
               {t.stints.readingBrief}
             </p>
           ) : (
@@ -405,7 +415,7 @@ function BriefPreviewSheet({
                               timeStyle: "medium",
                             }).format(new Date(note.at))}
                       </time>
-                      <pre className="brief-prompt">{note.text}</pre>
+                      <CodeBlock className="brief-prompt">{note.text}</CodeBlock>
                     </div>
                   ))}
                 </section>
@@ -423,7 +433,7 @@ function BriefPreviewSheet({
                 ) : (
                   <p>{t.stints.none}</p>
                 )}
-                <p className="muted">{t.stints.filesWin}</p>
+                <p className="muted text-muted">{t.stints.filesWin}</p>
               </section>
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -432,17 +442,17 @@ function BriefPreviewSheet({
                     <Copy aria-hidden="true" /> {t.stints.copyPrompt}
                   </Button>
                 </div>
-                <span role="status" className="copy-status">
+                <span role="status" className="copy-status text-xs">
                   {copyStatus}
                 </span>
-                <pre className="brief-prompt">{brief.prompt}</pre>
+                <CodeBlock className="brief-prompt">{brief.prompt}</CodeBlock>
               </section>
             </>
           )}
         </div>
         <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border p-4 text-sm text-muted">
           {startError && (
-            <p role="alert" className="warning">
+            <p role="alert" className="warning text-warning">
               {startError}
             </p>
           )}

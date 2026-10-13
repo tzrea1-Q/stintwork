@@ -5,6 +5,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { TopBar } from "./TopBar";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageMenu } from "./i18n/LanguageMenu";
+import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
 const snapshot = indexProject(createMemoryRepoFiles({}), { name: "Project", branch: "main" });
 
@@ -27,6 +29,65 @@ function renderTopBar() {
     </LanguageProvider>,
   );
 }
+
+test.each(["en", "zh-CN"])(
+  "a drawer language menu retains keyboard navigation after the pointer leaves (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <Sheet defaultOpen>
+          <SheetContent aria-describedby={undefined}>
+            <SheetTitle>Work item</SheetTitle>
+            <LanguageMenu />
+          </SheetContent>
+        </Sheet>
+      </LanguageProvider>,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: language === "en" ? "Language" : "语言" }),
+    );
+    const current = await screen.findByRole("menuitemradio", {
+      name: language === "en" ? "English" : "简体中文",
+    });
+    await waitFor(() => expect(current).toHaveFocus());
+    const leave = new MouseEvent("pointerout", { bubbles: true, relatedTarget: document.body });
+    Object.defineProperty(leave, "pointerType", { value: "mouse" });
+    fireEvent(current, leave);
+    await user.keyboard(language === "en" ? "{ArrowDown}" : "{ArrowUp}");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("menuitemradio", { name: language === "en" ? "简体中文" : "English" }),
+      ).toHaveFocus(),
+    );
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(document.documentElement.lang).toBe(language === "en" ? "zh-CN" : "en"),
+    );
+    const trigger = screen.getByRole("button", {
+      name: language === "en" ? "语言" : "Language",
+    });
+    await waitFor(() => expect(trigger).toHaveFocus());
+    await user.click(trigger);
+    const selected = await screen.findByRole("menuitemradio", {
+      name: language === "en" ? "简体中文" : "English",
+    });
+    await waitFor(() => expect(selected).toHaveFocus());
+    expect(selected).toHaveAttribute("aria-checked", "true");
+    await user.keyboard(language === "en" ? "{ArrowUp}" : "{ArrowDown}");
+    await waitFor(() =>
+      expect(
+        screen.getByRole("menuitemradio", { name: language === "en" ? "English" : "简体中文" }),
+      ).toHaveFocus(),
+    );
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(document.documentElement.lang).toBe(language);
+    expect(localStorage.getItem(languageStorageKey)).toBe(language);
+    expect(trigger).toHaveFocus();
+  },
+);
 
 test("the language menu focuses the current radio and persists keyboard selection", async () => {
   localStorage.setItem(languageStorageKey, "zh-CN");
@@ -57,6 +118,29 @@ test("the language menu focuses the current radio and persists keyboard selectio
   expect(localStorage.getItem(languageStorageKey)).toBe("en");
   expect(document.documentElement).toHaveAttribute("lang", "en");
 });
+
+test.each(["en", "zh-CN"])(
+  "pointer language selection survives reopening (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const user = userEvent.setup();
+    renderTopBar();
+    const trigger = screen.getByRole("button", { name: language === "en" ? "Language" : "语言" });
+    for (const choice of [language === "en" ? "zh-CN" : "en", language]) {
+      await user.click(trigger);
+      await waitFor(() =>
+        expect(screen.getByRole("menuitemradio", { checked: true })).toHaveFocus(),
+      );
+      await user.click(
+        screen.getByRole("menuitemradio", { name: choice === "en" ? "English" : "简体中文" }),
+      );
+      await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+      expect(document.documentElement.lang).toBe(choice);
+      expect(localStorage.getItem(languageStorageKey)).toBe(choice);
+      expect(trigger).toHaveFocus();
+    }
+  },
+);
 
 test("pointer opening focuses the current language; Escape and outside press return focus", async () => {
   localStorage.setItem(languageStorageKey, "en");

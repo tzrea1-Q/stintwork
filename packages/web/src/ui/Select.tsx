@@ -40,9 +40,9 @@ export const SelectContent = forwardRef<
         ref={ref}
         position="popper"
         sideOffset={sideOffset}
-        collisionPadding={16}
+        collisionPadding={17}
         className={cn(
-          "z-50 min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-32px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
+          "z-50 w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-32px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
           className,
         )}
       >

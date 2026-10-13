@@ -108,11 +108,11 @@ test("shows blocked and inferred badges", async () => {
   render(<Board snapshot={project()} />);
   const board = within(screen.getByRole("article", { name: /^board:/ }));
   expect(board.getByText("Blocked")).toBeInTheDocument();
+  await user.hover(board.getByRole("button", { name: "Inferred" }));
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(/no valid workflow.yaml/);
   expect(board.getByRole("button", { name: "Inferred" })).toHaveAccessibleDescription(
     /Some tickets are open/,
   );
-  await user.hover(board.getByRole("button", { name: "Inferred" }));
-  expect(board.getByRole("tooltip", { hidden: true })).toHaveTextContent(/no valid workflow.yaml/);
   expect(
     within(screen.getByRole("article", { name: /^ready:/ })).queryByText("Blocked"),
   ).not.toBeInTheDocument();

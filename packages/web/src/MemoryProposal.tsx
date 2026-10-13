@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CodeBlock } from "./ui/CodeBlock";
+import { Button } from "./ui/Button";
 import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
 import type { MemoryProposalAttentionItem } from "@stintwork/core";
 import { useState } from "react";
@@ -45,27 +47,28 @@ export function MemoryProposal({
   return (
     <>
       <p>{item.details}</p>
-      <p className="muted">{t.review.memory.rejectWarning}</p>
+      <p className="muted text-muted">{t.review.memory.rejectWarning}</p>
       <section aria-label={t.review.memory.diff(item.path)}>
-        <pre className="permission-details">
+        <CodeBlock className="permission-details">
           <code>{item.diff}</code>
-        </pre>
+        </CodeBlock>
       </section>
-      <div className="stint-permission-actions">
-        <button
+      <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
+        <Button
           type="button"
+          variant="primary"
           disabled={sending || submitted}
           onClick={() => void decide("accepted")}
         >
           {t.review.memory.accept}
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
           disabled={sending || submitted}
           onClick={() => void decide("rejected")}
         >
           {t.review.memory.reject}
-        </button>
+        </Button>
       </div>
       {submitted && <p role="status">{t.review.memory.recorded}</p>}
     </>
