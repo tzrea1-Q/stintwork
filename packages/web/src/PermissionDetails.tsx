@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useLanguage } from "./i18n/language";
+
 export function PermissionDetails({ details }: { details?: string }) {
+  const { t } = useLanguage();
   if (!details) return null;
   let tool: Record<string, unknown>;
   try {
@@ -32,7 +35,7 @@ export function PermissionDetails({ details }: { details?: string }) {
         </p>
       ))}
       <details>
-        <summary>Full permission JSON</summary>
+        <summary>{t.needsYou.fullPermissionJson}</summary>
         <pre className="permission-details">{details}</pre>
       </details>
     </>

@@ -3,6 +3,7 @@ import type { HandoffUnresolvedAttentionItem } from "@stintwork/core";
 import { useId, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { useLanguage } from "./i18n/language";
 import "./handoff-answer.css";
 
 export function HandoffAnswer({
@@ -12,6 +13,7 @@ export function HandoffAnswer({
   item: HandoffUnresolvedAttentionItem;
   onError: (reason: string) => void;
 }) {
+  const { t } = useLanguage();
   const noteId = useId();
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
@@ -31,13 +33,11 @@ export function HandoffAnswer({
       );
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(
-          typeof body.reason === "string" ? body.reason : "Could not answer handoff.",
-        );
+        throw new Error(typeof body.reason === "string" ? body.reason : t.needsYou.handoffFailed);
       }
       setSubmitted(true);
     } catch (cause) {
-      onError(cause instanceof Error ? cause.message : "Could not answer handoff.");
+      onError(cause instanceof Error ? cause.message : t.needsYou.handoffFailed);
     } finally {
       setSending(false);
     }
@@ -56,26 +56,24 @@ export function HandoffAnswer({
           if (note.trim() && !sending && !submitted) void answer(note.trim());
         }}
       >
-        <label htmlFor={noteId}>Developer note</label>
+        <label htmlFor={noteId}>{t.needsYou.developerNote}</label>
         <textarea
           id={noteId}
           value={note}
           disabled={sending || submitted}
           onChange={(event) => setNote(event.target.value)}
         />
-        <p className="muted">
-          Included in the next brief for this work item, then consumed when that stint starts.
-        </p>
+        <p className="muted">{t.needsYou.noteHelp}</p>
         <div className="stint-permission-actions">
           <button type="submit" disabled={!note.trim() || sending || submitted}>
-            Save developer note
+            {t.needsYou.saveNote}
           </button>
           <button type="button" disabled={sending || submitted} onClick={() => void answer(null)}>
-            Dismiss
+            {t.needsYou.dismiss}
           </button>
         </div>
       </form>
-      {submitted && <p role="status">Handoff answered.</p>}
+      {submitted && <p role="status">{t.needsYou.handoffAnswered}</p>}
     </>
   );
 }

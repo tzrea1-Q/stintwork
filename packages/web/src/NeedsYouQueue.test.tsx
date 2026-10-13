@@ -3,6 +3,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
+import { deriveAttentionItems, type AttentionItem } from "@stintwork/core";
+import { beforeEach, describe } from "vitest";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import {
   attentionOptions,
   attentionProfile,
@@ -284,4 +287,269 @@ test("saved opt-in survives remount without asking again or notifying for the re
   expect(requestPermission).not.toHaveBeenCalled();
   rerender(<Board snapshot={attentionSnapshot(["request", "new"])} />);
   expect(notify).toHaveBeenCalledTimes(1);
+});
+
+describe("Chinese Needs-you queue", () => {
+  beforeEach(() => {
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["en"]);
+  });
+
+  function chineseBoard(snapshot = attentionSnapshot()) {
+    return (
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>
+    );
+  }
+
+  function allKindsSnapshot() {
+    const snapshot = mixedAttentionSnapshot(loginAttentionProfile);
+    snapshot.workItems[1].stints[0].checkpointWarnings = [
+      {
+        path: "/worktree/.env.中文",
+        reasons: ["likely-secret", "large-file"],
+        excluded: true,
+      },
+      {
+        path: "/worktree/dist/中文.js",
+        reasons: ["generated-directory"],
+        excluded: false,
+        committed: true,
+        commits: ["a".repeat(40)],
+      },
+    ];
+    snapshot.attentionItems = deriveAttentionItems(snapshot);
+    return snapshot;
+  }
+
+  test("every known kind has Chinese copy while commands, paths and agent content stay verbatim", async () => {
+    const snapshot = allKindsSnapshot();
+    render(chineseBoard(snapshot));
+    await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 5" }));
+    const queue = within(screen.getByRole("dialog", { name: "待你处理 5" }));
+    for (const name of [
+      "权限请求：Check project request",
+      "未解决的交接",
+      "实现阶段已就绪，等待批准",
+      "Test Agent 需要登录",
+      "分支中已提交风险文件",
+    ])
+      expect(queue.getByRole("heading", { name })).toBeInTheDocument();
+    expect(queue.getByRole("button", { name: "关闭待你处理" })).toHaveFocus();
+    expect(queue.getByRole("button", { name: "First work item · first" })).toBeInTheDocument();
+    expect(
+      within(queue.getByRole("article", { name: "权限请求：Check project request" })).getByText(
+        /工单 1 · Stint/,
+      ),
+    ).toHaveTextContent("stint");
+    expect(queue.getAllByText(/^已等待/).length).toBeGreaterThan(0);
+    expect(queue.getByText(/pnpm test --filter/, { selector: "pre" }).textContent).toBe(
+      "pnpm test --filter /full/path/to/project\n/full/path/to/file.ts",
+    );
+    for (const option of attentionOptions) expect(queue.getByText(option.name)).toBeInTheDocument();
+    for (const name of ["允许一次", "始终允许", "拒绝"])
+      expect(queue.getByRole("button", { name: new RegExp(`^${name}`) })).toBeEnabled();
+    expect(queue.getByText("拒绝将结束 Test Agent 的本轮工作。")).toBeInTheDocument();
+    expect(
+      within(queue.getByRole("article", { name: "未解决的交接" })).getByText("Which format?"),
+    ).toBeInTheDocument();
+    expect(queue.getByRole("textbox", { name: "开发者备注" })).toBeInTheDocument();
+    expect(queue.getByRole("button", { name: "保存开发者备注" })).toBeDisabled();
+    expect(queue.getByRole("button", { name: "忽略" })).toBeEnabled();
+    expect(queue.getByText("请运行 test-agent login 登录。")).toBeInTheDocument();
+    expect(queue.getByText("test-agent login", { selector: "code" })).toBeInTheDocument();
+    const checkpoint = within(queue.getByRole("article", { name: "分支中已提交风险文件" }));
+    const warnings = within(checkpoint.getByRole("region", { name: "检查点警告" }));
+    for (const path of ["/worktree/.env.中文", "/worktree/dist/中文.js", "a".repeat(40)])
+      expect(warnings.getByText(path, { selector: "code" })).toBeInTheDocument();
+    expect(warnings.getByText(/疑似敏感信息, 大于 1 MiB/)).toBeInTheDocument();
+    expect(warnings.getByText(/生成的目录/)).toBeInTheDocument();
+    expect(warnings.getByText(/已从检查点排除，保持未提交状态/)).toBeInTheDocument();
+    expect(warnings.getByText(/已提交到分支，未被检查点排除/)).toBeInTheDocument();
+    expect(queue.getByText(/风险文件会阻止交付/)).toBeInTheDocument();
+  });
+
+  test("permission JSON disclosure translates without changing its command, paths or raw JSON", async () => {
+    const snapshot = attentionSnapshot();
+    const item = snapshot.attentionItems[0];
+    item.title = "Permission requested";
+    item.details = JSON.stringify({
+      rawInput: { command: ["wc", "中文.txt"], cwd: "/worktree" },
+      locations: [{ path: "/worktree/中文.txt" }],
+    });
+    render(chineseBoard(snapshot));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "待你处理 1" }));
+    expect(screen.getByRole("heading", { name: "权限请求" })).toBeInTheDocument();
+    expect(screen.getByText("wc 中文.txt", { selector: "pre" })).toBeInTheDocument();
+    for (const path of ["/worktree", "/worktree/中文.txt"])
+      expect(screen.getByText(path, { selector: "code" })).toBeInTheDocument();
+    const disclosure = screen.getByText("完整权限 JSON").closest("details");
+    expect(disclosure).not.toHaveAttribute("open");
+    await user.click(screen.getByText("完整权限 JSON"));
+    expect(disclosure).toHaveAttribute("open");
+    expect(within(disclosure as HTMLElement).getByText(item.details)).toBeInTheDocument();
+  });
+
+  test("customised workflow stage names and unknown attention titles stay verbatim", async () => {
+    const snapshot = mixedAttentionSnapshot();
+    snapshot.workflows.feature = structuredClone(snapshot.workflows.feature);
+    const stage = snapshot.workflows.feature.stages.find(({ id }) => id === "implement");
+    if (!stage) throw new Error("Expected an implement stage.");
+    stage.name = "Team approval 自定义";
+    snapshot.attentionItems = deriveAttentionItems(snapshot);
+    snapshot.attentionItems.push({
+      ...snapshot.attentionItems[0],
+      kind: "future-kind",
+      id: "future-item",
+      title: "Future core title 原文",
+      details: "Future core details 原文",
+    } as unknown as AttentionItem);
+    render(chineseBoard(snapshot));
+    await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 4" }));
+    expect(
+      screen.getByRole("heading", { name: "Team approval 自定义阶段已就绪，等待批准" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Future core title 原文" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Future core title 原文" })).toBeInTheDocument();
+  });
+
+  test("excluded checkpoint warnings and unrecorded readiness times are Chinese", async () => {
+    const snapshot = allKindsSnapshot();
+    const item = snapshot.attentionItems.find(({ kind }) => kind === "checkpoint-warning");
+    if (item?.kind !== "checkpoint-warning") throw new Error("Expected a checkpoint warning.");
+    item.warnings = item.warnings.filter(({ excluded }) => excluded);
+    item.raisedAt = "1970-01-01T00:00:00.000Z";
+    render(chineseBoard(snapshot));
+    await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 5" }));
+    const article = within(screen.getByRole("article", { name: "已从检查点排除风险文件" }));
+    expect(article.getByText("未记录就绪时间")).toBeInTheDocument();
+    expect(article.getByText(/检查和本地合并要求工作树干净/)).toBeInTheDocument();
+  });
+
+  test("agent login reasons stay verbatim and refresh failure is Chinese", async () => {
+    const snapshot = mixedAttentionSnapshot({
+      ...loginAttentionProfile,
+      availability: {
+        available: false,
+        kind: "login-required",
+        checkedAt: "2026-10-09T11:30:00Z",
+        reason: "Agent login reason 原文",
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
+    render(chineseBoard(snapshot));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "待你处理 4" }));
+    expect(screen.getByText("Agent login reason 原文")).toBeInTheDocument();
+    expect(screen.getByText("请运行 test-agent login 登录。")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "刷新 Agent 可用状态" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("无法刷新 Agent 可用状态，请重试。");
+  });
+
+  test.each(attentionOptions)(
+    "Chinese permission choices forward the original $optionId",
+    async (option) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+      render(chineseBoard());
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("button", { name: "待你处理 1" }));
+      await user.click(screen.getByRole("button", { name: new RegExp(option.name) }));
+      expect(await screen.findByText("答复已发送。")).toBeInTheDocument();
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/stints/stint/permissions/request",
+        expect.objectContaining({ body: JSON.stringify({ optionId: option.optionId }) }),
+      );
+    },
+  );
+
+  test("Chinese developer notes submit verbatim and confirmation translates", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true }));
+    render(chineseBoard(mixedAttentionSnapshot()));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "待你处理 3" }));
+    await user.type(screen.getByRole("textbox", { name: "开发者备注" }), "Keep /path 原文");
+    await user.click(screen.getByRole("button", { name: "保存开发者备注" }));
+    expect(await screen.findByText("已答复交接。")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/stints/finished-stint/handoff-answer",
+      expect.objectContaining({ body: JSON.stringify({ note: "Keep /path 原文" }) }),
+    );
+  });
+
+  test("notifications translate every known kind and fall back for an unknown kind", async () => {
+    localStorage.setItem("stintwork.attention-notifications", "enabled");
+    const notify = vi.fn(function (this: unknown) {});
+    vi.stubGlobal("Notification", Object.assign(notify, { permission: "granted" }));
+    const originalTitle = document.title;
+    const snapshot = allKindsSnapshot();
+    const { rerender, unmount } = render(chineseBoard(snapshot));
+    expect(document.title).toBe("（5 个待处理事项）Project · Stintwork");
+    expect(notify).not.toHaveBeenCalled();
+    const next = {
+      ...snapshot,
+      attentionItems: snapshot.attentionItems.map((item) => ({ ...item, id: `${item.id}:new` })),
+    };
+    rerender(chineseBoard(next));
+    for (const body of [
+      "权限请求：Check project request",
+      "未解决的交接",
+      "implement阶段已就绪，等待批准",
+      "custom-agent 需要登录",
+      "分支中已提交风险文件",
+    ])
+      expect(notify).toHaveBeenCalledWith("Project · 待你处理", expect.objectContaining({ body }));
+    expect(notify).toHaveBeenCalledTimes(5);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "语言" }));
+    await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+    expect(document.title).toBe("(5) Project · Stintwork");
+    expect(notify).toHaveBeenCalledTimes(5);
+    await user.click(screen.getByRole("button", { name: "Language" }));
+    await user.selectOptions(screen.getByRole("listbox", { name: "Language" }), "zh-CN");
+    next.attentionItems = [
+      {
+        ...snapshot.attentionItems[0],
+        id: "future",
+        kind: "future-kind",
+        title: "Future core title 原文",
+      } as unknown as AttentionItem,
+    ];
+    rerender(chineseBoard(next));
+    expect(notify).toHaveBeenLastCalledWith("Project · 待你处理", {
+      body: "Future core title 原文",
+      tag: "future",
+    });
+    unmount();
+    expect(document.title).toBe(originalTitle);
+  });
+
+  test("switching language keeps the queue and developer note open", async () => {
+    render(chineseBoard(mixedAttentionSnapshot()));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "待你处理 3" }));
+    await user.type(screen.getByRole("textbox", { name: "开发者备注" }), "Developer draft 原文");
+    await user.click(screen.getByRole("button", { name: "语言" }));
+    await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+    expect(screen.getByRole("dialog", { name: "Needs you 3" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Developer note" })).toHaveValue(
+      "Developer draft 原文",
+    );
+    await user.click(screen.getByRole("button", { name: "Language" }));
+    await user.selectOptions(screen.getByRole("listbox", { name: "Language" }), "zh-CN");
+    expect(screen.getByRole("textbox", { name: "开发者备注" })).toHaveValue("Developer draft 原文");
+  });
+
+  test("empty state and unsupported notification controls translate", async () => {
+    vi.stubGlobal("Notification", undefined);
+    render(chineseBoard(attentionSnapshot([])));
+    await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 0" }));
+    expect(
+      within(screen.getByRole("dialog", { name: "待你处理 0" })).getByRole("status"),
+    ).toHaveTextContent("目前没有待你处理的事项。");
+    expect(screen.getByRole("button", { name: "启用浏览器通知" })).toBeDisabled();
+    expect(screen.getByText("此处不支持浏览器通知。")).toBeInTheDocument();
+    expect(document.title).toBe("Project · Stintwork");
+  });
 });
