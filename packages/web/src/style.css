@@ -340,31 +340,6 @@ kbd {
   font-size: 10px;
   color: var(--muted);
 }
-.work-item-drawer {
-  padding: 0;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border-strong);
-  box-shadow: 0 16px 60px #0005;
-}
-.work-item-drawer::backdrop {
-  background: #0007;
-}
-.work-item-drawer {
-  position: fixed;
-  inset: 0;
-  margin: 0 0 0 auto;
-  width: 60vw;
-  min-width: min(600px, 100vw);
-  max-width: 100vw;
-  height: 100dvh;
-  max-height: 100dvh;
-  border-width: 0 0 0 1px;
-}
-.work-item-drawer[open] {
-  display: flex;
-  flex-direction: column;
-}
 .drawer-header,
 .drawer-content {
   padding: 24px 28px;
@@ -444,11 +419,6 @@ kbd {
 .file-path code {
   overflow-wrap: anywhere;
   min-width: 0;
-}
-.file-path button {
-  padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
 }
 .copy-status {
   font-size: 10px;
@@ -575,9 +545,6 @@ kbd {
   flex-shrink: 0;
 }
 @media (max-width: 720px) {
-  .work-item-drawer {
-    width: 100vw;
-  }
   .drawer-header,
   .drawer-content,
   .stage-rail,
