@@ -8,7 +8,7 @@ import {
   summarizeStint,
   type Stint,
 } from "@stintwork/core";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { codexProfile } from "../../agents/src/profiles";
@@ -16,7 +16,7 @@ import { WorkItemDrawer } from "./WorkItemDrawer";
 import { StintHistory } from "./StintHistory";
 import { StintStream } from "./StintStream";
 import { GateView } from "./GateView";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import { LanguageSelect } from "./i18n/LanguageSelect";
 
 const files = createMemoryRepoFiles({
@@ -108,6 +108,11 @@ test("Chinese drawer sections, stage agents and Stop keep repo content verbatim"
 
 test("Chinese resume brief uses glossary permission names and preserves the prompt and handoff", async () => {
   const user = userEvent.setup();
+  let changeLanguage: ReturnType<typeof useLanguage>["setLanguage"] = () => {};
+  function LanguageChanges() {
+    changeLanguage = useLanguage().setLanguage;
+    return null;
+  }
   const resumed = { ...brief, checkpointCommit: "checkpoint-sha", lastHandoff: finished.handoff };
   vi.stubGlobal(
     "fetch",
@@ -118,6 +123,7 @@ test("Chinese resume brief uses glossary permission names and preserves the prom
   );
   render(
     <LanguageProvider>
+      <LanguageChanges />
       <WorkItemDrawer item={{ ...item, stints: [summarizeStint(finished)] }} onClose={() => {}} />
     </LanguageProvider>,
   );
@@ -129,10 +135,10 @@ test("Chinese resume brief uses glossary permission names and preserves the prom
     expect(levels.getByRole("option", { name })).toBeInTheDocument();
   await user.selectOptions(sheet.getByRole("combobox", { name: "权限级别" }), "ask");
   const requests = vi.mocked(fetch).mock.calls.length;
-  await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+  act(() => changeLanguage("en"));
   expect(screen.getByRole("dialog", { name: "Brief preview" })).toBeInTheDocument();
   expect(sheet.getByRole("combobox", { name: "Permission level" })).toHaveValue("ask");
-  await user.selectOptions(screen.getByRole("combobox", { name: "Language" }), "zh-CN");
+  act(() => changeLanguage("zh-CN"));
   expect(sheet.getByRole("combobox", { name: "权限级别" })).toHaveValue("ask");
   expect(fetch).toHaveBeenCalledTimes(requests);
   await user.selectOptions(sheet.getByRole("combobox", { name: "权限级别" }), "edit-freely");

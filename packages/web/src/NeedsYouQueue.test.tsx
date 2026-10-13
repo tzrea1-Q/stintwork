@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi, beforeEach, describe } from "vitest";
 import { Board } from "./Board";
 import { deriveAttentionItems, type AttentionItem } from "@stintwork/core";
 
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import {
   attentionOptions,
   attentionProfile,
@@ -19,6 +19,41 @@ afterEach(() => {
   vi.restoreAllMocks();
   localStorage.clear();
   window.history.replaceState(null, "", "/");
+});
+
+test("Needs you contains keyboard focus, dismisses outside and restores its opener", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<Board snapshot={attentionSnapshot()} />);
+  const trigger = screen.getByRole("button", { name: "Needs you 1" });
+  await user.click(trigger);
+  const queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  expect(container).not.toContainElement(queue);
+  const close = within(queue).getByRole("button", { name: "Close Needs you" });
+  expect(close).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(queue).toContainElement(document.activeElement as HTMLElement);
+  await user.tab();
+  expect(close).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await user.keyboard("{Enter}");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  fireEvent.pointerDown(document.body);
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  await waitFor(() => expect(trigger).toHaveFocus());
+});
+
+test("keyboard navigation from Needs you focuses the drawer, then returns to the work item", async () => {
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  screen.getByRole("button", { name: "First work item · first" }).focus();
+  await user.keyboard("{Enter}");
+  const close = await screen.findByRole("button", { name: "Close work item" });
+  await waitFor(() => expect(close).toHaveFocus());
+  expect(screen.queryByRole("dialog", { name: "Needs you 1" })).not.toBeInTheDocument();
+  await user.click(close);
+  await waitFor(() => expect(document.activeElement).toHaveAttribute("data-work-item", "first"));
 });
 
 test("permission answer refusals retain their code through the queue", async () => {
@@ -158,13 +193,13 @@ test("Needs you opens a slide-over with source, waiting time, full command and p
   );
   expect(within(queue).getByText("Declining ends Test Agent’s turn.")).toBeInTheDocument();
   rerender(<Board snapshot={attentionSnapshot([])} />);
-  expect(screen.getByRole("button", { name: "Needs you 0" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Needs you 0", hidden: true })).toBeInTheDocument();
   expect(document.title).toBe("Project · Stintwork");
   expect(screen.queryByLabelText("1 open attention items")).not.toBeInTheDocument();
   expect(within(queue).getByText("Nothing needs you right now.")).toBeInTheDocument();
-  fireEvent(queue, new Event("cancel", { bubbles: true }));
+  await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Needs you 0" })).toHaveFocus();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Needs you 0" })).toHaveFocus());
 });
 
 test.each(attentionOptions)(
@@ -264,7 +299,9 @@ test("the queue spans all work items regardless of the board's milestone filter 
   const snapshot = attentionSnapshot();
   snapshot.milestones = [{ id: "other", name: "Other", status: "planned", workItemSlugs: [] }];
   render(<Board snapshot={snapshot} />);
-  await user.selectOptions(screen.getByRole("combobox", { name: "Milestone" }), "other");
+  const milestone = screen.getByRole("combobox", { name: "Milestone" });
+  milestone.focus();
+  await user.keyboard("{Enter}{End}{Enter}");
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
   await user.click(screen.getByRole("button", { name: "First work item · first" }));
   expect(screen.getByRole("dialog", { name: "First work item" })).toBeInTheDocument();
@@ -556,11 +593,11 @@ describe("Chinese Needs-you queue", () => {
     expect(notify).toHaveBeenCalledTimes(5);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "语言" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+    await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
     expect(document.title).toBe("(5) Project · Stintwork");
     expect(notify).toHaveBeenCalledTimes(5);
     await user.click(screen.getByRole("button", { name: "Language" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "Language" }), "zh-CN");
+    await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
     next.attentionItems = [
       {
         ...snapshot.attentionItems[0],
@@ -578,19 +615,38 @@ describe("Chinese Needs-you queue", () => {
     expect(document.title).toBe(originalTitle);
   });
 
-  test("switching language keeps the queue and developer note open", async () => {
-    render(chineseBoard(mixedAttentionSnapshot()));
+  test("language context changes keep the queue and developer note open", async () => {
+    function LanguageDriver() {
+      const { setLanguage } = useLanguage();
+      return (
+        <select
+          aria-label="Test language"
+          onChange={(event) => setLanguage(event.target.value === "en" ? "en" : "zh-CN")}
+        >
+          <option value="zh-CN">Chinese</option>
+          <option value="en">English</option>
+        </select>
+      );
+    }
+    render(
+      <LanguageProvider>
+        <LanguageDriver />
+        <Board snapshot={mixedAttentionSnapshot()} />
+      </LanguageProvider>,
+    );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "待你处理 3" }));
     await user.type(screen.getByRole("textbox", { name: "开发者备注" }), "Developer draft 原文");
-    await user.click(screen.getByRole("button", { name: "语言" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+    fireEvent.change(screen.getByRole("combobox", { name: "Test language", hidden: true }), {
+      target: { value: "en" },
+    });
     expect(screen.getByRole("dialog", { name: "Needs you 3" })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Developer note" })).toHaveValue(
       "Developer draft 原文",
     );
-    await user.click(screen.getByRole("button", { name: "Language" }));
-    await user.selectOptions(screen.getByRole("listbox", { name: "Language" }), "zh-CN");
+    fireEvent.change(screen.getByRole("combobox", { name: "Test language", hidden: true }), {
+      target: { value: "zh-CN" },
+    });
     expect(screen.getByRole("textbox", { name: "开发者备注" })).toHaveValue("Developer draft 原文");
   });
 

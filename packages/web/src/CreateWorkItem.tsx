@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
-import { useEffect, useId, useRef, useState } from "react";
-import "./create-work-item.css";
+import { useEffect, useId, useState } from "react";
 import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
+import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
 
 export function CreateWorkItem({
   snapshot,
@@ -16,8 +17,6 @@ export function CreateWorkItem({
   onCreated: () => void;
 }) {
   const { t } = useLanguage();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
   const slugHintId = useId();
   const [title, setTitle] = useState("");
   const [editedSlug, setEditedSlug] = useState<string | null>(null);
@@ -45,17 +44,6 @@ export function CreateWorkItem({
     ...(editedSlug === null ? {} : { slug: editedSlug }),
   });
   const slug = validSlug && preview?.input === input ? preview.slug : null;
-
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    const element = dialog.current;
-    element?.showModal();
-    element?.querySelector<HTMLInputElement>("input")?.focus();
-    return () => {
-      element?.close();
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
-    };
-  }, []);
 
   useEffect(() => {
     setPreview(null);
@@ -107,109 +95,112 @@ export function CreateWorkItem({
   }
 
   return (
-    <dialog
-      ref={dialog}
-      className="create-work-item"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!saving) onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          if (!saving) onClose();
-        }
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
       }}
     >
-      <h2 id={titleId}>{t.planning.create.title}</h2>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void create();
+      <DialogContent
+        aria-describedby={undefined}
+        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_select]:w-full [&_select]:rounded-sm [&_select]:border [&_select]:border-border [&_select]:bg-surface [&_select]:p-2 [&_textarea]:w-full [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-surface [&_textarea]:p-2"
+        onEscapeKeyDown={(event) => {
+          if (saving) event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          if (saving) event.preventDefault();
         }}
       >
-        <fieldset disabled={saving}>
-          <label>
-            {t.planning.create.titleLabel}
-            <input required value={title} onChange={(event) => setTitle(event.target.value)} />
-          </label>
-          <label>
-            {t.slugInput.label}
-            <input
-              required
-              value={folderName}
-              aria-describedby={derivedSlug ? undefined : slugHintId}
-              aria-invalid={editedSlug !== null && !validSlug ? true : undefined}
-              onChange={(event) => setEditedSlug(event.target.value)}
-            />
-          </label>
-          {!derivedSlug && (
-            <p id={slugHintId} className="muted">
-              {t.slugInput.hint}
-            </p>
-          )}
-          <label>
-            {t.planning.create.workflow}
-            <select value={workflow} onChange={(event) => setWorkflow(event.target.value)}>
-              {Object.values(snapshot.workflows).map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {workflowName(entry, t)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t.planning.create.milestone}
-            <select value={milestone} onChange={(event) => setMilestone(event.target.value)}>
-              <option value="">{t.planning.create.noMilestone}</option>
-              {snapshot.milestones.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t.planning.create.intent}
-            <textarea rows={4} value={intent} onChange={(event) => setIntent(event.target.value)} />
-          </label>
-          <p role="status">
-            {slug ? (
-              <>
-                {t.planning.create.folder} <code>.scratch/{slug}/</code>
-              </>
-            ) : !validSlug && title.trim() ? (
-              editedSlug ? (
-                t.slugInput.invalid
-              ) : (
-                t.planning.create.unavailable
-              )
-            ) : error ? (
-              t.planning.create.unavailable
-            ) : title.trim() ? (
-              t.planning.create.checking
-            ) : (
-              t.planning.create.enterTitle
+        <DialogTitle className="text-xl font-medium">{t.planning.create.title}</DialogTitle>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void create();
+          }}
+        >
+          <fieldset disabled={saving} className="mt-5 grid min-w-0 gap-4">
+            <label>
+              {t.planning.create.titleLabel}
+              <input required value={title} onChange={(event) => setTitle(event.target.value)} />
+            </label>
+            <label>
+              {t.slugInput.label}
+              <input
+                required
+                value={folderName}
+                aria-describedby={derivedSlug ? undefined : slugHintId}
+                aria-invalid={editedSlug !== null && !validSlug ? true : undefined}
+                onChange={(event) => setEditedSlug(event.target.value)}
+              />
+            </label>
+            {!derivedSlug && (
+              <p id={slugHintId} className="muted">
+                {t.slugInput.hint}
+              </p>
             )}
-          </p>
-          {error && (
-            <p role="alert" className="warning">
-              {error}
+            <label>
+              {t.planning.create.workflow}
+              <select value={workflow} onChange={(event) => setWorkflow(event.target.value)}>
+                {Object.values(snapshot.workflows).map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {workflowName(entry, t)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t.planning.create.milestone}
+              <select value={milestone} onChange={(event) => setMilestone(event.target.value)}>
+                <option value="">{t.planning.create.noMilestone}</option>
+                {snapshot.milestones.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t.planning.create.intent}
+              <textarea
+                rows={4}
+                value={intent}
+                onChange={(event) => setIntent(event.target.value)}
+              />
+            </label>
+            <p role="status">
+              {slug ? (
+                <>
+                  {t.planning.create.folder} <code>.scratch/{slug}/</code>
+                </>
+              ) : !validSlug && title.trim() ? (
+                editedSlug ? (
+                  t.slugInput.invalid
+                ) : (
+                  t.planning.create.unavailable
+                )
+              ) : error ? (
+                t.planning.create.unavailable
+              ) : title.trim() ? (
+                t.planning.create.checking
+              ) : (
+                t.planning.create.enterTitle
+              )}
             </p>
-          )}
-          <p className="muted">{t.planning.create.description}</p>
-          <footer>
-            <button type="button" className="top-button" onClick={onClose}>
-              {t.planning.create.cancel}
-            </button>
-            <button type="submit" className="top-button" disabled={!slug}>
-              {saving ? t.planning.create.saving : t.planning.create.title}
-            </button>
-          </footer>
-        </fieldset>
-      </form>
-    </dialog>
+            {error && (
+              <p role="alert" className="warning">
+                {error}
+              </p>
+            )}
+            <p className="muted">{t.planning.create.description}</p>
+            <footer className="flex flex-wrap justify-end gap-3">
+              <Button onClick={onClose}>{t.planning.create.cancel}</Button>
+              <Button variant="primary" type="submit" disabled={!slug}>
+                {saving ? t.planning.create.saving : t.planning.create.title}
+              </Button>
+            </footer>
+          </fieldset>
+        </form>
+      </DialogContent>
+    </Dialog>
   );
 }

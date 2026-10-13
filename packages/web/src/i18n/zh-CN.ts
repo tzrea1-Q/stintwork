@@ -24,6 +24,7 @@ export const zhCN: Catalog = {
   },
   topBar: {
     language: "语言",
+    languages: { en: "English", "zh-CN": "简体中文" },
     needsYou: "待你处理",
     openPalette: "打开命令面板",
     jumpTo: "跳转到…",

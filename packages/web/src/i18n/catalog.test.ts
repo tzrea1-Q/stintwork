@@ -3,7 +3,16 @@ import { expect, test } from "vitest";
 import { en } from "./en";
 import { joinChinese, zhCN } from "./zh-CN";
 
-const unchanged = new Set(["Stintwork", "Claude Code", "Codex", "Grok Build", "Stint", "Agent"]);
+const unchanged = new Set([
+  "Stintwork",
+  "Claude Code",
+  "Codex",
+  "Grok Build",
+  "Stint",
+  "Agent",
+  "English",
+  "简体中文",
+]);
 const samples: Record<string, unknown[][]> = {
   "coreText.agent.internalErrorDetail": [[{ detail: ": Agent diagnostic 原文" }]],
   "coreText.creation.exists": [[{ slug: "repo-name" }]],

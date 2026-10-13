@@ -34,6 +34,93 @@ function fetcher() {
   vi.stubGlobal("fetch", fetch);
   return fetch;
 }
+
+test("create contains keyboard focus and dismisses on an outside click", async () => {
+  fetcher();
+  const user = userEvent.setup();
+  const close = vi.fn();
+  render(<CreateWorkItem snapshot={snapshot()} onClose={close} onCreated={vi.fn()} />);
+  await waitFor(() => expect(screen.getByRole("textbox", { name: "Title" })).toHaveFocus());
+  await user.tab({ shift: true });
+  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole("textbox", { name: "Title" })).toHaveFocus();
+  fireEvent.pointerDown(document.body);
+  expect(close).toHaveBeenCalledOnce();
+});
+
+test("pending creation prevents duplicate writes, Escape and outside dismissal", async () => {
+  const user = userEvent.setup();
+  const close = vi.fn();
+  let finish: (value: Response) => void = () => {};
+  const fetch = vi.fn((path: string) =>
+    path.endsWith("/preview")
+      ? Promise.resolve(response({ slug: "idea" }))
+      : new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  render(<CreateWorkItem snapshot={snapshot()} onClose={close} onCreated={vi.fn()} />);
+  await user.type(screen.getByRole("textbox", { name: "Title" }), "Idea");
+  await screen.findByText(".scratch/idea/");
+  await user.click(screen.getByRole("button", { name: "Create work item" }));
+  expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  await user.keyboard("{Escape}");
+  fireEvent.pointerDown(document.body);
+  expect(close).not.toHaveBeenCalled();
+  expect(fetch.mock.calls.filter(([path]) => path === "/api/work-items")).toHaveLength(1);
+  await act(async () => finish(response({ reason: "Save refused" }, 409)));
+  expect(screen.getByRole("alert")).toHaveTextContent("Save refused");
+  expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Idea");
+  await user.keyboard("{Escape}");
+  expect(close).toHaveBeenCalledOnce();
+});
+
+test("the palette traps keyboard focus and supports outside dismissal", async () => {
+  const user = userEvent.setup();
+  const close = vi.fn();
+  render(
+    <CommandPalette
+      snapshot={snapshot()}
+      milestone=""
+      onMilestoneChange={vi.fn()}
+      onOpenItem={vi.fn()}
+      onCreateItem={vi.fn()}
+      onCustomiseWorkflow={vi.fn()}
+      onClose={close}
+    />,
+  );
+  await user.tab({ shift: true });
+  expect(screen.getByRole("button", { name: "Close command palette" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole("combobox")).toHaveFocus();
+  fireEvent.pointerDown(document.body);
+  expect(close).toHaveBeenCalledOnce();
+});
+
+test("Enter on the palette close button never selects a command", async () => {
+  const user = userEvent.setup();
+  const close = vi.fn();
+  const create = vi.fn();
+  render(
+    <CommandPalette
+      snapshot={snapshot()}
+      milestone=""
+      onMilestoneChange={vi.fn()}
+      onOpenItem={vi.fn()}
+      onCreateItem={create}
+      onCustomiseWorkflow={vi.fn()}
+      onClose={close}
+    />,
+  );
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Close command palette" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  expect(close).toHaveBeenCalledOnce();
+  expect(create).not.toHaveBeenCalled();
+});
 afterEach(() => {
   localStorage.clear();
   document.documentElement.lang = "en";

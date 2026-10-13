@@ -9,6 +9,7 @@ export const en = {
   },
   topBar: {
     language: "Language",
+    languages: { en: "English", "zh-CN": "简体中文" },
     needsYou: "Needs you",
     openPalette: "Open command palette",
     jumpTo: "Jump to…",

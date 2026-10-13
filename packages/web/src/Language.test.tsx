@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { RoadmapEditor } from "./RoadmapEditor";
-import { LanguageSelect } from "./i18n/LanguageSelect";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 
 const files = {
   ".scratch/example/spec.md": "# Repo title 中文",
@@ -118,7 +117,7 @@ test("blocked localStorage reads and writes still render and switch", async () =
   );
   expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "语言" }));
-  await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+  await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
   expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "en");
 });
@@ -135,20 +134,19 @@ test("switching persists the preference and preserves the open drawer and ticket
   const ticket = within(drawer).getByText("01 · Repo ticket 中文").closest("details");
   await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
   expect(ticket).toHaveAttribute("open");
-  await user.click(screen.getByRole("button", { name: "Language" }));
-  const choices = screen.getByRole("listbox", { name: "Language" });
+  const choices = within(drawer).getByRole("combobox", { name: "Language" });
   expect(within(choices).getByRole("option", { name: "English" })).toHaveAttribute("lang", "en");
   expect(within(choices).getByRole("option", { name: "简体中文" })).toHaveAttribute(
     "lang",
     "zh-CN",
   );
   await user.selectOptions(choices, "zh-CN");
-  expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^待你处理/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^流水线/, hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^待你处理/, hidden: true })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "zh-CN");
   expect(localStorage.getItem(languageStorageKey)).toBe("zh-CN");
   expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
-  expect(drawer).toHaveAttribute("open");
+  expect(drawer).toHaveAttribute("data-state", "open");
   expect(ticket).toHaveAttribute("open");
   expect(within(drawer).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
   expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
@@ -171,7 +169,7 @@ test("switching persists the preference and preserves the open drawer and ticket
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^Pipeline/, hidden: true })).toBeInTheDocument();
 });
 
 test.each(["team", "feature", "constructor"])(
@@ -201,7 +199,9 @@ test.each(["team", "feature", "constructor"])(
       expect(screen.getByRole("heading", { name })).toBeInTheDocument();
     expect(screen.getByText("Repo project 中文")).toBeInTheDocument();
     expect(screen.getByText("team/中文")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "Repo milestone 中文" })).toBeInTheDocument();
+    await user.click(screen.getByRole("combobox", { name: "里程碑" }));
+    expect(await screen.findByRole("option", { name: "Repo milestone 中文" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
     const card = within(screen.getByRole("article", { name: "example: Repo title 中文" }));
     expect(card.getByText("Team workflow 自定义:")).toBeInTheDocument();
     await user.click(card.getByRole("button", { name: "打开 example：Repo title 中文" }));
@@ -278,23 +278,27 @@ test("warnings and setup checklist chrome translate without changing core warnin
     </LanguageProvider>,
   );
   await user.click(screen.getByRole("button", { name: "警告 1" }));
-  const warnings = within(screen.getByRole("region", { name: "项目警告" }));
+  const warnings = within(await screen.findByRole("dialog", { name: "项目警告" }));
   expect(warnings.getByText("Core warning 原文")).toBeInTheDocument();
   expect(warnings.getByText(".scratch/中文/spec.md")).toBeInTheDocument();
   expect(warnings.getByText("只读 · 不会更改任何文件。")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /^设置/ }));
-  const setup = within(screen.getByRole("region", { name: "项目设置" }));
+  const setup = within(await screen.findByRole("dialog", { name: "项目设置" }));
   expect(setup.getByText("工单跟踪指南")).toBeInTheDocument();
   expect(setup.getByText("Agent 指令")).toBeInTheDocument();
   expect(setup.getByText("docs/agents/issue-tracker.md")).toBeInTheDocument();
 });
 
 test("Chinese command suggestions have a catalog accessible name and retain repo titles", async () => {
-  const user = userEvent.setup();
+  let changeLanguage: ReturnType<typeof useLanguage>["setLanguage"] = () => {};
+  function LanguageChanges() {
+    changeLanguage = useLanguage().setLanguage;
+    return null;
+  }
   localStorage.setItem(languageStorageKey, "zh-CN");
   render(
     <LanguageProvider>
-      <LanguageSelect />
+      <LanguageChanges />
       <CommandPalette
         snapshot={project()}
         milestone=""
@@ -310,7 +314,7 @@ test("Chinese command suggestions have a catalog accessible name and retain repo
   expect(suggestions.getByText("Repo title 中文")).toBeInTheDocument();
   expect(suggestions.getByText("Repo milestone 中文")).toBeInTheDocument();
   expect(suggestions.getByRole("option", { name: "自定义功能工作流" })).toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+  act(() => changeLanguage("en"));
   expect(screen.getByRole("listbox", { name: "Suggestions" })).toBeInTheDocument();
 });
 

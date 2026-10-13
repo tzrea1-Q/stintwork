@@ -4,6 +4,8 @@ import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
 import type { EvidenceContext, ReviewDecision, StintSummary, RiskyPath } from "@stintwork/core";
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
+import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { RiskyPaths } from "./RiskyPaths";
@@ -50,13 +52,16 @@ export function ReviewDiff({
   const id = useId();
   if (!diff.files.length && !outsideDiff.length)
     return (
-      <p className="review-empty" role="status">
+      <p className="review-empty md:col-span-2" role="status">
         {t.review.diff.empty}
       </p>
     );
   return (
     <>
-      <nav className="review-files" aria-label={t.review.diff.changedFiles}>
+      <nav
+        className="review-files min-w-0 max-h-48 overflow-auto border-b border-border md:max-h-none md:border-b-0 md:border-r"
+        aria-label={t.review.diff.changedFiles}
+      >
         <h3>
           {t.review.diff.changedFiles} <span className="count">{diff.files.length}</span>
         </h3>
@@ -80,7 +85,10 @@ export function ReviewDiff({
           ))}
         </ul>
       </nav>
-      <section className="review-diff" aria-label={t.review.diff.workItemDiff}>
+      <section
+        className="review-diff min-w-0 overflow-auto"
+        aria-label={t.review.diff.workItemDiff}
+      >
         {diff.files.map((file, fileIndex) => (
           <section key={file.path} id={`${id}-file-${fileIndex}`} data-diff-path={file.path}>
             <header className="review-file-header">
@@ -103,7 +111,10 @@ export function ReviewDiff({
                 <p className="review-file-note">{t.review.diff.metadataOnly}</p>
               )}
             {file.hunks.map((hunk) => (
-              <div className="review-hunk" key={`${hunk.oldStart}:${hunk.newStart}`}>
+              <div
+                className="review-hunk overflow-x-auto focus-visible:outline-accent"
+                key={`${hunk.oldStart}:${hunk.newStart}`}
+              >
                 <h4>
                   <code>{hunk.header}</code>
                 </h4>
@@ -193,9 +204,7 @@ export function ReviewOverlay({
   reviewStageId?: string;
 } & ReviewSlots) {
   const { t } = useLanguage();
-  const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
-  const titleId = useId();
   const findingId = useId();
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
   const [error, setError] = useErrorText();
@@ -301,17 +310,6 @@ export function ReviewOverlay({
     ) : null;
   };
 
-  useEffect(() => {
-    const previous = document.activeElement;
-    const element = dialog.current;
-    element?.showModal();
-    closeButton.current?.focus();
-    return () => {
-      element?.close();
-      if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-    };
-  }, []);
-
   const readDiff = useCallback(async () => {
     request.current?.abort();
     const controller = new AbortController();
@@ -336,153 +334,151 @@ export function ReviewOverlay({
   }, [readDiff]);
 
   return (
-    <dialog
-      ref={dialog}
-      className="review-overlay"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          onClose();
-        }
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <header className="review-header">
-        <div>
-          <p className="eyebrow">
-            {t.review.diff.review} / <code>{item.slug}</code>
-          </p>
-          <h2 id={titleId}>{item.title}</h2>
-          <p className="muted">{t.review.diff.readOnly}</p>
-          {diff && (
-            <div className="review-range">
-              <p>
-                <code>{diff.branch}</code>
-                {t.review.diff.against}
-                <code>{diff.mainBranch}</code>
-              </p>
-              <p>
-                {t.review.diff.mergeBase}
-                <code>{diff.mergeBase}</code> · {t.review.diff.branchHead}
-                <code>{diff.headCommit}</code>
-              </p>
-            </div>
-          )}
-        </div>
-        <div className="review-header-actions">
-          <button
-            type="button"
-            className="top-button"
-            disabled={
-              saving ||
-              sentBack ||
-              item.stage !== reviewStageId ||
-              !evidence.findings.some((finding) => !finding.historical && finding.status === "open")
-            }
-            onClick={() => void act("send-back", {})}
-          >
-            {t.review.diff.sendBack}
-          </button>
-          <button type="button" className="top-button" onClick={() => void readDiff()}>
-            {t.review.diff.refresh}
-          </button>
-          <button
-            type="button"
-            className="top-button"
-            ref={closeButton}
-            onClick={onClose}
-            aria-label={t.review.diff.close}
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </div>
-      </header>
-      {actionError && (
-        <p role="alert" className="warning">
-          {actionError}
-        </p>
-      )}
-      {message && <p role="status">{message}</p>}
-      <div className="review-grid">
-        {error ? (
-          <p role="alert" className="review-empty warning">
-            {error}
-          </p>
-        ) : diff ? (
-          <ReviewDiff
-            diff={diff}
-            lineFindings={(file, line, head) => {
-              const pinned = line.newLine === null ? null : cards(file.path, line.newLine);
-              const supplied = lineFindings?.(file, line, head);
-              return pinned || supplied ? (
-                <>
-                  {pinned}
-                  {supplied}
-                </>
-              ) : null;
-            }}
-            fileFindings={(file) => (
-              <>
-                {outOfDiff(file)}
-                {fileFindings?.(file)}
-              </>
+      <DialogContent
+        className="review-overlay flex h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[min(1600px,calc(100vw-32px))] flex-col p-0"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          closeButton.current?.focus();
+        }}
+      >
+        <header className="review-header flex shrink-0 flex-wrap justify-between gap-4 border-b border-border p-4 sm:p-6">
+          <div className="min-w-0 flex-1 basis-96 [overflow-wrap:anywhere]">
+            <p className="eyebrow">
+              {t.review.diff.review} / <code>{item.slug}</code>
+            </p>
+            <DialogTitle className="my-2 text-xl font-medium">{item.title}</DialogTitle>
+            <DialogDescription className="text-muted">{t.review.diff.readOnly}</DialogDescription>
+            {diff && (
+              <div className="review-range">
+                <p>
+                  <code>{diff.branch}</code>
+                  {t.review.diff.against}
+                  <code>{diff.mainBranch}</code>
+                </p>
+                <p>
+                  {t.review.diff.mergeBase}
+                  <code>{diff.mergeBase}</code> · {t.review.diff.branchHead}
+                  <code>{diff.headCommit}</code>
+                </p>
+              </div>
             )}
-            outsideDiff={
-              outsideDiff ??
-              [...new Set(evidence.findings.map((finding) => finding.path))]
-                .filter((path) => !diff.files.some((file) => file.path === path))
-                .map((path) => ({ path, content: cards(path) }))
-            }
-          />
-        ) : (
-          <p role="status" className="review-empty muted">
-            {t.review.diff.reading}
+          </div>
+          <div className="review-header-actions flex flex-wrap items-start gap-2">
+            <Button
+              variant="primary"
+              disabled={
+                saving ||
+                sentBack ||
+                item.stage !== reviewStageId ||
+                !evidence.findings.some(
+                  (finding) => !finding.historical && finding.status === "open",
+                )
+              }
+              onClick={() => void act("send-back", {})}
+            >
+              {t.review.diff.sendBack}
+            </Button>
+            <Button onClick={() => void readDiff()}>{t.review.diff.refresh}</Button>
+            <Button
+              variant="ghost"
+              ref={closeButton}
+              onClick={onClose}
+              aria-label={t.review.diff.close}
+            >
+              <X aria-hidden="true" /> {t.review.diff.close}
+            </Button>
+          </div>
+        </header>
+        {actionError && (
+          <p role="alert" className="warning">
+            {actionError}
           </p>
         )}
-        <aside className="review-evidence" aria-label={t.review.diff.evidence}>
-          {item.riskyPaths && (
-            <RiskyPaths
-              risks={item.riskyPaths}
-              decisions={decisions}
-              saving={saving}
-              onAccept={(risk, reason) =>
-                act("accept-risky-path", { id: risk.path, blob: risk.blob, reason })
+        {message && <p role="status">{message}</p>}
+        <div className="review-grid grid min-h-0 flex-1 grid-cols-1 overflow-auto md:grid-cols-[180px_minmax(0,1fr)] lg:grid-cols-[220px_minmax(0,1fr)_260px]">
+          {error ? (
+            <p role="alert" className="review-empty warning md:col-span-2">
+              {error}
+            </p>
+          ) : diff ? (
+            <ReviewDiff
+              diff={diff}
+              lineFindings={(file, line, head) => {
+                const pinned = line.newLine === null ? null : cards(file.path, line.newLine);
+                const supplied = lineFindings?.(file, line, head);
+                return pinned || supplied ? (
+                  <>
+                    {pinned}
+                    {supplied}
+                  </>
+                ) : null;
+              }}
+              fileFindings={(file) => (
+                <>
+                  {outOfDiff(file)}
+                  {fileFindings?.(file)}
+                </>
+              )}
+              outsideDiff={
+                outsideDiff ??
+                [...new Set(evidence.findings.map((finding) => finding.path))]
+                  .filter((path) => !diff.files.some((file) => file.path === path))
+                  .map((path) => ({ path, content: cards(path) }))
               }
             />
+          ) : (
+            <p role="status" className="review-empty muted md:col-span-2">
+              {t.review.diff.reading}
+            </p>
           )}
-          {item.stints
-            ?.filter((stint) => stint.checkpointWarnings?.length)
-            .map((stint) => (
-              <div key={stint.id}>
-                <p>
-                  {t.review.diff.stint} <code>{stint.id}</code>
-                </p>
-                <CheckpointWarnings warnings={stint.checkpointWarnings} />
-              </div>
-            ))}
-          <section aria-label={t.review.diff.findings}>
-            <h3>{t.review.diff.findings}</h3>
-            {findings ?? <FindingsRail {...evidence} anchor={anchor} />}
-          </section>
-          <section aria-label={t.review.diff.checks}>
-            <h3>{t.review.diff.checks}</h3>
-            {checks ?? <p className="muted">{t.review.diff.checksPlaceholder}</p>}
-          </section>
-        </aside>
-      </div>
-      <footer className="drawer-footer">
-        <span>{t.review.diff.footer}</span>
-        <span>
-          <kbd>Esc</kbd>
-          {t.review.diff.return}
-        </span>
-      </footer>
-    </dialog>
+          <aside
+            className="review-evidence min-w-0 overflow-auto border-t border-border md:col-span-2 lg:col-span-1 lg:border-l lg:border-t-0"
+            aria-label={t.review.diff.evidence}
+          >
+            {item.riskyPaths && (
+              <RiskyPaths
+                risks={item.riskyPaths}
+                decisions={decisions}
+                saving={saving}
+                onAccept={(risk, reason) =>
+                  act("accept-risky-path", { id: risk.path, blob: risk.blob, reason })
+                }
+              />
+            )}
+            {item.stints
+              ?.filter((stint) => stint.checkpointWarnings?.length)
+              .map((stint) => (
+                <div key={stint.id}>
+                  <p>
+                    {t.review.diff.stint} <code>{stint.id}</code>
+                  </p>
+                  <CheckpointWarnings warnings={stint.checkpointWarnings} />
+                </div>
+              ))}
+            <section aria-label={t.review.diff.findings}>
+              <h3>{t.review.diff.findings}</h3>
+              {findings ?? <FindingsRail {...evidence} anchor={anchor} />}
+            </section>
+            <section aria-label={t.review.diff.checks}>
+              <h3>{t.review.diff.checks}</h3>
+              {checks ?? <p className="muted">{t.review.diff.checksPlaceholder}</p>}
+            </section>
+          </aside>
+        </div>
+        <footer className="flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted">
+          <span>{t.review.diff.footer}</span>
+          <span>
+            <kbd>Esc</kbd>
+            {t.review.diff.return}
+          </span>
+        </footer>
+      </DialogContent>
+    </Dialog>
   );
 }
