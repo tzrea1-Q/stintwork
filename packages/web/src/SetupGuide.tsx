@@ -2,10 +2,13 @@
 import type { AgentSkillAvailability, SetupPlan } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import "./setup-guide.css";
+import { en } from "./i18n/en";
+import { useLanguage } from "./i18n/language";
 
 type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
 
 export function SetupGuide() {
+  const { t } = useLanguage();
   const [guide, setGuide] = useState<Guide | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [confirming, setConfirming] = useState(false);
@@ -18,24 +21,32 @@ export function SetupGuide() {
       try {
         const response = await fetch("/api/setup", { signal: controller.signal });
         const result = await response.json();
-        if (!response.ok) throw new Error(result.reason ?? "Could not load setup.");
+        if (!response.ok) throw new Error(result.reason ?? en.planning.setup.errors.load);
         if (
           !Array.isArray(result.changes) ||
           !Array.isArray(result.warnings) ||
           !Array.isArray(result.skills)
         )
-          throw new Error("Could not load setup.");
+          throw new Error(en.planning.setup.errors.load);
         if (!controller.signal.aborted) {
           setGuide(result);
           setSelected(result.changes.map(({ path }: { path: string }) => path));
         }
       } catch (cause) {
         if (!controller.signal.aborted)
-          setError(cause instanceof Error ? cause.message : "Could not load setup.");
+          setError(cause instanceof Error ? cause.message : en.planning.setup.errors.load);
       }
     })();
     return () => controller.abort();
   }, []);
+
+  function installationHint(message: string) {
+    const hint =
+      /^Use npx skills@latest add mattpocock\/skills, select (.+) and (\/[a-zA-Z0-9][a-zA-Z0-9._-]*)\.(?: Expected locations: (.*)\. For a custom skill, use its own source\. Stintwork does not install skills\.)?$/.exec(
+        message,
+      );
+    return hint ? t.planning.setup.installHint(hint[1], hint[2], hint[3]) : message;
+  }
 
   async function apply() {
     if (!guide || saving || !confirming || !selected.length) return;
@@ -51,13 +62,13 @@ export function SetupGuide() {
         }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? "Could not apply setup.");
+      if (!response.ok) throw new Error(result.reason ?? en.planning.setup.errors.apply);
       setGuide(result);
       setSelected([]);
       setConfirming(false);
-      setMessage(`Setup committed: ${result.commit.slice(0, 7)}.`);
+      setMessage(result.commit.slice(0, 7));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not apply setup.");
+      setError(cause instanceof Error ? cause.message : en.planning.setup.errors.apply);
     } finally {
       setSaving(false);
     }
@@ -65,10 +76,20 @@ export function SetupGuide() {
 
   return (
     <div className="setup-guide">
-      <p>No files change until you select changes and confirm. Only project files are written.</p>
-      {error && <p role="alert">{error}</p>}
-      {message && <p role="status">{message}</p>}
-      {!guide && !error && <p role="status">Loading setup…</p>}
+      <p>{t.planning.setup.description}</p>
+      {error && (
+        <p role="alert">
+          {Object.entries(en.planning.setup.errors).reduce(
+            (message, [key, original]) =>
+              message === original
+                ? t.planning.setup.errors[key as keyof typeof en.planning.setup.errors]
+                : message,
+            error,
+          )}
+        </p>
+      )}
+      {message && <p role="status">{t.planning.setup.committed(message)}</p>}
+      {!guide && !error && <p role="status">{t.planning.setup.loading}</p>}
       {guide && (
         <>
           {guide.warnings.map((warning) => (
@@ -79,9 +100,9 @@ export function SetupGuide() {
           {guide.changes.length ? (
             <>
               <fieldset disabled={saving || confirming}>
-                <legend>Proposed file changes</legend>
+                <legend>{t.planning.setup.changes}</legend>
                 {guide.changes.map((change) => (
-                  <section key={change.path} aria-label={`Change ${change.path}`}>
+                  <section key={change.path} aria-label={t.planning.setup.changeLabel(change.path)}>
                     <label>
                       <input
                         type="checkbox"
@@ -94,27 +115,28 @@ export function SetupGuide() {
                           );
                         }}
                       />
-                      {change.path} ({change.before === null ? "create" : "change"})
+                      {change.path} (
+                      {change.before === null ? t.planning.setup.create : t.planning.setup.change})
                     </label>
                     <details>
-                      <summary>Preview {change.path}</summary>
+                      <summary>{t.planning.setup.preview(change.path)}</summary>
                       {change.before !== null && (
                         <>
-                          <h3>Current content</h3>
+                          <h3>{t.planning.setup.current}</h3>
                           <pre>{change.before}</pre>
                         </>
                       )}
-                      <h3>Proposed content</h3>
+                      <h3>{t.planning.setup.proposed}</h3>
                       <pre>{change.content}</pre>
                     </details>
                   </section>
                 ))}
               </fieldset>
               {confirming ? (
-                <section aria-label="Confirm setup">
-                  <h3>Confirm setup</h3>
+                <section aria-label={t.planning.setup.confirm}>
+                  <h3>{t.planning.setup.confirm}</h3>
                   <p>
-                    Write {selected.length} selected files in one commit:{" "}
+                    {t.planning.setup.write(selected.length)}
                     <strong>Set up Stintwork</strong>?
                   </p>
                   <ul>
@@ -124,14 +146,14 @@ export function SetupGuide() {
                       </li>
                     ))}
                   </ul>
-                  <p>Uncommitted target files are refused. Other files are left alone.</p>
+                  <p>{t.planning.setup.refusal}</p>
                   <button
                     type="button"
                     className="top-button"
                     disabled={saving}
                     onClick={() => void apply()}
                   >
-                    Confirm and apply setup
+                    {t.planning.setup.apply}
                   </button>
                   <button
                     type="button"
@@ -139,7 +161,7 @@ export function SetupGuide() {
                     disabled={saving}
                     onClick={() => setConfirming(false)}
                   >
-                    Back to selection
+                    {t.planning.setup.back}
                   </button>
                 </section>
               ) : (
@@ -149,21 +171,17 @@ export function SetupGuide() {
                   disabled={!selected.length}
                   onClick={() => setConfirming(true)}
                 >
-                  Review selected changes
+                  {t.planning.setup.review}
                 </button>
               )}
             </>
           ) : (
-            <p>No setup file changes needed.</p>
+            <p>{t.planning.setup.noChanges}</p>
           )}
-          <h3>Stage skill availability</h3>
-          <p>
-            Read-only check of declared skill locations. Found means a file exists, not that the
-            skill was tested. Other layouts are not checked. Stintwork never installs skills or
-            changes agent configuration.
-          </p>
+          <h3>{t.planning.setup.skills}</h3>
+          <p>{t.planning.setup.skillExplanation}</p>
           {guide.skills.map((agent) => (
-            <section key={agent.agent} aria-label={`${agent.displayName} skills`}>
+            <section key={agent.agent} aria-label={t.planning.setup.agentSkills(agent.displayName)}>
               <h4>{agent.displayName}</h4>
               {agent.skills.length ? (
                 <ul>
@@ -172,17 +190,17 @@ export function SetupGuide() {
                       {skill.workflow} / {skill.stage}: <code>{skill.skill}</code> —{" "}
                       <strong>
                         {skill.status === "unknown"
-                          ? "Can't tell"
+                          ? t.planning.setup.unknown
                           : skill.status === "found"
-                            ? "Found"
-                            : "Missing"}
+                            ? t.planning.setup.found
+                            : t.planning.setup.missing}
                       </strong>
-                      {skill.installationHint && <p>{skill.installationHint}</p>}
+                      {skill.installationHint && <p>{installationHint(skill.installationHint)}</p>}
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p>No stage skills in the loaded workflows.</p>
+                <p>{t.planning.setup.noSkills}</p>
               )}
             </section>
           ))}

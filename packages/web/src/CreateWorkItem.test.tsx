@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { createMemoryRepoFiles, indexProject, prepareWorkItemCreation } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
+import { CommandPalette } from "./CommandPalette";
+import { CreateWorkItem } from "./CreateWorkItem";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const contents = {
   ".stintwork/roadmap.md": "## First\nId: first\nStatus: active\n",
@@ -32,10 +35,127 @@ function fetcher() {
   return fetch;
 }
 afterEach(() => {
+  localStorage.clear();
+  document.documentElement.lang = "en";
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   window.history.replaceState({}, "", "/");
 });
+
+test("Chinese command palette translates controls and searches verbatim repo content", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const user = userEvent.setup();
+  const onOpenItem = vi.fn();
+  const onCustomiseWorkflow = vi.fn();
+  const project = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/repo-item/spec.md": "# Repo title 中文",
+      ".stintwork/roadmap.md": "## Repo milestone 中文\nId: first\nStatus: active\n",
+    }),
+    { name: "Fixture" },
+  );
+  render(
+    <LanguageProvider>
+      <CommandPalette
+        snapshot={project}
+        milestone=""
+        onMilestoneChange={vi.fn()}
+        onOpenItem={onOpenItem}
+        onCreateItem={vi.fn()}
+        onCustomiseWorkflow={onCustomiseWorkflow}
+        onClose={vi.fn()}
+      />
+    </LanguageProvider>,
+  );
+  const palette = within(screen.getByRole("dialog", { name: "命令面板" }));
+  const search = palette.getByRole("combobox", { name: "搜索工作项和里程碑" });
+  expect(search).toHaveAttribute("placeholder", "查找工作项或里程碑…");
+  expect(palette.getByRole("button", { name: "关闭命令面板" })).toBeInTheDocument();
+  expect(palette.getByRole("option", { name: "创建工作项" })).toBeInTheDocument();
+  await user.click(palette.getByRole("option", { name: "自定义功能工作流" }));
+  expect(onCustomiseWorkflow).toHaveBeenCalledWith("feature");
+  expect(palette.getByText("Repo milestone 中文")).toBeInTheDocument();
+  await user.type(search, "Repo title 中文");
+  await user.click(palette.getByRole("option", { name: "repo-item Repo title 中文" }));
+  expect(onOpenItem).toHaveBeenCalledWith("repo-item");
+  await user.clear(search);
+  await user.type(search, "no-match-anywhere");
+  expect(await palette.findByText("未找到工作项或里程碑。")).toBeInTheDocument();
+});
+
+test("Chinese create controls submit a mixed Chinese title using the existing slug rules", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const user = userEvent.setup();
+  const project = snapshot();
+  const onCreated = vi.fn();
+  const fetch = vi.fn(async (_path: string, options: RequestInit) => {
+    const creation = prepareWorkItemCreation(
+      JSON.parse(String(options.body)),
+      project.workflows,
+      contents[".stintwork/roadmap.md"],
+    );
+    return response({ slug: creation.slug });
+  });
+  vi.stubGlobal("fetch", fetch);
+  render(
+    <LanguageProvider>
+      <CreateWorkItem snapshot={project} onClose={vi.fn()} onCreated={onCreated} />
+    </LanguageProvider>,
+  );
+  const dialog = within(screen.getByRole("dialog", { name: "创建工作项" }));
+  await user.type(dialog.getByRole("textbox", { name: "标题" }), "中文计划 API");
+  await user.selectOptions(dialog.getByRole("combobox", { name: "工作流" }), "team");
+  expect(dialog.getByRole("option", { name: "Team workflow" })).toBeInTheDocument();
+  expect(dialog.getByRole("option", { name: "功能" })).toBeInTheDocument();
+  await user.selectOptions(dialog.getByRole("combobox", { name: "里程碑（可选）" }), "first");
+  expect(dialog.getByRole("option", { name: "First" })).toBeInTheDocument();
+  await user.type(dialog.getByRole("textbox", { name: "意图（可选）" }), "Developer intent 原文");
+  expect(await dialog.findByText(".scratch/api/")).toBeInTheDocument();
+  expect(dialog.getByRole("button", { name: "取消" })).toBeInTheDocument();
+  await user.click(dialog.getByRole("button", { name: "创建工作项" }));
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/work-items",
+    expect.objectContaining({
+      body: JSON.stringify({
+        title: "中文计划 API",
+        workflow: "team",
+        milestone: "first",
+        intent: "Developer intent 原文",
+      }),
+    }),
+  );
+  expect(onCreated).toHaveBeenCalledOnce();
+});
+
+test.each([
+  ["Title must produce a valid ASCII work item slug.", "标题必须能生成有效的 ASCII 工作项名称。"],
+  ["Work item idea already exists.", "工作项 idea 已存在。"],
+  ["Work item idea already exists in Git.", "工作项 idea 已存在于 Git 中。"],
+  [".scratch must be a real directory.", ".scratch 必须为真实目录。"],
+  [
+    "Commit or discard hand edits to the creation paths first.",
+    "请先提交或丢弃创建路径中的手动更改。",
+  ],
+  ["Unknown server refusal 原文", "Unknown server refusal 原文"],
+])(
+  "Chinese create renders known refusals and preserves unknown diagnostics: %s",
+  async (reason, expected) => {
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response({ reason }, 409)),
+    );
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />
+      </LanguageProvider>,
+    );
+    await user.type(screen.getByRole("textbox", { name: "标题" }), "中文标题");
+    expect(await screen.findByRole("alert")).toHaveTextContent(expected);
+    expect(screen.getByRole("button", { name: "创建工作项" })).toBeDisabled();
+  },
+);
 
 test.each(["c", "palette", "button"])(
   "opens the create dialog from %s with title focus and keyboard dismissal",

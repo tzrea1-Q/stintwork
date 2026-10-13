@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { RoadmapEditor } from "./RoadmapEditor";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const initial =
   "# Roadmap\n\n## First\nId: first\nStatus: active\n- board\n\n## Second\nId: second\nStatus: planned\n";
@@ -33,7 +34,50 @@ async function open() {
   await user.click(screen.getByRole("button", { name: "Edit roadmap" }));
   return { user, sheet: within(screen.getByRole("dialog", { name: "Edit roadmap" })) };
 }
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  localStorage.clear();
+  document.documentElement.lang = "en";
+});
+
+test("Chinese roadmap controls preserve milestone names, work item titles and the roadmap path", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const fetch = mockServer();
+  const user = userEvent.setup();
+  render(
+    <LanguageProvider>
+      <RoadmapEditor snapshot={snapshot()} />
+    </LanguageProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "编辑路线图" }));
+  const sheet = within(screen.getByRole("dialog", { name: "编辑路线图" }));
+  expect(sheet.getByRole("button", { name: "关闭路线图" })).toBeInTheDocument();
+  expect(sheet.getByText(/\.stintwork\/roadmap.md/)).toBeInTheDocument();
+  expect(sheet.getByRole("region", { name: "First" })).toBeInTheDocument();
+  expect(sheet.getByRole("textbox", { name: "名称：First" })).toHaveValue("First");
+  const status = sheet.getByRole("combobox", { name: "状态：First" });
+  for (const name of ["已计划", "进行中", "已交付"])
+    expect(within(status).getByRole("option", { name })).toBeInTheDocument();
+  expect(sheet.getByRole("button", { name: "重命名First" })).toBeInTheDocument();
+  expect(sheet.getByLabelText("目标日期：First")).toBeInTheDocument();
+  expect(sheet.getByRole("button", { name: "设置目标日期：First" })).toBeInTheDocument();
+  expect(sheet.getByRole("button", { name: "上移First" })).toBeDisabled();
+  expect(sheet.getByRole("button", { name: "下移First" })).toBeEnabled();
+  await user.selectOptions(status, "shipped");
+  await user.click(sheet.getByRole("button", { name: "设置状态：First" }));
+  expect(await sheet.findByRole("status")).toHaveTextContent("路线图已提交。");
+  expect(fetch).toHaveBeenLastCalledWith(
+    "/api/roadmap",
+    expect.objectContaining({
+      body: JSON.stringify({ kind: "update", id: "first", status: "shipped" }),
+    }),
+  );
+  expect(sheet.getByRole("textbox", { name: "新里程碑名称" })).toBeInTheDocument();
+  expect(sheet.getByRole("button", { name: "添加里程碑" })).toBeInTheDocument();
+  expect(sheet.getByRole("combobox", { name: "工作项" })).toHaveTextContent("Board work item");
+  expect(sheet.getByRole("combobox", { name: "目标里程碑" })).toHaveTextContent("Second");
+  expect(sheet.getByRole("button", { name: "移动工作项" })).toBeInTheDocument();
+});
 
 test("the board exposes the editor, adds a milestone, and restores focus on close", async () => {
   const fetch = mockServer();

@@ -2,8 +2,11 @@
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./roadmap-editor.css";
+import { en } from "./i18n/en";
+import { useLanguage } from "./i18n/language";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   return (
@@ -15,7 +18,7 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
         aria-haspopup="dialog"
         onClick={() => setOpen(true)}
       >
-        Edit roadmap
+        {t.planning.roadmap.title}
       </button>
       {open && (
         <RoadmapSheet
@@ -31,6 +34,7 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
 }
 
 function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClose: () => void }) {
+  const { t } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const [milestones, setMilestones] = useState(snapshot.milestones);
@@ -62,12 +66,12 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
         body: JSON.stringify(change),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? "Could not change the roadmap.");
+      if (!response.ok) throw new Error(result.reason ?? en.planning.roadmap.errors.save);
       setMilestones(result.milestones);
       if (change.kind === "add") setName("");
-      setMessage(result.commit ? "Roadmap committed." : "Roadmap unchanged.");
+      setMessage(result.commit ? "committed" : "unchanged");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not change the roadmap.");
+      setError(cause instanceof Error ? cause.message : en.planning.roadmap.errors.save);
     } finally {
       setSaving(false);
     }
@@ -90,22 +94,26 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
       }}
     >
       <header>
-        <h2 id={titleId}>Edit roadmap</h2>
+        <h2 id={titleId}>{t.planning.roadmap.title}</h2>
         <button type="button" className="top-button" disabled={saving} onClick={onClose}>
-          Close roadmap
+          {t.planning.roadmap.close}
         </button>
       </header>
-      <p className="muted">
-        Each change is one commit to .stintwork/roadmap.md. Commit hand edits first.
-      </p>
+      <p className="muted">{t.planning.roadmap.description}</p>
       {error && (
         <p role="alert" className="warning">
-          {error}
+          {Object.entries(en.planning.roadmap.errors).reduce(
+            (message, [key, original]) =>
+              message === original
+                ? t.planning.roadmap.errors[key as keyof typeof en.planning.roadmap.errors]
+                : message,
+            error,
+          )}
         </p>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && <p role="status">{t.planning.roadmap[message as "committed" | "unchanged"]}</p>}
       <fieldset disabled={saving}>
-        <legend>Milestones</legend>
+        <legend>{t.planning.roadmap.milestones}</legend>
         {milestones.map((milestone, index) => (
           <MilestoneFields
             key={`${milestone.id}:${milestone.name}:${milestone.status}:${milestone.target ?? ""}`}
@@ -123,11 +131,11 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
           }}
         >
           <label>
-            New milestone name
+            {t.planning.roadmap.newName}
             <input required value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <button className="top-button" type="submit" disabled={!name.trim()}>
-            Add milestone
+            {t.planning.roadmap.add}
           </button>
         </form>
       </fieldset>
@@ -138,9 +146,9 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
         }}
       >
         <fieldset disabled={saving || !snapshot.workItems.length}>
-          <legend>Move a work item</legend>
+          <legend>{t.planning.roadmap.moveHeading}</legend>
           <label>
-            Work item
+            {t.planning.roadmap.workItem}
             <select value={workItem} onChange={(event) => setWorkItem(event.target.value)}>
               {snapshot.workItems.map((item) => (
                 <option key={item.slug} value={item.slug}>
@@ -150,9 +158,9 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
             </select>
           </label>
           <label>
-            Destination milestone
+            {t.planning.roadmap.destination}
             <select value={destination} onChange={(event) => setDestination(event.target.value)}>
-              <option value="">No milestone</option>
+              <option value="">{t.planning.roadmap.noMilestone}</option>
               {milestones.map((milestone) => (
                 <option key={milestone.id} value={milestone.id}>
                   {milestone.name}
@@ -161,7 +169,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
             </select>
           </label>
           <button className="top-button" type="submit">
-            Move work item
+            {t.planning.roadmap.move}
           </button>
         </fieldset>
       </form>
@@ -182,6 +190,7 @@ function MilestoneFields({
   onSave: (change: RoadmapChange) => Promise<void>;
   onReorder: (offset: number) => void;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState(milestone.name);
   const [status, setStatus] = useState(milestone.status);
   const [target, setTarget] = useState(milestone.target ?? "");
@@ -197,7 +206,7 @@ function MilestoneFields({
         }}
       >
         <label>
-          Name for {milestone.name}
+          {t.planning.roadmap.name(milestone.name)}
           <input required value={name} onChange={(event) => setName(event.target.value)} />
         </label>
         <button
@@ -205,7 +214,7 @@ function MilestoneFields({
           type="submit"
           disabled={!name.trim() || name === milestone.name}
         >
-          Rename {milestone.name}
+          {t.planning.roadmap.rename(milestone.name)}
         </button>
       </form>
       <form
@@ -215,18 +224,18 @@ function MilestoneFields({
         }}
       >
         <label>
-          Status for {milestone.name}
+          {t.planning.roadmap.status(milestone.name)}
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as Milestone["status"])}
           >
-            <option value="planned">Planned</option>
-            <option value="active">Active</option>
-            <option value="shipped">Shipped</option>
+            <option value="planned">{t.planning.roadmap.planned}</option>
+            <option value="active">{t.planning.roadmap.active}</option>
+            <option value="shipped">{t.planning.roadmap.shipped}</option>
           </select>
         </label>
         <button className="top-button" type="submit" disabled={status === milestone.status}>
-          Set status for {milestone.name}
+          {t.planning.roadmap.setStatus(milestone.name)}
         </button>
       </form>
       <form
@@ -236,19 +245,19 @@ function MilestoneFields({
         }}
       >
         <label>
-          Target for {milestone.name}
+          {t.planning.roadmap.target(milestone.name)}
           <input type="date" value={target} onChange={(event) => setTarget(event.target.value)} />
         </label>
         <button className="top-button" type="submit" disabled={target === (milestone.target ?? "")}>
-          Set target for {milestone.name}
+          {t.planning.roadmap.setTarget(milestone.name)}
         </button>
       </form>
       <div className="roadmap-order">
         <button className="top-button" type="button" disabled={first} onClick={() => onReorder(-1)}>
-          Move {milestone.name} up
+          {t.planning.roadmap.up(milestone.name)}
         </button>
         <button className="top-button" type="button" disabled={last} onClick={() => onReorder(1)}>
-          Move {milestone.name} down
+          {t.planning.roadmap.down(milestone.name)}
         </button>
       </div>
     </section>
