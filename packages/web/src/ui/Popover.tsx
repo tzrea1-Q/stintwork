@@ -17,9 +17,10 @@ export const PopoverContent = forwardRef<
         {...props}
         ref={ref}
         sideOffset={sideOffset}
-        collisionPadding={16}
+        collisionPadding={17}
+        avoidCollisions
         className={cn(
-          "z-50 max-w-[calc(100vw-32px)] max-h-[var(--radix-popover-content-available-height)] overflow-auto break-words rounded-md border border-border bg-surface p-4 text-sm text-text shadow-overlay",
+          "z-50 max-w-[calc(100vw-34px)] max-h-[var(--radix-popover-content-available-height)] overflow-auto break-words rounded-md border border-border bg-surface p-4 text-sm text-text shadow-overlay",
           className,
         )}
       />

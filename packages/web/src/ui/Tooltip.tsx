@@ -42,9 +42,10 @@ export const TooltipContent = forwardRef<
         {...props}
         ref={ref}
         sideOffset={sideOffset}
-        collisionPadding={16}
+        collisionPadding={17}
+        avoidCollisions
         className={cn(
-          "z-50 max-w-[calc(100vw-32px)] max-h-[var(--radix-tooltip-content-available-height)] overflow-auto break-words rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-text shadow-overlay",
+          "z-50 max-w-[calc(100vw-34px)] max-h-[var(--radix-tooltip-content-available-height)] overflow-auto break-words rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-text shadow-overlay",
           className,
         )}
       />
