@@ -1,6 +1,6 @@
 # 03 — Chinese Needs-you queue
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -13,9 +13,13 @@ Make the Needs-you queue and attention alerts readable in Chinese (spec user sto
 
 ## Acceptance criteria
 
-- [ ] Component tests in Chinese:
+- [x] Component tests in Chinese:
   - every known kind renders its Chinese text, with commands, paths and agent text verbatim;
   - an unknown kind falls back to core's title;
   - the tab title and notification text are in Chinese.
-- [ ] Existing English tests, including the exact document-title assertions, pass unchanged, and the catalog completeness test passes.
-- [ ] All checks pass.
+- [x] Existing English tests, including the exact document-title assertions, pass unchanged, and the catalog completeness test passes.
+- [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-12:** Built by Codex. All four branches were merged into main. The shared catalog conflicts were resolved by keeping every section, and checking that no line from main was lost. On main after the last merge: `pnpm test` passed (127 files, 1761 tests), and `typecheck`, `lint` and `format:check` passed. A browser check on Stintwork's own repo in `zh-CN` passed. The Needs-you button and queue were in Chinese. Known attention kinds are rendered from structured fields, and unknown kinds fall back to core's title.
