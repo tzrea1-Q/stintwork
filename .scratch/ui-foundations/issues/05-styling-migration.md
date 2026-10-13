@@ -1,6 +1,6 @@
 # 05 — Feature styling and controls use the foundations
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, 03, 04
 
 ## What to build
@@ -120,3 +120,5 @@ Checks actually run (all pnpm commands use `--config.verify-deps-before-run=fals
 - `git diff --check` — exit 0.
 
 Changed in this follow-up: `src/TopBar.test.tsx`, `src/ui/Select.tsx`, `e2e/drawer-and-needs-you.spec.ts`, `e2e/top-bar.spec.ts` (under `packages/web/`), and this Comments entry. No browser/server test execution or new screenshots locally: ticket 05 still needs the coordinator's full browser rerun and required visual review. Ticket 06's exhaustive state matrix and revision-linked screenshot/CI evidence remain unchanged. Status and acceptance checkboxes are unchanged; no new file, dependency, frontend-guide change, commit or push.
+
+**Coordinator, 2026-10-13:** Verified on main. Three browser rounds: 64, then 46, then 16 failures, then 174 of 174 passed (local Chrome). App bugs fixed along the way: Setup's code did not scroll in its box; the Select popup was wider than its trigger at 768 and overshot the gutter by a rounding pixel; focus did not return to a stage agent picker after saving, or to the Publish and Merge openers after their confirmation dialogs. Spec corrections were checked against the frontend guide: hover transit on the board, focus waits before the language keystrokes, an invalid ship fixture, and a Setup locator that targeted the wrong code block. Screenshot review: the drawer warning sits inside its padding at 390; the drawer and Create work item use the shared Select with truncation; Needs you's JSON scrolls inside its box; the board toolbar wraps cleanly at 390. With no `packages/*/dist`: `format:check`, `lint`, `typecheck`, `test` (2154 passed), `build`, `smoke:package` and `test:e2e` (174 passed) passed.
