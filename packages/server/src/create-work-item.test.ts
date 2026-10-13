@@ -95,6 +95,71 @@ afterEach(async () => {
   }
 });
 
+test("previews and creates a Chinese-only title with an explicit slug in one commit", async () => {
+  const { root, project } = fixture();
+  const input = { title: "修复登录", slug: "fix-login", workflow: "bug", milestone: "first" };
+  const before = git(root, "rev-parse", "HEAD");
+  const preview = await action(project, input, true);
+  expect(preview.status).toBe(200);
+  expect(await preview.json()).toEqual({ slug: "fix-login" });
+  expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  const created = await action(project, input);
+  expect(created.status).toBe(201);
+  expect(await created.json()).toMatchObject({
+    slug: "fix-login",
+    commit: git(root, "rev-parse", "HEAD"),
+  });
+  expect(git(root, "rev-list", "--count", `${before}..HEAD`)).toBe("1");
+  expect(git(root, "log", "-1", "--format=%s")).toBe("Create work item fix-login");
+  expect(readFileSync(join(root, ".scratch/fix-login/workflow.yaml"), "utf8")).toContain(
+    "title: 修复登录",
+  );
+  expect(readFileSync(join(root, ".stintwork/roadmap.md"), "utf8")).toContain("- fix-login\n");
+  const snapshot = (await (await project.app.request("/api/project")).json()) as ProjectSnapshot;
+  expect(snapshot.workItems.find(({ slug }) => slug === "fix-login")?.title).toBe("修复登录");
+});
+
+test.each(["", "修复登录", "Fix-login", "fix--login", "../login", "a".repeat(49), null, 42])(
+  "preview and create refuse invalid explicit slug %j without writes",
+  async (slug) => {
+    const { root, project } = fixture();
+    const before = git(root, "rev-parse", "HEAD");
+    for (const preview of [true, false]) {
+      const refused = await action(project, { title: "修复登录", slug, workflow: "bug" }, preview);
+      expect(refused.status).toBe(400);
+      expect((await refused.json()).reason).toContain(
+        "Folder name must use lowercase English letters",
+      );
+    }
+    expect(existsSync(join(root, ".scratch"))).toBe(false);
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    expect(git(root, "status", "--porcelain")).toBe("");
+  },
+);
+
+test.each(["work-item", "worktree", "path"])(
+  "preview and create refuse an explicit slug owned by a %s",
+  async (owner) => {
+    const { root, project } = fixture();
+    const input = { title: "修复登录", slug: "fix-login", workflow: "bug" };
+    if (owner === "work-item") expect((await action(project, input)).status).toBe(201);
+    if (owner === "worktree") await ensureWorktree(root, "fix-login");
+    if (owner === "path") {
+      mkdirSync(join(root, ".scratch"));
+      writeFileSync(join(root, ".scratch/fix-login"), "Developer file\n");
+    }
+    const before = git(root, "rev-parse", "HEAD");
+    for (const preview of [true, false]) {
+      const refused = await action(project, input, preview);
+      expect(refused.status).toBe(409);
+      expect((await refused.json()).reason).toContain("already exists");
+    }
+    expect(git(root, "rev-parse", "HEAD")).toBe(before);
+    if (owner === "path")
+      expect(readFileSync(join(root, ".scratch/fix-login"), "utf8")).toBe("Developer file\n");
+  },
+);
+
 test("creation broadcasts a first-stage card over the live connection without a reload", async () => {
   const { project } = fixture();
   const server = await project.start();

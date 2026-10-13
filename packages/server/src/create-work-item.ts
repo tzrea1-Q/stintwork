@@ -36,6 +36,7 @@ export function addWorkItemCreationRoutes(
         const prepare = () => {
           const slug = deriveWorkItemSlug(
             input && typeof input === "object" && "title" in input ? input.title : undefined,
+            input && typeof input === "object" && "slug" in input ? input.slug : undefined,
           );
           checkWorkItemCreation(root, {
             slug,

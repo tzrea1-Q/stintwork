@@ -42,6 +42,186 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
+test.each([
+  [
+    "en",
+    "Create work item",
+    "Title",
+    "Folder name",
+    "Enter a folder name using lowercase English letters, digits and single hyphens (up to 48 characters).",
+  ],
+  [
+    "zh-CN",
+    "创建工作项",
+    "标题",
+    "文件夹名称",
+    "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+  ],
+])(
+  "%s enables a Chinese-only title only after a valid folder name",
+  async (language, createLabel, titleLabel, folderLabel, hint) => {
+    localStorage.setItem(languageStorageKey, language);
+    const user = userEvent.setup();
+    const project = snapshot();
+    const fetch = vi.fn(async (_path: string, options: RequestInit) => {
+      try {
+        const creation = prepareWorkItemCreation(
+          JSON.parse(options.body as string),
+          project.workflows,
+          "",
+        );
+        return response({ slug: creation.slug });
+      } catch (cause) {
+        return response({ reason: (cause as Error).message }, 400);
+      }
+    });
+    vi.stubGlobal("fetch", fetch);
+    render(
+      <LanguageProvider>
+        <CreateWorkItem snapshot={project} onClose={vi.fn()} onCreated={vi.fn()} />
+      </LanguageProvider>,
+    );
+    const dialog = within(screen.getByRole("dialog", { name: createLabel }));
+    await user.type(dialog.getByRole("textbox", { name: titleLabel }), "修复登录");
+    const folder = dialog.getByRole("textbox", { name: folderLabel });
+    expect(folder).toHaveValue("");
+    expect(folder).toHaveAccessibleDescription(hint);
+    expect(dialog.getByRole("button", { name: createLabel })).toBeDisabled();
+    for (const invalid of ["修复", "Fix-login", "fix--login", "a".repeat(49)]) {
+      await user.clear(folder);
+      await user.type(folder, invalid);
+      expect(dialog.getByRole("button", { name: createLabel })).toBeDisabled();
+      expect(folder).toHaveAttribute("aria-invalid", "true");
+    }
+    await user.clear(folder);
+    await user.type(folder, "fix-login");
+    await waitFor(() => expect(dialog.getByRole("button", { name: createLabel })).toBeEnabled());
+    expect(await dialog.findByText(".scratch/fix-login/")).toBeInTheDocument();
+  },
+);
+
+test.each([
+  ["en", "Create work item", "Title", "Folder name"],
+  ["zh-CN", "创建工作项", "标题", "文件夹名称"],
+])(
+  "%s preserves an edited slug and creates a verbatim Chinese card and drawer",
+  async (language, createLabel, titleLabel, folderLabel) => {
+    localStorage.setItem(languageStorageKey, language);
+    const user = userEvent.setup();
+    const project = snapshot();
+    let workflowText = "";
+    const fetch = vi.fn(async (path: string, options?: RequestInit) => {
+      if (!options?.body) return response({});
+      const creation = prepareWorkItemCreation(
+        JSON.parse(options.body as string),
+        project.workflows,
+        "",
+      );
+      if (path === "/api/work-items") workflowText = creation.workflowText;
+      return response({ slug: creation.slug });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const rendered = render(
+      <LanguageProvider>
+        <Board snapshot={project} />
+      </LanguageProvider>,
+    );
+    await user.keyboard("c");
+    const dialog = within(screen.getByRole("dialog", { name: createLabel }));
+    const title = dialog.getByRole("textbox", { name: titleLabel });
+    const folder = dialog.getByRole("textbox", { name: folderLabel });
+    await user.type(title, "导出看板为 CSV");
+    expect(folder).toHaveValue("csv");
+    await user.clear(title);
+    await user.type(title, "修复登录");
+    expect(folder).toHaveValue("");
+    await user.type(folder, "fix-login");
+    await dialog.findByText(".scratch/fix-login/");
+    await user.clear(title);
+    await user.type(title, "修复登录问题");
+    expect(folder).toHaveValue("fix-login");
+    expect(dialog.getByRole("button", { name: createLabel })).toBeDisabled();
+    await waitFor(() => expect(dialog.getByRole("button", { name: createLabel })).toBeEnabled());
+    await user.click(dialog.getByRole("button", { name: createLabel }));
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/work-items",
+      expect.objectContaining({
+        body: JSON.stringify({
+          title: "修复登录问题",
+          workflow: "feature",
+          milestone: null,
+          intent: "",
+          slug: "fix-login",
+        }),
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: createLabel })).not.toBeInTheDocument(),
+    );
+    rendered.rerender(
+      <LanguageProvider>
+        <Board
+          snapshot={indexProject(
+            createMemoryRepoFiles({
+              ...contents,
+              ".scratch/fix-login/workflow.yaml": workflowText,
+            }),
+            { name: "Fixture" },
+          )}
+        />
+      </LanguageProvider>,
+    );
+    const card = screen.getByRole("article", { name: "fix-login: 修复登录问题" });
+    expect(card).toHaveTextContent("修复登录问题");
+    await user.click(within(card).getByRole("button"));
+    expect(screen.getByRole("dialog", { name: "修复登录问题" })).toBeInTheDocument();
+  },
+);
+
+test.each([
+  [
+    "en",
+    "Create work item",
+    "Title",
+    "Folder name",
+    "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+  ],
+  [
+    "zh-CN",
+    "创建工作项",
+    "标题",
+    "文件夹名称",
+    "文件夹名称必须使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+  ],
+])(
+  "%s translates the explicit-slug server refusal",
+  async (language, createLabel, titleLabel, folderLabel, expected) => {
+    localStorage.setItem(languageStorageKey, language);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        response(
+          {
+            reason:
+              "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+          },
+          400,
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />
+      </LanguageProvider>,
+    );
+    await user.type(screen.getByRole("textbox", { name: titleLabel }), "修复登录");
+    await user.type(screen.getByRole("textbox", { name: folderLabel }), "fix-login");
+    expect(await screen.findByRole("alert")).toHaveTextContent(expected);
+    expect(screen.getByRole("button", { name: createLabel })).toBeDisabled();
+  },
+);
+
 test("Chinese command palette translates controls and searches verbatim repo content", async () => {
   localStorage.setItem(languageStorageKey, "zh-CN");
   const user = userEvent.setup();
@@ -128,7 +308,10 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
 });
 
 test.each([
-  ["Title must produce a valid ASCII work item slug.", "标题必须能生成有效的 ASCII 工作项名称。"],
+  [
+    "Title must produce a valid ASCII work item slug.",
+    "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+  ],
   ["Work item idea already exists.", "工作项 idea 已存在。"],
   ["Work item idea already exists in Git.", "工作项 idea 已存在于 Git 中。"],
   [".scratch must be a real directory.", ".scratch 必须为真实目录。"],

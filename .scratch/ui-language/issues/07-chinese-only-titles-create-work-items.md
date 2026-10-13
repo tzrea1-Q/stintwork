@@ -18,11 +18,11 @@ The slug stays ASCII kebab-case of at most 48 characters, because it names the f
 
 ## Acceptance criteria
 
-- [ ] Core tests: an explicit slug is validated and used; invalid, too-long or non-ASCII explicit slugs are refused; behaviour without one is unchanged.
-- [ ] Server tests: preview and create with a Chinese-only title plus an explicit slug, with one commit; duplicate and invalid explicit slugs are refused.
-- [ ] Component tests, in Chinese and English:
+- [x] Core tests: an explicit slug is validated and used; invalid, too-long or non-ASCII explicit slugs are refused; behaviour without one is unchanged.
+- [x] Server tests: preview and create with a Chinese-only title plus an explicit slug, with one commit; duplicate and invalid explicit slugs are refused.
+- [x] Component tests, in Chinese and English:
   - a Chinese-only title shows the empty slug field and its hint, and Create is disabled until the slug is valid;
   - an edited slug survives title edits;
   - the created card shows the Chinese title verbatim.
-- [ ] The catalog completeness test passes with the new strings, and existing tests pass unchanged.
-- [ ] All checks pass.
+- [x] The catalog completeness test passes with the new strings, and existing tests pass unchanged.
+- [x] All checks pass.
