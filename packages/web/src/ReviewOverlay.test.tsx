@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { ReviewDiff, ReviewOverlay } from "./ReviewOverlay";
@@ -61,6 +61,21 @@ const diff: WorkItemDiff = {
   ],
 };
 const item = { slug: "first", title: "First work item" };
+
+test("review contains keyboard focus and supports outside dismissal", async () => {
+  const user = userEvent.setup();
+  const close = vi.fn();
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(diff)));
+  render(<ReviewOverlay item={item} onClose={close} />);
+  const dialog = screen.getByRole("dialog", { name: item.title });
+  await screen.findByRole("navigation", { name: "Changed files" });
+  for (let tab = 0; tab < 15; tab++) {
+    await user.tab();
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+  }
+  fireEvent.pointerDown(document.body);
+  expect(close).toHaveBeenCalledOnce();
+});
 
 afterEach(() => vi.unstubAllGlobals());
 function reply(body: unknown, status = 200) {

@@ -12,6 +12,37 @@ import { WorkItemDrawer } from "./WorkItemDrawer";
 import { codexProfile } from "../../agents/src/profiles";
 import { TicketBriefPreview } from "./BriefPreview";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
+
+test.each(["Escape", "outside"])(
+  "brief preview contains focus and only dismisses itself with %s",
+  async (dismissal) => {
+    const user = userEvent.setup();
+    const closeParent = vi.fn();
+    vi.stubGlobal("fetch", previewFetch());
+    render(
+      <Sheet open onOpenChange={closeParent}>
+        <SheetContent aria-describedby={undefined}>
+          <SheetTitle>Work item details</SheetTitle>
+          <TicketBriefPreview item={item} ticket={ticket} />
+        </SheetContent>
+      </Sheet>,
+    );
+    const start = screen.getByRole("button", { name: "Start stint" });
+    await user.click(start);
+    await screen.findByRole("heading", { name: "Read first" });
+    await user.tab({ shift: true });
+    expect(screen.getByRole("button", { name: "Start" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Close brief preview" })).toHaveFocus();
+    if (dismissal === "Escape") await user.keyboard("{Escape}");
+    else fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(start).toHaveFocus());
+    expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Work item details" })).toBeInTheDocument();
+    expect(closeParent).not.toHaveBeenCalled();
+  },
+);
 
 const ticketPath = ".scratch/first-stint/issues/02-brief-preview.md";
 const specPath = ".scratch/first-stint/spec.md";

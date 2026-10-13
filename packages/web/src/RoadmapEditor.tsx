@@ -1,23 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
-import { useEffect, useId, useRef, useState } from "react";
-import "./roadmap-editor.css";
+import { useEffect, useState } from "react";
 import { en } from "./i18n/en";
 import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
-  const trigger = useRef<HTMLButtonElement>(null);
   return (
     <>
-      <Button
-        variant="secondary"
-        ref={trigger}
-        aria-haspopup="dialog"
-        onClick={() => setOpen(true)}
-      >
+      <Button variant="secondary" aria-haspopup="dialog" onClick={() => setOpen(true)}>
         {t.planning.roadmap.title}
       </Button>
       {open && (
@@ -25,7 +19,6 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
           snapshot={snapshot}
           onClose={() => {
             setOpen(false);
-            trigger.current?.focus();
           }}
         />
       )}
@@ -35,8 +28,6 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
 
 function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClose: () => void }) {
   const { t } = useLanguage();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const titleId = useId();
   const [milestones, setMilestones] = useState(snapshot.milestones);
   const [name, setName] = useState("");
   const [workItem, setWorkItem] = useState(snapshot.workItems[0]?.slug ?? "");
@@ -47,12 +38,6 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
   useEffect(() => {
     setMilestones(snapshot.milestones);
   }, [snapshot.milestones]);
-  useEffect(() => {
-    const element = dialog.current;
-    element?.showModal();
-    element?.querySelector<HTMLButtonElement>("button")?.focus();
-    return () => element?.close();
-  }, []);
 
   async function save(change: RoadmapChange) {
     if (saving) return;
@@ -84,96 +69,103 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
   }
 
   return (
-    <dialog
-      className="roadmap-editor"
-      ref={dialog}
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        if (!saving) onClose();
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
       }}
     >
-      <header>
-        <h2 id={titleId}>{t.planning.roadmap.title}</h2>
-        <button type="button" className="top-button" disabled={saving} onClick={onClose}>
-          {t.planning.roadmap.close}
-        </button>
-      </header>
-      <p className="muted">{t.planning.roadmap.description}</p>
-      {error && (
-        <p role="alert" className="warning">
-          {Object.entries(en.planning.roadmap.errors).reduce(
-            (message, [key, original]) =>
-              message === original
-                ? t.planning.roadmap.errors[key as keyof typeof en.planning.roadmap.errors]
-                : message,
-            error,
-          )}
-        </p>
-      )}
-      {message && <p role="status">{t.planning.roadmap[message as "committed" | "unchanged"]}</p>}
-      <fieldset disabled={saving}>
-        <legend>{t.planning.roadmap.milestones}</legend>
-        {milestones.map((milestone, index) => (
-          <MilestoneFields
-            key={`${milestone.id}:${milestone.name}:${milestone.status}:${milestone.target ?? ""}`}
-            milestone={milestone}
-            first={index === 0}
-            last={index === milestones.length - 1}
-            onSave={save}
-            onReorder={(offset) => reorder(index, offset)}
-          />
-        ))}
+      <DialogContent
+        className="roadmap-editor w-3xl [&_fieldset]:mt-5 [&_fieldset]:min-w-0 [&_form]:mb-3 [&_form]:flex [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-3 [&_label]:grid [&_label]:min-w-0 [&_label]:flex-1 [&_label]:basis-48 [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_select]:w-full [&_select]:rounded-sm [&_select]:border [&_select]:border-border [&_select]:bg-surface [&_select]:p-2 [&_button]:max-w-full [&_button]:h-auto [&_button]:min-h-8 [&_button]:whitespace-normal [&_button]:py-1"
+        onEscapeKeyDown={(event) => {
+          if (saving) event.preventDefault();
+        }}
+        onPointerDownOutside={(event) => {
+          if (saving) event.preventDefault();
+        }}
+      >
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <DialogTitle className="text-xl font-medium">{t.planning.roadmap.title}</DialogTitle>
+          <Button disabled={saving} onClick={onClose}>
+            {t.planning.roadmap.close}
+          </Button>
+        </header>
+        <DialogDescription className="text-muted">
+          {t.planning.roadmap.description}
+        </DialogDescription>
+        {error && (
+          <p role="alert" className="warning">
+            {Object.entries(en.planning.roadmap.errors).reduce(
+              (message, [key, original]) =>
+                message === original
+                  ? t.planning.roadmap.errors[key as keyof typeof en.planning.roadmap.errors]
+                  : message,
+              error,
+            )}
+          </p>
+        )}
+        {message && <p role="status">{t.planning.roadmap[message as "committed" | "unchanged"]}</p>}
+        <fieldset disabled={saving}>
+          <legend>{t.planning.roadmap.milestones}</legend>
+          {milestones.map((milestone, index) => (
+            <MilestoneFields
+              key={`${milestone.id}:${milestone.name}:${milestone.status}:${milestone.target ?? ""}`}
+              milestone={milestone}
+              first={index === 0}
+              last={index === milestones.length - 1}
+              onSave={save}
+              onReorder={(offset) => reorder(index, offset)}
+            />
+          ))}
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void save({ kind: "add", name });
+            }}
+          >
+            <label>
+              {t.planning.roadmap.newName}
+              <input required value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <Button variant="primary" type="submit" disabled={!name.trim()}>
+              {t.planning.roadmap.add}
+            </Button>
+          </form>
+        </fieldset>
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            void save({ kind: "add", name });
+            void save({ kind: "move", workItem, milestone: destination || null });
           }}
         >
-          <label>
-            {t.planning.roadmap.newName}
-            <input required value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <button className="top-button" type="submit" disabled={!name.trim()}>
-            {t.planning.roadmap.add}
-          </button>
+          <fieldset disabled={saving || !snapshot.workItems.length}>
+            <legend>{t.planning.roadmap.moveHeading}</legend>
+            <label>
+              {t.planning.roadmap.workItem}
+              <select value={workItem} onChange={(event) => setWorkItem(event.target.value)}>
+                {snapshot.workItems.map((item) => (
+                  <option key={item.slug} value={item.slug}>
+                    {item.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t.planning.roadmap.destination}
+              <select value={destination} onChange={(event) => setDestination(event.target.value)}>
+                <option value="">{t.planning.roadmap.noMilestone}</option>
+                {milestones.map((milestone) => (
+                  <option key={milestone.id} value={milestone.id}>
+                    {milestone.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button type="submit">{t.planning.roadmap.move}</Button>
+          </fieldset>
         </form>
-      </fieldset>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void save({ kind: "move", workItem, milestone: destination || null });
-        }}
-      >
-        <fieldset disabled={saving || !snapshot.workItems.length}>
-          <legend>{t.planning.roadmap.moveHeading}</legend>
-          <label>
-            {t.planning.roadmap.workItem}
-            <select value={workItem} onChange={(event) => setWorkItem(event.target.value)}>
-              {snapshot.workItems.map((item) => (
-                <option key={item.slug} value={item.slug}>
-                  {item.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t.planning.roadmap.destination}
-            <select value={destination} onChange={(event) => setDestination(event.target.value)}>
-              <option value="">{t.planning.roadmap.noMilestone}</option>
-              {milestones.map((milestone) => (
-                <option key={milestone.id} value={milestone.id}>
-                  {milestone.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="top-button" type="submit">
-            {t.planning.roadmap.move}
-          </button>
-        </fieldset>
-      </form>
-    </dialog>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -195,8 +187,11 @@ function MilestoneFields({
   const [status, setStatus] = useState(milestone.status);
   const [target, setTarget] = useState(milestone.target ?? "");
   return (
-    <section className="roadmap-milestone" aria-label={milestone.name}>
-      <h3>
+    <section
+      className="roadmap-milestone mb-3 border-b border-border py-3"
+      aria-label={milestone.name}
+    >
+      <h3 className="mb-3 font-medium">
         {milestone.name} <small className="muted">{milestone.id}</small>
       </h3>
       <form
@@ -209,13 +204,9 @@ function MilestoneFields({
           {t.planning.roadmap.name(milestone.name)}
           <input required value={name} onChange={(event) => setName(event.target.value)} />
         </label>
-        <button
-          className="top-button"
-          type="submit"
-          disabled={!name.trim() || name === milestone.name}
-        >
+        <Button type="submit" disabled={!name.trim() || name === milestone.name}>
           {t.planning.roadmap.rename(milestone.name)}
-        </button>
+        </Button>
       </form>
       <form
         onSubmit={(event) => {
@@ -234,9 +225,9 @@ function MilestoneFields({
             <option value="shipped">{t.planning.roadmap.shipped}</option>
           </select>
         </label>
-        <button className="top-button" type="submit" disabled={status === milestone.status}>
+        <Button type="submit" disabled={status === milestone.status}>
           {t.planning.roadmap.setStatus(milestone.name)}
-        </button>
+        </Button>
       </form>
       <form
         onSubmit={(event) => {
@@ -248,17 +239,17 @@ function MilestoneFields({
           {t.planning.roadmap.target(milestone.name)}
           <input type="date" value={target} onChange={(event) => setTarget(event.target.value)} />
         </label>
-        <button className="top-button" type="submit" disabled={target === (milestone.target ?? "")}>
+        <Button type="submit" disabled={target === (milestone.target ?? "")}>
           {t.planning.roadmap.setTarget(milestone.name)}
-        </button>
+        </Button>
       </form>
-      <div className="roadmap-order">
-        <button className="top-button" type="button" disabled={first} onClick={() => onReorder(-1)}>
+      <div className="roadmap-order mb-3 flex flex-wrap gap-3">
+        <Button disabled={first} onClick={() => onReorder(-1)}>
           {t.planning.roadmap.up(milestone.name)}
-        </button>
-        <button className="top-button" type="button" disabled={last} onClick={() => onReorder(1)}>
+        </Button>
+        <Button disabled={last} onClick={() => onReorder(1)}>
           {t.planning.roadmap.down(milestone.name)}
-        </button>
+        </Button>
       </div>
     </section>
   );

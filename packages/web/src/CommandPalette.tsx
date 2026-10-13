@@ -2,9 +2,11 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { Command } from "cmdk";
 import { Check, Search, X } from "lucide-react";
-import { useEffect, useId, useRef } from "react";
 import { workflowName } from "./i18n/workflow-names";
 import { useLanguage } from "./i18n/language";
+import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "./ui/Tooltip";
 
 export function CommandPalette({
   snapshot,
@@ -24,127 +26,122 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const { t } = useLanguage();
-  const dialog = useRef<HTMLDialogElement>(null);
-  const input = useRef<HTMLInputElement>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    const previousFocus = document.activeElement;
-    const element = dialog.current;
-    element?.showModal();
-    input.current?.focus();
-    return () => {
-      element?.close();
-      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus();
-    };
-  }, []);
 
   return (
-    <dialog
-      ref={dialog}
-      className="command-palette"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        event.preventDefault();
-        onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") {
-          event.preventDefault();
-          event.stopPropagation();
-          onClose();
-        }
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
       }}
     >
-      <h2 className="sr-only" id={titleId}>
-        {t.planning.palette.title}
-      </h2>
-      <Command label={t.planning.palette.search} vimBindings={false}>
-        <div className="command-search">
-          <Search size={16} className="muted" aria-hidden="true" />
-          <Command.Input
-            ref={input}
-            placeholder={t.planning.palette.placeholder}
-            aria-label={t.planning.palette.search}
-          />
-          <button
-            type="button"
-            className="top-button"
-            onClick={onClose}
-            aria-label={t.planning.palette.close}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") event.stopPropagation();
-            }}
+      <DialogContent aria-describedby={undefined} className="command-palette w-xl p-0">
+        <DialogTitle className="sr-only">{t.planning.palette.title}</DialogTitle>
+        <Command
+          label={t.planning.palette.search}
+          vimBindings={false}
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-sm [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent-soft [&_[cmdk-item][data-selected=true]]:ring-1 [&_[cmdk-item][data-selected=true]]:ring-accent [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted"
+        >
+          <div className="command-search flex items-center gap-3 border-b border-border p-4">
+            <Search className="size-icon-sm shrink-0 text-muted" aria-hidden="true" />
+            <Command.Input
+              className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-accent"
+              placeholder={t.planning.palette.placeholder}
+              aria-label={t.planning.palette.search}
+            />
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={onClose}
+                    aria-label={t.planning.palette.close}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") event.stopPropagation();
+                    }}
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t.planning.palette.close}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+          <Command.List
+            label={t.planning.palette.suggestions}
+            className="max-h-[50dvh] overflow-auto overscroll-contain p-2"
           >
-            <X size={15} aria-hidden="true" />
-          </button>
-        </div>
-        <Command.List label={t.planning.palette.suggestions}>
-          <Command.Empty>{t.planning.palette.empty}</Command.Empty>
-          <Command.Group heading={t.planning.palette.actions}>
-            <Command.Item
-              value={t.planning.palette.create}
-              onSelect={() => {
-                onClose();
-                onCreateItem();
-              }}
-            >
-              {t.planning.palette.create}
-            </Command.Item>
-            {Object.values(builtInWorkflows).map((workflow) => (
+            <Command.Empty className="p-5 text-center text-muted">
+              {t.planning.palette.empty}
+            </Command.Empty>
+            <Command.Group heading={t.planning.palette.actions}>
               <Command.Item
-                key={workflow.id}
-                value={t.planning.palette.customise(workflowName(workflow, t))}
-                keywords={[workflow.id]}
+                value={t.planning.palette.create}
                 onSelect={() => {
                   onClose();
-                  onCustomiseWorkflow(workflow.id);
+                  onCreateItem();
                 }}
               >
-                {t.planning.palette.customise(workflowName(workflow, t))}
+                {t.planning.palette.create}
               </Command.Item>
-            ))}
-          </Command.Group>
-          <Command.Group heading={t.planning.palette.workItems}>
-            {snapshot.workItems.map((item) => (
-              <Command.Item
-                key={item.slug}
-                value={`item ${item.slug}`}
-                keywords={[item.title]}
-                onSelect={() => {
-                  onClose();
-                  onOpenItem(item.slug);
-                }}
-              >
-                <code>{item.slug}</code>
-                <span>{item.title}</span>
-              </Command.Item>
-            ))}
-          </Command.Group>
-          <Command.Group heading={t.planning.palette.milestones}>
-            {[{ id: "", name: t.planning.palette.all }, ...snapshot.milestones].map((entry) => (
-              <Command.Item
-                key={entry.id}
-                value={`milestone ${entry.id}`}
-                keywords={[entry.name]}
-                onSelect={() => {
-                  onMilestoneChange(entry.id);
-                  onClose();
-                }}
-              >
-                <span>{entry.name}</span>
-                {entry.id === milestone && (
-                  <Check size={14} aria-label={t.planning.palette.selected} />
-                )}
-              </Command.Item>
-            ))}
-          </Command.Group>
-        </Command.List>
-        <footer className="command-footer">
-          <span>{t.planning.palette.navigation}</span>
-          <kbd>Esc</kbd>
-        </footer>
-      </Command>
-    </dialog>
+              {Object.values(builtInWorkflows).map((workflow) => (
+                <Command.Item
+                  key={workflow.id}
+                  value={t.planning.palette.customise(workflowName(workflow, t))}
+                  keywords={[workflow.id]}
+                  onSelect={() => {
+                    onClose();
+                    onCustomiseWorkflow(workflow.id);
+                  }}
+                >
+                  {t.planning.palette.customise(workflowName(workflow, t))}
+                </Command.Item>
+              ))}
+            </Command.Group>
+            <Command.Group heading={t.planning.palette.workItems}>
+              {snapshot.workItems.map((item) => (
+                <Command.Item
+                  key={item.slug}
+                  value={`item ${item.slug}`}
+                  keywords={[item.title]}
+                  onSelect={() => {
+                    onClose();
+                    onOpenItem(item.slug);
+                  }}
+                >
+                  <code>{item.slug}</code>
+                  <span>{item.title}</span>
+                </Command.Item>
+              ))}
+            </Command.Group>
+            <Command.Group heading={t.planning.palette.milestones}>
+              {[{ id: "", name: t.planning.palette.all }, ...snapshot.milestones].map((entry) => (
+                <Command.Item
+                  key={entry.id}
+                  value={`milestone ${entry.id}`}
+                  keywords={[entry.name]}
+                  onSelect={() => {
+                    onMilestoneChange(entry.id);
+                    onClose();
+                  }}
+                >
+                  <span>{entry.name}</span>
+                  {entry.id === milestone && (
+                    <Check
+                      className="size-icon-sm shrink-0"
+                      aria-label={t.planning.palette.selected}
+                    />
+                  )}
+                </Command.Item>
+              ))}
+            </Command.Group>
+          </Command.List>
+          <footer className="command-footer flex flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted">
+            <span>{t.planning.palette.navigation}</span>
+            <kbd>Esc</kbd>
+          </footer>
+        </Command>
+      </DialogContent>
+    </Dialog>
   );
 }

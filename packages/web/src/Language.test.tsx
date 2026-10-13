@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { RoadmapEditor } from "./RoadmapEditor";
-import { LanguageSelect } from "./i18n/LanguageSelect";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 
 const files = {
   ".scratch/example/spec.md": "# Repo title 中文",
@@ -290,11 +289,15 @@ test("warnings and setup checklist chrome translate without changing core warnin
 });
 
 test("Chinese command suggestions have a catalog accessible name and retain repo titles", async () => {
-  const user = userEvent.setup();
+  let changeLanguage: ReturnType<typeof useLanguage>["setLanguage"] = () => {};
+  function LanguageChanges() {
+    changeLanguage = useLanguage().setLanguage;
+    return null;
+  }
   localStorage.setItem(languageStorageKey, "zh-CN");
   render(
     <LanguageProvider>
-      <LanguageSelect />
+      <LanguageChanges />
       <CommandPalette
         snapshot={project()}
         milestone=""
@@ -310,7 +313,7 @@ test("Chinese command suggestions have a catalog accessible name and retain repo
   expect(suggestions.getByText("Repo title 中文")).toBeInTheDocument();
   expect(suggestions.getByText("Repo milestone 中文")).toBeInTheDocument();
   expect(suggestions.getByRole("option", { name: "自定义功能工作流" })).toBeInTheDocument();
-  await user.selectOptions(screen.getByRole("combobox", { name: "语言" }), "en");
+  act(() => changeLanguage("en"));
   expect(screen.getByRole("listbox", { name: "Suggestions" })).toBeInTheDocument();
 });
 

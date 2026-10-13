@@ -34,6 +34,18 @@ async function open() {
   await user.click(screen.getByRole("button", { name: "Edit roadmap" }));
   return { user, sheet: within(screen.getByRole("dialog", { name: "Edit roadmap" })) };
 }
+
+test("roadmap traps keyboard focus and restores the opener after outside dismissal", async () => {
+  mockServer();
+  const { user, sheet } = await open();
+  await user.tab({ shift: true });
+  expect(sheet.getByRole("button", { name: "Move work item" })).toHaveFocus();
+  await user.tab();
+  expect(sheet.getByRole("button", { name: "Close roadmap" })).toHaveFocus();
+  fireEvent.pointerDown(document.body);
+  await waitFor(() => expect(screen.getByRole("button", { name: "Edit roadmap" })).toHaveFocus());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();
@@ -238,11 +250,12 @@ test("disables editing and closing while a write is pending", async () => {
   expect(sheet.getByRole("button", { name: "Close roadmap" })).toBeDisabled();
   expect(sheet.getByRole("button", { name: "Move work item" })).toBeDisabled();
   expect(sheet.getByRole("textbox", { name: "New milestone name" })).toBeDisabled();
-  fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  await user.keyboard("{Escape}");
+  fireEvent.pointerDown(document.body);
   expect(screen.getByRole("dialog")).toBeInTheDocument();
   respond(new Response(JSON.stringify({ milestones: snapshot().milestones, commit: null })));
   expect(await sheet.findByRole("status")).toHaveTextContent("Roadmap unchanged.");
-  fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }));
+  await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Edit roadmap" })).toHaveFocus();
 });

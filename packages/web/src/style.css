@@ -399,16 +399,14 @@ kbd {
   font-size: 10px;
   color: var(--muted);
 }
-.work-item-drawer,
-.command-palette {
+.work-item-drawer {
   padding: 0;
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border-strong);
   box-shadow: 0 16px 60px #0005;
 }
-.work-item-drawer::backdrop,
-.command-palette::backdrop {
+.work-item-drawer::backdrop {
   background: #0007;
 }
 .work-item-drawer {
@@ -624,8 +622,7 @@ kbd {
 .ticket-title small {
   font-size: 10px;
 }
-.drawer-footer,
-.command-footer {
+.drawer-footer {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
@@ -635,62 +632,6 @@ kbd {
   color: var(--muted);
   font-size: 10px;
   flex-shrink: 0;
-}
-.command-palette {
-  width: min(580px, calc(100vw - 32px));
-  max-height: 75dvh;
-  margin: 12dvh auto auto;
-  border-radius: 8px;
-  overflow: hidden;
-}
-.command-search {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px;
-  border-bottom: 1px solid var(--border);
-}
-[cmdk-input] {
-  flex: 1;
-  min-width: 0;
-  padding: 6px;
-  font: inherit;
-  background: transparent;
-}
-[cmdk-list] {
-  max-height: 50dvh;
-  overflow: auto;
-  padding: 8px;
-  overscroll-behavior: contain;
-}
-[cmdk-group-heading] {
-  padding: 12px 8px 8px;
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.5px;
-}
-[cmdk-item] {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.command-palette [cmdk-item] code {
-  color: var(--muted);
-  font-size: 10px;
-}
-[cmdk-item][data-selected="true"] {
-  background: var(--accent-soft);
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-[cmdk-empty] {
-  padding: 20px;
-  text-align: center;
-  color: var(--muted);
 }
 @media (max-width: 720px) {
   .work-item-drawer {
