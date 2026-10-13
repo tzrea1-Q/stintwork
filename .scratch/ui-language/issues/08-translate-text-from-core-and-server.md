@@ -1,6 +1,6 @@
 # 08 — Translate text that core and server write
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06
 
 ## What to build
@@ -31,3 +31,39 @@ Still out of scope: CLI output, agent-supplied text (permission option names, to
 - [x] Component tests in Chinese: each listed sentence renders in Chinese, an unknown code falls back to the English string, and an old stint log without codes still renders.
 - [x] Existing English tests pass unchanged, and the catalog completeness test passes.
 - [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-13:** Built by Codex on the integration branch `ui-language-followups`.
+
+Core owns one catalog of English text with stable codes and typed parameters (`core-text.ts`). Producers name a code, the English is rendered from the catalog, and the web translates known codes. The wire format is additive: every existing English field is byte-identical, and codes travel alongside it.
+
+Translated:
+- gate reasons, labels and remedies;
+- brief availability and pointer reasons (display only; the prompt sent to agents stays English);
+- permission-level warnings;
+- agent availability and login guidance;
+- Stintwork's own stream notes and diagnostics;
+- fixed HTTP refusals for checks, ship, review, memory, setup, roadmap, workflow, work-item creation and file safety.
+
+Left in English on purpose:
+- CLI output, and the prompt sent to agents: localisation must not change agent instructions.
+- Agent-authored text: messages, tool titles, permission option names and handoffs.
+- Repo content and parser warnings.
+- Raw git, `gh` and command output, and the diagnostic detail inside translated wrappers.
+- Unstructured operational exceptions (adapter, transport and startup failures; compound checkpoint, merge and cleanup errors). Their full text is kept rather than parsed.
+- Old stint-log entries without codes, unknown codes and malformed parameters, which fall back to their stored English.
+
+The code-review round made these changes:
+- Code first instead of English-to-code lookup, so the lookup middleware and its hand-wrapped variant are gone.
+- One `CoreText` type replaces the reason/reasonMessage pairs.
+- Wrapper functions were removed, and parameter shapes are declared once.
+- Malformed error bodies are handled safely.
+- `@stintwork/core` became a declared workspace dependency of `@stintwork/git`, replacing a relative import into `core/dist`.
+
+Kept as one catalog on purpose: splitting `core-text.ts` per package would scatter the codes the web needs.
+
+Coordinator checks in a fresh clone:
+- `pnpm install --frozen-lockfile` passed.
+- The first full `pnpm test` had 7 cold-start timeouts in agent-launcher and permission tests. They passed in isolation (48 tests), and a second full run passed 2100 tests.
+- `typecheck`, `lint`, `format:check`, `build` and `smoke:package` passed.

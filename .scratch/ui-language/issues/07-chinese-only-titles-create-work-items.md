@@ -1,6 +1,6 @@
 # 07 — Chinese-only titles can create work items
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -26,3 +26,23 @@ The slug stays ASCII kebab-case of at most 48 characters, because it names the f
   - the created card shows the Chinese title verbatim.
 - [x] The catalog completeness test passes with the new strings, and existing tests pass unchanged.
 - [x] All checks pass.
+
+## Comments
+
+**Coordinator, 2026-10-13:** Built by Codex on the integration branch `ui-language-followups`.
+
+The create dialog now has an editable folder-name field:
+- it is prefilled from the title, and an edited value survives title changes;
+- when the title yields no folder name, it starts empty with a hint.
+
+Core and server accept an explicit slug under the existing rules, and the title is saved as typed (trimmed).
+
+Code-review round:
+- core now trims the title whether or not a slug is given;
+- the folder-name rule and the duplicate refusals ("already exists", and "already exists in Git") have codes and render in Chinese;
+- the hint shows only when the title yields no folder name.
+
+Coordinator checks in a fresh clone of the final branch:
+- `pnpm install --frozen-lockfile` passed;
+- `pnpm test` passed, 2100 tests;
+- `typecheck`, `lint`, `format:check`, `build` and `smoke:package` passed.
