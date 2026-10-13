@@ -57,10 +57,11 @@ test.each([
         {
           id: "output",
           ready: true,
-          label: expect.any(String),
-          action: expect.any(String),
-          labelMessage: { code: "gate.manualApproval" },
-          actionMessage: { code: "gate.approve" },
+          label: {
+            text: "Developer approval; no file output required",
+            code: "gate.manualApproval",
+          },
+          action: { text: "Review the stage and approve when satisfied.", code: "gate.approve" },
         },
       ]),
     });
@@ -73,7 +74,7 @@ test.each([undefined, "", "No heading", "#   ", "# Spec\n\u0000", "# Spec\n\uFFF
     const { item, snapshot } = project("spec", text === undefined ? {} : { [specPath]: text });
     expect(gateReadiness(item)).toMatchObject({
       ready: false,
-      reason: expect.stringContaining(specPath),
+      reason: expect.objectContaining({ text: expect.stringContaining(specPath) }),
       conditions: [expect.objectContaining({ id: "output", ready: false })],
     });
     expect(deriveAttentionItems(snapshot).some(({ kind }) => kind === "gate-ready")).toBe(false);
@@ -85,16 +86,15 @@ test("gate output carries typed paths and leaves parser warnings verbatim", () =
   const gate = gateReadiness(item);
   expect(gate.conditions[0]).toEqual({
     id: "output",
-    label: "spec.md exists and parses",
-    labelMessage: { code: "gate.specOutput" },
+    label: { text: "spec.md exists and parses", code: "gate.specOutput" },
     ready: false,
-    action: `Write or edit ${specPath} with a nonempty # heading. Spec has no nonempty # heading`,
-    actionMessage: {
+    action: {
+      text: `Write or edit ${specPath} with a nonempty # heading. Spec has no nonempty # heading`,
       code: "gate.writeSpec",
       params: { path: specPath, warning: "Spec has no nonempty # heading" },
     },
   });
-  expect(gate.reasonMessage).toEqual(gate.conditions[0].actionMessage);
+  expect(gate.reason).toEqual(gate.conditions[0].action);
 });
 
 test("manual, Tickets and Review gate conditions carry messages alongside English", () => {
@@ -102,27 +102,31 @@ test("manual, Tickets and Review gate conditions carry messages alongside Englis
   expect(manual).toEqual({
     id: "output",
     ready: true,
-    label: "Developer approval; no file output required",
-    labelMessage: { code: "gate.manualApproval" },
-    action: "Review the stage and approve when satisfied.",
-    actionMessage: { code: "gate.approve" },
+    label: { text: "Developer approval; no file output required", code: "gate.manualApproval" },
+    action: { text: "Review the stage and approve when satisfied.", code: "gate.approve" },
   });
   const tickets = gateReadiness(project("tickets").item).conditions[0];
   expect(tickets).toEqual({
     id: "output",
     ready: false,
-    label: "At least one ticket, no ticket warnings, valid dependency order",
-    labelMessage: { code: "gate.ticketsOutput" },
-    action:
-      "Write or fix .scratch/first/issues/NN-<slug>.md tickets with Status and Blocked by lines and valid dependencies.",
-    actionMessage: {
+    label: {
+      text: "At least one ticket, no ticket warnings, valid dependency order",
+      code: "gate.ticketsOutput",
+    },
+    action: {
+      text: "Write or fix .scratch/first/issues/NN-<slug>.md tickets with Status and Blocked by lines and valid dependencies.",
       code: "gate.writeTickets",
       params: { path: ".scratch/first/issues/NN-<slug>.md", warning: "" },
     },
   });
   const review = gateReadiness(project("review").item).conditions;
   expect(
-    review.map(({ labelMessage, actionMessage }) => ({ labelMessage, actionMessage })),
+    review.map(
+      ({
+        label: { text: _label, ...labelMessage },
+        action: { text: _action, ...actionMessage },
+      }) => ({ labelMessage, actionMessage }),
+    ),
   ).toEqual([
     {
       labelMessage: { code: "gate.reviewFinished" },
@@ -179,7 +183,7 @@ test.each(invalidTicketOutputs)(
     const { item } = project("tickets", output);
     expect(gateReadiness(item)).toMatchObject({
       ready: false,
-      reason: expect.stringContaining(".scratch/first/issues/"),
+      reason: expect.objectContaining({ text: expect.stringContaining(".scratch/first/issues/") }),
       conditions: [expect.objectContaining({ id: "output", ready: false })],
     });
   },
@@ -220,13 +224,13 @@ test("Clarify blocks on open, unknown or unreadable memory proposals", () => {
   ];
   expect(gateReadiness(item)).toMatchObject({
     ready: false,
-    reason: expect.stringContaining("Accept or reject"),
+    reason: expect.objectContaining({ text: expect.stringContaining("Accept or reject") }),
   });
   item.memoryProposals = undefined;
   expect(gateReadiness(item).ready).toBe(false);
   item.memoryProposals = [];
   item.memoryProposalError = "Cannot derive memory proposals";
-  expect(gateReadiness(item).reason).toBe(item.memoryProposalError);
+  expect(gateReadiness(item).reason?.text).toBe(item.memoryProposalError);
 });
 
 test.each(["manual", "spec", "tickets", "evidence", "merge"] as const)(

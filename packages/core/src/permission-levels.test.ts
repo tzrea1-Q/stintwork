@@ -16,25 +16,23 @@ test("agent availability exposes known status messages and preserves unknown dia
   expect(
     agentUnavailable({
       ...codexProfile,
-      availability: { available: false, reason: "Internal error" },
+      availability: {
+        available: false,
+        reason: { text: "Internal error", code: "agent.internalError" },
+      },
     }),
-  ).toEqual({
-    reason: "Internal error",
-    reasonMessage: { code: "agent.internalError" },
-  });
+  ).toEqual({ text: "Internal error", code: "agent.internalError" });
   expect(agentUnavailable({ ...codexProfile, availability: { available: false } })).toEqual({
-    reason: "Codex is unavailable. codex login",
-    reasonMessage: {
-      code: "agent.unavailable",
-      params: { agent: "Codex", command: "codex login" },
-    },
+    text: "Codex is unavailable. codex login",
+    code: "agent.unavailable",
+    params: { agent: "Codex", command: "codex login" },
   });
   expect(
     agentUnavailable({
       ...codexProfile,
-      availability: { available: false, reason: "Agent raw 原文" },
+      availability: { available: false, reason: { text: "Agent raw 原文" } },
     }),
-  ).toEqual({ reason: "Agent raw 原文" });
+  ).toEqual({ text: "Agent raw 原文" });
 });
 
 test("permission warnings carry typed messages while retaining every English warning", () => {
@@ -42,14 +40,17 @@ test("permission warnings carry typed messages while retaining every English war
     { ...codexProfile, capabilities: { ...codexProfile.capabilities, modes: [] } },
     "ask",
   );
-  expect({ warnings: policy.warnings, warningMessages: policy.warningMessages }).toEqual({
+  expect({ warnings: policy.warnings }).toEqual({
     warnings: [
-      "Codex does not offer the required read-only mode; it cannot honour this permission level.",
-      "Codex’s sandbox can execute commands without asking. Stintwork only controls requests Codex sends; commands and access outside the worktree may not produce a request.",
-    ],
-    warningMessages: [
-      { code: "permission.unsupportedMode", params: { agent: "Codex", mode: "read-only" } },
-      { code: "permission.codexSandbox" },
+      {
+        text: "Codex does not offer the required read-only mode; it cannot honour this permission level.",
+        code: "permission.unsupportedMode",
+        params: { agent: "Codex", mode: "read-only" },
+      },
+      {
+        text: "Codex’s sandbox can execute commands without asking. Stintwork only controls requests Codex sends; commands and access outside the worktree may not produce a request.",
+        code: "permission.codexSandbox",
+      },
     ],
   });
   const grok = permissionPolicy(
@@ -59,11 +60,14 @@ test("permission warnings carry typed messages while retaining every English war
     },
     "autonomous",
   );
-  expect({ warnings: grok.warnings, warningMessages: grok.warningMessages }).toEqual({
+  expect({ warnings: grok.warnings }).toEqual({
     warnings: [
-      "Grok Build has an always-approve config and never asks. Stintwork can only answer requests the agent sends and cannot enforce the worktree boundary.",
+      {
+        text: "Grok Build has an always-approve config and never asks. Stintwork can only answer requests the agent sends and cannot enforce the worktree boundary.",
+        code: "permission.alwaysApprove",
+        params: { agent: "Grok Build" },
+      },
     ],
-    warningMessages: [{ code: "permission.alwaysApprove", params: { agent: "Grok Build" } }],
   });
 });
 
@@ -194,7 +198,11 @@ test("project defaults are Edit freely, configurable, preserve other settings, a
 
 test("unhonourable levels warn about Codex commands, Grok always-approve and missing modes", () => {
   for (const level of permissionLevels) {
-    expect(permissionPolicy(codexProfile, level).warnings.join(" ")).toContain("without asking");
+    expect(
+      permissionPolicy(codexProfile, level)
+        .warnings.map((warning) => warning.text)
+        .join(" "),
+    ).toContain("without asking");
     expect(
       permissionPolicy(
         {
@@ -202,13 +210,17 @@ test("unhonourable levels warn about Codex commands, Grok always-approve and mis
           capabilities: { ...grokProfile.capabilities, permissionMode: "always-approve" },
         },
         level,
-      ).warnings.join(" "),
+      )
+        .warnings.map((warning) => warning.text)
+        .join(" "),
     ).toContain("always-approve");
     expect(
       permissionPolicy(
         { ...claudeProfile, capabilities: { ...claudeProfile.capabilities, modes: [] } },
         level,
-      ).warnings.join(" "),
+      )
+        .warnings.map((warning) => warning.text)
+        .join(" "),
     ).toContain("cannot honour");
   }
 });

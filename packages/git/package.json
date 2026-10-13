@@ -13,5 +13,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@stintwork/core": "workspace:*"
   }
 }

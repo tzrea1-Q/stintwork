@@ -29,7 +29,10 @@ const agents = [
     ...grokProfile,
     id: "grok",
     displayName: "Grok Build",
-    availability: { available: false, reason: "Authentication required. Use grok login." },
+    availability: {
+      available: false,
+      reason: { text: "Authentication required. Use grok login." },
+    },
   },
 ];
 afterEach(() => {

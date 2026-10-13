@@ -50,7 +50,16 @@ export function createFakeAgentLauncher(
     (cwd) =>
       spawn(
         process.execPath,
-        [...(source ? ["--import", createRequire(import.meta.url).resolve("tsx")] : []), entry],
+        [
+          ...(source
+            ? [
+                "--conditions=development",
+                "--import",
+                createRequire(import.meta.url).resolve("tsx"),
+              ]
+            : []),
+          entry,
+        ],
         {
           cwd,
           stdio: "pipe",

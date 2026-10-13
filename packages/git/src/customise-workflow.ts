@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { commitWithIdentity } from "./checkpoints.js";
 import { withRepoLock } from "./index.js";
 
-export class WorkflowCustomisationRefusal extends Error {}
+export class WorkflowCustomisationRefusal extends CoreTextError {}
 
 function git(root: string, args: string[]) {
   return execFileSync("git", ["--literal-pathspecs", ...args], {
@@ -17,7 +18,7 @@ function git(root: string, args: string[]) {
 
 export function checkWorkflowCustomisation(root: string, id: string) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id))
-    throw new WorkflowCustomisationRefusal("Invalid workflow id.");
+    throw new WorkflowCustomisationRefusal({ code: "workflow.invalidId" });
   const relative = `.stintwork/workflows/${id}.yaml`;
   for (const parent of [".stintwork", ".stintwork/workflows"]) {
     const stat = lstatSync(join(root, parent), { throwIfNoEntry: false });

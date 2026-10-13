@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync } from "node:child_process";
 import {
+  errorText,
+  coreTextWire,
+  coreText,
   deriveAttentionItems,
   deriveMemoryProposals,
   indexProject,
@@ -10,6 +12,9 @@ import {
   type RepoFiles,
   type ReviewDecision,
 } from "@stintwork/core";
+
+import { execFileSync } from "node:child_process";
+
 import { checkpointChangedPaths, checkpointFileDiff } from "@stintwork/git";
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
@@ -70,16 +75,19 @@ export function addMemoryProposalRoutes(
   app.post("/api/work-items/:slug/memory-proposals/decision", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
-      return context.json({ reason: "Origin must match the project server." }, 403);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+        403,
+      );
     if (
       context.req.header("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json"
     )
-      return context.json({ reason: "A JSON memory proposal decision is required." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "server.jsonMemory" }) }), 400);
     let body: unknown;
     try {
       body = await context.req.json();
     } catch {
-      return context.json({ reason: "Invalid JSON." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "server.invalidJson" }) }), 400);
     }
     if (
       !body ||
@@ -90,21 +98,31 @@ export function addMemoryProposalRoutes(
       (body.status !== "accepted" && body.status !== "rejected") ||
       ("reason" in body && typeof body.reason !== "string")
     )
-      return context.json({ reason: "Choose a proposal id and accepted or rejected status." }, 400);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "memory.chooseDecision" }) }),
+        400,
+      );
     const slug = context.req.param("slug");
     const reason = "reason" in body ? String(body.reason).trim() : "";
     const status = body.status as "accepted" | "rejected";
     const project = readProjectFiles();
     if (project.warnings.some(({ path }) => path === ".git"))
-      return context.json({ reason: "Cannot discover work item branches." }, 503);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
+        503,
+      );
     const snapshot = indexProject(project.files, { name: "" });
     const item = snapshot.workItems.find((entry) => entry.slug === slug);
-    if (!item) return context.json({ reason: "Work item not found." }, 404);
+    if (!item)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
+        404,
+      );
     if (item.activeStint || isStintActive(slug) || writing.has(slug))
-      return context.json({ reason: "A stint or review write is active for this work item." }, 409);
+      return context.json(coreTextWire({ reason: coreText({ code: "memory.activeWrite" }) }), 409);
     if (snapshot.warnings.some(({ path }) => path === `.scratch/${slug}/review.yaml`))
       return context.json(
-        { reason: "review.yaml must be valid before recording a decision." },
+        coreTextWire({ reason: coreText({ code: "memory.validReviewRequired" }) }),
         409,
       );
     const previous = item.reviewDecisions?.find(
@@ -112,15 +130,23 @@ export function addMemoryProposalRoutes(
     );
     if (previous && previous.status !== "open") {
       if (previous.status !== status || previous.reason !== reason)
-        return context.json({ reason: "This memory proposal was already decided." }, 409);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "memory.alreadyDecided" }) }),
+          409,
+        );
       refresh();
-      return context.json({ decision: previous });
+      return context.json(coreTextWire({ decision: previous }));
     }
     readProposals(project.files, snapshot);
     const proposal = item.memoryProposals?.find((entry) => entry.id === body.id);
-    if (!proposal) return context.json({ reason: "Open memory proposal not found." }, 404);
+    if (!proposal)
+      return context.json(coreTextWire({ reason: coreText({ code: "memory.notFound" }) }), 404);
     const worktree = project.worktreePaths.get(slug);
-    if (!worktree) return context.json({ reason: "The work item's worktree is unavailable." }, 409);
+    if (!worktree)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.worktreeUnavailable" }) }),
+        409,
+      );
     writing.add(slug);
     try {
       let by = "Developer";
@@ -150,10 +176,10 @@ export function addMemoryProposalRoutes(
           : undefined,
       );
       refresh();
-      return context.json({ decision, commit });
+      return context.json(coreTextWire({ decision, commit }));
     } catch (error) {
       refresh();
-      return context.json({ reason: String(error) }, 409);
+      return context.json(coreTextWire({ reason: errorText(error, true) }), 409);
     } finally {
       writing.delete(slug);
     }

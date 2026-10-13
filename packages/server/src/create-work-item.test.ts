@@ -127,9 +127,11 @@ test.each(["", "修复登录", "Fix-login", "fix--login", "../login", "a".repeat
     for (const preview of [true, false]) {
       const refused = await action(project, { title: "修复登录", slug, workflow: "bug" }, preview);
       expect(refused.status).toBe(400);
-      expect((await refused.json()).reason).toContain(
-        "Folder name must use lowercase English letters",
-      );
+      expect(await refused.json()).toEqual({
+        reason:
+          "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+        reasonMessage: { code: "creation.invalidSlug" },
+      });
     }
     expect(existsSync(join(root, ".scratch"))).toBe(false);
     expect(git(root, "rev-parse", "HEAD")).toBe(before);
@@ -152,7 +154,10 @@ test.each(["work-item", "worktree", "path"])(
     for (const preview of [true, false]) {
       const refused = await action(project, input, preview);
       expect(refused.status).toBe(409);
-      expect((await refused.json()).reason).toContain("already exists");
+      expect(await refused.json()).toEqual({
+        reason: "Work item fix-login already exists.",
+        reasonMessage: { code: "creation.exists", params: { slug: "fix-login" } },
+      });
     }
     expect(git(root, "rev-parse", "HEAD")).toBe(before);
     if (owner === "path")
@@ -429,5 +434,31 @@ test("JSON and same-origin boundaries refuse malformed and cross-origin actions"
         .status,
     ).toBe(400);
   }
+  expect(git(root, "status", "--porcelain")).toBe("");
+});
+
+test("preview and create give a Git-only duplicate its code without writes", async () => {
+  const { root, project } = fixture();
+  const path = ".scratch/fix-login/workflow.yaml";
+  mkdirSync(join(root, ".scratch/fix-login"), { recursive: true });
+  writeFileSync(join(root, path), "workflow: bug\nstage: diagnose\n");
+  git(root, "add", path);
+  git(root, "commit", "-qm", "Track work item");
+  git(root, "update-index", "--skip-worktree", path);
+  rmSync(join(root, ".scratch/fix-login"), { recursive: true });
+  const before = git(root, "rev-parse", "HEAD");
+  for (const preview of [true, false]) {
+    const refused = await action(
+      project,
+      { title: "修复登录", slug: "fix-login", workflow: "bug" },
+      preview,
+    );
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({
+      reason: "Work item fix-login already exists in Git.",
+      reasonMessage: { code: "creation.existsInGit", params: { slug: "fix-login" } },
+    });
+  }
+  expect(git(root, "rev-parse", "HEAD")).toBe(before);
   expect(git(root, "status", "--porcelain")).toBe("");
 });

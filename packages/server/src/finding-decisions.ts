@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
 import {
+  coreTextWire,
+  errorText,
+  coreText,
   indexProject,
   latestReviewStint,
   workflowGate,
   type ReviewDecision,
 } from "@stintwork/core";
+
+import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -26,20 +31,32 @@ export function addFindingDecisionRoutes(
     app.post(`/api/work-items/:slug/${route}`, async (context) => {
       const origin = context.req.header("origin");
       if (origin && origin !== new URL(context.req.url).origin)
-        return context.json({ reason: "Origin must match the project server." }, 403);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+          403,
+        );
       if (
         context.req.header("content-type")?.split(";")[0].trim().toLowerCase() !==
         "application/json"
       )
-        return context.json({ reason: "A JSON finding action is required." }, 400);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.jsonFinding" }) }),
+          400,
+        );
       let body: unknown;
       try {
         body = await context.req.json();
       } catch {
-        return context.json({ reason: "Invalid JSON." }, 400);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.invalidJson" }) }),
+          400,
+        );
       }
       if (!body || typeof body !== "object" || Array.isArray(body))
-        return context.json({ reason: "A JSON finding action is required." }, 400);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.jsonFinding" }) }),
+          400,
+        );
       const request = body as Record<string, unknown>;
       if (
         action === "accept-risky-path" &&
@@ -49,10 +66,7 @@ export function addFindingDecisionRoutes(
           typeof request.reason !== "string" ||
           !request.reason.trim())
       )
-        return context.json(
-          { reason: "Choose a risky path and its blob; acceptance needs a reason." },
-          400,
-        );
+        return context.json(coreTextWire({ reason: coreText({ code: "review.chooseRisk" }) }), 400);
       if (
         action === "decision" &&
         (typeof request.id !== "string" ||
@@ -64,40 +78,52 @@ export function addFindingDecisionRoutes(
             (typeof request.reason !== "string" || !request.reason.trim())))
       )
         return context.json(
-          {
-            reason:
-              "Choose a finding id and open, resolved or accepted status; acceptance needs a reason.",
-          },
+          coreTextWire({
+            reason: coreText({ code: "review.chooseFinding" }),
+          }),
           400,
         );
       const slug = context.req.param("slug");
       const project = readProjectFiles();
       if (project.warnings.some(({ path }) => path === ".git"))
-        return context.json({ reason: "Cannot discover work item branches." }, 503);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
+          503,
+        );
       const snapshot = indexProject(project.files, { name: "" });
       const item = snapshot.workItems.find((entry) => entry.slug === slug);
-      if (!item) return context.json({ reason: "Work item not found." }, 404);
-      if (item.merged) return context.json({ reason: "This work item is shipped." }, 409);
+      if (!item)
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
+          404,
+        );
+      if (item.merged)
+        return context.json(coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }), 409);
       if (item.activeStint || isStintActive(slug) || writing.has(slug) || isChecking(slug))
         return context.json(
-          { reason: "A stint, check or review write is active for this work item." },
+          coreTextWire({ reason: coreText({ code: "review.activeWrite" }) }),
           409,
         );
       if (action === "accept-risky-path") {
         readReviewEvidence?.(project, snapshot);
         if (item.reviewEvidenceError || item.riskyPaths === undefined)
           return context.json(
-            { reason: item.reviewEvidenceError ?? "Cannot inspect risky paths." },
+            coreTextWire({
+              reason: item.reviewEvidenceError ?? coreText({ code: "review.riskyPathsUnreadable" }),
+            }),
             503,
           );
         if (!item.riskyPaths.some((risk) => risk.path === request.id && risk.blob === request.blob))
           return context.json(
-            { reason: "The risky path changed or is no longer on the branch. Refresh Review." },
+            coreTextWire({ reason: coreText({ code: "review.riskyPathChanged" }) }),
             409,
           );
         const worktree = project.worktreePaths.get(slug);
         if (!worktree)
-          return context.json({ reason: "The work item's worktree is unavailable." }, 409);
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "server.worktreeUnavailable" }) }),
+            409,
+          );
         writing.add(slug);
         try {
           let by = "Developer";
@@ -122,12 +148,9 @@ export function addFindingDecisionRoutes(
           };
           const commit = await saveWorkItemReview(worktree, slug, decision);
           refresh();
-          return context.json({ decision, commit });
+          return context.json(coreTextWire({ decision, commit }));
         } catch (error) {
-          return context.json(
-            { reason: error instanceof Error ? error.message : String(error) },
-            503,
-          );
+          return context.json(coreTextWire({ reason: errorText(error) }), 503);
         } finally {
           writing.delete(slug);
         }
@@ -140,7 +163,7 @@ export function addFindingDecisionRoutes(
         )
       )
         return context.json(
-          { reason: "Review and workflow files must be valid before changing findings." },
+          coreTextWire({ reason: coreText({ code: "review.validFilesRequired" }) }),
           409,
         );
       const findings =
@@ -163,12 +186,12 @@ export function addFindingDecisionRoutes(
             );
       if (!selected.length)
         return context.json(
-          {
+          coreTextWire({
             reason:
               action === "decision"
-                ? "Finding not found."
-                : "There are no open findings to send back.",
-          },
+                ? coreText({ code: "review.findingNotFound" })
+                : coreText({ code: "review.noOpenFindings" }),
+          }),
           action === "decision" ? 404 : 409,
         );
       const implementation = snapshot.workflows[item.workflow].stages.find(
@@ -181,12 +204,15 @@ export function addFindingDecisionRoutes(
           !implementation)
       )
         return context.json(
-          { reason: "Send back requires Review and an implementation stage." },
+          coreTextWire({ reason: coreText({ code: "review.sendBackStages" }) }),
           409,
         );
       const worktree = project.worktreePaths.get(slug);
       if (!worktree)
-        return context.json({ reason: "The work item's worktree is unavailable." }, 409);
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.worktreeUnavailable" }) }),
+          409,
+        );
       const reason = typeof request.reason === "string" ? request.reason.trim() : "";
       const status =
         action === "send-back" ? "sent-back" : (request.status as ReviewDecision["status"]);
@@ -194,7 +220,7 @@ export function addFindingDecisionRoutes(
         (entry) => entry.kind === "finding" && entry.id === request.id,
       );
       if (action === "decision" && previous?.status === status && previous.reason === reason)
-        return context.json({ decision: previous });
+        return context.json(coreTextWire({ decision: previous }));
       writing.add(slug);
       try {
         let by = "Developer";
@@ -254,22 +280,21 @@ export function addFindingDecisionRoutes(
         const commit = await saveWorkItemReview(worktree, slug, decisions, undefined, sendBack);
         refresh();
         return context.json(
-          action === "decision"
-            ? { decision: decisions[0], commit }
-            : {
-                decisions,
-                stage: implementation?.id,
-                stageName: implementation?.name,
-                record,
-                commit,
-              },
+          coreTextWire(
+            action === "decision"
+              ? { decision: decisions[0], commit }
+              : {
+                  decisions,
+                  stage: implementation?.id,
+                  stageName: implementation?.name,
+                  record,
+                  commit,
+                },
+          ),
         );
       } catch (error) {
         refresh();
-        return context.json(
-          { reason: error instanceof Error ? error.message : String(error) },
-          409,
-        );
+        return context.json(coreTextWire({ reason: errorText(error) }), 409);
       } finally {
         writing.delete(slug);
       }

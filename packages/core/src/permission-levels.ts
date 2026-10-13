@@ -3,7 +3,7 @@ import { parse, stringify } from "yaml";
 import type { AgentProfile } from "./agents.js";
 import { readProjectConfig } from "./project-config.js";
 import { safeCommandPaths } from "./safe-commands.js";
-import { coreTextMessage, type CoreTextMessage } from "./core-text.js";
+import { coreText } from "./core-text.js";
 
 export const permissionLevels = ["ask", "edit-freely", "autonomous"] as const;
 export type PermissionLevel = (typeof permissionLevels)[number];
@@ -27,37 +27,29 @@ export function permissionPolicy(profile: AgentProfile, level: PermissionLevel) 
         : profile.capabilities.defaultMode;
   const supported = mode === null || profile.capabilities.modes.includes(mode);
   const warnings = [...(profile.warnings ?? [])];
-  const warningMessages: (CoreTextMessage | null)[] = warnings.map(
-    (warning, index) => profile.warningMessages?.[index] ?? coreTextMessage(warning) ?? null,
-  );
   if (!supported) {
     warnings.push(
-      `${profile.displayName} does not offer the required ${mode} mode; it cannot honour this permission level.`,
+      coreText({
+        code: "permission.unsupportedMode",
+        params: { agent: profile.displayName, mode: mode ?? "" },
+      }),
     );
-    warningMessages.push({
-      code: "permission.unsupportedMode",
-      params: { agent: profile.displayName, mode: mode ?? "" },
-    });
   }
   if (profile.id === "codex") {
-    warnings.push(
-      "Codex’s sandbox can execute commands without asking. Stintwork only controls requests Codex sends; commands and access outside the worktree may not produce a request.",
-    );
-    warningMessages.push({ code: "permission.codexSandbox" });
+    warnings.push(coreText({ code: "permission.codexSandbox" }));
   }
   if (
     profile.capabilities.permissionMode === "always-approve" &&
-    !warnings.some((warning) => warning.includes("always-approve"))
+    !warnings.some((warning) => warning.text.includes("always-approve"))
   ) {
     warnings.push(
-      `${profile.displayName} has an always-approve config and never asks. Stintwork can only answer requests the agent sends and cannot enforce the worktree boundary.`,
+      coreText({
+        code: "permission.alwaysApprove",
+        params: { agent: profile.displayName },
+      }),
     );
-    warningMessages.push({
-      code: "permission.alwaysApprove",
-      params: { agent: profile.displayName },
-    });
   }
-  return { mode, autoAnswer: level, warnings, warningMessages };
+  return { mode, autoAnswer: level, warnings };
 }
 
 export function projectPermissionLevel(text?: string): PermissionLevel {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { lstatSync, realpathSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -18,7 +19,7 @@ export function listWorkItemWorktrees(repoRoot: string) {
   const commonDir = resolve(root, git(root, ["rev-parse", "--git-common-dir"]).trim());
   const registryPath = join(commonDir, "worktrees");
   if (lstatSync(parent, { throwIfNoEntry: false })?.isSymbolicLink())
-    throw new Error("Worktree directory must not be a symlink.");
+    throw new CoreTextError({ code: "git.worktreeSymlink" });
   const worktrees = new Map<string, { path: string; branch: string }>();
   for (const record of git(root, ["worktree", "list", "--porcelain", "-z"]).split("\0\0")) {
     const fields = record.split("\0");
@@ -45,7 +46,8 @@ export function listWorkItemWorktrees(repoRoot: string) {
 
 /** New worktrees retain their creation base in Git config; older ones use the branch reflog. */
 export function workItemBaseCommit(root: string, slug: string): string {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   const branch = `stintwork/${slug}`;
   let base: string;
   try {
@@ -70,8 +72,10 @@ export function workItemFilesDiverged(
   slug: string,
   base = workItemBaseCommit(root, slug),
 ): boolean {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
-  if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(base)) throw new Error("Invalid base commit.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
+  if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(base))
+    throw new CoreTextError({ code: "git.invalidBase" });
   const scope = `.scratch/${slug}/`;
   try {
     git(root, ["--literal-pathspecs", "diff", "--quiet", base, "--", scope]);

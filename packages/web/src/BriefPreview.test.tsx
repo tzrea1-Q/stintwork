@@ -162,7 +162,7 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
   for (const pointer of brief.pointers) {
     expect(preview.getByText(pointer.path, { selector: "li code" })).toBeInTheDocument();
     expect(
-      preview.getByText(`— ${pointer.reason}`, { exact: false, selector: "li" }),
+      preview.getByText(`— ${pointer.reason.text}`, { exact: false, selector: "li" }),
     ).toBeInTheDocument();
   }
   expect(preview.getByText(`/implement ${ticketPath}`, { selector: "code" })).toBeInTheDocument();

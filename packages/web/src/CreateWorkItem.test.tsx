@@ -43,6 +43,32 @@ afterEach(() => {
 });
 
 test.each([
+  ["Gateway temporarily unavailable", "Gateway temporarily unavailable"],
+  ["null", "null"],
+  ["", "Bad Gateway"],
+])("a malformed preview refusal %j falls back to raw text or status", async (body, expected) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(body, { status: 502, statusText: "Bad Gateway" })),
+  );
+  render(<CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />);
+  await userEvent.setup().type(screen.getByRole("textbox", { name: "Title" }), "Fix login");
+  expect((await screen.findByRole("alert")).textContent).toBe(expected);
+});
+
+test("the folder-name hint is hidden when the title derives an ASCII slug", async () => {
+  fetcher();
+  render(<CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />);
+  await userEvent.setup().type(screen.getByRole("textbox", { name: "Title" }), "Fix login");
+  expect(screen.getByRole("textbox", { name: "Folder name" })).toHaveValue("fix-login");
+  expect(
+    screen.queryByText(
+      "Enter a folder name using lowercase English letters, digits and single hyphens (up to 48 characters).",
+    ),
+  ).not.toBeInTheDocument();
+});
+
+test.each([
   [
     "en",
     "Create work item",
@@ -204,6 +230,7 @@ test.each([
           {
             reason:
               "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
+            reasonMessage: { code: "creation.invalidSlug" },
           },
           400,
         ),
@@ -310,23 +337,42 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
 test.each([
   [
     "Title must produce a valid ASCII work item slug.",
-    "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",
+    "标题必须能生成有效的 ASCII 工作项标识。",
+    { code: "workItem.titleSlug" },
   ],
-  ["Work item idea already exists.", "工作项 idea 已存在。"],
-  ["Work item idea already exists in Git.", "工作项 idea 已存在于 Git 中。"],
-  [".scratch must be a real directory.", ".scratch 必须为真实目录。"],
+  [
+    "Work item idea already exists.",
+    "工作项 idea 已存在。",
+    { code: "creation.exists", params: { slug: "idea" } },
+  ],
+  [
+    "Work item idea already exists in Git.",
+    "工作项 idea 已存在于 Git 中。",
+    { code: "creation.existsInGit", params: { slug: "idea" } },
+  ],
+  [
+    ".scratch must be a real directory.",
+    ".scratch 必须为真实目录。",
+    { code: "creation.scratchDirectory" },
+  ],
   [
     "Commit or discard hand edits to the creation paths first.",
     "请先提交或丢弃创建路径中的手动更改。",
+    { code: "creation.commitPaths" },
   ],
-  ["Unknown server refusal 原文", "Unknown server refusal 原文"],
+  [
+    "Commit or discard hand edits to roadmap.md first.",
+    "请先提交或丢弃 roadmap.md 的手动更改。",
+    { code: "creation.roadmapEdits" },
+  ],
+  ["Unknown server refusal 原文", "Unknown server refusal 原文", undefined],
 ])(
   "Chinese create renders known refusals and preserves unknown diagnostics: %s",
-  async (reason, expected) => {
+  async (reason, expected, reasonMessage) => {
     localStorage.setItem(languageStorageKey, "zh-CN");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => response({ reason }, 409)),
+      vi.fn(async () => response({ reason, reasonMessage }, 409)),
     );
     const user = userEvent.setup();
     render(

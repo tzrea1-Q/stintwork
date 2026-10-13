@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AgentProfile } from "@stintwork/core";
+import { coreText, type AgentProfile } from "@stintwork/core";
 
 export const codexProfile: AgentProfile = {
   id: "codex",
@@ -31,7 +31,10 @@ export const codexProfile: AgentProfile = {
       },
     ],
     declineEndsTurn: true,
-    authenticationRequired: { message: "Authentication required", loginCommand: "codex login" },
+    authenticationRequired: {
+      message: coreText({ code: "agent.authenticationRequired" }).text,
+      loginCommand: "codex login",
+    },
     configOptions: [],
   },
 };
@@ -55,7 +58,7 @@ export const claudeProfile: AgentProfile = {
     ],
     declineEndsTurn: false,
     authenticationRequired: {
-      message: "Authentication required",
+      message: coreText({ code: "agent.authenticationRequired" }).text,
       loginCommand: "claude auth login",
     },
     configOptions: [],
@@ -73,7 +76,10 @@ export const grokProfile: AgentProfile = {
     additionalDirectories: false,
     permissionOptions: null,
     declineEndsTurn: null,
-    authenticationRequired: { message: "Authentication required", loginCommand: "grok login" },
+    authenticationRequired: {
+      message: coreText({ code: "agent.authenticationRequired" }).text,
+      loginCommand: "grok login",
+    },
     configOptions: ["model", "reasoning_effort"],
   },
 };

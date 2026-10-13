@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi, beforeEach, describe } from "vitest";
 import { Board } from "./Board";
 import { deriveAttentionItems, type AttentionItem } from "@stintwork/core";
-import { beforeEach, describe } from "vitest";
+
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import {
   attentionOptions,
@@ -54,9 +54,8 @@ test("login attention translates authored agent diagnostics and preserves the lo
     availability: {
       available: false,
       kind: "login-required",
-      reason:
-        "Claude Code authentication required. Sign in with claude auth login, then start another stint.",
-      reasonMessage: {
+      reason: {
+        text: "Claude Code authentication required. Sign in with claude auth login, then start another stint.",
         code: "agent.loginRequired",
         params: { agent: "Claude Code", command: "claude auth login" },
       },
@@ -489,7 +488,7 @@ describe("Chinese Needs-you queue", () => {
         available: false,
         kind: "login-required",
         checkedAt: "2026-10-09T11:30:00Z",
-        reason: "Agent login reason 原文",
+        reason: { text: "Agent login reason 原文" },
       },
     });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));

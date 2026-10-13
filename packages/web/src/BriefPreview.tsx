@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  translateCoreText,
+  readResponseJson,
+  CoreTextError,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
+
+import {
   builtInWorkflows,
   type AgentProfile,
   agentUnavailable,
@@ -17,7 +25,7 @@ import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./brief-preview.css";
-import { CoreTextError, useCoreTextError, renderCoreText, useLanguage } from "./i18n/language";
+
 import { stageName as translatedStageName } from "./i18n/workflow-names";
 
 export function TicketBriefPreview({
@@ -67,9 +75,9 @@ function StintBriefAction({
   const availability = briefAvailability(item, ticket, workflows);
   const reason = item.activeStint
     ? t.stints.alreadyActive
-    : availability.reason === null
+    : availability === null
       ? null
-      : renderCoreText(availability.reasonMessage, availability.reason, t);
+      : translateCoreText(availability, t);
 
   useEffect(() => {
     if (reason) setOpen(false);
@@ -129,24 +137,23 @@ function BriefPreviewSheet({
   const [permissionLevel, setPermissionLevel] = useState<PermissionLevel>(defaultPermissionLevel);
   const [projectDefault, setProjectDefault] = useState<PermissionLevel>(defaultPermissionLevel);
   const [savingDefault, setSavingDefault] = useState(false);
-  const [defaultError, setDefaultError] = useCoreTextError();
-  const [error, setError] = useCoreTextError({
+  const [defaultError, setDefaultError] = useErrorText();
+  const [error, setError] = useErrorText({
     loadBriefFailed: t.stints.loadBriefFailed,
     loadAgentsFailed: t.stints.loadAgentsFailed,
   });
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
-  const [startError, setStartError] = useCoreTextError();
+  const [startError, setStartError] = useErrorText();
   const selectedAgent = agents.find(({ id }) => id === agent);
   const availability = selectedAgent ? agentUnavailable(selectedAgent) : null;
-  const unavailable = availability
-    ? availability.reason === null
+  const unavailable = selectedAgent
+    ? availability === null
       ? null
-      : renderCoreText(availability.reasonMessage, availability.reason, t)
+      : translateCoreText(availability, t)
     : t.stints.agentNotRegistered;
   const policy = selectedAgent ? permissionPolicy(selectedAgent, permissionLevel) : null;
   const warnings = policy?.warnings ?? brief?.warnings ?? [];
-  const warningMessages = policy?.warningMessages ?? brief?.warningMessages ?? [];
 
   useEffect(() => {
     const element = dialog.current;
@@ -168,16 +175,16 @@ function BriefPreviewSheet({
           fetch("/api/agents", { signal: request.signal, cache: "no-store" }),
         ]);
         if (!response.ok) {
-          const failure: { reason?: string } = await response.json();
+          const failure: { reason?: string } = await readResponseJson(response);
           throw new CoreTextError(failure, "");
         }
         if (!registryResponse.ok) {
           fallback = "loadAgentsFailed";
-          const failure: { reason?: string } = await registryResponse.json();
+          const failure: { reason?: string } = await readResponseJson(registryResponse);
           throw new CoreTextError(failure, "");
         }
-        const preview: Brief = await response.json();
-        const registry: { agents: AgentProfile[] } = await registryResponse.json();
+        const preview: Brief = await readResponseJson(response);
+        const registry: { agents: AgentProfile[] } = await readResponseJson(registryResponse);
         if (!request.signal.aborted) {
           setBrief(preview);
           setAgents(registry.agents);
@@ -216,7 +223,7 @@ function BriefPreviewSheet({
         body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent, permissionLevel }),
       });
       if (!response.ok) {
-        const failure: { reason?: string } = await response.json();
+        const failure: { reason?: string } = await readResponseJson(response);
         throw new CoreTextError(failure, t.stints.startFailed);
       }
       onClose();
@@ -282,10 +289,7 @@ function BriefPreviewSheet({
               )}
               {agents.map((candidate) => {
                 const availability = agentUnavailable(candidate);
-                const reason =
-                  availability.reason === null
-                    ? null
-                    : renderCoreText(availability.reasonMessage, availability.reason, t);
+                const reason = availability === null ? null : translateCoreText(availability, t);
                 return (
                   <option key={candidate.id} value={candidate.id} disabled={!!reason}>
                     {candidate.displayName}
@@ -302,9 +306,9 @@ function BriefPreviewSheet({
                 : t.stints.noAgents
               : t.stints.readingAgents}
           </p>
-          {warnings.map((warning, index) => (
-            <p key={warning} role="alert" className="warning">
-              {renderCoreText(warningMessages[index], warning, t)}
+          {warnings.map((warning) => (
+            <p key={warning.text} role="alert" className="warning">
+              {translateCoreText(warning, t)}
             </p>
           ))}
         </section>
@@ -343,7 +347,7 @@ function BriefPreviewSheet({
                   body: JSON.stringify({ permissionLevel }),
                 });
                 if (!response.ok) {
-                  const body = await response.json();
+                  const body = await readResponseJson(response);
                   throw new CoreTextError(body, t.stints.saveDefaultFailed);
                 }
                 setProjectDefault(permissionLevel);
@@ -379,9 +383,9 @@ function BriefPreviewSheet({
             <section>
               <h3>{t.stints.readFirst}</h3>
               <ul>
-                {brief.pointers.map(({ path, reason, reasonMessage }) => (
+                {brief.pointers.map(({ path, reason }) => (
                   <li key={path}>
-                    <code>{path}</code> — {renderCoreText(reasonMessage, reason, t)}
+                    <code>{path}</code> — {translateCoreText(reason, t)}
                   </li>
                 ))}
               </ul>

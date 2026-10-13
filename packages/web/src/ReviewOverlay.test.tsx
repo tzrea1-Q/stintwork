@@ -64,7 +64,7 @@ const item = { slug: "first", title: "First work item" };
 
 afterEach(() => vi.unstubAllGlobals());
 function reply(body: unknown, status = 200) {
-  return { ok: status === 200, json: async () => body };
+  return new Response(JSON.stringify(body), { status });
 }
 
 test("the file list links to files and shows statuses, added/removed counts and binary metadata", () => {

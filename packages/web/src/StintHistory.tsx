@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
+import {
+  readResponseJson,
+  CoreTextError,
+  renderCoreText,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
 import type { Stint, StintSummary } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import { StintStream } from "./StintStream";
-import { CoreTextError, renderCoreText, useCoreTextError, useLanguage } from "./i18n/language";
 
 function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   const { t, language } = useLanguage();
@@ -12,7 +18,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [replay, setReplay] = useState<Stint | null>(null);
-  const [error, setError] = useCoreTextError({
+  const [error, setError] = useErrorText({
     readHistoryFailed: t.stints.readHistoryFailed,
     staleHistory: t.stints.staleHistory,
   });
@@ -29,7 +35,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
         const response = await fetch(`/api/stints/${encodeURIComponent(stint.id)}`, {
           signal: controller.signal,
         });
-        const body = await response.json();
+        const body = await readResponseJson(response);
         if (!response.ok) throw new CoreTextError(body, "");
         if (stint.status !== "running" && body.stint.status === "running") {
           fallback = "staleHistory";

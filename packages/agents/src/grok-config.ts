@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+import { coreText, type CoreText } from "@stintwork/core";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const grokConfigPath = join(homedir(), ".grok/config.toml");
-export const grokPermissionWarning =
-  'Grok Build has permission_mode = "always-approve" in its config. Grok won’t ask for permissions, regardless of the stint’s permission level. Stintwork never changes this config.';
+export const grokPermissionWarning = coreText({ code: "permission.grokAlwaysApprove" });
 
 function stringValue(token: string): string {
   const multiline = token.startsWith('"""') || token.startsWith("'''");
@@ -23,7 +23,7 @@ function stringValue(token: string): string {
 
 export function readGrokConfig(path = grokConfigPath): {
   permissionMode: string | null;
-  warnings: string[];
+  warnings: CoreText[];
 } {
   try {
     const text = readFileSync(path, "utf8");
@@ -67,9 +67,7 @@ export function readGrokConfig(path = grokConfigPath): {
       return { permissionMode: null, warnings: [] };
     return {
       permissionMode: null,
-      warnings: [
-        "Could not read Grok Build’s permission config. Its permission behaviour is unknown.",
-      ],
+      warnings: [coreText({ code: "permission.grokConfigUnreadable" })],
     };
   }
 }

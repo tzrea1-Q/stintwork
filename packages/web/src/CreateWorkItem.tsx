@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useId, useRef, useState } from "react";
 import "./create-work-item.css";
 import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
-import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
 
 export function CreateWorkItem({
   snapshot,
@@ -25,8 +25,12 @@ export function CreateWorkItem({
   const [milestone, setMilestone] = useState("");
   const [intent, setIntent] = useState("");
   const [preview, setPreview] = useState<{ input: string; slug: string } | null>(null);
-  const [error, setError] = useCoreTextError();
+  const [error, setError] = useErrorText();
   const [saving, setSaving] = useState(false);
+  let derivedSlug = "";
+  try {
+    derivedSlug = deriveWorkItemSlug(title);
+  } catch {}
   let folderName = editedSlug ?? "";
   let validSlug = false;
   try {
@@ -67,7 +71,7 @@ export function CreateWorkItem({
           body: input,
           signal: controller.signal,
         });
-        const result = await response.json();
+        const result = await readResponseJson(response);
         if (!response.ok) throw new CoreTextError(result, en.planning.create.errors.preview);
         if (typeof result.slug !== "string" || !result.slug)
           throw new Error(en.planning.create.errors.invalidPreview);
@@ -83,24 +87,6 @@ export function CreateWorkItem({
     };
   }, [input, validSlug, editedSlug, setError]);
 
-  function refusal(message: string) {
-    if (message === en.slugInput.invalid) return t.slugInput.invalid;
-    if (!folderName && message === en.planning.create.errors.ascii) return t.slugInput.hint;
-    const key = (
-      Object.keys(en.planning.create.errors) as (keyof typeof en.planning.create.errors)[]
-    ).find((key) => en.planning.create.errors[key] === message);
-    if (key) return t.planning.create.errors[key];
-    const exists = /^Work item ([a-z0-9]+(?:-[a-z0-9]+)*) already exists( in Git)?\.$/.exec(
-      message,
-    );
-    if (exists)
-      return exists[2]
-        ? t.planning.create.existsInGit(exists[1])
-        : t.planning.create.exists(exists[1]);
-    const directory = /^(\.scratch|\.stintwork) must be a real directory\.$/.exec(message);
-    return directory ? t.planning.create.directory(directory[1]) : message;
-  }
-
   async function create() {
     if (saving || !slug) return;
     setSaving(true);
@@ -111,7 +97,7 @@ export function CreateWorkItem({
         headers: { "Content-Type": "application/json" },
         body: input,
       });
-      const result = await response.json();
+      const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, en.planning.create.errors.save);
       onCreated();
     } catch (cause) {
@@ -154,14 +140,16 @@ export function CreateWorkItem({
             <input
               required
               value={folderName}
-              aria-describedby={slugHintId}
+              aria-describedby={derivedSlug ? undefined : slugHintId}
               aria-invalid={editedSlug !== null && !validSlug ? true : undefined}
               onChange={(event) => setEditedSlug(event.target.value)}
             />
           </label>
-          <p id={slugHintId} className="muted">
-            {t.slugInput.hint}
-          </p>
+          {!derivedSlug && (
+            <p id={slugHintId} className="muted">
+              {t.slugInput.hint}
+            </p>
+          )}
           <label>
             {t.planning.create.workflow}
             <select value={workflow} onChange={(event) => setWorkflow(event.target.value)}>
@@ -208,7 +196,7 @@ export function CreateWorkItem({
           </p>
           {error && (
             <p role="alert" className="warning">
-              {refusal(error)}
+              {error}
             </p>
           )}
           <p className="muted">{t.planning.create.description}</p>

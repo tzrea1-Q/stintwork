@@ -1,5 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  translateCoreText,
+  readResponseJson,
+  CoreTextError,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
+
+import {
   type AgentProfile,
   agentUnavailable,
   builtInWorkflows,
@@ -10,7 +18,7 @@ import {
 import { useEffect, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./stage-agent-rail.css";
-import { CoreTextError, useCoreTextError, renderCoreText, useLanguage } from "./i18n/language";
+
 import { stageName, workflowName } from "./i18n/workflow-names";
 
 export function StageAgentRail({
@@ -28,7 +36,7 @@ export function StageAgentRail({
     agents: Partial<Record<StageId, string>>;
   }>({ source: item.stages, agents: {} });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useCoreTextError({ loadAgentsFailed: t.stints.loadAgentsFailed });
+  const [error, setError] = useErrorText({ loadAgentsFailed: t.stints.loadAgentsFailed });
   useEffect(() => {
     const request = new AbortController();
     setAgents([]);
@@ -36,7 +44,7 @@ export function StageAgentRail({
     async function load() {
       try {
         const response = await fetch("/api/agents", { signal: request.signal, cache: "no-store" });
-        const result = await response.json();
+        const result = await readResponseJson(response);
         if (!response.ok) throw new CoreTextError(result, "");
         if (!Array.isArray(result.agents)) throw new Error();
         if (!request.signal.aborted) setAgents(result.agents);
@@ -61,7 +69,7 @@ export function StageAgentRail({
           body: JSON.stringify({ agent }),
         },
       );
-      const result = await response.json();
+      const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, t.stints.saveAgentFailed);
       setChoices((choices) => ({
         source: item.stages,
@@ -101,10 +109,7 @@ export function StageAgentRail({
                 )}
                 {agents.map((agent) => {
                   const unavailable = agentUnavailable(agent);
-                  const reason =
-                    unavailable.reason === null
-                      ? null
-                      : renderCoreText(unavailable.reasonMessage, unavailable.reason, t);
+                  const reason = unavailable === null ? null : translateCoreText(unavailable, t);
                   return (
                     <option key={agent.id} value={agent.id} disabled={!!reason}>
                       {agent.displayName}

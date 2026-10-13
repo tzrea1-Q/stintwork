@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  CoreTextError,
   recordReviewDecision,
   recordReviewDeveloperNote,
   type DeveloperNote,
   type ReviewDecision,
 } from "@stintwork/core";
+
 import { commitWorkItemReview } from "@stintwork/git";
 import { createNodeRepoFiles } from "./repo-files.js";
 
@@ -17,7 +19,7 @@ export async function saveWorkItemReview(
 ) {
   const existing = createNodeRepoFiles(worktree).read(`.scratch/${slug}/review.yaml`);
   const decisions = "kind" in decision ? [decision] : decision;
-  if (!decisions.length && !sendBack) throw new Error("A review decision is required.");
+  if (!decisions.length && !sendBack) throw new CoreTextError({ code: "review.decisionRequired" });
   let text = existing ?? "decisions: []\n";
   for (const entry of decisions) text = recordReviewDecision(text, entry);
   if (sendBack) text = recordReviewDeveloperNote(text, sendBack.note);

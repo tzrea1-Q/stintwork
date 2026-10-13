@@ -2,7 +2,7 @@
 import type { ProjectSnapshot } from "./project.js";
 import type { ReviewGateCondition } from "./review-evidence.js";
 import type { WorkflowStage } from "./workflows.js";
-import { coreTextMessage } from "./core-text.js";
+import { coreText } from "./core-text.js";
 
 export type GateCondition = Omit<ReviewGateCondition, "id"> & {
   id: ReviewGateCondition["id"] | "output";
@@ -16,57 +16,48 @@ export function outputGateConditions(
   const warnings = item.outputWarnings ?? [];
   let output: GateCondition = {
     id: "output",
-    label: "Developer approval; no file output required",
+    label: coreText({ code: "gate.manualApproval" }),
     ready: true,
-    action: "Review the stage and approve when satisfied.",
+    action: coreText({ code: "gate.approve" }),
   };
   if (stage.gate === "spec") {
     const warning = warnings.find(({ path }) => path === `${prefix}spec.md`);
     output = {
       id: "output",
-      label: "spec.md exists and parses",
+      label: coreText({ code: "gate.specOutput" }),
       ready: item.spec !== null && !warning,
-      action: `Write or edit ${prefix}spec.md with a nonempty # heading.${warning ? ` ${warning.message}` : ""}`,
-      actionMessage: {
+      action: coreText({
         code: "gate.writeSpec",
         params: { path: `${prefix}spec.md`, warning: warning?.message ?? "" },
-      },
+      }),
     };
   } else if (stage.gate === "tickets") {
     const warning = warnings.find(({ path }) => path.startsWith(`${prefix}issues/`));
     const positions = new Map(item.tickets.map((ticket, index) => [ticket.number, index]));
     output = {
       id: "output",
-      label: "At least one ticket, no ticket warnings, valid dependency order",
+      label: coreText({ code: "gate.ticketsOutput" }),
       ready:
         item.tickets.length > 0 &&
         !warning &&
         item.tickets.every((ticket, index) =>
           ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
         ),
-      action: `Write or fix ${prefix}issues/NN-<slug>.md tickets with Status and Blocked by lines and valid dependencies.${warning ? ` ${warning.message}` : ""}`,
-      actionMessage: {
+      action: coreText({
         code: "gate.writeTickets",
         params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },
-      },
+      }),
     };
   }
   const conditions: GateCondition[] = [output];
   if (stage.column === "clarify")
     conditions.push({
       id: "memory",
-      label: "No open memory proposals",
+      label: coreText({ code: "gate.memoryDecided" }),
       ready: !item.memoryProposalError && item.memoryProposals?.length === 0,
       action:
-        item.memoryProposalError ?? "Accept or reject every open memory proposal in Needs you.",
+        (item.memoryProposalError ? { text: item.memoryProposalError } : null) ??
+        coreText({ code: "gate.decideMemory" }),
     });
-  return conditions.map((condition) => {
-    const labelMessage = coreTextMessage(condition.label);
-    const actionMessage = condition.actionMessage ?? coreTextMessage(condition.action);
-    return {
-      ...condition,
-      ...(labelMessage ? { labelMessage } : {}),
-      ...(actionMessage ? { actionMessage } : {}),
-    };
-  });
+  return conditions;
 }

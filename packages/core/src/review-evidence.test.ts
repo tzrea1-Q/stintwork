@@ -73,9 +73,9 @@ test("risky branch paths block Review until each current blob has an explicit ac
   workItem.riskyPaths = risks;
   expect(gateReadiness(workItem).ready).toBe(false);
   expect(gateReadiness(workItem).conditions.find(({ id }) => id === "risky-paths")).toMatchObject({
-    label: "No risky files on the branch",
+    label: { text: "No risky files on the branch", code: "gate.riskyPathsHandled" },
     ready: false,
-    action: expect.stringContaining("follow-up commit"),
+    action: expect.objectContaining({ text: expect.stringContaining("follow-up commit") }),
   });
   for (const risk of risks) {
     workItem.reviewDecisions.push({
@@ -174,7 +174,8 @@ test.each(Array.from({ length: 32 }, (_, mask) => mask))(
     expect(
       deriveAttentionItems({ workItems: [workItem] }).some(({ kind }) => kind === "gate-ready"),
     ).toBe(mask === 0);
-    for (const condition of gate.conditions) expect(condition.action.length).toBeGreaterThan(0);
+    for (const condition of gate.conditions)
+      expect(condition.action.text.length).toBeGreaterThan(0);
   },
 );
 

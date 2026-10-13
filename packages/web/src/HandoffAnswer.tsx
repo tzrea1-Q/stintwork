@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
 import type { HandoffUnresolvedAttentionItem } from "@stintwork/core";
 import { useId, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CoreTextError, useLanguage } from "./i18n/language";
+
 import "./handoff-answer.css";
 
 export function HandoffAnswer({
@@ -32,7 +33,7 @@ export function HandoffAnswer({
         },
       );
       if (!response.ok) {
-        const body = await response.json();
+        const body = await readResponseJson(response);
         throw new CoreTextError(body, t.needsYou.handoffFailed);
       }
       setSubmitted(true);

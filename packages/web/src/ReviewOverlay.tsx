@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
-import type { EvidenceContext, ReviewDecision, StintSummary } from "@stintwork/core";
+import type { EvidenceContext, ReviewDecision, StintSummary, RiskyPath } from "@stintwork/core";
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { RiskyPaths } from "./RiskyPaths";
-import type { RiskyPath } from "@stintwork/core";
-import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
+
 import "./review-overlay.css";
 
 type ReviewSlots = {
@@ -198,10 +198,10 @@ export function ReviewOverlay({
   const titleId = useId();
   const findingId = useId();
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
-  const [error, setError] = useCoreTextError();
+  const [error, setError] = useErrorText();
   const [decisions, setDecisions] = useState<ReviewDecision[]>(item.reviewDecisions ?? []);
   const [saving, setSaving] = useState(false);
-  const [actionError, setActionError] = useCoreTextError();
+  const [actionError, setActionError] = useErrorText();
   const [message, setMessage] = useState("");
   const [sentBack, setSentBack] = useState(false);
   const request = useRef<AbortController | null>(null);
@@ -229,7 +229,7 @@ export function ReviewOverlay({
           body: JSON.stringify(body),
         },
       );
-      const result = await response.json();
+      const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, t.review.diff.updateError);
       const updated: ReviewDecision[] = result.decisions ?? [result.decision];
       setDecisions((previous) => [
@@ -322,7 +322,7 @@ export function ReviewOverlay({
       const response = await fetch(`/api/work-items/${encodeURIComponent(item.slug)}/diff`, {
         signal: controller.signal,
       });
-      const body = await response.json();
+      const body = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(body, t.review.diff.readError);
       if (!controller.signal.aborted) setDiff(body);
     } catch (cause) {

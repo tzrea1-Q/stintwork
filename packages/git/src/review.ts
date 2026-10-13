@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "@stintwork/core";
 import { execFile, execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -8,7 +9,8 @@ import { commitWithIdentity } from "./checkpoints.js";
 const execute = promisify(execFile);
 
 function commitRef(commit: string) {
-  if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(commit)) throw new Error("Invalid commit.");
+  if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(commit))
+    throw new CoreTextError({ code: "git.invalidCommit" });
   return commit;
 }
 
@@ -65,7 +67,7 @@ function regularPath(root: string, relative: string) {
       (stat.isSymbolicLink() ||
         (position < parts.length - 1 ? !stat.isDirectory() : !stat.isFile()))
     )
-      throw new Error("Review and project memory paths must be regular files in real directories.");
+      throw new CoreTextError({ code: "git.reviewFiles" });
   }
 }
 
@@ -77,9 +79,10 @@ export async function commitWorkItemReview(
   rejection?: { path: string; baseCommit: string },
   workflow?: string,
 ): Promise<string> {
-  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) throw new Error("Invalid work item slug.");
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
   if (gitText(worktree, ["symbolic-ref", "--short", "HEAD"]).trim() !== `stintwork/${slug}`)
-    throw new Error("The worktree is not on the work item's branch.");
+    throw new CoreTextError({ code: "git.worktreeBranch" });
   const review = `.scratch/${slug}/review.yaml`;
   const paths = [review];
   if (workflow !== undefined) paths.push(`.scratch/${slug}/workflow.yaml`);
@@ -90,7 +93,7 @@ export async function commitWorkItemReview(
       rejection.path.includes("\0") ||
       rejection.path.split("/").some((part) => !part || part === "." || part === "..")
     )
-      throw new Error("Invalid project memory path.");
+      throw new CoreTextError({ code: "git.memoryPath" });
     commitRef(rejection.baseCommit);
     paths.push(rejection.path);
   }
@@ -105,7 +108,7 @@ export async function commitWorkItemReview(
       ...paths,
     ])
   )
-    throw new Error("Commit or discard changes to the review or proposed file before deciding.");
+    throw new CoreTextError({ code: "git.decideChanges" });
   const head = gitText(worktree, ["rev-parse", "HEAD"]).trim();
   const existing = lstatSync(join(worktree, review), { throwIfNoEntry: false })
     ? readFileSync(join(worktree, review), "utf8")
@@ -123,7 +126,7 @@ export async function commitWorkItemReview(
       ]);
       if (present) {
         if (!/^100(?:644|755) blob /.test(present))
-          throw new Error("The base project memory file must be regular.");
+          throw new CoreTextError({ code: "git.baseRegular" });
         await git([
           "restore",
           "--source",

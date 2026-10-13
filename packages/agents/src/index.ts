@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { isAbsolute, dirname, relative, resolve } from "node:path";
-import { Writable } from "node:stream";
-import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
 import {
+  CoreTextError,
+  coreText,
   permissionPaths,
   permissionPolicy,
   type PermissionLevel,
@@ -14,6 +10,13 @@ import {
   type StintLogEvent,
   type ReviewFinding,
 } from "@stintwork/core";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
+import { isAbsolute, dirname, relative, resolve } from "node:path";
+import { Writable } from "node:stream";
+import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
+
 import { toAcpReadable } from "./stdio.js";
 import { normalizeStintUpdate } from "./stint-events.js";
 import { type AgentHandoff, handoffRequest } from "./handoff.js";
@@ -126,7 +129,7 @@ export function createAgentLauncher(
     const policy = permissionPolicy(profile, permissionLevel);
 
     async function safePath(path: string, directories = [cwd, ...additionalDirectories]) {
-      if (!isAbsolute(path)) throw new Error("Agent file paths must be absolute.");
+      if (!isAbsolute(path)) throw new CoreTextError({ code: "agent.absolutePaths" });
       const target = resolve(path);
       let existing = target;
       while (
@@ -147,7 +150,7 @@ export function createAgentLauncher(
         )
           return target;
       }
-      throw new Error("Agent file path is outside the worktree and its additional directories.");
+      throw new CoreTextError({ code: "agent.pathOutside" });
     }
 
     const done = (async () => {
@@ -208,7 +211,7 @@ export function createAgentLauncher(
             }
           },
           async requestPermission(request) {
-            if (settled) throw new Error("The stint has ended.");
+            if (settled) throw new CoreTextError({ code: "agent.stintEnded" });
             chunk = undefined;
             const requestId = randomUUID();
             const receipt = forwarding.prepare();
@@ -219,7 +222,10 @@ export function createAgentLauncher(
               title: request.toolCall.title ?? null,
               kind: request.toolCall.kind ?? null,
               automatic: false,
-              decision: { outcome: "failed", reason: "Permission could not be decided." },
+              decision: {
+                outcome: "failed",
+                reason: coreText({ code: "permission.undecided" }).text,
+              },
             };
             let response: RequestPermissionResponse;
             try {
@@ -260,12 +266,11 @@ export function createAgentLauncher(
               if (response.outcome.outcome === "selected") {
                 const optionId = response.outcome.optionId;
                 const selected = request.options.find((option) => option.optionId === optionId);
-                if (!selected)
-                  throw new Error("Permission decision must select an offered option.");
+                if (!selected) throw new CoreTextError({ code: "agent.permissionOption" });
                 event.decision = { outcome: "selected", optionId, kind: selected.kind };
               } else {
                 event.decision = { outcome: "cancelled" };
-                receipt.failed(new Error("Permission request was cancelled."));
+                receipt.failed(new CoreTextError({ code: "agent.permissionCancelled" }));
               }
               onEvent(event);
               receipt.respond(response);
@@ -297,7 +302,7 @@ export function createAgentLauncher(
             };
           },
           async writeTextFile({ path, content }) {
-            if (settled) throw new Error("The stint has ended.");
+            if (settled) throw new CoreTextError({ code: "agent.stintEnded" });
             const writing = (async () => {
               const target = await safePath(path);
               await mkdir(dirname(target), { recursive: true });
@@ -413,16 +418,30 @@ export function createAgentLauncher(
           /auth(?:entication)?[ _-]required/i.test(message)
         )
           throw new AgentAuthenticationError(profile);
-        throw new Error(
+        if (
           /(?:ENOENT|not found)/i.test(message) &&
-            [profile.id, "spawn"].some((name) => message.toLowerCase().includes(name))
-            ? `${profile.displayName} not found. ${profile.installationHint}`
-            : message,
-        );
+          [profile.id, "spawn"].some((name) => message.toLowerCase().includes(name))
+        )
+          throw new Error(`${profile.displayName} not found. ${profile.installationHint}`);
+        const internal = RequestError.internalError();
+        if (
+          error instanceof RequestError &&
+          error.code === internal.code &&
+          message.startsWith(internal.message)
+        ) {
+          const detail = message.slice(internal.message.length);
+          throw new CoreTextError(
+            detail
+              ? { code: "agent.internalErrorDetail", params: { detail } }
+              : { code: "agent.internalError" },
+          );
+        }
+        if (error instanceof CoreTextError) throw error;
+        throw new Error(message);
       } finally {
         clearTimeout(timer);
         settled = true;
-        forwarding.close(new Error("The stint ended before the permission was forwarded."));
+        forwarding.close(new CoreTextError({ code: "agent.permissionForwardingEnded" }));
         const exited = new Promise<void>((resolveExit) => {
           if (!child?.pid || child.exitCode !== null || child.signalCode !== null) resolveExit();
           else child.once("exit", () => resolveExit());
@@ -464,7 +483,7 @@ export function createAgentLauncher(
             ),
             new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
           ]);
-        if (!acknowledged) rejectFailure(new Error("Stint cancelled."));
+        if (!acknowledged) rejectFailure(new CoreTextError({ code: "agent.stintCancelled" }));
       },
     };
   };

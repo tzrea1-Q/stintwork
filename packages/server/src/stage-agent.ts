@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AgentRegistry } from "@stintwork/agents";
 import {
+  coreTextWire,
+  errorText,
+  coreText,
   agentUnavailable,
   indexProject,
   workflowStageAgent,
   type StagedWorkItem,
   type StageId,
 } from "@stintwork/core";
+
+import type { AgentRegistry } from "@stintwork/agents";
+
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveWorkItemWorkflow, writeWorkItemWorkflow } from "./workflow-writes.js";
@@ -34,54 +39,69 @@ export function addStageAgentRoute(
   app.post("/api/work-items/:slug/stages/:stage/agent", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
-      return context.json({ reason: "Origin must match the project server." }, 403);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+        403,
+      );
     if (
       context.req.header("content-type")?.split(";")[0].trim().toLowerCase() !== "application/json"
     )
-      return context.json({ reason: "A JSON agent choice is required." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "server.jsonAgent" }) }), 400);
     let body: unknown;
     try {
       body = await context.req.json();
     } catch {
-      return context.json({ reason: "Invalid JSON." }, 400);
+      return context.json(coreTextWire({ reason: coreText({ code: "server.invalidJson" }) }), 400);
     }
     if (!body || typeof body !== "object" || !("agent" in body) || typeof body.agent !== "string")
-      return context.json({ reason: "Choose a registered agent." }, 400);
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "agent.chooseRegistered" }) }),
+        400,
+      );
     const agent = registry.get(body.agent);
     if (!agent)
       return context.json(
-        {
-          reason: `Agent is not registered: ${body.agent}.`,
-          reasonMessage: { code: "agent.notRegistered", params: { agent: body.agent } },
-        },
+        coreTextWire({
+          reason: coreText({ code: "agent.notRegistered", params: { agent: body.agent } }),
+        }),
         400,
       );
     const unavailable = agentUnavailable(agent);
-    if (unavailable.reason) return context.json(unavailable, 409);
+    if (unavailable) return context.json(coreTextWire({ reason: unavailable }), 409);
     const slug = context.req.param("slug");
     const project = readProjectFiles();
     const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
-    if (discoveryFailure) return context.json({ reason: discoveryFailure.message }, 503);
+    if (discoveryFailure)
+      return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
     const snapshot = indexProject(project.files, { name: "" });
     const item = snapshot.workItems.find((item) => item.slug === slug);
-    if (!item) return context.json({ reason: "Work item not found." }, 404);
-    if (item.merged) return context.json({ reason: "This work item is shipped." }, 409);
+    if (!item)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
+        404,
+      );
+    if (item.merged)
+      return context.json(coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }), 409);
     const stage = snapshot.workflows[item.workflow].stages.find(
       (stage) => stage.id === context.req.param("stage"),
     );
-    if (!stage || !item.stage) return context.json({ reason: "Stage not found." }, 400);
+    if (!stage || !item.stage)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.stageNotFound" }) }),
+        400,
+      );
     if (
       snapshot.warnings.some(
         ({ path, message }) =>
           path === `.scratch/${slug}/workflow.yaml` && message.startsWith("Invalid workflow.yaml:"),
       )
     )
-      return context.json({ reason: "workflow.yaml must be valid before choosing an agent." }, 409);
-    if (item.activeStint || isStintActive(slug) || writing.has(slug))
       return context.json(
-        { reason: "A stint or workflow write is already active for this work item." },
+        coreTextWire({ reason: coreText({ code: "agent.validWorkflowRequired" }) }),
         409,
       );
+    if (item.activeStint || isStintActive(slug) || writing.has(slug))
+      return context.json(coreTextWire({ reason: coreText({ code: "agent.activeWrite" }) }), 409);
     writing.add(slug);
     try {
       const worktree = project.worktreePaths.get(slug);
@@ -92,10 +112,10 @@ export function addStageAgentRoute(
         `Set ${stage.id} agent to ${agent.id} for ${slug}`,
       );
       refresh();
-      return context.json({ stage: stage.id, agent: agent.id, commit });
+      return context.json(coreTextWire({ stage: stage.id, agent: agent.id, commit }));
     } catch (error) {
       refresh();
-      return context.json({ reason: error instanceof Error ? error.message : String(error) }, 503);
+      return context.json(coreTextWire({ reason: errorText(error) }), 503);
     } finally {
       writing.delete(slug);
     }

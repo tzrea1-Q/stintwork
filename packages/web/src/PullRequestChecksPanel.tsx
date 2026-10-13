@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import {
   type PullRequest,
   type PullRequestChecks,
@@ -6,7 +7,6 @@ import {
   type EvidenceContext,
 } from "@stintwork/core";
 import { useCallback, useEffect, useState } from "react";
-import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
 
 export function PullRequestChecksPanel({
   item,
@@ -19,7 +19,7 @@ export function PullRequestChecksPanel({
 }) {
   const { t } = useLanguage();
   const [checks, setChecks] = useState(item.pullRequestChecks);
-  const [error, setError] = useCoreTextError();
+  const [error, setError] = useErrorText();
   const [busy, setBusy] = useState(false);
   const number = item.pullRequest?.number;
   const endpoint = `/api/work-items/${encodeURIComponent(item.slug)}/ship/pr-checks`;
@@ -33,7 +33,7 @@ export function PullRequestChecksPanel({
           body: "{}",
           signal,
         });
-        const body = await response.json();
+        const body = await readResponseJson(response);
         if (!response.ok) throw new CoreTextError(body, t.review.pr.refreshError);
         if (!signal?.aborted) {
           setChecks(body.checks);

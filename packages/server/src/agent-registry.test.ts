@@ -27,7 +27,7 @@ test("agent HTTP status carries a message alongside the unchanged diagnostic", a
       detectAvailability: async () => ({
         available: false,
         kind: "check-failed",
-        reason: "Internal error",
+        reason: { text: "Internal error", code: "agent.internalError" },
       }),
     },
   ]);

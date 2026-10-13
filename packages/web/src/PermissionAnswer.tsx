@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
 import { PermissionDetails } from "./PermissionDetails";
-import { CoreTextError, useCoreTextError, useLanguage } from "./i18n/language";
 
 export function PermissionAnswer({
   stintId,
@@ -21,7 +21,7 @@ export function PermissionAnswer({
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useCoreTextError();
+  const [error, setError] = useErrorText();
 
   async function answer(optionId: string) {
     setSending(true);
@@ -37,7 +37,7 @@ export function PermissionAnswer({
         },
       );
       if (!response.ok) {
-        const body = await response.json();
+        const body = await readResponseJson(response);
         throw new CoreTextError(body, t.needsYou.permissionFailed);
       }
       setSubmitted(true);

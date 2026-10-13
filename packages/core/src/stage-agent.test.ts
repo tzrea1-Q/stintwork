@@ -2,8 +2,7 @@
 import { parse } from "yaml";
 import { expect, test } from "vitest";
 import { stageAgent, workflowStageAgent } from "./stage-agent.js";
-import { agentUnavailableReason } from "./agents.js";
-import type { AgentProfile } from "./agents.js";
+import { agentUnavailable, type AgentProfile } from "./agents.js";
 
 const item = { workflow: "feature" as const, stage: "implement" as const, stages: {} };
 
@@ -44,17 +43,20 @@ test("unavailable agents expose their reason and login hint", () => {
     displayName: "Agent",
     capabilities: { authenticationRequired: { loginCommand: "agent login" } },
   } as AgentProfile;
-  expect(agentUnavailableReason(profile)).toBeNull();
+  expect(agentUnavailable(profile)).toBeNull();
   expect(
-    agentUnavailableReason({
+    agentUnavailable({
       ...profile,
-      availability: { available: false, reason: "Authentication required. Use agent login." },
+      availability: {
+        available: false,
+        reason: { text: "Authentication required. Use agent login." },
+      },
     }),
-  ).toBe("Authentication required. Use agent login.");
-  expect(agentUnavailableReason({ ...profile, availability: { available: false } })).toContain(
-    "agent login",
-  );
+  ).toEqual({ text: "Authentication required. Use agent login." });
+  expect(agentUnavailable({ ...profile, availability: { available: false } })).toMatchObject({
+    text: expect.stringContaining("agent login"),
+  });
   expect(
-    agentUnavailableReason({ ...profile, availability: { available: false, reason: "" } }),
-  ).toContain("agent login");
+    agentUnavailable({ ...profile, availability: { available: false, reason: { text: "" } } }),
+  ).toMatchObject({ text: expect.stringContaining("agent login") });
 });

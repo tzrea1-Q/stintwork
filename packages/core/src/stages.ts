@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CoreTextError } from "./core-text.js";
 import { parseDocument } from "yaml";
 import { isPullRequest, type PullRequest, type MergeMethod } from "./pull-requests.js";
 import type { RepoFiles, Warning, WorkItem, WorkItemIndex } from "./work-items.js";
@@ -27,7 +28,7 @@ export function workflowMerge(
       ? workflows[workflow].stages.find(({ id }) => id === document.get("stage"))
       : undefined;
   if (document.errors.length || document.warnings.length || stage?.gate !== "merge")
-    throw new Error("A valid Ship workflow is required before recording a merge.");
+    throw new CoreTextError({ code: "ship.validWorkflowMerge" });
   if (document.get("workflow") !== workflow) document.set("workflow", workflow);
   document.set("merged", merged);
   return document.toString();

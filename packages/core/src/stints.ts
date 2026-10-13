@@ -3,7 +3,7 @@ import type { Brief, BriefHandoff } from "./brief.js";
 import { isReviewFindings, type ReviewFindings } from "./findings.js";
 import type { RepoFiles, Warning } from "./work-items.js";
 import { isPermissionLevel } from "./permission-levels.js";
-import type { CoreTextMessage } from "./core-text.js";
+import { readCoreTextWire, type CoreTextMessage } from "./core-text.js";
 import {
   isRichStintEvent,
   type RichStintEvent,
@@ -226,6 +226,7 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     return (
       stint ?? {
         ...entry.stint,
+        brief: readCoreTextWire(entry.stint.brief) as Brief,
         status: "running",
         startedAt: entry.at,
         endedAt: null,
@@ -387,7 +388,11 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
         pointer &&
         typeof pointer === "object" &&
         typeof pointer.path === "string" &&
-        typeof pointer.reason === "string",
+        (typeof pointer.reason === "string" ||
+          (pointer.reason &&
+            typeof pointer.reason === "object" &&
+            "text" in pointer.reason &&
+            typeof pointer.reason.text === "string")),
     )
   );
 }
