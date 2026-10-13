@@ -12,12 +12,12 @@ M6's tickets are resolved. Its exit test still needs a native speaker's review o
 
 ## Solution
 
-Prepare the repo, then let the maintainer open it. Link it from the READMEs and package metadata. Run the outside-developer test and turn findings into M8 tickets before setting M8's scope.
+Prepare the repo, then let the maintainer open it. Link it from the READMEs and package metadata. Run the outside-developer test after M8's exit and turn findings into M9 tickets before setting M9's scope.
 
 - **Prepare to open.** Bug-report and feature-idea templates, a short CONTRIBUTING and SECURITY, and a scan of tracked files and history for secrets and private paths.
 - **Make the repo findable.** Both READMEs and npm metadata point to the repo. The metadata ships in the next patch release.
 - **Open with confirmation.** After the preparation and links merge, the maintainer changes visibility. The coordinator checks the public repo.
-- **Observe real use.** 3–5 outside developers start a real task in their own repo, without help. Record time, blockers and whether they would keep using it. File findings as M8 tickets.
+- **Observe real use.** 3–5 outside developers start a real task in their own repo, without help. Record time, blockers and whether they would keep using it. File findings as M9 tickets.
 - **Review Chinese alongside.** A native speaker reviews the catalog. This can finish M6, but does not block M7.
 
 ## User Stories
@@ -35,8 +35,8 @@ Prepare the repo, then let the maintainer open it. Link it from the READMEs and 
 - **Safety scan:** inspect tracked files and reachable history, not just filenames or the current tree. Record the tool, scope and result without copying secrets into Comments. Findings block opening until addressed. Rotate exposed credentials; any history rewrite needs the maintainer's confirmation.
 - **Links:** `repository`, `homepage` and `bugs` in the published package's metadata point to `tzrea1-Q/stintwork`. Both READMEs link there. Publishing the next patch still needs the maintainer.
 - **Visibility:** ticket 03 belongs to the maintainer and waits for 01 and 02 to merge. No agent changes visibility automatically.
-- **Outside developers:** the maintainer chooses and recruits 3–5 people. Ticket 04 replaces first-release 12, which stays deferred. Results append to Comments. Findings become tickets assigned to M8; its scope and size wait until the test ends.
-- **Chinese review:** ticket 05 is optional within M7. Fixes go to M8 or a ui-language follow-up ticket. M6 stays active until the review passes and its exit test is recorded.
+- **Outside developers:** the maintainer chooses and recruits 3–5 people. Ticket 04 replaces first-release 12, which stays deferred. Results append to Comments. Findings become tickets assigned to M9; its scope and size wait until the test ends.
+- **Chinese review:** ticket 05 is optional within M7. Fixes go to M9 or a ui-language follow-up ticket. M6 stays active until the review passes and its exit test is recorded.
 - **M7 exit:** ticket 06 depends on 04, not 05. M7 stays active until its exit test passes.
 
 ## Testing Decisions
@@ -45,14 +45,14 @@ Prepare the repo, then let the maintainer open it. Link it from the READMEs and 
 - **Public repo (coordinator):** after the maintainer opens it, check CI, both README renders and both issue templates without private-repo access. Check the private security-reporting route without publishing a vulnerability.
 - **Package links:** inspect the next patch's npm metadata and both README links. Record the published version; preparing metadata alone is not publication evidence.
 - **Outside-developer script:** record the tested version, repo and agent prerequisites. Start the timer when each developer follows the README's first-run instructions. Do not coach them. Record time to first real task, where they got stuck and whether they would keep using it. If help is needed, record it as a failed attempt.
-- **Findings:** file actionable M8 tickets and link each result to its ticket or record why no ticket is needed. Fixing those findings belongs to M8.
+- **Findings:** file actionable M9 tickets and link each result to its ticket or record why no ticket is needed. Fixing those findings belongs to M9.
 - **Chinese review:** record the reviewer, catalog revision, findings and pass or fail in Comments. Check fixes before recording a pass. Keep M6 active if findings remain.
 - **Exit test:** 3–5 outside developers each start a real task in their own repo within a minute, without help, and their findings are triaged into tickets. The coordinator records the result before setting M7 shipped.
 
 ## Out of Scope
 
-- Fixing M7 findings, or setting M8's scope before the test ends.
-- Stint resume, GitHub Issues as a tracker, Grok Build verification and Gemini CLI. These belong to M9–M11.
+- Fixing M7 findings, or setting M9's scope before the test ends.
+- Stint resume, GitHub Issues as a tracker, Grok Build verification and Gemini CLI. These belong to M10–M12.
 - Product changes or new workflows for contributions.
 - Publishing, changing visibility or rewriting history without the maintainer's confirmation.
 - Making the Chinese review a condition of M7's exit test.

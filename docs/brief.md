@@ -134,7 +134,7 @@ Throughout: a ⌘K command palette, `c` to create, `j`/`k` to move, and a stable
 
 Teams and accounts, cloud runners, scheduled automations, a visual workflow editor, two-way GitHub Issues sync, mobile, autonomous swarms, more than one active stint per work item (parallel stints across work items are fine).
 
-v0.2 scope is in `docs/plan.md`: reading GitHub Issues in M10 and a fourth agent, Gemini CLI, in M11. Further agent support follows the plan.
+v0.2 scope is in `docs/plan.md`: UI foundations in M8, reading GitHub Issues in M11 and a fourth agent, Gemini CLI, in M12. Further agent support follows the plan.
 
 ## 13. First milestone: acceptance scenario
 
@@ -160,7 +160,7 @@ On one of your real repos:
 
 ## 15. Open questions
 
-1. **GitHub Issues.** v1 uses local Markdown only (ADR 0005). See `docs/plan.md` M10 for reading GitHub Issues through `gh` and the research spike on where specs and gate approvals live.
+1. **GitHub Issues.** v1 uses local Markdown only (ADR 0005). See `docs/plan.md` M11 for reading GitHub Issues through `gh` and the research spike on where specs and gate approvals live.
 2. **Is `.scratch/` committed?** The name suggests throwaway files, but here it is the project record. Proposal: commit it.
 3. **Approval provenance.** Is `workflow.yaml` in the feature folder the right place for approvals, or should they be a `Status:` line in `spec.md`?
 4. **Permission levels per agent.** Map Stintwork's own levels onto each agent's modes. Codex's default "Workspace access" mode never asks. Grok has no ACP modes and follows its own config (yours is `always-approve`).

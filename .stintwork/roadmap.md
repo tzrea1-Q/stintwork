@@ -44,22 +44,28 @@ Status: active
 
 - go-public
 
-## M8 · What they ran into
+## M8 · UI foundations
 Id: m8
-Status: planned
+Status: active
 
-## M9 · Stints survive restarts
+- ui-foundations
+
+## M9 · What they ran into
 Id: m9
 Status: planned
 
-## M10 · GitHub Issues as a tracker
+## M10 · Stints survive restarts
 Id: m10
 Status: planned
 
-## M11 · More agents
+## M11 · GitHub Issues as a tracker
 Id: m11
 Status: planned
 
-## M12 · v0.2 release
+## M12 · More agents
 Id: m12
+Status: planned
+
+## M13 · v0.2 release
+Id: m13
 Status: planned

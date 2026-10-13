@@ -21,6 +21,10 @@ Tests that read this repo's own `.scratch/` must assert only properties that sta
 
 Single context: `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
 
+### Frontend
+
+Any change under `packages/web/` follows `docs/agents/frontend.md`.
+
 ## Reference material
 
 - `prototype/` (tag `prototype-ui-v1`): throwaway UI prototype with fake data. Variant B is the chosen Pipeline view. Treat it as a design reference to rebuild from, never as code to import.
