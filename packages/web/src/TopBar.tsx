@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { SetupGuide } from "./SetupGuide";
+import { useLanguage } from "./i18n/language";
+import { LanguageSelect } from "./i18n/LanguageSelect";
 
 export function TopBar({
   snapshot,
@@ -26,27 +28,28 @@ export function TopBar({
   onOpenPalette: () => void;
   onOpenNeedsYou: () => void;
 }) {
-  const [panel, setPanel] = useState<"warnings" | "setup" | null>(null);
+  const { t, language } = useLanguage();
+  const [panel, setPanel] = useState<"warnings" | "setup" | "language" | null>(null);
   const panels = useRef<HTMLDivElement>(null);
   const setup = snapshot.setup;
   const checks = [
     {
-      label: "Ticket tracking guide",
+      label: t.topBar.ticketGuide,
       path: "docs/agents/issue-tracker.md",
       ready: setup.hasIssueTracker,
     },
     {
-      label: "Local Markdown tracking",
-      path: ".scratch/ convention",
+      label: t.topBar.markdownTracking,
+      path: `.scratch/${t.topBar.convention}`,
       ready: setup.usesLocalMarkdown,
     },
     {
-      label: "Agent instructions",
-      path: "AGENTS.md or CLAUDE.md",
+      label: t.topBar.agentInstructions,
+      path: `AGENTS.md${t.topBar.or}CLAUDE.md`,
       ready: setup.hasAgents || setup.hasClaude,
     },
-    { label: "Glossary", path: "GLOSSARY.md", ready: setup.hasGlossary },
-    { label: "Decision records", path: "docs/adr/", ready: setup.hasAdrs },
+    { label: t.topBar.glossary, path: "GLOSSARY.md", ready: setup.hasGlossary },
+    { label: t.topBar.decisionRecords, path: "docs/adr/", ready: setup.hasAdrs },
   ];
   const ready = checks.filter((check) => check.ready).length;
 
@@ -94,28 +97,28 @@ export function TopBar({
           onClick={onOpenNeedsYou}
         >
           <Inbox size={14} aria-hidden="true" />
-          Needs you <span className="count">{snapshot.attentionItems.length}</span>
+          {t.topBar.needsYou} <span className="count">{snapshot.attentionItems.length}</span>
         </button>
         <button
           type="button"
           id="command-palette-trigger"
           className="top-button"
-          aria-label="Open command palette"
+          aria-label={t.topBar.openPalette}
           aria-haspopup="dialog"
           onClick={onOpenPalette}
         >
           <Search size={13} aria-hidden="true" />
-          <span>Jump to…</span>
+          <span>{t.topBar.jumpTo}</span>
           <kbd>⌘K / Ctrl+K</kbd>
         </button>
         <label className="milestone-filter">
-          <span className="muted text-[11px]">Milestone</span>
+          <span className="muted text-[11px]">{t.topBar.milestone}</span>
           <select
-            aria-label="Milestone"
+            aria-label={t.topBar.milestone}
             value={milestone}
             onChange={(event) => onMilestoneChange(event.target.value)}
           >
-            <option value="">All</option>
+            <option value="">{t.topBar.all}</option>
             {snapshot.milestones.map((entry) => (
               <option key={entry.id} value={entry.id}>
                 {entry.name}
@@ -126,6 +129,29 @@ export function TopBar({
         <div className="relative flex items-center gap-2" ref={panels}>
           <button
             type="button"
+            className="top-button"
+            id="language-trigger"
+            aria-label={t.topBar.language}
+            aria-haspopup="listbox"
+            aria-expanded={panel === "language"}
+            aria-controls="language-panel"
+            onClick={() => setPanel(panel === "language" ? null : "language")}
+          >
+            <span lang={language}>{language === "en" ? "English" : "简体中文"}</span>
+          </button>
+          {panel === "language" && (
+            <div className="project-popover" id="language-panel">
+              <LanguageSelect
+                size={2}
+                onChange={() => {
+                  setPanel(null);
+                  panels.current?.querySelector<HTMLButtonElement>("#language-trigger")?.focus();
+                }}
+              />
+            </div>
+          )}
+          <button
+            type="button"
             className={`top-button ${snapshot.warnings.length ? "warning" : "muted"}`}
             id="warnings-trigger"
             aria-expanded={panel === "warnings"}
@@ -133,7 +159,7 @@ export function TopBar({
             onClick={() => setPanel(panel === "warnings" ? null : "warnings")}
           >
             <AlertTriangle size={13} aria-hidden="true" />
-            Warnings <span className="count">{snapshot.warnings.length}</span>
+            {t.topBar.warnings} <span className="count">{snapshot.warnings.length}</span>
           </button>
           <button
             type="button"
@@ -144,19 +170,19 @@ export function TopBar({
             onClick={() => setPanel(panel === "setup" ? null : "setup")}
           >
             <Settings2 size={13} aria-hidden="true" />
-            Setup{" "}
+            {t.topBar.setup}{" "}
             <span className={ready === checks.length ? "success" : "muted"}>
               {ready}/{checks.length}
             </span>
           </button>
-          {panel && (
+          {(panel === "warnings" || panel === "setup") && (
             <section
               className="project-popover"
               id={`${panel}-panel`}
-              aria-label={panel === "warnings" ? "Project warnings" : "Project setup"}
+              aria-label={panel === "warnings" ? t.topBar.projectWarnings : t.topBar.projectSetup}
             >
               <h2 className="mb-4 text-xs font-semibold">
-                {panel === "warnings" ? "Project warnings" : "Project setup"}
+                {panel === "warnings" ? t.topBar.projectWarnings : t.topBar.projectSetup}
               </h2>
               {panel === "warnings" ? (
                 snapshot.warnings.length ? (
@@ -164,14 +190,14 @@ export function TopBar({
                     {snapshot.warnings.map((warning) => (
                       <li key={JSON.stringify([warning.path, warning.message])}>
                         <code className="text-[11px] muted break-all">
-                          {warning.path || "Project"}
+                          {warning.path || t.topBar.project}
                         </code>
                         <p className="mt-1 leading-5">{warning.message}</p>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="muted">No warnings. Project files are readable.</p>
+                  <p className="muted">{t.topBar.noWarnings}</p>
                 )
               ) : (
                 <ul className="space-y-4">
@@ -185,7 +211,9 @@ export function TopBar({
                       <div>
                         <p>
                           {check.label}
-                          <span className="sr-only">: {check.ready ? "Found" : "Missing"}</span>
+                          <span className="sr-only">
+                            : {check.ready ? t.topBar.found : t.topBar.missing}
+                          </span>
                         </p>
                         <code className="text-[10px] muted">{check.path}</code>
                       </div>
@@ -197,7 +225,7 @@ export function TopBar({
                 <SetupGuide />
               ) : (
                 <p className="mt-4 border-t border-(--border) pt-3 text-[10px] muted">
-                  Read-only · No files are changed.
+                  {t.topBar.readOnly}
                 </p>
               )}
             </section>

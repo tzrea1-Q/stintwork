@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AttentionItem, BoardColumn, Milestone } from "@stintwork/core";
+import type { AttentionItem, BoardColumn, Milestone, WorkflowDefinitions } from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";
+import { useLanguage } from "./i18n/language";
 
 const presentation = {
-  clarify: { icon: CircleHelp, hint: "Find the right problem" },
-  spec: { icon: Sparkles, hint: "Agree on the outcome" },
-  tickets: { icon: ListFilter, hint: "Slice the implementation" },
-  implement: { icon: Zap, hint: "Make it work" },
-  review: { icon: CheckCheck, hint: "Prove it is ready" },
-  ship: { icon: GitBranch, hint: "Ready to merge" },
+  clarify: CircleHelp,
+  spec: Sparkles,
+  tickets: ListFilter,
+  implement: Zap,
+  review: CheckCheck,
+  ship: GitBranch,
 };
 
 export function Column({
@@ -17,6 +18,7 @@ export function Column({
   name,
   items,
   milestones,
+  workflows,
   onOpen,
   attentionItems = [],
 }: {
@@ -24,10 +26,12 @@ export function Column({
   name: string;
   items: BoardWorkItem[];
   milestones: Milestone[];
+  workflows: WorkflowDefinitions;
   onOpen: (slug: string) => void;
   attentionItems?: AttentionItem[];
 }) {
-  const { icon: Icon, hint } = presentation[id];
+  const { t } = useLanguage();
+  const Icon = presentation[id];
   return (
     <section className="stage-column" data-card-column={id} aria-labelledby={`stage-${id}`}>
       <header className="stage-header">
@@ -38,7 +42,7 @@ export function Column({
           </h2>
           <span className="count">{items.length}</span>
         </div>
-        <p className="mt-2 text-[10px] muted">{hint}</p>
+        <p className="mt-2 text-[10px] muted">{t.column.hints[id]}</p>
       </header>
       <div className="flex flex-col gap-3">
         {items.length ? (
@@ -46,13 +50,14 @@ export function Column({
             <WorkItemCard
               key={item.slug}
               item={item}
+              workflow={workflows[item.workflow]}
               attentionCount={attentionItems.filter((entry) => entry.workItem === item.slug).length}
               milestone={milestones.find((milestone) => milestone.id === item.milestone)}
               onOpen={onOpen}
             />
           ))
         ) : (
-          <p className="empty-column">No work items in {name}.</p>
+          <p className="empty-column">{t.column.empty(name)}</p>
         )}
       </div>
     </section>

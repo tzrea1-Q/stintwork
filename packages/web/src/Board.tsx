@@ -13,6 +13,8 @@ import { useAttentionAlerts } from "./useAttentionAlerts";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { CreateWorkItem } from "./CreateWorkItem";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
+import { useLanguage } from "./i18n/language";
+import { stageName } from "./i18n/workflow-names";
 
 export function Board({
   snapshot,
@@ -23,6 +25,7 @@ export function Board({
   connection?: Connection;
   error?: string;
 }) {
+  const { t } = useLanguage();
   const [selectedMilestone, setSelectedMilestone] = useState("");
   const [openSlug, setOpenSlug] = useState<string | null>(() =>
     new URL(window.location.href).searchParams.get("item"),
@@ -143,36 +146,35 @@ export function Board({
       <main className="pipeline-main">
         <div className="pipeline-heading">
           <div>
-            <p className="eyebrow">Stintwork · Project workbench</p>
+            <p className="eyebrow">{t.board.workbench}</p>
             <h1 className="mt-1 flex items-center gap-3 text-[26px] font-medium tracking-tight">
-              Pipeline <span className="heading-count">{visible.length}</span>
+              {t.board.pipeline} <span className="heading-count">{visible.length}</span>
             </h1>
-            <p className="mt-1 text-xs muted">Your work, from first question to shipped.</p>
+            <p className="mt-1 text-xs muted">{t.board.description}</p>
           </div>
           <p className="connection-status" role="status">
             <span
               className={`status-dot ${connection === "live" ? "is-live" : "is-reconnecting"}`}
             />
             {connection === "live"
-              ? "Live"
+              ? t.board.live
               : connection === "connecting"
-                ? "Connecting live updates"
-                : "Reconnecting · Reading project periodically"}
+                ? t.board.connecting
+                : t.board.reconnecting}
           </p>
         </div>
         {error && (
           <p className="connection-error" role="alert">
-            {error} Showing the last available project; retrying automatically.
+            {error}
+            {t.board.lastAvailable}
           </p>
         )}
         <div className="board-toolbar">
           <span className="flex items-center gap-2">
             <Layers3 size={13} aria-hidden="true" />
-            {selected?.name ?? "All milestones"}
+            {selected?.name ?? t.board.allMilestones}
           </span>
-          <span>
-            {active.length} active · {shipped.length} shipped
-          </span>
+          <span>{t.board.counts(active.length, shipped.length)}</span>
           <RoadmapEditor snapshot={snapshot} />
           <button
             type="button"
@@ -180,43 +182,45 @@ export function Board({
             aria-haspopup="dialog"
             onClick={() => setCreateOpen(true)}
           >
-            Create work item
+            {t.board.createWorkItem}
           </button>
-          <nav className="stage-navigation" aria-label="Stage navigation">
+          <nav className="stage-navigation" aria-label={t.board.stageNavigation}>
             <button
               type="button"
-              aria-label="Previous stages"
+              aria-label={t.board.previousStages}
               onClick={() => scroll.current?.scrollBy({ left: -240 })}
             >
               <ChevronLeft size={14} aria-hidden="true" />
             </button>
             <button
               type="button"
-              aria-label="Next stages"
+              aria-label={t.board.nextStages}
               onClick={() => scroll.current?.scrollBy({ left: 240 })}
             >
               <ChevronRight size={14} aria-hidden="true" />
             </button>
           </nav>
         </div>
-        <section className="board-scroll" ref={scroll} aria-label="Pipeline stages">
+        <section className="board-scroll" ref={scroll} aria-label={t.board.stages}>
           {snapshot.workItems.length === 0 ? (
             <section className="empty-project">
               <FolderOpen size={27} className="muted" aria-hidden="true" />
-              <h2 className="mt-4 text-base font-medium">No work items yet</h2>
+              <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
               <p className="mt-2 muted">
-                Start with a spec in <code>.scratch/&lt;work-item&gt;/spec.md</code>.
+                {t.board.startWithSpec}
+                <code>.scratch/&lt;work-item&gt;/spec.md</code>.
               </p>
               <p className="mt-2 text-xs muted">
-                Add tickets in <code>.scratch/&lt;work-item&gt;/issues/</code>. The Pipeline updates
-                as you edit.
+                {t.board.addTickets}
+                <code>.scratch/&lt;work-item&gt;/issues/</code>
+                {t.board.updatesAsYouEdit}
               </p>
             </section>
           ) : (
             <>
               {visible.length === 0 && (
                 <p className="mt-4 muted" role="status">
-                  No work items in this milestone.
+                  {t.board.emptyMilestone}
                 </p>
               )}
               <div className="stage-grid">
@@ -224,9 +228,10 @@ export function Board({
                   <Column
                     key={stage.id}
                     id={stage.column}
-                    name={stage.name}
+                    name={stageName(builtInWorkflows.feature, stage, t)}
                     items={active.filter((item) => item.column === stage.column)}
                     milestones={snapshot.milestones}
+                    workflows={snapshot.workflows}
                     attentionItems={snapshot.attentionItems}
                     onOpen={openWorkItem}
                   />
@@ -236,15 +241,13 @@ export function Board({
                 <section
                   className="unstaged"
                   data-card-column="unstaged"
-                  aria-label="Work items without a stage"
+                  aria-label={t.board.unstaged}
                 >
-                  <h2 className="mb-3 text-xs muted">
-                    Work items without a stage · {unstaged.length}
-                  </h2>
+                  <h2 className="mb-3 text-xs muted">{t.board.unstagedCount(unstaged.length)}</h2>
                   <div className="auxiliary-items">
                     {unstaged.map((item) => (
                       <WorkItemCard
-                        workflowName={snapshot.workflows[item.workflow]?.name}
+                        workflow={snapshot.workflows[item.workflow]}
                         key={item.slug}
                         item={item}
                         attentionCount={
@@ -264,14 +267,14 @@ export function Board({
             <summary>
               <ChevronRight size={13} className="shipped-chevron" aria-hidden="true" />
               <CheckCheck size={14} className="success" aria-hidden="true" />
-              <h2>Shipped</h2>
+              <h2>{t.board.shipped}</h2>
               <span className="count">{shipped.length}</span>
             </summary>
             {shipped.length ? (
               <div className="auxiliary-items mt-3" data-card-column="shipped">
                 {shipped.map((item) => (
                   <WorkItemCard
-                    workflowName={snapshot.workflows[item.workflow]?.name}
+                    workflow={snapshot.workflows[item.workflow]}
                     key={item.slug}
                     item={item}
                     attentionCount={
@@ -283,7 +286,7 @@ export function Board({
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-xs muted">No shipped work items yet.</p>
+              <p className="py-4 text-xs muted">{t.board.emptyShipped}</p>
             )}
           </details>
         </section>

@@ -16,7 +16,9 @@
   --accent-soft: #8b8df819;
   --success: #61bd99;
   --warning: #e4b468;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    "Noto Sans CJK SC", sans-serif;
   font-size: 13px;
   background: var(--bg);
   color: var(--text);

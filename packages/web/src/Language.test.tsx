@@ -1,0 +1,287 @@
+// SPDX-License-Identifier: Apache-2.0
+import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { cleanup, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { App } from "./App";
+import { Board } from "./Board";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
+
+const files = {
+  ".scratch/example/spec.md": "# Repo title 中文",
+  ".scratch/example/workflow.yaml": "workflow: feature\nstage: spec",
+  ".scratch/example/issues/01-work.md": "# Repo ticket 中文\nStatus: open",
+  ".stintwork/roadmap.md": "## Repo milestone 中文\nId: m1\nStatus: active\n- example",
+};
+
+function project(contents: Record<string, string> = files) {
+  return indexProject(createMemoryRepoFiles(contents), {
+    name: "Repo project 中文",
+    branch: "team/中文",
+  });
+}
+
+beforeEach(() => {
+  localStorage.clear();
+  vi.spyOn(navigator, "languages", "get").mockReturnValue(["en"]);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents: [] }))),
+  );
+});
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  localStorage.clear();
+  document.documentElement.lang = "en";
+  window.history.replaceState(null, "", "/");
+});
+
+test.each([
+  ["zh-CN", "zh-CN", "正在打开你的项目"],
+  ["zh-TW", "zh-CN", "正在打开你的项目"],
+  ["zh", "zh-CN", "正在打开你的项目"],
+  ["fr", "en", "Opening your project"],
+  ["en-GB", "en", "Opening your project"],
+])("detects %s on the app's connection screen", (preference, language, heading) => {
+  vi.spyOn(navigator, "languages", "get").mockReturnValue([preference]);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise(() => {})),
+  );
+  render(<App />);
+  expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+  expect(document.documentElement).toHaveAttribute("lang", language);
+  expect(localStorage.getItem(languageStorageKey)).toBeNull();
+});
+
+test.each(["zh-Hans", "zh-SG", "ZH-hk"])(
+  "uses a later %s preference rather than an unrelated primary language",
+  (preference) => {
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["fr", preference]);
+    render(
+      <LanguageProvider>
+        <Board snapshot={project()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+  },
+);
+
+test.each([
+  ["en", "zh-TW", "Pipeline"],
+  ["zh-CN", "en-GB", "流水线"],
+])("stored %s overrides browser %s", (choice, preference, heading) => {
+  localStorage.setItem(languageStorageKey, choice);
+  vi.spyOn(navigator, "languages", "get").mockReturnValue([preference]);
+  render(
+    <LanguageProvider>
+      <Board snapshot={project()} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("heading", { name: new RegExp(`^${heading}`) })).toBeInTheDocument();
+  expect(document.documentElement).toHaveAttribute("lang", choice);
+});
+
+test.each(["unknown", "zh-TW", "", "null"])(
+  "invalid stored choice %s falls back to detection",
+  (choice) => {
+    localStorage.setItem(languageStorageKey, choice);
+    vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
+    render(
+      <LanguageProvider>
+        <Board snapshot={project()} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+  },
+);
+
+test("blocked localStorage reads and writes still render and switch", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh"]);
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new DOMException("Blocked", "SecurityError");
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new DOMException("Blocked", "SecurityError");
+  });
+  render(
+    <LanguageProvider>
+      <Board snapshot={project()} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "语言" }));
+  await user.selectOptions(screen.getByRole("listbox", { name: "语言" }), "en");
+  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
+  expect(document.documentElement).toHaveAttribute("lang", "en");
+});
+
+test("switching persists the preference and preserves the open drawer and ticket disclosure", async () => {
+  const user = userEvent.setup();
+  const rendered = render(
+    <LanguageProvider>
+      <Board snapshot={project()} />
+    </LanguageProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "Open example: Repo title 中文" }));
+  const drawer = screen.getByRole("dialog", { name: "Repo title 中文" });
+  const ticket = within(drawer).getByText("01 · Repo ticket 中文").closest("details");
+  await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
+  expect(ticket).toHaveAttribute("open");
+  await user.click(screen.getByRole("button", { name: "Language" }));
+  const choices = screen.getByRole("listbox", { name: "Language" });
+  expect(within(choices).getByRole("option", { name: "English" })).toHaveAttribute("lang", "en");
+  expect(within(choices).getByRole("option", { name: "简体中文" })).toHaveAttribute(
+    "lang",
+    "zh-CN",
+  );
+  await user.selectOptions(choices, "zh-CN");
+  expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^待你处理/ })).toBeInTheDocument();
+  expect(document.documentElement).toHaveAttribute("lang", "zh-CN");
+  expect(localStorage.getItem(languageStorageKey)).toBe("zh-CN");
+  expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
+  expect(drawer).toHaveAttribute("open");
+  expect(ticket).toHaveAttribute("open");
+  expect(within(drawer).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
+  expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
+  const drawerLanguage = within(drawer).getByRole("combobox", { name: "语言" });
+  expect(within(drawerLanguage).getByRole("option", { name: "English" })).toHaveAttribute(
+    "lang",
+    "en",
+  );
+  expect(within(drawerLanguage).getByRole("option", { name: "简体中文" })).toHaveAttribute(
+    "lang",
+    "zh-CN",
+  );
+  await user.selectOptions(drawerLanguage, "en");
+  expect(document.documentElement).toHaveAttribute("lang", "en");
+  expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
+  rendered.unmount();
+  vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
+  render(
+    <LanguageProvider>
+      <Board snapshot={project()} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
+});
+
+test.each(["team", "feature", "constructor"])(
+  "Chinese board headings coexist with verbatim %s workflow, stages, and repo content",
+  async (id) => {
+    const user = userEvent.setup();
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    const snapshot = project({
+      ...files,
+      ".stintwork/workflows/team.yaml": JSON.stringify({
+        id,
+        name: "Team workflow 自定义",
+        defaultAgent: "codex",
+        stages: [
+          { id: "design", name: "Design 自定义", column: "spec", skill: "/design", gate: "manual" },
+          { id: "ship", name: "Deliver 自定义", column: "ship", skill: null, gate: "merge" },
+        ],
+      }),
+      ".scratch/example/workflow.yaml": `workflow: ${id}\nstage: design`,
+    });
+    render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    for (const name of ["澄清", "规格说明", "工单", "实现", "审查", "交付"])
+      expect(screen.getByRole("heading", { name })).toBeInTheDocument();
+    expect(screen.getByText("Repo project 中文")).toBeInTheDocument();
+    expect(screen.getByText("team/中文")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Repo milestone 中文" })).toBeInTheDocument();
+    const card = within(screen.getByRole("article", { name: "example: Repo title 中文" }));
+    expect(card.getByText("Team workflow 自定义:")).toBeInTheDocument();
+    await user.click(card.getByRole("button", { name: "打开 example：Repo title 中文" }));
+    const drawer = within(screen.getByRole("dialog", { name: "Repo title 中文" }));
+    expect(
+      drawer.getByRole("list", { name: "Team workflow 自定义 workflow stages" }),
+    ).toHaveTextContent("Design 自定义");
+    expect(
+      drawer.getByRole("list", { name: "Team workflow 自定义 workflow stages" }),
+    ).toHaveTextContent("Deliver 自定义");
+  },
+);
+
+test.each([
+  ["feature", "spec", "功能:"],
+  ["bug", "diagnose", "缺陷:"],
+  ["quick", "do", "快速工作项:"],
+])("built-in %s names survive a JSON snapshot round trip", (id, stage, name) => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const snapshot = JSON.parse(
+    JSON.stringify(
+      project({
+        ...files,
+        ".scratch/example/workflow.yaml": `workflow: ${id}\nstage: ${stage}`,
+      }),
+    ),
+  );
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  const card = within(screen.getByRole("article", { name: "example: Repo title 中文" }));
+  expect(card.getByText(name)).toBeInTheDocument();
+});
+
+test.each(["defaultAgent", "skill", "gate", "agent", "order"])(
+  "a built-in workflow with changed %s is not translated even if names are unchanged",
+  (change) => {
+    localStorage.setItem(languageStorageKey, "zh-CN");
+    const workflow = JSON.parse(JSON.stringify(builtInWorkflows.feature));
+    if (change === "defaultAgent") workflow.defaultAgent = "claude";
+    if (change === "skill") workflow.stages[0].skill = "/team-clarify";
+    if (change === "gate") workflow.stages[0].gate = "spec";
+    if (change === "agent") workflow.stages[0].agent = "claude";
+    if (change === "order")
+      [workflow.stages[0], workflow.stages[1]] = [workflow.stages[1], workflow.stages[0]];
+    render(
+      <LanguageProvider>
+        <Board
+          snapshot={project({
+            ...files,
+            ".stintwork/workflows/feature.yaml": JSON.stringify(workflow),
+          })}
+        />
+      </LanguageProvider>,
+    );
+    expect(
+      within(screen.getByRole("article", { name: "example: Repo title 中文" })).getByText(
+        "Feature:",
+      ),
+    ).toBeInTheDocument();
+  },
+);
+
+test("warnings and setup checklist chrome translate without changing core warnings or paths", async () => {
+  const user = userEvent.setup();
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const snapshot = project();
+  snapshot.warnings = [{ path: ".scratch/中文/spec.md", message: "Core warning 原文" }];
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: "警告 1" }));
+  const warnings = within(screen.getByRole("region", { name: "项目警告" }));
+  expect(warnings.getByText("Core warning 原文")).toBeInTheDocument();
+  expect(warnings.getByText(".scratch/中文/spec.md")).toBeInTheDocument();
+  expect(warnings.getByText("只读 · 不会更改任何文件。")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /^设置/ }));
+  const setup = within(screen.getByRole("region", { name: "项目设置" }));
+  expect(setup.getByText("工单跟踪指南")).toBeInTheDocument();
+  expect(setup.getByText("Agent 指令")).toBeInTheDocument();
+  expect(setup.getByText("docs/agents/issue-tracker.md")).toBeInTheDocument();
+});
