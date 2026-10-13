@@ -135,20 +135,19 @@ test("switching persists the preference and preserves the open drawer and ticket
   const ticket = within(drawer).getByText("01 · Repo ticket 中文").closest("details");
   await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
   expect(ticket).toHaveAttribute("open");
-  await user.click(screen.getByRole("button", { name: "Language" }));
-  const choices = screen.getByRole("listbox", { name: "Language" });
+  const choices = within(drawer).getByRole("combobox", { name: "Language" });
   expect(within(choices).getByRole("option", { name: "English" })).toHaveAttribute("lang", "en");
   expect(within(choices).getByRole("option", { name: "简体中文" })).toHaveAttribute(
     "lang",
     "zh-CN",
   );
   await user.selectOptions(choices, "zh-CN");
-  expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^待你处理/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^流水线/, hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^待你处理/, hidden: true })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "zh-CN");
   expect(localStorage.getItem(languageStorageKey)).toBe("zh-CN");
   expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
-  expect(drawer).toHaveAttribute("open");
+  expect(drawer).toHaveAttribute("data-state", "open");
   expect(ticket).toHaveAttribute("open");
   expect(within(drawer).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
   expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
@@ -171,7 +170,7 @@ test("switching persists the preference and preserves the open drawer and ticket
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^Pipeline/, hidden: true })).toBeInTheDocument();
 });
 
 test.each(["team", "feature", "constructor"])(

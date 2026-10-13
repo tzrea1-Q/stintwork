@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
@@ -459,7 +459,7 @@ test("searches the palette by slug and supports its keyboard close button", asyn
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
-test("shows an effort without inventing a stage or spec and handles native cancellation", async () => {
+test("shows an effort without inventing a stage or spec and handles Escape", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   const card = screen.getByRole("button", { name: "Open effort: Effort" });
@@ -468,7 +468,7 @@ test("shows an effort without inventing a stage or spec and handles native cance
   expect(drawer).toHaveTextContent("No stage declared for this work item.");
   expect(drawer).toHaveTextContent("No spec yet.");
   expect(drawer).toHaveTextContent("No tickets yet.");
-  fireEvent(drawer, new Event("cancel", { cancelable: true }));
+  await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(card).toHaveFocus();
 });
