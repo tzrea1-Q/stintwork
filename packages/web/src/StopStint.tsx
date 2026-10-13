@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from "react";
+import { useLanguage } from "./i18n/language";
 
 export function StopStint({ stintId }: { stintId: string }) {
+  const { t } = useLanguage();
   const [requested, setRequested] = useState(false);
   const [error, setError] = useState("");
 
@@ -14,10 +16,10 @@ export function StopStint({ stintId }: { stintId: string }) {
       });
       if (!response.ok) {
         const body = await response.json();
-        throw new Error(typeof body.reason === "string" ? body.reason : "Could not stop stint.");
+        throw new Error(typeof body.reason === "string" ? body.reason : t.stints.stopFailed);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not stop stint.");
+      setError(cause instanceof Error ? cause.message : t.stints.stopFailed);
       setRequested(false);
     }
   }
@@ -25,7 +27,7 @@ export function StopStint({ stintId }: { stintId: string }) {
   return (
     <div>
       <button type="button" className="action" onClick={stop} disabled={requested}>
-        {requested ? "Stopping stint…" : "Stop"}
+        {requested ? t.stints.stopping : t.stints.stop}
       </button>
       {error && (
         <p role="alert" className="warning">

@@ -9,6 +9,8 @@ import {
 import { useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
+import { useLanguage } from "./i18n/language";
+import { stageName } from "./i18n/workflow-names";
 
 export function GateView({
   item,
@@ -19,6 +21,7 @@ export function GateView({
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
+  const { t } = useLanguage();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -45,47 +48,54 @@ export function GateView({
         },
       );
       const result = await response.json();
-      if (!response.ok) throw new Error(result.reason ?? "Could not change the gate.");
-      const name = stages.find(({ id }) => id === result.stage)?.name ?? result.stage;
-      setMessage(
-        action === "approve" ? `Gate approved. Stage advances to ${name}.` : `${name} reopened.`,
-      );
+      if (!response.ok) throw new Error(result.reason ?? t.stints.changeGateFailed);
+      const next = stages.find(({ id }) => id === result.stage);
+      const name = next ? stageName(workflows[item.workflow], next, t) : result.stage;
+      setMessage(action === "approve" ? t.stints.gateApproved(name) : t.stints.gateReopened(name));
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not change the gate.");
+      setError(cause instanceof Error ? cause.message : t.stints.changeGateFailed);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <section aria-label={`${current.name} gate`} className="handoff-card">
-      <h3 className="drawer-section-heading">{current.name} gate</h3>
-      <p role="status">{gate.ready ? "Ready to approve" : gate.reason}</p>
+    <section
+      aria-label={t.stints.gate(stageName(workflows[item.workflow], current, t))}
+      className="handoff-card"
+    >
+      <h3 className="drawer-section-heading">
+        {t.stints.gate(stageName(workflows[item.workflow], current, t))}
+      </h3>
+      <p role="status">{gate.ready ? t.stints.readyToApprove : gate.reason}</p>
       {gate.conditions.length > 0 && (
-        <ul aria-label={`${current.name} gate conditions`}>
+        <ul aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}>
           {gate.conditions.map((condition) => (
             <li key={condition.id}>
-              <strong>{condition.label}</strong> · {condition.ready ? "Ready" : "Blocked"}
-              <p>{condition.ready ? "No action needed." : condition.action}</p>
+              <strong>{condition.label}</strong> ·{" "}
+              {condition.ready ? t.stints.ready : t.stints.blocked}
+              <p>{condition.ready ? t.stints.noAction : condition.action}</p>
             </li>
           ))}
         </ul>
       )}
       <p>
-        {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length} tickets
-        resolved
+        {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length}
+        {t.stints.ticketsResolved}
       </p>
       <ul>
         {item.tickets.map((ticket) => (
           <li key={ticket.path}>
-            {ticket.number} · {ticket.title} · {ticket.resolved ? "Resolved" : ticket.status}
+            {ticket.number} · {ticket.title} · {ticket.resolved ? t.stints.resolved : ticket.status}
           </li>
         ))}
       </ul>
-      <p>Last checkpoint: {checkpoint ? <code>{checkpoint}</code> : "None recorded."}</p>
-      <h4>Last handoff</h4>
-      {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>No handoff recorded.</p>}
-      <h4>Open warnings</h4>
+      <p>
+        {t.stints.lastCheckpoint} {checkpoint ? <code>{checkpoint}</code> : t.stints.noneRecorded}
+      </p>
+      <h4>{t.stints.lastHandoff}</h4>
+      {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
+      <h4>{t.stints.openWarnings}</h4>
       {warnings.length ? (
         <ul>
           {warnings.map(({ path, message }) => (
@@ -95,7 +105,7 @@ export function GateView({
           ))}
         </ul>
       ) : (
-        <p>No open warnings.</p>
+        <p>{t.stints.noWarnings}</p>
       )}
       {gate.nextStage && (
         <button
@@ -104,7 +114,7 @@ export function GateView({
           disabled={!gate.ready || saving || !!message}
           onClick={() => void act(current.id, "approve")}
         >
-          Approve {current.name}
+          {t.stints.approve(stageName(workflows[item.workflow], current, t))}
         </button>
       )}
       {earlier.map((stage) => (
@@ -115,7 +125,7 @@ export function GateView({
           disabled={saving || !!message || !!item.activeStint}
           onClick={() => void act(stage.id, "reopen")}
         >
-          Reopen {stage.name}
+          {t.stints.reopen(stageName(workflows[item.workflow], stage, t))}
         </button>
       ))}
       {message && <p role="status">{message}</p>}

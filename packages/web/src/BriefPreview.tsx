@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
+  builtInWorkflows,
   type AgentProfile,
   agentUnavailableReason,
   type Brief,
@@ -16,6 +17,8 @@ import { Copy, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import "./brief-preview.css";
+import { useLanguage } from "./i18n/language";
+import { stageName as translatedStageName } from "./i18n/workflow-names";
 
 export function TicketBriefPreview({
   item,
@@ -49,17 +52,20 @@ export function StageBriefPreview({
 function StintBriefAction({
   item,
   ticket,
-  workflows,
+  workflows = builtInWorkflows,
 }: {
   item: BoardWorkItem;
   ticket?: Ticket;
   workflows?: WorkflowDefinitions;
 }) {
+  const { t } = useLanguage();
+  const workflow = workflows[item.workflow];
+  const stage = workflow.stages.find(({ id }) => id === item.stage);
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const reasonId = useId();
   const reason = item.activeStint
-    ? "A stint is already active for this work item."
+    ? t.stints.alreadyActive
     : briefUnavailableReason(item, ticket, workflows);
 
   useEffect(() => {
@@ -76,7 +82,7 @@ function StintBriefAction({
         aria-describedby={reason ? reasonId : undefined}
         onClick={() => setOpen(true)}
       >
-        Start stint
+        {t.stints.startStint}
       </button>
       {reason && (
         <p id={reasonId} className="muted">
@@ -87,7 +93,7 @@ function StintBriefAction({
         <BriefPreviewSheet
           slug={item.slug}
           ticketNumber={ticket?.number ?? null}
-          stageName={item.stage ? item.stage[0].toUpperCase() + item.stage.slice(1) : ""}
+          stageName={stage ? translatedStageName(workflow, stage, t) : ""}
           onClose={() => {
             setOpen(false);
             trigger.current?.focus();
@@ -109,6 +115,7 @@ function BriefPreviewSheet({
   stageName: string;
   onClose: () => void;
 }) {
+  const { t, language } = useLanguage();
   const dialog = useRef<HTMLDialogElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -120,14 +127,14 @@ function BriefPreviewSheet({
   const [projectDefault, setProjectDefault] = useState<PermissionLevel>(defaultPermissionLevel);
   const [savingDefault, setSavingDefault] = useState(false);
   const [defaultError, setDefaultError] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | { key: "loadBriefFailed" | "loadAgentsFailed" }>("");
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
   const selectedAgent = agents.find(({ id }) => id === agent);
   const unavailable = selectedAgent
     ? agentUnavailableReason(selectedAgent)
-    : "Agent is not registered.";
+    : t.stints.agentNotRegistered;
 
   useEffect(() => {
     const element = dialog.current;
@@ -139,6 +146,7 @@ function BriefPreviewSheet({
   useEffect(() => {
     const request = new AbortController();
     async function load() {
+      let fallback: "loadBriefFailed" | "loadAgentsFailed" = "loadBriefFailed";
       try {
         const [response, registryResponse] = await Promise.all([
           fetch(
@@ -149,11 +157,12 @@ function BriefPreviewSheet({
         ]);
         if (!response.ok) {
           const failure: { reason?: string } = await response.json();
-          throw new Error(failure.reason ?? "Could not load the brief preview.");
+          throw new Error(failure.reason ?? "");
         }
         if (!registryResponse.ok) {
+          fallback = "loadAgentsFailed";
           const failure: { reason?: string } = await registryResponse.json();
-          throw new Error(failure.reason ?? "Could not load registered agents.");
+          throw new Error(failure.reason ?? "");
         }
         const preview: Brief = await response.json();
         const registry: { agents: AgentProfile[] } = await registryResponse.json();
@@ -166,7 +175,7 @@ function BriefPreviewSheet({
         }
       } catch (cause) {
         if (!request.signal.aborted) {
-          setError(cause instanceof Error ? cause.message : "Could not load the brief preview.");
+          setError(cause instanceof Error && cause.message ? cause.message : { key: fallback });
         }
       }
     }
@@ -178,9 +187,9 @@ function BriefPreviewSheet({
     if (!brief) return;
     try {
       await navigator.clipboard.writeText(brief.prompt);
-      setCopyStatus("Copied");
+      setCopyStatus(t.stints.copied);
     } catch {
-      setCopyStatus("Could not copy. Select the prompt to copy it manually.");
+      setCopyStatus(t.stints.copyPromptFailed);
     }
   }
 
@@ -196,11 +205,11 @@ function BriefPreviewSheet({
       });
       if (!response.ok) {
         const failure: { reason?: string } = await response.json();
-        throw new Error(failure.reason ?? "Could not start the stint.");
+        throw new Error(failure.reason ?? t.stints.startFailed);
       }
       onClose();
     } catch (cause) {
-      setStartError(cause instanceof Error ? cause.message : "Could not start the stint.");
+      setStartError(cause instanceof Error ? cause.message : t.stints.startFailed);
     } finally {
       setStarting(false);
     }
@@ -227,28 +236,27 @@ function BriefPreviewSheet({
       <header className="drawer-header">
         <div className="flex items-center justify-between gap-3">
           <h2 id={titleId} className="text-xl font-medium">
-            Brief preview
+            {t.stints.briefPreview}
           </h2>
           <button
             type="button"
             className="top-button"
             ref={closeButton}
-            aria-label="Close brief preview"
+            aria-label={t.stints.closeBrief}
             onClick={onClose}
           >
             <X size={16} aria-hidden="true" />
           </button>
         </div>
         <p className="mt-3 muted">
-          {slug} ·{" "}
-          {ticketNumber === null ? stageName : `Ticket ${String(ticketNumber).padStart(2, "0")}`}
+          {slug} · {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber)}
         </p>
       </header>
       <div className="brief-preview-content">
         <section>
-          <h3>Agent</h3>
+          <h3>{t.stints.agent}</h3>
           <label>
-            <span className="sr-only">Agent</span>
+            <span className="sr-only">{t.stints.agent}</span>
             <select
               value={agent}
               onChange={(event) => setAgent(event.target.value)}
@@ -257,7 +265,7 @@ function BriefPreviewSheet({
             >
               {agent && !selectedAgent && (
                 <option value={agent} disabled>
-                  {agent} — Not registered
+                  {agent} — {t.stints.notRegistered}
                 </option>
               )}
               {agents.map((candidate) => {
@@ -274,9 +282,9 @@ function BriefPreviewSheet({
           <p id={agentAvailabilityId} className="muted">
             {brief
               ? agents.length
-                ? (unavailable ?? "Choose an agent for this stint.")
-                : "No agents are registered."
-              : "Reading registered agents…"}
+                ? (unavailable ?? t.stints.chooseAgent)
+                : t.stints.noAgents
+              : t.stints.readingAgents}
           </p>
           {(selectedAgent
             ? permissionPolicy(selectedAgent, permissionLevel).warnings
@@ -288,9 +296,9 @@ function BriefPreviewSheet({
           ))}
         </section>
         <section>
-          <h3>Permission level</h3>
+          <h3>{t.stints.permissionLevel}</h3>
           <label>
-            <span className="sr-only">Permission level</span>
+            <span className="sr-only">{t.stints.permissionLevel}</span>
             <select
               value={permissionLevel}
               disabled={!brief || starting || savingDefault}
@@ -300,18 +308,13 @@ function BriefPreviewSheet({
             >
               {permissionLevels.map((level) => (
                 <option key={level} value={level}>
-                  {level === "ask" ? "Ask" : level === "edit-freely" ? "Edit freely" : "Autonomous"}
+                  {t.stints.permissionLevels[level]}
                 </option>
               ))}
             </select>
           </label>
           <p className="muted">
-            Project default:{" "}
-            {projectDefault === "ask"
-              ? "Ask"
-              : projectDefault === "edit-freely"
-                ? "Edit freely"
-                : "Autonomous"}
+            {t.stints.projectDefault} {t.stints.permissionLevels[projectDefault]}
           </p>
           <button
             type="button"
@@ -328,7 +331,7 @@ function BriefPreviewSheet({
                 });
                 if (!response.ok) {
                   const body = await response.json();
-                  throw new Error(body.reason ?? "Could not save the project default.");
+                  throw new Error(body.reason ?? t.stints.saveDefaultFailed);
                 }
                 setProjectDefault(permissionLevel);
               } catch (error) {
@@ -338,7 +341,7 @@ function BriefPreviewSheet({
               }
             }}
           >
-            Use as project default
+            {t.stints.useProjectDefault}
           </button>
           {defaultError && (
             <p role="alert" className="warning">
@@ -348,20 +351,20 @@ function BriefPreviewSheet({
         </section>
         {error ? (
           <p role="alert" className="warning">
-            {error}
+            {typeof error === "string" ? error : t.stints[error.key]}
           </p>
         ) : !brief ? (
           <p role="status" className="muted">
-            Reading the brief…
+            {t.stints.readingBrief}
           </p>
         ) : (
           <>
             <section>
-              <h3>Skill</h3>
-              <code>{brief.skill ? brief.prompt.split("\n")[0] : "None — Do has no skill."}</code>
+              <h3>{t.stints.skill}</h3>
+              <code>{brief.skill ? brief.prompt.split("\n")[0] : t.stints.noSkill}</code>
             </section>
             <section>
-              <h3>Read first</h3>
+              <h3>{t.stints.readFirst}</h3>
               <ul>
                 {brief.pointers.map(({ path, reason }) => (
                   <li key={path}>
@@ -372,41 +375,48 @@ function BriefPreviewSheet({
             </section>
             {brief.checkpointCommit && (
               <section>
-                <h3>Checkpoint commit</h3>
+                <h3>{t.stints.checkpointCommit}</h3>
                 <code>{brief.checkpointCommit}</code>
               </section>
             )}
             <section>
               <h3>
-                Last handoff
+                {t.stints.lastHandoff}
                 {brief.lastHandoff && ` (${brief.lastHandoff.stint}, ${brief.lastHandoff.agent})`}
               </h3>
               {brief.lastHandoff ? (
                 <dl className="brief-handoff">
-                  <dt>Where it stopped</dt>
+                  <dt>{t.stints.whereStopped}</dt>
                   <dd>{brief.lastHandoff.stoppedAt}</dd>
-                  <dt>What is unresolved</dt>
+                  <dt>{t.stints.whatUnresolved}</dt>
                   <dd>{brief.lastHandoff.unresolved}</dd>
-                  <dt>Suggested next step</dt>
+                  <dt>{t.stints.nextStep}</dt>
                   <dd>{brief.lastHandoff.nextStep}</dd>
                 </dl>
               ) : (
-                <p>None — start from the project conventions and work item scope.</p>
+                <p>{t.stints.firstHandoff}</p>
               )}
             </section>
             {(brief.developerNotes ?? []).length > 0 && (
               <section>
-                <h3>Developer notes</h3>
+                <h3>{t.stints.developerNotes}</h3>
                 {brief.developerNotes?.map((note) => (
                   <div key={note.id}>
-                    <time dateTime={note.at}>{note.at}</time>
+                    <time dateTime={note.at}>
+                      {language === "en"
+                        ? note.at
+                        : new Intl.DateTimeFormat(language, {
+                            dateStyle: "medium",
+                            timeStyle: "medium",
+                          }).format(new Date(note.at))}
+                    </time>
                     <pre className="brief-prompt">{note.text}</pre>
                   </div>
                 ))}
               </section>
             )}
             <section>
-              <h3>Changed since the last handoff</h3>
+              <h3>{t.stints.changedPaths}</h3>
               {brief.changedPaths.length ? (
                 <ul>
                   {brief.changedPaths.map((path) => (
@@ -416,15 +426,15 @@ function BriefPreviewSheet({
                   ))}
                 </ul>
               ) : (
-                <p>None.</p>
+                <p>{t.stints.none}</p>
               )}
-              <p className="muted">Where the handoff and the files disagree, the files win.</p>
+              <p className="muted">{t.stints.filesWin}</p>
             </section>
             <section>
               <div className="flex items-center justify-between gap-3">
-                <h3>Full prompt</h3>
+                <h3>{t.stints.fullPrompt}</h3>
                 <button type="button" className="top-button" onClick={copy}>
-                  <Copy size={13} aria-hidden="true" /> Copy prompt
+                  <Copy size={13} aria-hidden="true" /> {t.stints.copyPrompt}
                 </button>
               </div>
               <span role="status" className="copy-status">
@@ -447,7 +457,7 @@ function BriefPreviewSheet({
           disabled={!brief || !agent || starting || !!error || !!unavailable}
           onClick={() => void start()}
         >
-          {starting ? "Starting…" : "Start"}
+          {starting ? t.stints.starting : t.stints.start}
         </button>
       </footer>
     </dialog>

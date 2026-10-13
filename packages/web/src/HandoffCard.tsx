@@ -5,19 +5,21 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import "./handoff-card.css";
+import { useLanguage } from "./i18n/language";
 
 export function HandoffCard({ stint }: { stint: StintSummary }) {
+  const { t } = useLanguage();
   const title = useId();
   return (
     <article className="handoff-card" aria-labelledby={title}>
-      <h4 id={title}>Handoff</h4>
+      <h4 id={title}>{t.stints.handoff}</h4>
       <CheckpointWarnings warnings={stint.checkpointWarnings} />
       {stint.handoff ? (
         <dl>
           {[
-            ["Where I stopped", stint.handoff.stoppedAt],
-            ["Unresolved", stint.handoff.unresolved],
-            ["Suggested next", stint.handoff.nextStep],
+            [t.stints.whereIStopped, stint.handoff.stoppedAt],
+            [t.stints.unresolved, stint.handoff.unresolved],
+            [t.stints.suggestedNext, stint.handoff.nextStep],
           ].map(([heading, text]) => (
             <div key={heading}>
               <dt>{heading}</dt>
@@ -31,18 +33,16 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
         </dl>
       ) : (
         <p className="muted">
-          {stint.handoffError
-            ? `No handoff was given: ${stint.handoffError}`
-            : "No handoff was given."}
+          {stint.handoffError ? t.stints.noHandoffError(stint.handoffError) : t.stints.noHandoff}
         </p>
       )}
       <p>
         {stint.checkpointCommit ? (
           <>
-            Checkpoint commit: <code>{stint.checkpointCommit}</code>
+            {t.stints.checkpointLabel} <code>{stint.checkpointCommit}</code>
           </>
         ) : (
-          "No checkpoint recorded."
+          t.stints.noCheckpoint
         )}
       </p>
     </article>
