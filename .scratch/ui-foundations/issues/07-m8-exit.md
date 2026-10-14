@@ -1,7 +1,7 @@
 # 07 — M8 exit
 
 Status: ready-for-human
-Blocked by: 06
+Blocked by: 06, 08
 
 ## What to build
 
@@ -19,3 +19,5 @@ M7 stays active. go-public 04 can start only after this exit passes and its own 
 - [ ] M7's status and go-public 04's local `Blocked by: 03` line are unchanged; the cross-work-item gate follows the recorded M8 exit result.
 
 ## Comments
+
+**Coordinator, 2026-10-13:** The maintainer's walk-through found the Setup popover design unacceptable. Ticket 08 replaces it with a dialog organised by check; M8 exit now waits for both 06 and 08.

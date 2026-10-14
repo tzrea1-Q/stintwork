@@ -1,20 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
-import {
-  AlertTriangle,
-  Check,
-  Circle,
-  GitBranch,
-  Inbox,
-  Layers3,
-  Search,
-  Settings2,
-} from "lucide-react";
+import { AlertTriangle, GitBranch, Inbox, Layers3, Search, Settings2 } from "lucide-react";
 import { SetupGuide } from "./SetupGuide";
 import { useLanguage } from "./i18n/language";
 import { LanguageMenu } from "./i18n/LanguageMenu";
 import { Button } from "./ui/Button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/Popover";
+import { Dialog, DialogTrigger } from "./ui/Dialog";
+import { useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 
 export function TopBar({
@@ -31,27 +24,16 @@ export function TopBar({
   onOpenNeedsYou: () => void;
 }) {
   const { t } = useLanguage();
+  const [setupOpen, setSetupOpen] = useState(false);
   const setup = snapshot.setup;
   const checks = [
-    {
-      label: t.topBar.ticketGuide,
-      path: "docs/agents/issue-tracker.md",
-      ready: setup.hasIssueTracker,
-    },
-    {
-      label: t.topBar.markdownTracking,
-      path: `.scratch/${t.topBar.convention}`,
-      ready: setup.usesLocalMarkdown,
-    },
-    {
-      label: t.topBar.agentInstructions,
-      path: `AGENTS.md${t.topBar.or}CLAUDE.md`,
-      ready: setup.hasAgents || setup.hasClaude,
-    },
-    { label: t.topBar.glossary, path: "GLOSSARY.md", ready: setup.hasGlossary },
-    { label: t.topBar.decisionRecords, path: "docs/adr/", ready: setup.hasAdrs },
+    setup.hasIssueTracker,
+    setup.usesLocalMarkdown,
+    setup.hasAgents || setup.hasClaude,
+    setup.hasGlossary,
+    setup.hasAdrs,
   ];
-  const ready = checks.filter((check) => check.ready).length;
+  const ready = checks.filter(Boolean).length;
 
   const selectedMilestone =
     snapshot.milestones.find((entry) => entry.id === milestone)?.name ?? t.topBar.all;
@@ -166,8 +148,8 @@ export function TopBar({
               </p>
             </PopoverContent>
           </Popover>
-          <Popover>
-            <PopoverTrigger asChild>
+          <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
+            <DialogTrigger asChild>
               <Button variant="ghost" id="setup-trigger">
                 <Settings2 aria-hidden="true" />
                 {t.topBar.setup}{" "}
@@ -175,36 +157,11 @@ export function TopBar({
                   {ready}/{checks.length}
                 </span>
               </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              className="w-xl [overflow-wrap:anywhere]"
-              aria-label={t.topBar.projectSetup}
-            >
-              <h2 className="mb-4 text-xs font-semibold">{t.topBar.projectSetup}</h2>
-              <ul className="space-y-4">
-                {checks.map((check) => (
-                  <li key={check.label} className="flex gap-2">
-                    {check.ready ? (
-                      <Check className="size-icon-sm text-success shrink-0" aria-hidden="true" />
-                    ) : (
-                      <Circle className="size-icon-sm text-muted shrink-0" aria-hidden="true" />
-                    )}
-                    <div className="min-w-0">
-                      <p>
-                        {check.label}
-                        <span className="sr-only">
-                          : {check.ready ? t.topBar.found : t.topBar.missing}
-                        </span>
-                      </p>
-                      <code className="text-xs text-muted">{check.path}</code>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-              <SetupGuide workflows={snapshot.workflows} />
-            </PopoverContent>
-          </Popover>
+            </DialogTrigger>
+            {setupOpen && (
+              <SetupGuide workflows={snapshot.workflows} onClose={() => setSetupOpen(false)} />
+            )}
+          </Dialog>
         </div>
       </div>
     </header>

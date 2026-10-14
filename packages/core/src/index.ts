@@ -140,7 +140,13 @@ export {
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
 export { editRoadmap, serializeRoadmap, type RoadmapChange } from "./roadmap-editing.js";
 export { detectSetup, type SetupReport } from "./setup.js";
-export { planSetup, setupPaths, type SetupChange, type SetupPlan } from "./setup-plan.js";
+export {
+  planSetup,
+  setupPaths,
+  type SetupChange,
+  type SetupCheckId,
+  type SetupPlan,
+} from "./setup-plan.js";
 export {
   skillAvailability,
   knownSkillLocation,

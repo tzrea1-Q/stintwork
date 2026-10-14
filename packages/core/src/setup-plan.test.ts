@@ -50,7 +50,7 @@ test("a fully set-up repo proposes nothing and setup is idempotent", () => {
   const contents = Object.fromEntries(
     planSetup(createMemoryRepoFiles({})).changes.map(({ path, content }) => [path, content]),
   );
-  expect(planSetup(createMemoryRepoFiles(contents))).toEqual({ changes: [], warnings: [] });
+  expect(planSetup(createMemoryRepoFiles(contents))).toMatchObject({ changes: [], warnings: [] });
   contents[".gitignore"] = "/.stintwork/local/\r\n";
   expect(planSetup(createMemoryRepoFiles(contents)).changes).toEqual([]);
 });
@@ -69,9 +69,26 @@ test("a nonlocal tracker shows its current content and the proposed local replac
     createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "Use GitHub Issues." }),
   );
   expect(plan.changes[0]).toMatchObject({
+    checkId: "markdown",
     before: "Use GitHub Issues.",
     content: expect.stringContaining(".scratch/"),
   });
+});
+
+test("every proposal serves an attention check or an independent reason", () => {
+  const plan = planSetup(createMemoryRepoFiles({ "AGENTS.md": "# Existing rules" }));
+  expect(plan.changes.map(({ path, checkId, reasonId }) => ({ path, checkId, reasonId }))).toEqual([
+    { path: "docs/agents/issue-tracker.md", checkId: "tracker", reasonId: undefined },
+    { path: "AGENTS.md", checkId: "agents", reasonId: undefined },
+    { path: "CLAUDE.md", checkId: "agents", reasonId: undefined },
+    { path: ".gitignore", checkId: undefined, reasonId: "localRunData" },
+    { path: ".stintwork/roadmap.md", checkId: undefined, reasonId: "roadmap" },
+  ]);
+  for (const change of plan.changes.filter(({ checkId }) => checkId))
+    expect(plan.checks.find(({ id }) => id === change.checkId)?.ready).toBe(false);
+  expect(plan.checks).toContainEqual({ id: "markdown", ready: false });
+  expect(plan.checks).toContainEqual({ id: "glossary", ready: false });
+  expect(plan.checks).toContainEqual({ id: "adrs", ready: false });
 });
 
 test("unreadable and binary targets are warnings, not replacement proposals", () => {

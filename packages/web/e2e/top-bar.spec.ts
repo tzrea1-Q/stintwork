@@ -14,16 +14,36 @@ const milestoneName = "UI foundations 里程碑 — long names remain available 
 const warningPath = `.scratch/${"long-warning-path-中文/".repeat(8)}spec.md`;
 const warningMessage =
   "Developer-authored warning 原文 with enough detail to wrap without clipping. ".repeat(8).trim();
+const existingInstructions = Array.from(
+  { length: 20 },
+  (_, index) => `Existing instruction 原文 ${index + 1}\n`,
+).join("");
 const guide = {
+  checks: [
+    { id: "tracker", ready: true },
+    { id: "markdown", ready: true },
+    { id: "agents", ready: false },
+    { id: "glossary", ready: false },
+    { id: "adrs", ready: true },
+  ],
   changes: [
     {
       path: "AGENTS.md",
-      before: "# Existing developer instructions\n",
-      content: `# Proposed developer instructions\n${"A long proposed instruction 中文 ".repeat(150)}`,
+      checkId: "agents",
+      before: `# Existing developer instructions\n${existingInstructions}`,
+      content: `# Existing developer instructions\n${existingInstructions}${"A long proposed instruction 中文 ".repeat(150)}\n${"Another instruction 原文\n".repeat(40)}`,
     },
-    { path: ".stintwork/roadmap.md", before: null, content: "# Proposed roadmap\n" },
+    {
+      path: ".stintwork/roadmap.md",
+      reasonId: "roadmap",
+      before: null,
+      content: "# Proposed roadmap\n",
+    },
   ],
-  warnings: [{ path: warningPath, message: warningMessage }],
+  warnings: [
+    { path: warningPath, message: warningMessage },
+    { path: "docs/中文.md", message: "Additional setup warning 原文\nKeep this detail intact." },
+  ],
   skills: [
     {
       agent: "codex",
@@ -44,7 +64,7 @@ const guide = {
 
 for (const language of ["en", "zh-CN"] as const) {
   for (const width of [1440, 1330, 1024, 860, 768, 390, 360]) {
-    for (const colorScheme of width === 1440 || width === 390
+    for (const colorScheme of width === 1440 || width === 390 || width === 360
       ? (["light", "dark"] as const)
       : (["light"] as const)) {
       test(`top bar ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
@@ -112,7 +132,10 @@ for (const language of ["en", "zh-CN"] as const) {
               await route.fulfill({ status: 500, json: { reason: en.planning.setup.errors.load } });
             else
               await route.fulfill({
-                json: state === "empty" ? { changes: [], warnings: [], skills: [] } : guide,
+                json:
+                  state === "empty"
+                    ? { checks: guide.checks, changes: [], warnings: [], skills: [] }
+                    : guide,
               });
           }
         });
@@ -227,21 +250,77 @@ for (const language of ["en", "zh-CN"] as const) {
 
         const setupTrigger = header.locator("#setup-trigger");
         await setupTrigger.click();
-        const setup = page.getByRole("dialog", { name: t.topBar.projectSetup });
+        const setup = page.getByRole("dialog", { name: t.planning.setup.title });
+        await expect(setup).toBeVisible();
         await expect(
           setup.getByRole("checkbox", {
-            name: `AGENTS.md (${t.planning.setup.change})`,
+            name: "AGENTS.md",
             exact: true,
           }),
         ).toBeChecked();
+        await expect(setup).toHaveAccessibleDescription(t.planning.setup.summary(2, 2));
+        const setupBody = setup.locator(".setup-body");
+        const checks = setup.getByRole("list", { name: t.planning.setup.projectChecks });
+        await expect(checks).toBeVisible();
+        const bodyBounds = await setupBody.boundingBox();
+        const checksBounds = await checks.boundingBox();
+        expect(bodyBounds).not.toBeNull();
+        expect(checksBounds).not.toBeNull();
+        expect((checksBounds?.y ?? 0) - (bodyBounds?.y ?? 0)).toBeLessThan(
+          (bodyBounds?.height ?? 0) * 0.4,
+        );
+        await expect(
+          checks.getByText(t.planning.setup.checks.agents.name, { exact: true }),
+        ).toBeInViewport({ ratio: 1 });
+        const setupWarnings = setup.getByRole("alert", { name: t.warningCallout.title(2) });
+        await expect(setupWarnings.getByText(warningMessage, { exact: true })).toBeVisible();
+        await expect(setupWarnings.getByText("docs/中文.md:", { exact: false })).not.toBeVisible();
+        const footer = setup.locator("footer");
+        const expectFooter = async () => {
+          await expect(footer).toBeInViewport({ ratio: 1 });
+          for (const button of await footer.getByRole("button").all())
+            await expect(button).toBeInViewport({ ratio: 1 });
+        };
+        await expectFooter();
         await capture("setup-open", '[role="dialog"]');
-        await setup.getByText(t.planning.setup.preview("AGENTS.md"), { exact: true }).click();
+        await setupWarnings.getByText(t.warningCallout.details, { exact: true }).focus();
+        await page.keyboard.press("Enter");
+        await expect(setupWarnings.getByText("docs/中文.md:", { exact: false })).toBeVisible();
+        await capture("setup-warnings-expanded", '[role="dialog"]');
+        await page.keyboard.press("Enter");
+        await expect(setupWarnings.getByText("docs/中文.md:", { exact: false })).not.toBeVisible();
+        await expect(setup.getByText(t.planning.setup.skillExplanation)).not.toBeVisible();
+        await setup.getByText(t.planning.setup.readyCount(3), { exact: true }).click();
+        await expect(
+          setup.getByText(t.planning.setup.checks.tracker.name, { exact: true }),
+        ).toBeVisible();
+        await capture("setup-ready-expanded", '[role="dialog"]');
+        await setup.getByText(t.planning.setup.readyCount(3), { exact: true }).click();
+        const skills = setup.getByText(t.planning.setup.skills, { exact: true });
+        await skills.focus();
+        await page.keyboard.press("Enter");
+        await expect(setup.getByText(t.planning.setup.skillExplanation)).toBeVisible();
+        await capture("setup-skills-expanded", '[role="dialog"]');
+        await page.keyboard.press("Enter");
+        await expect(setup.getByText(t.planning.setup.skillExplanation)).not.toBeVisible();
+        const agentsChange = setup.getByRole("region", {
+          name: t.planning.setup.changeLabel("AGENTS.md"),
+          exact: true,
+        });
+        await agentsChange.getByText(t.planning.setup.previewDiff, { exact: true }).click();
         const proposedCode = setup
           .getByRole("region", { name: t.planning.setup.changeLabel("AGENTS.md"), exact: true })
           .getByRole("region", { name: t.codeBlock, exact: true })
           .last();
         await expect(proposedCode).toBeVisible();
-        await expect(proposedCode).toHaveText(guide.changes[0].content);
+        await expect(proposedCode.locator('[data-diff-kind="added"]')).toHaveCount(41);
+        await expect(proposedCode.locator('[data-diff-kind="added"]').first()).toHaveText(
+          `+${"A long proposed instruction 中文 ".repeat(150)}`,
+        );
+        await expect(proposedCode.locator('[data-diff-kind="context"]')).toHaveCount(3);
+        await expect(proposedCode).not.toContainText("# Existing developer instructions");
+        await expect(proposedCode).toContainText("@@ -19,3 +19,44 @@");
+        const previewText = await proposedCode.textContent();
         expect(
           await proposedCode.evaluate((element) => element.scrollWidth > element.clientWidth),
         ).toBe(true);
@@ -250,28 +329,41 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect
           .poll(() => proposedCode.evaluate((element) => element.scrollLeft))
           .toBeGreaterThan(0);
-        await expect(setup.getByText(guide.changes[0].content, { exact: true })).toBeVisible();
         await capture("setup-preview-open", '[role="dialog"]');
-        await setup.evaluate((element) => {
+        const footerPosition = await footer.boundingBox();
+        await setupBody.evaluate((element) => {
           element.scrollTop = element.scrollHeight;
         });
-        expect(await setup.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        expect(await setupBody.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        await expectFooter();
+        expect((await footer.boundingBox())?.y).toBe(footerPosition?.y);
         await capture("setup-scrolled", '[role="dialog"]');
         await setup
           .getByRole("checkbox", {
-            name: `.stintwork/roadmap.md (${t.planning.setup.create})`,
+            name: ".stintwork/roadmap.md",
             exact: true,
           })
           .uncheck();
-        await setup.getByRole("button", { name: t.planning.setup.review, exact: true }).click();
+        await setup.getByRole("button", { name: t.planning.setup.review(1), exact: true }).click();
         await expect(setup.getByRole("region", { name: t.planning.setup.confirm })).toBeVisible();
+        await expect(setup.getByRole("region", { name: t.planning.setup.confirm })).toBeFocused();
+        const reviewCode = setup.getByRole("region", { name: t.codeBlock, exact: true });
+        await expect(reviewCode).toHaveText(previewText ?? "");
+        await expect(reviewCode.locator('[data-diff-kind="added"]')).toHaveCount(41);
+        await expect(setup.getByText(".stintwork/roadmap.md", { exact: true })).toHaveCount(0);
+        await expectFooter();
         await capture("setup-confirmation", '[role="dialog"]');
         await setup.getByRole("button", { name: t.planning.setup.back, exact: true }).click();
-        await setup.getByRole("button", { name: t.planning.setup.review, exact: true }).click();
+        await expect(setup.getByRole("checkbox", { name: "AGENTS.md", exact: true })).toBeChecked();
+        await setup.getByRole("button", { name: t.planning.setup.review(1), exact: true }).click();
         await setup.getByRole("button", { name: t.planning.setup.apply, exact: true }).click();
         await expect(
-          setup.getByRole("button", { name: t.planning.setup.apply, exact: true }),
+          setup.getByRole("button", { name: t.planning.setup.saving, exact: true }),
         ).toBeDisabled();
+        await page.keyboard.press("Escape");
+        await page.mouse.click(4, 4);
+        await expect(setup).toBeVisible();
+        await expectFooter();
         await expect(
           setup.getByRole("button", { name: t.planning.setup.back, exact: true }),
         ).toBeDisabled();
@@ -286,15 +378,21 @@ for (const language of ["en", "zh-CN"] as const) {
         await capture("setup-apply-error", '[role="dialog"]');
         await setup.getByRole("button", { name: t.planning.setup.apply, exact: true }).click();
         await expect(setup.getByRole("status")).toHaveText(t.planning.setup.committed("aaaaaaa"));
+        await expect(
+          setup.getByRole("button", { name: t.planning.setup.close, exact: true }),
+        ).toBeFocused();
         expect(applyAttempts).toBe(2);
         expect(applied).toEqual({ confirmed: true, changes: [guide.changes[0]] });
         await capture("setup-applied", '[role="dialog"]');
-        await page.keyboard.press("Escape");
+        await expectFooter();
+        await setup.getByRole("button", { name: t.planning.setup.close, exact: true }).click();
+        await expect(setup).not.toBeVisible();
         await expect(setupTrigger).toBeFocused();
 
         for (const state of ["loading", "error", "empty"] as const) {
           setupState = state;
           await setupTrigger.click();
+          await expect(setup).toBeVisible();
           if (state === "loading")
             await expect(setup.getByRole("status")).toHaveText(t.planning.setup.loading);
           else if (state === "error")
@@ -304,18 +402,35 @@ for (const language of ["en", "zh-CN"] as const) {
               setup.getByText(t.planning.setup.noChanges, { exact: true }),
             ).toBeVisible();
           await capture(`setup-${state}`, '[role="dialog"]');
+          await expectFooter();
+          if (state === "error") {
+            setupState = "populated";
+            await setup.getByRole("button", { name: t.planning.setup.retry, exact: true }).click();
+            await expect(
+              setup.getByRole("checkbox", { name: "AGENTS.md", exact: true }),
+            ).toBeChecked();
+            await capture("setup-load-retried", '[role="dialog"]');
+          }
           if (state === "loading") {
             releaseLoading();
             await expect(
               setup.getByRole("checkbox", {
-                name: `AGENTS.md (${t.planning.setup.change})`,
+                name: "AGENTS.md",
                 exact: true,
               }),
             ).toBeChecked();
           }
           await page.keyboard.press("Escape");
+          await expect(setup).not.toBeVisible();
           await expect(setupTrigger).toBeFocused();
         }
+        setupState = "populated";
+        await setupTrigger.click();
+        await expect(setup.getByRole("checkbox", { name: "AGENTS.md", exact: true })).toBeChecked();
+        await setup.getByRole("checkbox", { name: "AGENTS.md", exact: true }).uncheck();
+        await page.mouse.click(4, 4);
+        await expect(setup).not.toBeVisible();
+        await expect(setupTrigger).toBeFocused();
         emptyWarnings = true;
         await page.reload();
         await page.locator("#warnings-trigger").click();

@@ -162,14 +162,17 @@ test("pointer opening focuses the current language; Escape and outside press ret
 
 test.each([
   ["Warnings", "Project warnings", "No warnings. Project files are readable."],
-  ["Setup", "Project setup", "No setup file changes needed."],
+  ["Setup", "Set up project", "No setup file changes needed."],
 ])(
   "%s opens a portalled panel with keyboard dismissal and focus return",
   async (name, label, content) => {
     localStorage.setItem(languageStorageKey, "en");
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ changes: [], warnings: [], skills: [] }))),
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ checks: [], changes: [], warnings: [], skills: [] })),
+      ),
     );
     const user = userEvent.setup();
     const { container } = renderTopBar();

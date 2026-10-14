@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { builtInWorkflows, createMemoryRepoFiles, indexProject, planSetup } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
@@ -144,6 +144,13 @@ test("keeps shipped work collapsed and separate from active stages", async () =>
 });
 
 test("opens warnings and setup reports and dismisses them with Escape or outside clicks", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ...planSetup(createMemoryRepoFiles(files)), skills: [] })),
+    ),
+  );
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   await user.click(screen.getByRole("button", { name: /^Warnings/ }));
@@ -152,11 +159,14 @@ test("opens warnings and setup reports and dismisses them with Escape or outside
   expect(screen.queryByRole("dialog", { name: "Project warnings" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /^Warnings/ })).toHaveFocus();
   await user.click(screen.getByRole("button", { name: /^Setup/ }));
-  expect(await screen.findByRole("dialog", { name: "Project setup" })).toHaveTextContent(
-    "Glossary: Missing",
-  );
-  await user.click(screen.getByRole("heading", { name: /^Pipeline/ }));
-  expect(screen.queryByRole("dialog", { name: "Project setup" })).not.toBeInTheDocument();
+  const setup = await screen.findByRole("dialog", { name: "Set up project" });
+  expect(await within(setup).findByText("Glossary")).toBeVisible();
+  expect(setup).toHaveTextContent("Needs attention");
+  const overlay = document.querySelector(".bg-backdrop");
+  if (!(overlay instanceof HTMLElement)) throw new Error("Missing dialog overlay");
+  await user.click(overlay);
+  expect(screen.queryByRole("dialog", { name: "Set up project" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Setup/ })).toHaveFocus();
 });
 
 test("updates ticket progress from a new snapshot and resets a removed milestone filter", async () => {

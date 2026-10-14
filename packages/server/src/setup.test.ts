@@ -107,6 +107,31 @@ test("the bare-repo guide is read-only and offers all five exact file previews",
   expect(refresh).not.toHaveBeenCalled();
 });
 
+test("setup exposes check mappings and accepts legacy confirmations without metadata", async () => {
+  const { root, app } = fixture();
+  const guide = await (await app.request("/api/setup")).json();
+  expect(guide.checks).toContainEqual({ id: "tracker", ready: false });
+  expect(guide.changes[0].checkId).toBe("tracker");
+  expect(guide.changes.find((change: SetupChange) => change.path === ".gitignore").reasonId).toBe(
+    "localRunData",
+  );
+  const changes = guide.changes.map(({ path, before, content }: SetupChange) => ({
+    path,
+    before,
+    content,
+  }));
+  const response = await apply(app, changes);
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(
+    result.checks
+      .filter(({ ready }: { ready: boolean }) => ready)
+      .map(({ id }: { id: string }) => id),
+  ).toEqual(["tracker", "markdown", "agents"]);
+  expect(result.changes).toEqual([]);
+  expect(result.commit).toBe(git(root, "rev-parse", "HEAD"));
+});
+
 test("selective setup appends AGENTS.md without rewriting and makes one exact-path commit", async () => {
   const original = "# Existing rules\r\nKeep all these bytes.\r\n";
   const { root, app, refresh } = fixture({ "AGENTS.md": original });

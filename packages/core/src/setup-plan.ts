@@ -14,8 +14,15 @@ export type SetupChange = {
   path: (typeof setupPaths)[number];
   before: string | null;
   content: string;
+  checkId?: SetupCheckId;
+  reasonId?: "localRunData" | "roadmap";
 };
-export type SetupPlan = { changes: SetupChange[]; warnings: Warning[] };
+export type SetupCheckId = "tracker" | "markdown" | "agents" | "glossary" | "adrs";
+export type SetupPlan = {
+  changes: SetupChange[];
+  warnings: Warning[];
+  checks: { id: SetupCheckId; ready: boolean }[];
+};
 
 const tracker = `# Issue tracker: Local Markdown
 
@@ -51,7 +58,7 @@ function append(existing: string | null, block: string) {
 
 export function planSetup(files: RepoFiles): SetupPlan {
   const setup = detectSetup(files);
-  const plan: SetupPlan = { changes: [], warnings: [...setup.warnings] };
+  const plan: SetupPlan = { changes: [], warnings: [...setup.warnings], checks: [] };
   for (const path of setupPaths) {
     try {
       const before = files.read(path) ?? null;
@@ -69,10 +76,33 @@ export function planSetup(files: RepoFiles): SetupPlan {
         content = append(before, ".stintwork/local/\n");
       if (path === ".stintwork/roadmap.md" && before === null)
         content = "# Roadmap\n\n## First milestone\nId: first-milestone\nStatus: planned\n";
-      if (content !== before && content !== null) plan.changes.push({ path, before, content });
+      if (content !== before && content !== null) {
+        const purpose =
+          path === setupPaths[0]
+            ? { checkId: setup.hasIssueTracker ? ("markdown" as const) : ("tracker" as const) }
+            : path === "AGENTS.md" || path === "CLAUDE.md"
+              ? { checkId: "agents" as const }
+              : {
+                  reasonId:
+                    path === ".gitignore" ? ("localRunData" as const) : ("roadmap" as const),
+                };
+        plan.changes.push({ path, before, content, ...purpose });
+      }
     } catch (error) {
       plan.warnings.push({ path, message: `Cannot propose setup: ${String(error)}` });
     }
   }
+  plan.checks = [
+    { id: "tracker", ready: setup.hasIssueTracker },
+    { id: "markdown", ready: setup.usesLocalMarkdown },
+    {
+      id: "agents",
+      ready:
+        (setup.hasAgents || setup.hasClaude) &&
+        !plan.changes.some(({ checkId }) => checkId === "agents"),
+    },
+    { id: "glossary", ready: setup.hasGlossary },
+    { id: "adrs", ready: setup.hasAdrs },
+  ];
   return plan;
 }
