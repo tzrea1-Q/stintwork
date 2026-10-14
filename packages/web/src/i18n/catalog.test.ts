@@ -14,6 +14,7 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "warningCallout.title": [[1], [3]],
   "connection.errors.requestFailed": [[503], [404]],
   "coreText.agent.internalErrorDetail": [[{ detail: ": Agent diagnostic 原文" }]],
   "coreText.creation.exists": [[{ slug: "repo-name" }]],
@@ -41,6 +42,12 @@ const samples: Record<string, unknown[][]> = {
   "planning.customise.title": [["Repo 原文"], ["功能"], ["Latin"]],
   "planning.customise.commit": [["Repo 原文"]],
   "planning.setup.committed": [["Repo 原文"]],
+  "planning.setup.summary": [
+    [0, 0],
+    [2, 4],
+  ],
+  "planning.setup.readyCount": [[0], [3]],
+  "planning.setup.review": [[0], [4]],
   "planning.setup.changeLabel": [["Repo 原文"]],
   "planning.setup.preview": [["Repo 原文"]],
   "planning.setup.write": [[0], [1], [2]],

@@ -17,6 +17,10 @@ export function joinChinese(...segments: (string | number | null | undefined)[])
 
 export const zhCN: Catalog = {
   codeBlock: "代码块",
+  warningCallout: {
+    title: (count) => `${count} 条警告`,
+    details: "警告详情",
+  },
   connection: {
     workbench: "Stintwork · 本地项目工作台",
     opening: "正在打开你的项目",
@@ -217,6 +221,41 @@ export const zhCN: Catalog = {
       cancel: "取消",
     },
     setup: {
+      title: "设置项目",
+      complete: "所选更改已提交。",
+      summary: (attention: number, files: number) =>
+        `${attention} 项需要处理 · 将修改 ${files} 个文件，一次提交`,
+      ready: "已就绪",
+      needsAttention: "需要处理",
+      readyCount: (count: number) => `${count} 项已就绪`,
+      previewDiff: "预览差异",
+      projectChecks: "项目检查",
+      noContentChanges: "内容没有更改。",
+      cancel: "取消",
+      close: "关闭",
+      retry: "重试",
+      saving: "正在提交…",
+      trackerFix: "选择上方的工单跟踪指南更改，同时启用本地 Markdown 跟踪。",
+      noAutomaticFix: "没有安全的自动更改。请先查看项目警告，再自行编辑。",
+      checks: {
+        tracker: { name: "工单跟踪指南", why: "告诉 Agent 在哪里读取和编写工单。" },
+        markdown: { name: "本地 Markdown 跟踪", why: "将工作项、规格说明和工单保留在项目记录中。" },
+        agents: { name: "Agent 指令", why: "将 Agent 指令连接到工单跟踪指南。" },
+        glossary: {
+          name: "术语表",
+          why: "为 Agent 提供统一的项目用语。",
+          manual: "设置不会创建术语表：术语需要你提供项目领域知识。",
+        },
+        adrs: {
+          name: "决策记录",
+          why: "为下一次 Stint 保留决策及其原因。",
+          manual: "设置不会编写决策记录：需要实际的项目决策及其原因。",
+        },
+      },
+      reasons: {
+        localRunData: { name: "本地运行数据", why: "避免将本地运行数据纳入 Git。" },
+        roadmap: { name: "里程碑路线图", why: "创建里程碑路线图。" },
+      },
       errors: {
         load: "无法加载设置。",
         apply: "无法应用设置。",
@@ -228,9 +267,9 @@ export const zhCN: Catalog = {
       proposed: "拟议内容",
       confirm: "确认设置",
       refusal: "目标文件存在未提交的更改时将拒绝写入。不会更改其他文件。",
-      apply: "确认并应用设置",
+      apply: "确认并提交",
       back: "返回选择",
-      review: "审查所选更改",
+      review: (count: number) => `审查更改（${count}）`,
       noChanges: "无需更改设置文件。",
       skills: "阶段技能可用性",
       skillExplanation:

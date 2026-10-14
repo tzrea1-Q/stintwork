@@ -12,6 +12,10 @@ Use a `src/ui/` component for every menu, popover, dialog, sheet, tooltip and se
 
 Let Radix handle overlay positioning, focus, Escape and outside-click dismissal. Put any feature-specific dismissal condition, such as a pending save, in the primitive's event hooks. Keep nested overlays dismissing only the topmost layer and returning focus to the right trigger.
 
+### Choosing a container
+
+Use Popover for glanceable information and single immediate actions. Use Dialog for multi-step tasks, forms and anything that writes files or commits. Use Sheet for browsing a work item or queue alongside the board. Use Tooltip only for labels.
+
 ## Tokens and styling
 
 Take colours, radius, spacing, type scale and shadows from `packages/web/src/styles/tokens.css` through Tailwind theme classes. Put utilities in `className`. Keep feature CSS only for styling utilities cannot express, and record the reason beside the retained rule. Both `prefers-color-scheme` light and dark come from the tokens. Use the system font stack defined there.

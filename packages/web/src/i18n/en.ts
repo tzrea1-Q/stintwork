@@ -2,6 +2,10 @@
 import { coreTextEnglish } from "@stintwork/core";
 export const en = {
   codeBlock: "Code block",
+  warningCallout: {
+    title: (count: number) => `${count} ${count === 1 ? "warning" : "warnings"}`,
+    details: "Warning details",
+  },
   connection: {
     workbench: "Stintwork · Local project workbench",
     opening: "Opening your project",
@@ -203,6 +207,53 @@ export const en = {
       cancel: "Cancel",
     },
     setup: {
+      title: "Set up project",
+      complete: "Selected changes are committed.",
+      summary: (attention: number, files: number) =>
+        `${attention} need attention · ${files} files will change in one commit`,
+      ready: "Ready",
+      needsAttention: "Needs attention",
+      readyCount: (count: number) => `${count} ready`,
+      previewDiff: "Preview diff",
+      projectChecks: "Project checks",
+      noContentChanges: "No content changes.",
+      cancel: "Cancel",
+      close: "Close",
+      retry: "Retry",
+      saving: "Committing…",
+      trackerFix: "Select the tracker guide change above to enable local Markdown tracking too.",
+      noAutomaticFix:
+        "No safe automatic change is available. Check the project warnings before editing this yourself.",
+      checks: {
+        tracker: {
+          name: "Ticket tracker guide",
+          why: "Tell agents where to read and write tickets.",
+        },
+        markdown: {
+          name: "Local Markdown tracking",
+          why: "Keep work items, specs and tickets in the project record.",
+        },
+        agents: {
+          name: "Agent instructions",
+          why: "Connect agent instructions to the ticket tracker guide.",
+        },
+        glossary: {
+          name: "Glossary",
+          why: "Give agents one shared vocabulary for the project.",
+          manual:
+            "Setup does not create a glossary: its terms need your project's domain knowledge.",
+        },
+        adrs: {
+          name: "Decision records",
+          why: "Preserve decisions and their reasons for the next stint.",
+          manual:
+            "Setup does not write decision records: they need actual project decisions and their reasons.",
+        },
+      },
+      reasons: {
+        localRunData: { name: "Local run data", why: "Keep local run data out of Git." },
+        roadmap: { name: "Milestone roadmap", why: "Create a roadmap for milestones." },
+      },
       errors: {
         load: "Could not load setup.",
         apply: "Could not apply setup.",
@@ -215,9 +266,9 @@ export const en = {
       proposed: "Proposed content",
       confirm: "Confirm setup",
       refusal: "Uncommitted target files are refused. Other files are left alone.",
-      apply: "Confirm and apply setup",
+      apply: "Confirm and commit",
       back: "Back to selection",
-      review: "Review selected changes",
+      review: (count: number) => `Review changes (${count})`,
       noChanges: "No setup file changes needed.",
       skills: "Stage skill availability",
       skillExplanation:

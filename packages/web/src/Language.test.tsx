@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { builtInWorkflows, createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { builtInWorkflows, createMemoryRepoFiles, indexProject, planSetup } from "@stintwork/core";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
@@ -317,6 +317,13 @@ test.each(["defaultAgent", "skill", "gate", "agent", "order"])(
 );
 
 test("warnings and setup checklist chrome translate without changing core warnings or paths", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ ...planSetup(createMemoryRepoFiles(files)), skills: [] })),
+    ),
+  );
   const user = userEvent.setup();
   localStorage.setItem(languageStorageKey, "zh-CN");
   const snapshot = project();
@@ -332,8 +339,8 @@ test("warnings and setup checklist chrome translate without changing core warnin
   expect(warnings.getByText(".scratch/中文/spec.md")).toBeInTheDocument();
   expect(warnings.getByText("只读 · 不会更改任何文件。")).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: /^设置/ }));
-  const setup = within(await screen.findByRole("dialog", { name: "项目设置" }));
-  expect(setup.getByText("工单跟踪指南")).toBeInTheDocument();
+  const setup = within(await screen.findByRole("dialog", { name: "设置项目" }));
+  expect(await setup.findByText("工单跟踪指南")).toBeInTheDocument();
   expect(setup.getByText("Agent 指令")).toBeInTheDocument();
   expect(setup.getByText("docs/agents/issue-tracker.md")).toBeInTheDocument();
 });
@@ -425,6 +432,7 @@ test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
         async () =>
           new Response(
             JSON.stringify({
+              checks: [],
               changes: [],
               warnings: [],
               skills: [
@@ -470,6 +478,9 @@ test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
       </LanguageProvider>,
     );
     await user.click(screen.getByRole("button", { name: /^设置/ }));
+    const setup = await screen.findByRole("dialog", { name: "设置项目" });
+    await within(setup).findByText("无需更改设置文件。");
+    await user.click(within(setup).getByText("阶段技能可用性", { exact: true }));
     const skills = within(await screen.findByRole("region", { name: "Codex 技能" }));
     const rows = skills.getAllByRole("listitem");
     expect(rows[0]).toHaveTextContent(
