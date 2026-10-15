@@ -8,7 +8,7 @@ import { WorkItemDrawer } from "./WorkItemDrawer";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
-import { LanguageMenu } from "./i18n/LanguageMenu";
+import { TopBar } from "./TopBar";
 
 function project() {
   return indexProject(
@@ -59,7 +59,7 @@ test.each(["ship.running", "ship.future"])(
     );
     render(
       <LanguageProvider>
-        <LanguageMenu />
+        <TopBar snapshot={project()} onOpenPalette={() => {}} onOpenNeedsYou={() => {}} />
         <ShipActions item={project().workItems[0]} />
       </LanguageProvider>,
     );
@@ -68,7 +68,7 @@ test.each(["ship.running", "ship.future"])(
     expect(screen.getByRole("alert").textContent).toBe(
       code === "ship.running" ? "此工作项有正在运行的 Stint。请先结束或停止，再交付。" : reason,
     );
-    await user.click(screen.getByRole("button", { name: "语言" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(screen.getByRole("menuitemradio", { name: "English" }));
     expect(screen.getByRole("alert").textContent).toBe(reason);
   },

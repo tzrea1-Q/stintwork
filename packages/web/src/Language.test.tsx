@@ -170,47 +170,46 @@ test("blocked localStorage reads and writes still render and switch", async () =
     </LanguageProvider>,
   );
   expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "语言" }));
+  await user.click(screen.getByRole("button", { name: "设置" }));
   await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
   expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "en");
 });
 
-test("switching persists the preference and preserves the open drawer and ticket disclosure", async () => {
+test("Settings persists language and the drawer remains reachable in each language", async () => {
   const user = userEvent.setup();
   const rendered = render(
     <LanguageProvider>
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  await user.click(screen.getByRole("button", { name: "Open example: Repo title 中文" }));
-  const drawer = screen.getByRole("dialog", { name: "Repo title 中文" });
-  const ticket = within(drawer).getByText("01 · Repo ticket 中文").closest("details");
-  await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
-  expect(ticket).toHaveAttribute("open");
-  const choices = within(drawer).getByRole("button", { name: "Language" });
-  await user.click(choices);
-  expect(screen.getByRole("menuitemradio", { name: "English" })).toHaveAttribute("lang", "en");
-  expect(screen.getByRole("menuitemradio", { name: "简体中文" })).toHaveAttribute("lang", "zh-CN");
-  await user.keyboard("{ArrowDown}{Enter}");
-  expect(choices).toHaveFocus();
-  expect(screen.getByRole("heading", { name: /^流水线/, hidden: true })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^待你处理/, hidden: true })).toBeInTheDocument();
-  expect(document.documentElement).toHaveAttribute("lang", "zh-CN");
-  expect(localStorage.getItem(languageStorageKey)).toBe("zh-CN");
-  expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
-  expect(drawer).toHaveAttribute("data-state", "open");
-  expect(ticket).toHaveAttribute("open");
-  expect(within(drawer).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
-  expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
-  const drawerLanguage = within(drawer).getByRole("button", { name: "语言" });
-  await user.click(drawerLanguage);
-  expect(screen.getByRole("menuitemradio", { name: "English" })).toHaveAttribute("lang", "en");
-  expect(screen.getByRole("menuitemradio", { name: "简体中文" })).toHaveAttribute("lang", "zh-CN");
-  await user.keyboard("{ArrowUp}{Enter}");
-  expect(drawerLanguage).toHaveFocus();
-  expect(document.documentElement).toHaveAttribute("lang", "en");
-  expect(screen.getByRole("dialog", { name: "Repo title 中文" })).toBe(drawer);
+  for (const language of ["zh-CN", "en"] as const) {
+    await user.click(screen.getByRole("button", { name: /Open example:|打开 example：/ }));
+    const drawer = await screen.findByRole("dialog", { name: "Repo title 中文" });
+    expect(within(drawer).queryByRole("button", { name: /Language|语言/ })).not.toBeInTheDocument();
+    await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
+    expect(within(drawer).getByText("01 · Repo ticket 中文").closest("details")).toHaveAttribute(
+      "open",
+    );
+    await user.click(within(drawer).getByRole("button", { name: /Close work item|关闭工作项/ }));
+    const choices = screen.getByRole("button", {
+      name: language === "zh-CN" ? "Settings" : "设置",
+    });
+    await user.click(choices);
+    const choice = await screen.findByRole("menuitemradio", {
+      name: language === "en" ? "English" : "简体中文",
+    });
+    expect(choice).toHaveAttribute("lang", language);
+    await user.click(choice);
+    expect(choices).toHaveFocus();
+    expect(document.documentElement).toHaveAttribute("lang", language);
+    expect(localStorage.getItem(languageStorageKey)).toBe(language);
+    await user.click(screen.getByRole("button", { name: /Open example:|打开 example：/ }));
+    const reopened = await screen.findByRole("dialog", { name: "Repo title 中文" });
+    expect(within(reopened).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
+    expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
+    await user.click(within(reopened).getByRole("button", { name: /Close work item|关闭工作项/ }));
+  }
   rendered.unmount();
   vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
   render(
@@ -218,7 +217,7 @@ test("switching persists the preference and preserves the open drawer and ticket
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("heading", { name: /^Pipeline/, hidden: true })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
 });
 
 test.each(["team", "feature", "constructor"])(
@@ -333,12 +332,14 @@ test("warnings and setup checklist chrome translate without changing core warnin
       <Board snapshot={snapshot} />
     </LanguageProvider>,
   );
-  await user.click(screen.getByRole("button", { name: "警告 1" }));
-  const warnings = within(await screen.findByRole("dialog", { name: "项目警告" }));
+  await user.click(screen.getByRole("button", { name: /^待你处理/ }));
+  const warnings = within(await screen.findByRole("region", { name: "项目警告" }));
   expect(warnings.getByText("Core warning 原文")).toBeInTheDocument();
   expect(warnings.getByText(".scratch/中文/spec.md")).toBeInTheDocument();
   expect(warnings.getByText("只读 · 不会更改任何文件。")).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: /^设置/ }));
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("button", { name: "设置" }));
+  await user.click(await screen.findByRole("menuitem", { name: /项目设置/ }));
   const setup = within(await screen.findByRole("dialog", { name: "设置项目" }));
   expect(await setup.findByText("工单跟踪指南")).toBeInTheDocument();
   expect(setup.getByText("Agent 指令")).toBeInTheDocument();
@@ -477,7 +478,8 @@ test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
         <Board snapshot={snapshot} />
       </LanguageProvider>,
     );
-    await user.click(screen.getByRole("button", { name: /^设置/ }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
+    await user.click(await screen.findByRole("menuitem", { name: /项目设置/ }));
     const setup = await screen.findByRole("dialog", { name: "设置项目" });
     await within(setup).findByText("无需更改设置文件。");
     await user.click(within(setup).getByText("阶段技能可用性", { exact: true }));

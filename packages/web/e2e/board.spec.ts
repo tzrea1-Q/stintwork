@@ -27,6 +27,27 @@ for (const language of ["en", "zh-CN"] as const) {
             await route.abort();
           } else await route.continue();
         });
+        const response = await page.request.get("/api/project");
+        expect(response.ok()).toBe(true);
+        const snapshot: ProjectSnapshot = await response.json();
+        snapshot.milestones = [
+          {
+            id: "first",
+            name: "Browser milestone 浏览器里程碑",
+            status: "active",
+            workItemSlugs: ["long-title"],
+          },
+          {
+            id: "next",
+            name: "Next milestone 下个里程碑",
+            status: "planned",
+            workItemSlugs: ["short-title", "chinese-title"],
+          },
+        ];
+        for (const item of snapshot.workItems)
+          item.milestone = item.slug === "long-title" ? "first" : "next";
+        await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+        await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
         await page.goto("/");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         await expect(page.locator('.board-scroll [data-work-item="long-title"]')).toBeAttached();
@@ -116,6 +137,47 @@ for (const language of ["en", "zh-CN"] as const) {
         });
         expect(externalRequests).toEqual([]);
         await page.screenshot({ path: testInfo.outputPath("board.png"), fullPage: true });
+
+        const firstMilestone = snapshot.milestones[0];
+        if (!firstMilestone) throw new Error("The board fixture needs a milestone");
+        const picker = page
+          .locator(".board-toolbar")
+          .getByRole("combobox", { name: t.topBar.milestone });
+        await expect(picker).toContainText(t.board.allMilestones);
+        const url = page.url();
+        await picker.focus();
+        await page.keyboard.press("Enter");
+        await expect(page.getByRole("listbox")).toHaveAttribute("data-state", "open");
+        await page.getByRole("option", { name: firstMilestone.name, exact: true }).click();
+        await expect(picker).toBeFocused();
+        await expect(picker.locator("[data-truncate]")).toHaveAttribute(
+          "title",
+          firstMilestone.name,
+        );
+        for (const item of snapshot.workItems.filter(
+          (entry) => entry.milestone !== firstMilestone.id,
+        ))
+          await expect(page.locator(`.board-scroll [data-work-item="${item.slug}"]`)).toHaveCount(
+            0,
+          );
+        expect(page.url()).toBe(url);
+        await assertLayout(page, { region: ".pipeline-main" });
+        await page.screenshot({
+          path: testInfo.outputPath("board-milestone-filtered.png"),
+          fullPage: true,
+        });
+        await picker.click();
+        await expect(page.getByRole("listbox")).toHaveAttribute("data-state", "open");
+        await page.getByRole("option", { name: t.board.allMilestones, exact: true }).click();
+        await expect(picker).toBeFocused();
+        await expect(picker).toContainText(t.board.allMilestones);
+        await page.keyboard.press("Control+k");
+        const palette = page.getByRole("dialog", { name: t.planning.palette.title });
+        await expect(palette).toHaveAttribute("data-state", "open");
+        await expect(palette.getByRole("combobox")).toBeFocused();
+        await palette.getByRole("option", { name: firstMilestone.name, exact: true }).click();
+        await expect(palette).not.toBeVisible();
+        await expect(picker).toContainText(firstMilestone.name);
       });
 
       test(`board states ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
@@ -158,7 +220,9 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.screenshot({ path: testInfo.outputPath("board-empty.png"), fullPage: true });
         snapshot = dialogSnapshot;
         publish();
-        const milestone = page.locator(".top-milestone").getByRole("combobox");
+        const milestone = page
+          .locator(".board-toolbar")
+          .getByRole("combobox", { name: t.topBar.milestone });
         await milestone.click();
         const options = page.getByRole("listbox");
         await expect(options).toHaveAttribute("data-state", "open");

@@ -31,6 +31,8 @@ export const en = {
     all: "All",
     warnings: "Warnings",
     setup: "Setup",
+    settings: "Settings",
+    setupIncomplete: "Project setup is incomplete.",
     projectWarnings: "Project warnings",
     projectSetup: "Project setup",
     project: "Project",

@@ -12,8 +12,9 @@ const milestoneName = "UI foundations 里程碑 — long names remain available 
   .repeat(4)
   .trim();
 const warningPath = `.scratch/${"long-warning-path-中文/".repeat(8)}spec.md`;
-const warningMessage =
+const warningFirstLine =
   "Developer-authored warning 原文 with enough detail to wrap without clipping. ".repeat(8).trim();
+const warningMessage = `${warningFirstLine}\nAdditional warning details 原文 remain available behind the disclosure.`;
 const existingInstructions = Array.from(
   { length: 20 },
   (_, index) => `Existing instruction 原文 ${index + 1}\n`,
@@ -97,6 +98,16 @@ for (const language of ["en", "zh-CN"] as const) {
               ...snapshot,
               name: projectName,
               branch: branchName,
+              attentionItems: [],
+              setup: {
+                ...snapshot.setup,
+                hasIssueTracker: true,
+                usesLocalMarkdown: true,
+                hasAgents: false,
+                hasClaude: false,
+                hasGlossary: false,
+                hasAdrs: true,
+              },
               milestones: [
                 {
                   id: "long",
@@ -151,18 +162,32 @@ for (const language of ["en", "zh-CN"] as const) {
           branchName,
         );
         await expect(header.locator("select")).toHaveCount(0);
-        if (width <= 768) {
-          const project = await header.locator(".top-project").boundingBox();
-          const actions = await header.locator(".top-actions").boundingBox();
-          const utilities = await header.locator(".top-utilities").boundingBox();
-          const milestone = await header.locator(".top-milestone").boundingBox();
-          if (!project || !actions || !utilities || !milestone)
-            throw new Error("Top-bar groups must be visible");
-          expect(actions.y).toBeGreaterThanOrEqual(project.y + project.height);
-          expect(utilities.y).toBeGreaterThan(actions.y);
-          if (width < 768)
-            expect(milestone.y).toBeGreaterThanOrEqual(utilities.y + utilities.height);
+        await expect(header.getByRole("button")).toHaveCount(3);
+        await expect(header.getByRole("combobox")).toHaveCount(0);
+        const projectBounds = await header.locator(".top-project").boundingBox();
+        const actionBounds = await header.locator(".top-actions").boundingBox();
+        if (!projectBounds || !actionBounds) throw new Error("Top-bar groups must be visible");
+        expect(
+          Math.abs(
+            projectBounds.y + projectBounds.height / 2 - actionBounds.y - actionBounds.height / 2,
+          ),
+        ).toBeLessThanOrEqual(1);
+        expect(actionBounds.x).toBeGreaterThanOrEqual(projectBounds.x + projectBounds.width);
+        expect(
+          await header
+            .locator(".top-actions")
+            .evaluate((element) => getComputedStyle(element).flexWrap),
+        ).toBe("nowrap");
+        for (const button of await header.getByRole("button").all()) {
+          const bounds = await button.boundingBox();
+          if (!bounds) throw new Error("Top-bar action must be visible");
+          expect(
+            Math.abs(bounds.y + bounds.height / 2 - actionBounds.y - actionBounds.height / 2),
+          ).toBeLessThanOrEqual(1);
         }
+        await expect(header.locator("#settings-trigger > span").first()).toBeVisible({
+          visible: width >= 640,
+        });
         const capture = async (name: string, overlay?: string) => {
           await assertLayout(page, { region: ".top-bar" });
           if (overlay) {
@@ -172,10 +197,55 @@ for (const language of ["en", "zh-CN"] as const) {
           await page.screenshot({ path: testInfo.outputPath(`${name}.png`), fullPage: true });
         };
         await capture("top-bar");
+        if (width < 640) {
+          const settings = header.locator("#settings-trigger");
+          await settings.hover();
+          const tooltip = page.getByRole("tooltip", { name: t.topBar.settings });
+          await expect(tooltip).toBeVisible();
+          await expect(tooltip).toHaveAttribute("data-state", "delayed-open");
+          await assertLayout(page, { region: '[role="tooltip"]' });
+          await capture("settings-tooltip");
+          await page.mouse.move(0, 0, { steps: 10 });
+          await expect(tooltip).not.toBeVisible();
+        }
 
-        const milestone = header.locator('.top-milestone [role="combobox"]');
+        const milestone = page.locator('.board-toolbar [role="combobox"]');
         await milestone.click();
-        await expect(page.getByRole("option", { name: milestoneName, exact: true })).toBeVisible();
+        const milestoneOptions = page.getByRole("listbox");
+        await expect(milestoneOptions).toHaveAttribute("data-state", "open");
+        const triggerWidth = await milestone.evaluate(
+          (element) => element.getBoundingClientRect().width,
+        );
+        await expect
+          .poll(async () =>
+            Math.abs(
+              (await milestoneOptions.evaluate(
+                (element) => element.getBoundingClientRect().width,
+              )) - Math.min(Math.max(280, triggerWidth), width - 34),
+            ),
+          )
+          .toBeLessThanOrEqual(1);
+        const milestoneOption = page.getByRole("option", { name: milestoneName, exact: true });
+        await expect(milestoneOption).toBeVisible();
+        const optionLabel = milestoneOption.locator("[data-truncate]");
+        await expect(optionLabel).toHaveAttribute("title", milestoneName);
+        expect(
+          await optionLabel.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return {
+              whitespace: style.whiteSpace,
+              ellipsis: style.textOverflow,
+              singleLine:
+                element.getBoundingClientRect().height <= Number.parseFloat(style.lineHeight) + 1,
+              truncated: element.scrollWidth > element.clientWidth,
+            };
+          }),
+        ).toEqual({
+          whitespace: "nowrap",
+          ellipsis: "ellipsis",
+          singleLine: true,
+          truncated: true,
+        });
         await capture("milestone-open", '[role="listbox"]');
         await page.getByRole("option", { name: milestoneName, exact: true }).click();
         await expect(milestone).toBeFocused();
@@ -234,22 +304,66 @@ for (const language of ["en", "zh-CN"] as const) {
           .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
           .toBe(language);
 
-        const warningsTrigger = header.locator("#warnings-trigger");
+        const warningsTrigger = header.locator("#needs-you-trigger");
+        await expect(warningsTrigger).toHaveAccessibleName(
+          `${t.topBar.needsYou} 0 · ${t.warningCallout.title(12)}`,
+        );
+        await expect(warningsTrigger.locator("[data-warning-dot]")).toBeVisible();
         await warningsTrigger.click();
-        const warnings = page.getByRole("dialog", { name: t.topBar.projectWarnings });
-        await expect(warnings.getByText(warningMessage, { exact: true })).toHaveCount(12);
+        const warnings = page.locator(".needs-you-queue");
+        await expect(warnings).toHaveAttribute("data-state", "open");
+        const projectWarnings = warnings.getByRole("region", { name: t.topBar.projectWarnings });
+        await expect(projectWarnings).toBeVisible();
+        await expect(warnings.getByText(t.needsYou.empty, { exact: true })).toBeVisible();
+        expect(
+          await projectWarnings.evaluate((element) => getComputedStyle(element).borderTopWidth),
+        ).toBe("0px");
+        await expect(projectWarnings.getByText(warningFirstLine, { exact: true })).toHaveCount(12);
+        const warningPreview = projectWarnings.getByText(warningFirstLine, { exact: true }).first();
+        await expect(warningPreview).toHaveAttribute("title", warningFirstLine);
+        expect(
+          await warningPreview.evaluate((element) => getComputedStyle(element).whiteSpace),
+        ).toBe("nowrap");
+        for (const path of await projectWarnings.locator("code[data-truncate]").all()) {
+          await expect(path).toHaveAttribute("title", await path.innerText());
+          expect(await path.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+            true,
+          );
+          expect(await path.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe(
+            "nowrap",
+          );
+        }
+        const warningDetails = projectWarnings.locator("details");
+        await expect(warningDetails.locator("li").first()).not.toBeVisible();
         await capture("warnings-open", '[role="dialog"]');
-        await warnings.evaluate((element) => {
+        await warningDetails.locator("summary").focus();
+        await page.keyboard.press("Enter");
+        await expect(warningDetails).toHaveAttribute("open", "");
+        await expect(warningDetails.locator("li")).toHaveCount(12);
+        await expect(warningDetails.locator("li").first()).toContainText(warningMessage);
+        await capture("warnings-expanded", '[role="dialog"]');
+        const warningContent = warnings.locator(".needs-you-content");
+        await warningContent.evaluate((element) => {
           element.scrollTop = element.scrollHeight;
         });
-        expect(await warnings.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+        expect(await warningContent.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
         await expect(warnings.getByText(t.topBar.readOnly, { exact: true })).toBeInViewport();
         await capture("warnings-scrolled", '[role="dialog"]');
         await page.keyboard.press("Escape");
         await expect(warningsTrigger).toBeFocused();
 
-        const setupTrigger = header.locator("#setup-trigger");
-        await setupTrigger.click();
+        const setupTrigger = header.locator("#settings-trigger");
+        await expect(setupTrigger).toHaveAccessibleDescription(t.topBar.setupIncomplete);
+        const openSetup = async () => {
+          await setupTrigger.click();
+          await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
+          const item = page.getByRole("menuitem", { name: `${t.topBar.projectSetup}… 3/5` });
+          await expect(item).toBeVisible();
+          await item.click();
+          await expect(page.locator(".setup-guide")).toHaveAttribute("data-state", "open");
+          await expect(page.getByRole("menu")).toHaveCount(0);
+        };
+        await openSetup();
         const setup = page.getByRole("dialog", { name: t.planning.setup.title });
         await expect(setup).toBeVisible();
         await expect(
@@ -273,7 +387,7 @@ for (const language of ["en", "zh-CN"] as const) {
           checks.getByText(t.planning.setup.checks.agents.name, { exact: true }),
         ).toBeInViewport({ ratio: 1 });
         const setupWarnings = setup.getByRole("alert", { name: t.warningCallout.title(2) });
-        await expect(setupWarnings.getByText(warningMessage, { exact: true })).toBeVisible();
+        await expect(setupWarnings.getByText(warningFirstLine, { exact: true })).toBeVisible();
         await expect(setupWarnings.getByText("docs/中文.md:", { exact: false })).not.toBeVisible();
         const footer = setup.locator("footer");
         const expectFooter = async () => {
@@ -391,7 +505,7 @@ for (const language of ["en", "zh-CN"] as const) {
 
         for (const state of ["loading", "error", "empty"] as const) {
           setupState = state;
-          await setupTrigger.click();
+          await openSetup();
           await expect(setup).toBeVisible();
           if (state === "loading")
             await expect(setup.getByRole("status")).toHaveText(t.planning.setup.loading);
@@ -425,7 +539,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(setupTrigger).toBeFocused();
         }
         setupState = "populated";
-        await setupTrigger.click();
+        await openSetup();
         await expect(setup.getByRole("checkbox", { name: "AGENTS.md", exact: true })).toBeChecked();
         await setup.getByRole("checkbox", { name: "AGENTS.md", exact: true }).uncheck();
         await page.mouse.click(4, 4);
@@ -433,10 +547,14 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(setupTrigger).toBeFocused();
         emptyWarnings = true;
         await page.reload();
-        await page.locator("#warnings-trigger").click();
-        await expect(warnings.getByText(t.topBar.noWarnings, { exact: true })).toBeVisible();
+        await page.locator("#needs-you-trigger").click();
+        await expect(warnings).toHaveAttribute("data-state", "open");
+        await expect(warnings.getByText(t.needsYou.empty, { exact: true })).toBeVisible();
+        await expect(warnings.getByRole("region", { name: t.topBar.projectWarnings })).toHaveCount(
+          0,
+        );
         await capture("warnings-empty", '[role="dialog"]');
-        await header.locator(".top-project").click();
+        await page.mouse.click(4, 4);
         await expect(warnings).not.toBeVisible();
       });
     }

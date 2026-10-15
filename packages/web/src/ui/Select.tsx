@@ -43,7 +43,7 @@ export const SelectContent = forwardRef<
         collisionPadding={17}
         avoidCollisions
         className={cn(
-          "z-50 w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-34px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
+          "z-50 w-[max(280px,var(--radix-select-trigger-width))] min-w-0 max-w-[calc(100vw-34px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
           className,
         )}
       >
@@ -57,19 +57,23 @@ export const SelectItem = forwardRef<
   ElementRef<typeof Primitive.Item>,
   ComponentPropsWithoutRef<typeof Primitive.Item>
 >(function SelectItem({ className, children, ...props }, ref) {
+  const label =
+    props.title ?? props.textValue ?? (typeof children === "string" ? children : undefined);
   return (
     <Primitive.Item
       {...props}
       ref={ref}
       className={cn(
-        "relative flex cursor-default items-center rounded-sm py-1 pl-7 pr-2 [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-surface-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex cursor-default items-center rounded-sm py-1 pl-7 pr-2 [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-surface-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-truncate]]:min-w-0 [&>[data-truncate]]:flex-1 [&>[data-truncate]]:truncate",
         className,
       )}
     >
       <Primitive.ItemIndicator className="absolute left-2 flex size-icon-sm items-center justify-center">
         <Check className="size-icon-sm" aria-hidden="true" />
       </Primitive.ItemIndicator>
-      <Primitive.ItemText>{children}</Primitive.ItemText>
+      <Primitive.ItemText data-truncate={label ? "" : undefined} title={label}>
+        {children}
+      </Primitive.ItemText>
     </Primitive.Item>
   );
 });

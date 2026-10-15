@@ -34,6 +34,7 @@ test("a field selects by keyboard, skips unavailable options and returns focus",
   await waitFor(() => expect(trigger).toHaveFocus());
   expect(trigger).toHaveTextContent("Long milestone 中文");
   expect(trigger.querySelector("[data-truncate]")).toHaveAttribute("title", "Long milestone 中文");
+  expect(trigger.querySelectorAll("[data-truncate]")).toHaveLength(1);
   await user.keyboard("{Enter}{Home}{Enter}");
   await waitFor(() => expect(trigger).toHaveTextContent("No milestone"));
   await user.click(trigger);

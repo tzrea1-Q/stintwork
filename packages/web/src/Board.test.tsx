@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, createMemoryRepoFiles, indexProject, planSetup } from "@stintwork/core";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
@@ -89,6 +89,12 @@ test("stage navigation describes its keyboard controls without moving focus", as
 test("milestone filter hides other milestones", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
+  expect(
+    screen.getByRole("combobox", { name: "Milestone" }).closest(".board-toolbar"),
+  ).not.toBeNull();
+  expect(
+    within(document.querySelector(".top-bar") as HTMLElement).queryByRole("combobox"),
+  ).not.toBeInTheDocument();
   await user.click(screen.getByRole("combobox", { name: "Milestone" }));
   await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
   expect(screen.getByRole("article", { name: /^board:/ })).toBeInTheDocument();
@@ -99,8 +105,33 @@ test("milestone filter hides other milestones", async () => {
   expect(screen.getByRole("article", { name: /^next:/ })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^board:/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("combobox", { name: "Milestone" }));
-  await user.click(await screen.findByRole("option", { name: "All" }));
+  await user.click(await screen.findByRole("option", { name: "All milestones" }));
   expect(screen.getByRole("article", { name: /^board:/ })).toBeInTheDocument();
+});
+
+test("the toolbar milestone picker supports keyboard selection and dismissal without changing the URL", async () => {
+  window.history.replaceState(null, "", "/?keep=original");
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  const picker = screen.getByRole("combobox", { name: "Milestone" });
+  const url = window.location.href;
+  picker.focus();
+  await user.keyboard("{Enter}");
+  const all = await screen.findByRole("option", { name: "All milestones" });
+  await waitFor(() => expect(all).toHaveFocus());
+  await user.keyboard("{ArrowDown}{Enter}");
+  await waitFor(() => expect(picker).toHaveFocus());
+  expect(picker).toHaveTextContent("M1 · The board");
+  expect(picker.querySelector("[data-truncate]")).toHaveAttribute("title", "M1 · The board");
+  expect(screen.queryByRole("article", { name: /^next:/ })).not.toBeInTheDocument();
+  expect(window.location.href).toBe(url);
+  await user.keyboard("{Enter}");
+  const selected = await screen.findByRole("option", { name: "M1 · The board" });
+  await waitFor(() => expect(selected).toHaveFocus());
+  await user.keyboard("{ArrowDown}{Escape}");
+  await waitFor(() => expect(picker).toHaveFocus());
+  expect(picker).toHaveTextContent("M1 · The board");
+  expect(window.location.href).toBe(url);
 });
 
 test("shows blocked and inferred badges", async () => {
@@ -153,12 +184,14 @@ test("opens warnings and setup reports and dismisses them with Escape or outside
   );
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
-  await user.click(screen.getByRole("button", { name: /^Warnings/ }));
-  expect(await screen.findByRole("dialog", { name: "Project warnings" })).toHaveTextContent(/99/);
+  const needsYou = screen.getByRole("button", { name: /^Needs you/ });
+  await user.click(needsYou);
+  expect(await screen.findByRole("region", { name: "Project warnings" })).toHaveTextContent(/99/);
   await user.keyboard("{Escape}");
-  expect(screen.queryByRole("dialog", { name: "Project warnings" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^Warnings/ })).toHaveFocus();
-  await user.click(screen.getByRole("button", { name: /^Setup/ }));
+  expect(screen.queryByRole("region", { name: "Project warnings" })).not.toBeInTheDocument();
+  expect(needsYou).toHaveFocus();
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
   const setup = await screen.findByRole("dialog", { name: "Set up project" });
   expect(await within(setup).findByText("Glossary")).toBeVisible();
   expect(setup).toHaveTextContent("Needs attention");
@@ -166,7 +199,7 @@ test("opens warnings and setup reports and dismisses them with Escape or outside
   if (!(overlay instanceof HTMLElement)) throw new Error("Missing dialog overlay");
   await user.click(overlay);
   expect(screen.queryByRole("dialog", { name: "Set up project" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: /^Setup/ })).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
 });
 
 test("updates ticket progress from a new snapshot and resets a removed milestone filter", async () => {

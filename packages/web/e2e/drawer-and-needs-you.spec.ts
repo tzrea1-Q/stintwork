@@ -100,12 +100,26 @@ for (const language of ["en", "zh-CN"] as const) {
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-error");
         const content = sheet.locator(".drawer-content");
         await sheet.locator(".drawer-ticket summary").click();
-        const languageTrigger = sheet.locator('.drawer-header button[aria-haspopup="menu"]');
+        await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(0);
+        await scrollContent(content);
+        const code = content.locator(".markdown pre").first();
+        await code.scrollIntoViewIfNeeded();
+        await code.evaluate((element) => {
+          element.scrollLeft = element.scrollWidth;
+        });
+        expect(await code.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+        await expect(close).toBeInViewport();
+        await captureSheet(page, testInfo, ".work-item-drawer", "drawer-long-scrolled");
+        await close.click();
+        await expect(sheet).not.toBeVisible();
+        await expect(trigger).toBeFocused();
+
+        const languageTrigger = page.locator("#settings-trigger");
         await languageTrigger.click();
         await expect(
           page.getByRole("menuitemradio", { name: t.topBar.languages[language] }),
         ).toBeFocused();
-        await captureSheet(page, testInfo, '[role="menu"]', "drawer-language-open");
+        await captureSheet(page, testInfo, '[role="menu"]', "settings-language-open");
         const other = language === "en" ? "zh-CN" : "en";
         await page.keyboard.press(language === "en" ? "ArrowDown" : "ArrowUp");
         await expect(
@@ -114,7 +128,13 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.keyboard.press("Enter");
         await expect(page.locator("html")).toHaveAttribute("lang", other);
         await expect(languageTrigger).toBeFocused();
-        await expect(sheet.locator(".drawer-ticket")).toHaveAttribute("open", "");
+        await trigger.click();
+        await expect(sheet).toHaveAttribute("data-state", "open");
+        await expect(
+          sheet.getByRole("button", { name: (other === "en" ? en : zhCN).stints.closeWorkItem }),
+        ).toBeFocused();
+        await page.keyboard.press("Escape");
+        await expect(sheet).not.toBeVisible();
         await expect
           .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
           .toBe(other);
@@ -132,18 +152,6 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect
           .poll(() => page.evaluate(() => localStorage.getItem("stintwork.language")))
           .toBe(language);
-        await scrollContent(content);
-        const code = content.locator(".markdown pre").first();
-        await code.scrollIntoViewIfNeeded();
-        await code.evaluate((element) => {
-          element.scrollLeft = element.scrollWidth;
-        });
-        expect(await code.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-        await expect(close).toBeInViewport();
-        await captureSheet(page, testInfo, ".work-item-drawer", "drawer-long-scrolled");
-        await close.click();
-        await expect(sheet).not.toBeVisible();
-        await expect(trigger).toBeFocused();
 
         await page.route("**/api/agents", (route) =>
           route.fulfill({ json: { agents: [codexProfile, claudeProfile] } }),
@@ -205,6 +213,12 @@ for (const language of ["en", "zh-CN"] as const) {
             },
           },
         ];
+        snapshot.warnings = [
+          {
+            path: longPath,
+            message: `Project warning 原文\n${"Long warning detail 中文 ".repeat(30)}`,
+          },
+        ];
         snapshot.attentionItems = Array.from({ length: 8 }, (_, index) => ({
           id: `permission-${index}`,
           kind: "permission",
@@ -245,12 +259,18 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.goto("/");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         const trigger = page.locator("#needs-you-trigger");
+        await expect(trigger).toHaveAccessibleName(
+          `${t.topBar.needsYou} 8 · ${t.warningCallout.title(1)}`,
+        );
         await trigger.focus();
         await page.keyboard.press("Enter");
         const sheet = page.locator(".needs-you-queue");
         const close = sheet.getByRole("button", { name: t.needsYou.close });
         await expect(close).toBeFocused();
         const content = sheet.locator(".needs-you-content");
+        const warnings = sheet.getByRole("region", { name: t.topBar.projectWarnings });
+        await expect(warnings).toBeAttached();
+        await expect(warnings.getByText(longPath, { exact: true })).toBeAttached();
         const first = sheet.getByRole("article").first();
         await first.getByText(t.needsYou.fullPermissionJson, { exact: true }).click();
         for (const code of await first.locator(".permission-details").all()) {
@@ -277,7 +297,9 @@ for (const language of ["en", "zh-CN"] as const) {
         ).toBeDisabled();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-answer-pending");
         releaseAnswer();
-        await expect(sheet.getByRole("alert")).toContainText(t.needsYou.permissionFailed);
+        await expect(sheet.locator('.needs-you-footer [role="alert"]')).toContainText(
+          t.needsYou.permissionFailed,
+        );
         await expect(answer).toBeEnabled();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-error");
         await answer.click();
@@ -287,7 +309,23 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           sheet.getByRole("button", { name: t.needsYou.enableNotifications }),
         ).toBeInViewport();
+        await expect(warnings).toBeInViewport();
+        await expect(sheet.getByText(t.needsYou.empty, { exact: true })).toHaveCount(0);
+        const warningPath = warnings.locator("code[data-truncate]");
+        await expect(warningPath).toHaveAttribute("title", longPath);
+        expect(await warningPath.evaluate((element) => getComputedStyle(element).whiteSpace)).toBe(
+          "nowrap",
+        );
+        const warningDetails = warnings.locator("details");
+        await expect(warningDetails.locator("li")).not.toBeVisible();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-long-scrolled");
+        await warningDetails.locator("summary").focus();
+        await page.keyboard.press("Enter");
+        await expect(warningDetails).toHaveAttribute("open", "");
+        await expect(warningDetails.locator("li")).toContainText(snapshot.warnings[0].message);
+        await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-warnings-expanded");
+        await page.keyboard.press("Enter");
+        await expect(warningDetails.locator("li")).not.toBeVisible();
         const openItem = first.getByRole("button", {
           name: `${item.title} · ${item.slug}`,
           exact: true,
@@ -302,9 +340,45 @@ for (const language of ["en", "zh-CN"] as const) {
         await drawerClose.click();
         await expect(page.locator('.board-scroll [data-work-item="long-title"]')).toBeFocused();
 
+        const projectWarnings = snapshot.warnings;
+        snapshot.warnings = [];
+        await page.reload();
+        await expect(trigger).toHaveAccessibleName(`${t.topBar.needsYou} 8`);
+        await trigger.click();
+        await expect(sheet).toHaveAttribute("data-state", "open");
+        await expect(warnings).toHaveCount(0);
+        await expect(sheet.getByRole("article")).toHaveCount(8);
+        await expect(sheet.getByText(t.needsYou.empty, { exact: true })).toHaveCount(0);
+        await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-items-only");
+        await page.keyboard.press("Escape");
+        await expect(sheet).not.toBeVisible();
+        snapshot.warnings = projectWarnings;
         snapshot.attentionItems = [];
         await page.reload();
+        await expect(trigger).toHaveAccessibleName(
+          `${t.topBar.needsYou} 0 · ${t.warningCallout.title(1)}`,
+        );
         await trigger.click();
+        await expect(sheet).toHaveAttribute("data-state", "open");
+        await expect(warnings).toBeVisible();
+        await expect(sheet.getByText(t.needsYou.empty, { exact: true })).toBeVisible();
+        expect(await warnings.evaluate((element) => getComputedStyle(element).borderTopWidth)).toBe(
+          "0px",
+        );
+        await expect(warningDetails.locator("li")).not.toBeVisible();
+        await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-warnings-only");
+        await warningDetails.locator("summary").focus();
+        await page.keyboard.press("Enter");
+        await expect(warningDetails).toHaveAttribute("open", "");
+        await expect(warningDetails.locator("li")).toContainText(snapshot.warnings[0].message);
+        await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-warnings-only-expanded");
+        await page.keyboard.press("Escape");
+        await expect(sheet).not.toBeVisible();
+        snapshot.warnings = [];
+        await page.reload();
+        await trigger.click();
+        await expect(sheet).toHaveAttribute("data-state", "open");
+        await expect(warnings).toHaveCount(0);
         await expect(sheet.getByText(t.needsYou.empty, { exact: true })).toBeVisible();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-empty");
         await sheet.getByRole("heading").click();

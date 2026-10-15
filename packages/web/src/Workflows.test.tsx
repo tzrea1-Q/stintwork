@@ -78,7 +78,9 @@ test("invalid YAML warnings are visible while the fallback work item remains on 
     { name: "Fixture" },
   );
   render(<Board snapshot={snapshot} />);
-  fireEvent.click(screen.getByRole("button", { name: /Warnings/ }));
-  expect(screen.getByText(/Invalid workflow definition/)).toBeInTheDocument();
-  expect(screen.getByRole("article", { name: "example: Example" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /^Needs you/ }));
+  expect(screen.getByText(/Invalid workflow definition/, { selector: "p" })).toBeVisible();
+  expect(
+    screen.getByRole("article", { name: "example: Example", hidden: true }),
+  ).toBeInTheDocument();
 });

@@ -16,6 +16,7 @@ import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function Board({
@@ -149,8 +150,6 @@ export function Board({
       <TopBar
         snapshot={snapshot}
         onOpenNeedsYou={() => setNeedsYouOpen(true)}
-        milestone={milestone}
-        onMilestoneChange={setSelectedMilestone}
         onOpenPalette={() => setPaletteOpen(true)}
       />
       <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
@@ -189,16 +188,27 @@ export function Board({
         )}
         <div className="board-toolbar flex flex-col gap-3 border-y border-border px-4 py-3 text-xs text-muted lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
-            <span className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
+            <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
               <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
-              <span
-                className="min-w-0 truncate"
-                data-truncate
-                title={selected?.name ?? t.board.allMilestones}
+              <Select
+                value={milestone ? `milestone:${milestone}` : "all"}
+                onValueChange={(value) =>
+                  setSelectedMilestone(value === "all" ? "" : value.slice("milestone:".length))
+                }
               >
-                {selected?.name ?? t.board.allMilestones}
-              </span>
-            </span>
+                <SelectTrigger aria-label={t.topBar.milestone} className="max-w-64">
+                  <SelectValue data-truncate title={selected?.name ?? t.board.allMilestones} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{t.board.allMilestones}</SelectItem>
+                  {snapshot.milestones.map((entry) => (
+                    <SelectItem key={entry.id} value={`milestone:${entry.id}`}>
+                      {entry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <span className="board-stats whitespace-nowrap">
               {t.board.counts(active.length, shipped.length)}
             </span>

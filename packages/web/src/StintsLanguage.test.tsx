@@ -18,7 +18,6 @@ import { StintHistory } from "./StintHistory";
 import { StintStream } from "./StintStream";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
-import { LanguageMenu } from "./i18n/LanguageMenu";
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Developer conventions 原文",
@@ -315,9 +314,14 @@ test.each(["stream", "history"])(
       "fetch",
       vi.fn(async () => new Response(JSON.stringify({ stint: recorded }))),
     );
+    let changeLanguage: ReturnType<typeof useLanguage>["setLanguage"] = () => {};
+    function LanguageDriver() {
+      changeLanguage = useLanguage().setLanguage;
+      return null;
+    }
     render(
       <LanguageProvider>
-        <LanguageMenu />
+        <LanguageDriver />
         {view === "stream" ? (
           <StintStream stint={recorded} />
         ) : (
@@ -339,8 +343,7 @@ test.each(["stream", "history"])(
     expect(log.getAllByText(/Agent payload 原文/, { selector: "pre" })).toHaveLength(
       updates.length,
     );
-    await user.click(screen.getByRole("button", { name: "语言" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "English" }));
+    act(() => changeLanguage("en"));
     for (const [kind] of toolKinds)
       expect(log.getByText(`${kind} ·`)).toHaveTextContent(`${kind} · completed`);
     for (const [kind, label] of updates)
@@ -356,7 +359,6 @@ test.each(["stream", "history"])(
 test.each(["drawer", "gate"])(
   "Chinese %s uses shared ticket statuses without changing repo content or unknown statuses",
   async (view) => {
-    const user = userEvent.setup();
     const statuses = [
       ["resolved", "已解决"],
       ["ready-for-agent", "待 Agent 处理"],
@@ -378,15 +380,18 @@ test.each(["drawer", "gate"])(
       }),
       { name: "Project 原文" },
     ).workItems[0];
+    let changeLanguage: ReturnType<typeof useLanguage>["setLanguage"] = () => {};
+    function LanguageDriver() {
+      changeLanguage = useLanguage().setLanguage;
+      return null;
+    }
     render(
       <LanguageProvider>
+        <LanguageDriver />
         {view === "drawer" ? (
           <WorkItemDrawer item={withTickets} onClose={() => {}} />
         ) : (
-          <>
-            <LanguageMenu />
-            <GateView item={withTickets} />
-          </>
+          <GateView item={withTickets} />
         )}
       </LanguageProvider>,
     );
@@ -403,8 +408,7 @@ test.each(["drawer", "gate"])(
       if (view === "drawer")
         expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
     }
-    await user.click(screen.getByRole("button", { name: "语言" }));
-    await user.click(screen.getByRole("menuitemradio", { name: "English" }));
+    act(() => changeLanguage("en"));
     for (const [index, [status]] of statuses.entries())
       expect(
         list.getByText(
