@@ -21,7 +21,6 @@ import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
-import { LanguageMenu } from "./i18n/LanguageMenu";
 import { ticketStatus, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
@@ -125,7 +124,6 @@ export function WorkItemDrawer({
                 {type} / <code>{item.slug}</code>
               </p>
               <div className="flex shrink-0 items-center gap-2">
-                <LanguageMenu />
                 <Tooltip>
                   <TooltipTrigger
                     asChild

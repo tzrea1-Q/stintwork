@@ -79,8 +79,6 @@ function renderSetup() {
     <LanguageProvider>
       <TopBar
         snapshot={indexProject(files, { name: "Project" })}
-        milestone=""
-        onMilestoneChange={() => {}}
         onOpenPalette={() => {}}
         onOpenNeedsYou={() => {}}
       />
@@ -89,9 +87,12 @@ function renderSetup() {
 }
 async function open(user: ReturnType<typeof userEvent.setup>, language: "en" | "zh-CN" = "en") {
   const t = language === "en" ? en : zhCN;
-  const trigger = screen.getByRole("button", { name: /^Setup|^设置/ });
+  const trigger = screen.getByRole("button", { name: t.topBar.settings });
   trigger.focus();
   await user.keyboard("{Enter}");
+  await user.click(
+    await screen.findByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) }),
+  );
   const dialog = await screen.findByRole("dialog", { name: t.planning.setup.title });
   await within(dialog).findByRole("checkbox", { name: "AGENTS.md" });
   return { dialog, trigger, t };
@@ -187,7 +188,8 @@ test("an existing nonlocal tracker puts its fix under local Markdown, not the re
   server(initial);
   const user = userEvent.setup();
   renderSetup();
-  await user.click(screen.getByRole("button", { name: /^Setup/ }));
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
   const checkbox = await screen.findByRole("checkbox", { name: "docs/agents/issue-tracker.md" });
   const row = checkbox.closest("li");
   if (!row) throw new Error("Missing check row");
@@ -211,7 +213,8 @@ test("loading offers only Cancel and becomes selectable after the preview arrive
   );
   const user = userEvent.setup();
   renderSetup();
-  await user.click(screen.getByRole("button", { name: /^Setup/ }));
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
   expect(await screen.findByRole("status")).toHaveTextContent(en.planning.setup.loading);
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   expect(within(screen.getByRole("dialog")).getAllByRole("button")).toHaveLength(1);
@@ -349,7 +352,8 @@ test("ready checks fold together and empty setup offers Close, not a write", asy
   server(initial);
   const user = userEvent.setup();
   renderSetup();
-  await user.click(screen.getByRole("button", { name: /^Setup/ }));
+  await user.click(screen.getByRole("button", { name: "Settings" }));
+  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
   expect(await screen.findByText(en.planning.setup.noChanges)).toBeVisible();
   expect(screen.getByText(en.planning.setup.checks.glossary.name)).not.toBeVisible();
   await user.click(screen.getByText(en.planning.setup.readyCount(5)));
@@ -374,7 +378,8 @@ test.each(["network", "server", "invalid"])(
     });
     const user = userEvent.setup();
     renderSetup();
-    await user.click(screen.getByRole("button", { name: /^Setup/ }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
+    await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(
       kind === "network" ? "Cannot reach project server." : en.planning.setup.errors.load,
     );

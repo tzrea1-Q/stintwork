@@ -15,6 +15,7 @@ import { en } from "./i18n/en";
 import { Button } from "./ui/Button";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
+import { WarningCallout } from "./ui/WarningCallout";
 
 export function NeedsYouQueue({
   snapshot,
@@ -113,7 +114,7 @@ export function NeedsYouQueue({
           </header>
           <div className="needs-you-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 sm:p-6">
             {snapshot.attentionItems.length === 0 && (
-              <p role="status" className="needs-you-empty py-10 text-center text-muted">
+              <p role="status" className="needs-you-empty py-4 text-center text-muted">
                 {t.needsYou.empty}
               </p>
             )}
@@ -270,6 +271,20 @@ export function NeedsYouQueue({
                 </article>
               );
             })}
+            {snapshot.warnings.length > 0 && (
+              <section
+                aria-labelledby="project-warnings-heading"
+                className={
+                  snapshot.attentionItems.length ? "mt-6 border-t border-border pt-4" : "mt-4"
+                }
+              >
+                <h3 id="project-warnings-heading" className="mb-3 text-sm font-medium">
+                  {t.topBar.projectWarnings}
+                </h3>
+                <WarningCallout warnings={snapshot.warnings} />
+                <p className="text-xs text-muted">{t.topBar.readOnly}</p>
+              </section>
+            )}
           </div>
           <footer className="needs-you-footer shrink-0 border-t border-border bg-surface p-4 text-xs wrap-anywhere sm:p-6 [&_p]:mt-2">
             {answerError && (

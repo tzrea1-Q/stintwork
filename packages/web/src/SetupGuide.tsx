@@ -13,7 +13,7 @@ import type {
   SetupPlan,
   WorkflowDefinitions,
 } from "@stintwork/core";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { en } from "./i18n/en";
 
 import { stageName, uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
@@ -23,9 +23,11 @@ type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
 export function SetupGuide({
   workflows = {},
   onClose,
+  returnFocusRef,
 }: {
   workflows?: WorkflowDefinitions;
   onClose: () => void;
+  returnFocusRef?: RefObject<HTMLElement>;
 }) {
   const { t } = useLanguage();
   const [guide, setGuide] = useState<Guide | null>(null);
@@ -149,6 +151,7 @@ export function SetupGuide({
   const attention = guide?.checks.filter((check) => !check.ready) ?? [];
   return (
     <DialogContent
+      returnFocusRef={returnFocusRef}
       className="setup-guide flex w-2xl flex-col overflow-hidden p-0 [overflow-wrap:anywhere]"
       onEscapeKeyDown={(event) => {
         if (saving) event.preventDefault();

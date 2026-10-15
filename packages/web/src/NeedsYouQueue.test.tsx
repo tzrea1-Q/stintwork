@@ -13,6 +13,8 @@ import {
   mixedAttentionSnapshot,
   loginAttentionProfile,
 } from "./attention-test-fixtures";
+import { en } from "./i18n/en";
+import { zhCN } from "./i18n/zh-CN";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -20,6 +22,78 @@ afterEach(() => {
   localStorage.clear();
   window.history.replaceState(null, "", "/");
 });
+
+test.each(["en", "zh-CN"] as const)(
+  "Needs you separates warnings from attention and handles every empty state (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    const snapshot = attentionSnapshot();
+    const warning = {
+      path: `.scratch/${"long-path/".repeat(30)}spec.md`,
+      message: `Original warning 原文\n${"long-detail".repeat(80)}`,
+    };
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    for (const [items, warnings] of [
+      [true, true],
+      [false, true],
+      [true, false],
+      [false, false],
+    ]) {
+      const next = {
+        ...snapshot,
+        attentionItems: items ? snapshot.attentionItems : [],
+        warnings: warnings ? [warning] : [],
+      };
+      rerender(
+        <LanguageProvider>
+          <Board snapshot={next} />
+        </LanguageProvider>,
+      );
+      const count = next.attentionItems.length;
+      const trigger = screen.getByRole("button", {
+        name: `${t.topBar.needsYou} ${count}${warnings ? ` · ${t.warningCallout.title(1)}` : ""}`,
+      });
+      expect(Boolean(trigger.querySelector("[data-warning-dot]"))).toBe(warnings);
+      await user.click(trigger);
+      const sheet = await screen.findByRole("dialog", { name: `${t.needsYou.heading} ${count}` });
+      const section = within(sheet).queryByRole("region", { name: t.topBar.projectWarnings });
+      expect(Boolean(section)).toBe(warnings);
+      if (section) {
+        expect(within(section).getByText(warning.path)).toHaveAttribute("title", warning.path);
+        expect(within(section).getByText("Original warning 原文", { exact: true })).toBeVisible();
+        const detail = within(section).getByText(`${warning.path}: ${warning.message}`, {
+          normalizer: (text) => text,
+        });
+        expect(detail).not.toBeVisible();
+        await user.click(within(section).getByText(t.warningCallout.details));
+        expect(detail).toBeVisible();
+        await user.click(within(section).getByText(t.warningCallout.details));
+        expect(detail).not.toBeVisible();
+        expect(within(section).queryByRole("article")).not.toBeInTheDocument();
+        expect(section.classList.contains("border-t")).toBe(items);
+        if (items)
+          expect(
+            within(sheet).getAllByRole("article")[0].compareDocumentPosition(section) &
+              Node.DOCUMENT_POSITION_FOLLOWING,
+          ).toBeTruthy();
+      }
+      expect(Boolean(within(sheet).queryByText(t.needsYou.empty))).toBe(!items);
+      if (!items && section)
+        expect(
+          within(sheet).getByText(t.needsYou.empty).compareDocumentPosition(section) &
+            Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(trigger).toHaveFocus());
+    }
+  },
+);
 
 test("Needs you contains keyboard focus, dismisses outside and restores its opener", async () => {
   const user = userEvent.setup();
@@ -592,11 +666,11 @@ describe("Chinese Needs-you queue", () => {
       expect(notify).toHaveBeenCalledWith("Project · 待你处理", expect.objectContaining({ body }));
     expect(notify).toHaveBeenCalledTimes(5);
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "语言" }));
+    await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
     expect(document.title).toBe("(5) Project · Stintwork");
     expect(notify).toHaveBeenCalledTimes(5);
-    await user.click(screen.getByRole("button", { name: "Language" }));
+    await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
     next.attentionItems = [
       {

@@ -10,7 +10,6 @@ export function WarningCallout({
 }) {
   const { t } = useLanguage();
   if (!warnings.length) return null;
-  const firstLine = warnings[0].message.split(/\r?\n/, 1)[0];
   return (
     <section
       role="alert"
@@ -21,11 +20,25 @@ export function WarningCallout({
         <TriangleAlert className="size-icon-sm shrink-0" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <h3 className="text-sm font-medium">{t.warningCallout.title(warnings.length)}</h3>
-          <p data-truncate title={firstLine} className="mt-1 truncate text-sm">
-            {firstLine}
-          </p>
         </div>
       </div>
+      <ul className="mt-2 space-y-2">
+        {warnings.map((warning) => {
+          const firstLine = warning.message.split(/\r?\n/, 1)[0];
+          return (
+            <li key={`${warning.path}:${warning.message}`} className="min-w-0">
+              {warning.path && (
+                <code data-truncate title={warning.path} className="block truncate text-xs">
+                  {warning.path}
+                </code>
+              )}
+              <p data-truncate title={firstLine} className="truncate text-sm">
+                {firstLine}
+              </p>
+            </li>
+          );
+        })}
+      </ul>
       <Disclosure label={t.warningCallout.details} className="mt-1 [&_summary]:py-1">
         <ul className="space-y-2 whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">
           {warnings.map((warning) => (

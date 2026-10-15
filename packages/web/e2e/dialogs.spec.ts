@@ -109,8 +109,20 @@ for (const language of ["en", "zh-CN"] as const) {
             [t.planning.create.milestone, snapshot.milestones[0].name],
           ]) {
             const picker = dialog.getByRole("combobox", { name: label, exact: true });
+            const triggerWidth = await picker.evaluate(
+              (element) => element.getBoundingClientRect().width,
+            );
             await picker.click();
             const list = page.getByRole("listbox");
+            await expect(list).toHaveAttribute("data-state", "open");
+            await expect
+              .poll(async () =>
+                Math.abs(
+                  (await list.evaluate((element) => element.getBoundingClientRect().width)) -
+                    Math.min(Math.max(280, triggerWidth), width - 34),
+                ),
+              )
+              .toBeLessThanOrEqual(1);
             await capture(
               page,
               list,
