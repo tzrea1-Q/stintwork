@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 10 — Rethink Project setup
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## Findings
@@ -78,3 +78,5 @@ Follow-up checks actually run:
 - Local component validation was attempted, not passed: the initial attempt could not resolve the absent web `node_modules`; temporarily linking the existing main-checkout installation allowed execution, but the two-file run ended with 8 passing / 19 failing tests and 17 uncaught errors, including `unifiedLineDiff is not a function`. Web typecheck likewise failed on missing workspace modules and old core types. Read-only verification found the main checkout had moved to `fd2c18a` (ticket 09), whose core source does not export `unifiedLineDiff`; this is the workspace-resolution artifact, not evidence against the coordinator's earlier successful check. The temporary web dependency link was removed. No dependencies were installed, no aliases/config workarounds were added, and no commit was made.
 
 Coordinator rerun: apply these two test-file changes in the checkout where this branch and workspace packages resolve together, rerun the component/type checks and `pnpm test:e2e`. The earlier temporary-config handoff above is superseded: use the normal commands, without aliases or `TSX_TSCONFIG_PATH`. If Chrome launch times out again before assertions, capture the launch failure separately from dialog failures. Keep this ticket and M8 exit pending until browser verification completes.
+
+**Coordinator, 2026-10-16:** Verified on `codex/uif-10`: format, lint, typecheck, unit tests (2244), build and the browser suite pass. Screenshots of the GitHub-tracked fixture (1440 zh-CN, 390 en, dark review) show the GitHub notice, the tracker replacement unselected with a "Replaces 7 lines" badge, and destructive changes listed first in review. Nit for the walk-through: the English "create" badge is lower case. Resolved.
