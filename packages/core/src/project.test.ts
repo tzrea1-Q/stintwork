@@ -47,6 +47,7 @@ test("composes stages, milestone overrides, tickets and setup into one project s
     ],
     setup: {
       hasIssueTracker: true,
+      tracker: "local-markdown",
       usesLocalMarkdown: true,
       hasAgents: true,
       hasClaude: true,

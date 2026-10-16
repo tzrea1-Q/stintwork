@@ -44,7 +44,7 @@ Sizes are relative (S, M, L), for one developer working with agents. They are no
 - Each work item's stage comes from `workflow.yaml`, or is inferred from its files when there is none.
 - The Pipeline board shows stage columns and cards; a drawer shows the spec and tickets in blocking order.
 - Changes to the files appear on the board without a reload.
-- Setup detection shows what's missing (tracker config, AGENTS.md) but doesn't write anything yet.
+- Project setup detection shows what's missing (tracker config, AGENTS.md) but doesn't write anything yet.
 
 **Exit test:** Stintwork opened on its own repo shows its own plan correctly. Editing a ticket's `Status:` line in an editor moves it on the board.
 
@@ -92,7 +92,7 @@ Someone else can use it. Spec: `.scratch/first-release/spec.md`.
 
 - The first stages write files: create a work item, then Clarify, Spec and Tickets stints produce `spec.md` and tickets in `.scratch/`.
 - Built-in workflows (Feature, Bug, Quick task) as YAML in `.stintwork/workflows/`, customisable by copying.
-- Guided setup for a repo without mattpocock's layout. It writes the tracker config and an AGENTS.md pointer, with confirmation.
+- Project setup for a repo without mattpocock's layout. It writes the tracker config and an AGENTS.md pointer, with confirmation.
 - Roadmap editing for milestones.
 - Packaging: the npm package `stintwork` (no native dependencies), CI with a packed-tarball smoke test, Apache-2.0 headers, README, and a short getting-started guide. Publishing and making the repository public each need the maintainer's confirmation.
 

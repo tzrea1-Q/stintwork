@@ -30,7 +30,7 @@ export const en = {
     milestone: "Milestone",
     all: "All",
     warnings: "Warnings",
-    setup: "Setup",
+    setup: "Project setup",
     settings: "Settings",
     setupIncomplete: "Project setup is incomplete.",
     projectWarnings: "Project warnings",
@@ -209,13 +209,24 @@ export const en = {
       cancel: "Cancel",
     },
     setup: {
-      title: "Set up project",
+      title: "Project setup",
       complete: "Selected changes are committed.",
-      summary: (attention: number, files: number) =>
-        `${attention} need attention · ${files} files will change in one commit`,
       ready: "Ready",
-      needsAttention: "Needs attention",
-      readyCount: (count: number) => `${count} ready`,
+      statuses: {
+        ready: "Ready",
+        "needs-change": "Needs a change",
+        optional: "Optional",
+        "other-tracker": "Uses another tracker",
+      },
+      groups: { required: "Required", recommended: "Recommended", optional: "Good to have" },
+      githubNotice:
+        "This project uses GitHub Issues. Stintwork shows tickets from local Markdown only for now; reading GitHub Issues is planned.",
+      otherNotice:
+        "This project uses another tracker. Stintwork shows tickets from local Markdown only for now; reading GitHub Issues is planned.",
+      githubTracker: "Uses GitHub Issues",
+      switchTracker: "Switch to local Markdown",
+      replacesLines: (count: number) => `Replaces ${count} lines`,
+      removesContent: "These changes remove existing content",
       previewDiff: "Preview diff",
       projectChecks: "Project checks",
       noContentChanges: "No content changes.",
@@ -223,17 +234,12 @@ export const en = {
       close: "Close",
       retry: "Retry",
       saving: "Committing…",
-      trackerFix: "Select the tracker guide change above to enable local Markdown tracking too.",
       noAutomaticFix:
         "No safe automatic change is available. Check the project warnings before editing this yourself.",
       checks: {
         tracker: {
           name: "Ticket tracker guide",
           why: "Tell agents where to read and write tickets.",
-        },
-        markdown: {
-          name: "Local Markdown tracking",
-          why: "Keep work items, specs and tickets in the project record.",
         },
         agents: {
           name: "Agent instructions",
@@ -243,13 +249,13 @@ export const en = {
           name: "Glossary",
           why: "Give agents one shared vocabulary for the project.",
           manual:
-            "Setup does not create a glossary: its terms need your project's domain knowledge.",
+            "Project setup does not create a glossary: its terms need your project's domain knowledge.",
         },
         adrs: {
           name: "Decision records",
           why: "Preserve decisions and their reasons for the next stint.",
           manual:
-            "Setup does not write decision records: they need actual project decisions and their reasons.",
+            "Project setup does not write decision records: they need actual project decisions and their reasons.",
         },
       },
       reasons: {
@@ -257,26 +263,26 @@ export const en = {
         roadmap: { name: "Milestone roadmap", why: "Create a roadmap for milestones." },
       },
       errors: {
-        load: "Could not load setup.",
-        apply: "Could not apply setup.",
+        load: "Could not load Project setup.",
+        apply: "Could not apply Project setup.",
       },
-      committed: (commit: string) => `Setup committed: ${commit}.`,
+      committed: (commit: string) => `Project setup committed: ${commit}.`,
       description:
-        "No files change until you select changes and confirm. Only project files are written.",
+        "Stintwork finds work items in .scratch/ as local Markdown, and agents find the tracker through AGENTS.md. Project setup helps connect these files and keep local run data out of Git; nothing is written until you review and confirm.",
       changes: "Proposed file changes",
       current: "Current content",
       proposed: "Proposed content",
-      confirm: "Confirm setup",
+      confirm: "Confirm Project setup",
       refusal: "Uncommitted target files are refused. Other files are left alone.",
       apply: "Confirm and commit",
       back: "Back to selection",
       review: (count: number) => `Review changes (${count})`,
-      noChanges: "No setup file changes needed.",
+      noChanges: "This project is set up for Stintwork.",
       skills: "Stage skill availability",
       skillExplanation:
         "Read-only check of declared skill locations. Found means a file exists, not that the skill was tested. Other layouts are not checked. Stintwork never installs skills or changes agent configuration.",
       noSkills: "No stage skills in the loaded workflows.",
-      loading: "Loading setup…",
+      loading: "Loading Project setup…",
       create: "create",
       change: "change",
       unknown: "Can't tell",
@@ -286,6 +292,11 @@ export const en = {
       preview: (path: string) => `Preview ${path}`,
       write: (count: number) => `Write ${count} selected files in one commit: `,
       agentSkills: (name: string) => `${name} skills`,
+      skillSummary: (name: string, found: number, total: number, unknown: number) =>
+        unknown === total && total > 0
+          ? `${name}: can't check`
+          : `${name}: ${found} of ${total} found`,
+      allSkillsFound: "All stage skills were found.",
       installHint: (agent: string, skill: string, locations: string | undefined) =>
         `Use npx skills@latest add mattpocock/skills, select ${agent} and ${skill}.${locations === undefined ? "" : ` Expected locations: ${locations}. For a custom skill, use its own source. Stintwork does not install skills.`}`,
     },

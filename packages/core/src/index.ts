@@ -140,6 +140,7 @@ export {
 export { assignMilestones, parseRoadmap, type Milestone } from "./roadmap.js";
 export { editRoadmap, serializeRoadmap, type RoadmapChange } from "./roadmap-editing.js";
 export { detectSetup, type SetupReport } from "./setup.js";
+export { unifiedLineDiff } from "./line-diff.js";
 export {
   planSetup,
   setupPaths,

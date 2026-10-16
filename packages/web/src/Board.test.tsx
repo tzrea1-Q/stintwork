@@ -192,13 +192,13 @@ test("opens warnings and setup reports and dismisses them with Escape or outside
   expect(needsYou).toHaveFocus();
   await user.click(screen.getByRole("button", { name: "Settings" }));
   await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
-  const setup = await screen.findByRole("dialog", { name: "Set up project" });
+  const setup = await screen.findByRole("dialog", { name: "Project setup" });
   expect(await within(setup).findByText("Glossary")).toBeVisible();
-  expect(setup).toHaveTextContent("Needs attention");
+  expect(setup).toHaveTextContent("Optional");
   const overlay = document.querySelector(".bg-backdrop");
   if (!(overlay instanceof HTMLElement)) throw new Error("Missing dialog overlay");
   await user.click(overlay);
-  expect(screen.queryByRole("dialog", { name: "Set up project" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Project setup" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Settings" })).toHaveFocus();
 });
 

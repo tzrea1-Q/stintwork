@@ -33,9 +33,9 @@ When a missing CLI or login is detected, the agent picker disables that agent an
 
 Use Claude Code or Codex for this guide.
 
-## 3. Review guided setup and skills
+## 3. Review Project setup and skills
 
-Open **Setup** at the top of the board. Expand each preview. In a project without these files, setup proposes:
+Open **Settings → Project setup** at the top of the board. Stintwork reads local Markdown work items in `.scratch/`; agents find the tracker through `AGENTS.md`. Expand each preview. In a project without these files, Project setup proposes:
 
 - `docs/agents/issue-tracker.md`: the local Markdown tracker conventions.
 - `AGENTS.md`: an appended **Agent skills** block pointing to the tracker conventions. Existing content is kept.
@@ -43,17 +43,21 @@ Open **Setup** at the top of the board. Expand each preview. In a project withou
 - `.gitignore`: an entry for `.stintwork/local/`.
 - `.stintwork/roadmap.md`: a starter milestone, only when the file is missing.
 
-Select the changes you want. Review the confirmation and apply them. Stintwork makes one **Set up Stintwork** commit. It refuses selected files with uncommitted changes; commit those changes yourself, then reopen setup. Unselected files are left alone.
+Required checks cover the tracker guide and agent instructions. Recommended checks cover local run data and the milestone roadmap. The glossary and decision records are informational, good-to-have items.
 
-Setup also lists stage skills for each agent. **Found** means a file exists in a supported location, not that the skill was tested. **Missing** means it was not found in the checked locations. **Can't tell** means Stintwork could not determine availability.
+An existing GitHub Issues or other tracker is preserved by default. Stintwork currently shows tickets from local Markdown only; reading GitHub Issues is planned. **Switch to local Markdown** is an explicit opt-in: replacements show **Replaces N lines**, start unselected, and appear separately with expanded diffs in review. A local Markdown instruction pointer is offered only when local Markdown is used or its tracker change is selected; a different existing pointer is never rewritten.
 
-The Feature workflow uses skills from `mattpocock/skills`: `/grill-with-docs`, `/to-spec`, `/to-tickets`, `/implement` and `/code-review`. If they are missing, follow setup's installation hint yourself:
+Select the changes you want. Review the confirmation and apply them. Stintwork makes one **Set up Stintwork** commit. It refuses selected files with uncommitted changes; commit those changes yourself, then reopen Project setup. Unselected files are left alone.
+
+Project setup shows a collapsed stage-skill summary for each agent. Expand it to see only missing or unknown skills, grouped by workflow. **Found** means a file exists in a supported location, not that the skill was tested. **Missing** means it was not found in the checked locations. **Can't tell** means Stintwork could not determine availability.
+
+The Feature workflow uses skills from `mattpocock/skills`: `/grill-with-docs`, `/to-spec`, `/to-tickets`, `/implement` and `/code-review`. If they are missing, follow Project setup's installation hint yourself:
 
 ```bash
 npx skills@latest add mattpocock/skills
 ```
 
-Select your agent and the needed skills. Check setup again afterwards. Stintwork never installs skills or changes agent configuration. Setup does not create a glossary or decision records; Clarify can propose them when needed.
+Select your agent and the needed skills. Check Project setup again afterwards. Stintwork never installs skills or changes agent configuration. Project setup does not create a glossary or decision records; Clarify can propose them when needed.
 
 ## 4. Create a work item
 

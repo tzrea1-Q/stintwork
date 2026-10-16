@@ -3,6 +3,7 @@ import { expect, test } from "vitest";
 import { createMemoryRepoFiles, detectSetup, type SetupReport } from "./index.js";
 
 const absent: SetupReport = {
+  tracker: "missing",
   hasIssueTracker: false,
   usesLocalMarkdown: false,
   hasAgents: false,
@@ -13,6 +14,24 @@ const absent: SetupReport = {
 };
 const trackerPath = "docs/agents/issue-tracker.md";
 
+test.each([
+  [
+    "# Issue tracker: GitHub\n\nUse gh issue list and gh issue view to find tickets.\n",
+    "github-issues",
+  ],
+  ["# Issue tracker: GitHub Issues\n\n.scratch/ holds drafts, not tickets.\n", "github-issues"],
+  ["Tickets are GitHub Issues; use gh issue create.\n", "github-issues"],
+  ["# Issue tracker: Team queue\n\nRead tickets in the team's service.\n", "other"],
+  [
+    "# Issue tracker: Local Markdown\n\n.scratch/ holds tickets; GitHub Issues is not used.\n",
+    "local-markdown",
+  ],
+])("detects the declared tracker in a fresh guide: %s", (content, tracker) => {
+  const report = detectSetup(createMemoryRepoFiles({ [trackerPath]: content }));
+  expect(report.tracker).toBe(tracker);
+  expect(report.usesLocalMarkdown).toBe(tracker === "local-markdown");
+});
+
 test("setup report detects tracker config, AGENTS.md, CLAUDE.md, GLOSSARY.md and ADRs", () => {
   const files = createMemoryRepoFiles({
     [trackerPath]: "# Issue tracker: Local Markdown",
@@ -22,6 +41,7 @@ test("setup report detects tracker config, AGENTS.md, CLAUDE.md, GLOSSARY.md and
     "docs/adr/nested/decision.txt": "A decision record",
   });
   expect(detectSetup(files)).toEqual({
+    tracker: "local-markdown",
     hasIssueTracker: true,
     usesLocalMarkdown: true,
     hasAgents: true,
@@ -41,17 +61,19 @@ test.each(["local markdown", "LOCAL MARKDOWN", "Local\nMarkdown", "Files live in
   (text) => {
     expect(detectSetup(createMemoryRepoFiles({ [trackerPath]: text }))).toEqual({
       ...absent,
+      tracker: "local-markdown",
       hasIssueTracker: true,
       usesLocalMarkdown: true,
     });
   },
 );
 
-test.each(["", "GitHub Issues", "local markdownish", ".scratchpad"])(
+test.each(["", "local markdownish", ".scratchpad"])(
   "keeps tracker presence separate from local Markdown wording %j",
   (text) => {
     expect(detectSetup(createMemoryRepoFiles({ [trackerPath]: text }))).toEqual({
       ...absent,
+      tracker: "other",
       hasIssueTracker: true,
     });
   },
@@ -114,6 +136,7 @@ test("keeps known presence and reports a tracker read failure instead of throwin
     }),
   ).toEqual({
     ...absent,
+    tracker: "other",
     hasIssueTracker: true,
     hasAgents: true,
     warnings: [{ path: trackerPath, message: "Cannot read file: Error: cannot read" }],

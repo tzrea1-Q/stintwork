@@ -64,7 +64,10 @@ async function preview(app: Hono): Promise<SetupChange[]> {
   expect(response.status, await response.clone().text()).toBe(200);
   return (await response.json()).changes;
 }
-function apply(app: Hono, changes: SetupChange[]) {
+function apply(
+  app: Hono,
+  changes: (Pick<SetupChange, "path" | "before" | "content"> & Partial<SetupChange>)[],
+) {
   return app.request("/api/setup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -110,7 +113,7 @@ test("the bare-repo guide is read-only and offers all five exact file previews",
 test("setup exposes check mappings and accepts legacy confirmations without metadata", async () => {
   const { root, app } = fixture();
   const guide = await (await app.request("/api/setup")).json();
-  expect(guide.checks).toContainEqual({ id: "tracker", ready: false });
+  expect(guide.checks).toContainEqual({ id: "tracker", ready: false, status: "needs-change" });
   expect(guide.changes[0].checkId).toBe("tracker");
   expect(guide.changes.find((change: SetupChange) => change.path === ".gitignore").reasonId).toBe(
     "localRunData",
@@ -127,7 +130,7 @@ test("setup exposes check mappings and accepts legacy confirmations without meta
     result.checks
       .filter(({ ready }: { ready: boolean }) => ready)
       .map(({ id }: { id: string }) => id),
-  ).toEqual(["tracker", "markdown", "agents"]);
+  ).toEqual(["tracker", "agents", "localRunData", "roadmap"]);
   expect(result.changes).toEqual([]);
   expect(result.commit).toBe(git(root, "rev-parse", "HEAD"));
 });
@@ -175,6 +178,65 @@ test("all selected files share one commit, and repeated or fully completed setup
 });
 
 test.each([
+  ["# Issue tracker: GitHub\n\nUse gh issue list to find work.\n", "github-issues"],
+  ["# Issue tracker: Team queue\n\nUse our queue for triage.\n", "other"],
+])("default setup preserves a declared tracker and its instructions: %s", async (tracker, kind) => {
+  const instructions =
+    "# Agent instructions\n\n### Issue tracker\nSee docs/agents/issue-tracker.md.\n";
+  const { app, root } = fixture({
+    "docs/agents/issue-tracker.md": tracker,
+    "AGENTS.md": instructions,
+  });
+  const guide = await (await app.request("/api/setup")).json();
+  expect(guide.tracker).toBe(kind);
+  expect(guide.checks[0]).toMatchObject({ status: "other-tracker" });
+  expect(guide.changes.find(({ path }: SetupChange) => path === setupPaths[0])).toMatchObject({
+    selectedByDefault: false,
+    removedLines: 2,
+  });
+  expect(
+    (
+      await apply(
+        app,
+        guide.changes.filter(({ selectedByDefault }: SetupChange) => selectedByDefault),
+      )
+    ).status,
+  ).toBe(200);
+  expect(readFileSync(join(root, setupPaths[0]), "utf8")).toBe(tracker);
+  expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe(instructions);
+  expect(existsSync(join(root, "CLAUDE.md"))).toBe(false);
+});
+
+test("switching is explicit and the server enforces pointer dependencies without trusting metadata", async () => {
+  const { app, root } = fixture({
+    [setupPaths[0]]: "# Issue tracker: GitHub\n\nUse gh issue list.\n",
+  });
+  const changes = await preview(app);
+  const pointer = changes.find(({ path }) => path === "AGENTS.md");
+  const tracker = changes.find(({ path }) => path === setupPaths[0]);
+  if (!pointer || !tracker) throw new Error("Missing fixture proposals");
+  expect(pointer).toMatchObject({ requires: setupPaths[0], selectedByDefault: false });
+  expect((await apply(app, [{ ...pointer, requires: undefined }])).status).toBe(409);
+  expect(existsSync(join(root, "AGENTS.md"))).toBe(false);
+  const response = await apply(app, [tracker, pointer]);
+  expect(response.status).toBe(200);
+  expect((await response.json()).tracker).toBe("local-markdown");
+  expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toContain("local Markdown");
+  expect(git(root, "status", "--porcelain")).toBe("");
+});
+
+test("a destructive opt-in still refuses an uncommitted tracker guide", async () => {
+  const { app, root } = fixture({ [setupPaths[0]]: "# Issue tracker: GitHub\n" });
+  const content = "# Issue tracker: GitHub\n\nUncommitted tracker rules.\n";
+  write(root, setupPaths[0], content);
+  const head = git(root, "rev-parse", "HEAD");
+  const changes = (await preview(app)).filter(({ path }) => path === setupPaths[0]);
+  expect((await apply(app, changes)).status).toBe(409);
+  expect(readFileSync(join(root, setupPaths[0]), "utf8")).toBe(content);
+  expect(git(root, "rev-parse", "HEAD")).toBe(head);
+});
+
+test.each([
   "unstaged",
   "staged",
   "untracked",
@@ -209,7 +271,7 @@ test("an ignored new target is refused rather than force-added", async () => {
   const { root, app } = fixture({ ".gitignore": "CLAUDE.md\n" });
   const response = await apply(
     app,
-    (await preview(app)).filter(({ path }) => path === "CLAUDE.md"),
+    (await preview(app)).filter(({ path }) => path === "CLAUDE.md" || path === setupPaths[0]),
   );
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ reason: expect.stringContaining("ignored") });

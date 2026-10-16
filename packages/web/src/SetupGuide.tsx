@@ -10,6 +10,7 @@ import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i1
 import type {
   AgentSkillAvailability,
   SetupChange,
+  SetupCheckId,
   SetupPlan,
   WorkflowDefinitions,
 } from "@stintwork/core";
@@ -40,7 +41,12 @@ export function SetupGuide({
   const checkboxPrefix = useId();
   const reviewRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
-  const finished = Boolean(message || (guide && !guide.changes.length));
+  const finished = Boolean(
+    message ||
+      (guide &&
+        !guide.changes.length &&
+        !guide.checks.some(({ status }) => status === "needs-change")),
+  );
   useEffect(() => {
     if (finished) closeRef.current?.focus();
     else if (confirming) reviewRef.current?.focus();
@@ -63,7 +69,11 @@ export function SetupGuide({
           throw new Error(en.planning.setup.errors.load);
         if (!controller.signal.aborted) {
           setGuide(result);
-          setSelected(result.changes.map(({ path }: { path: string }) => path));
+          setSelected(
+            result.changes
+              .filter((change: SetupChange) => change.selectedByDefault && !change.removedLines)
+              .map(({ path }: SetupChange) => path),
+          );
         }
       } catch (cause) {
         if (!controller.signal.aborted)
@@ -131,15 +141,31 @@ export function SetupGuide({
                   setSelected(
                     event.target.checked
                       ? [...selected, change.path]
-                      : selected.filter((path) => path !== change.path),
+                      : selected.filter(
+                          (path) =>
+                            path !== change.path &&
+                            guide?.changes.find((entry) => entry.path === path)?.requires !==
+                              change.path,
+                        ),
                   )
                 }
               />
-              <code className="min-w-0 break-all text-xs">{change.path}</code>
+              <span className="min-w-0">
+                {change.path === "docs/agents/issue-tracker.md" && change.before !== null && (
+                  <span className="block text-sm font-medium">
+                    {t.planning.setup.switchTracker}
+                  </span>
+                )}
+                <code className="break-all text-xs">{change.path}</code>
+              </span>
             </label>
           )}
-          <Badge>
-            {change.before === null ? t.planning.setup.create : t.planning.setup.change}
+          <Badge variant={change.removedLines ? "danger" : "secondary"}>
+            {change.removedLines
+              ? t.planning.setup.replacesLines(change.removedLines)
+              : change.before === null
+                ? t.planning.setup.create
+                : t.planning.setup.change}
           </Badge>
         </div>
         <DiffPreview before={change.before} content={change.content} open={review} />
@@ -147,8 +173,12 @@ export function SetupGuide({
     );
   }
 
-  const ready = guide?.checks.filter((check) => check.ready) ?? [];
-  const attention = guide?.checks.filter((check) => !check.ready) ?? [];
+  const groups: { id: "required" | "recommended" | "optional"; checks: SetupCheckId[] }[] = [
+    { id: "required", checks: ["tracker", "agents"] },
+    { id: "recommended", checks: ["localRunData", "roadmap"] },
+    { id: "optional", checks: ["glossary", "adrs"] },
+  ];
+  const selectedChanges = guide?.changes.filter(({ path }) => selected.includes(path)) ?? [];
   return (
     <DialogContent
       returnFocusRef={returnFocusRef}
@@ -168,9 +198,11 @@ export function SetupGuide({
         <DialogDescription className="mt-2 text-sm text-muted">
           {message
             ? t.planning.setup.complete
-            : guide
-              ? t.planning.setup.summary(attention.length, selected.length)
-              : t.planning.setup.description}
+            : guide?.tracker === "github-issues"
+              ? t.planning.setup.githubNotice
+              : guide?.tracker === "other"
+                ? t.planning.setup.otherNotice
+                : t.planning.setup.description}
         </DialogDescription>
       </header>
       <div className="setup-body min-h-0 min-w-0 overflow-y-auto px-4 py-4 sm:px-6">
@@ -194,124 +226,170 @@ export function SetupGuide({
               <section ref={reviewRef} tabIndex={-1} aria-label={t.planning.setup.confirm}>
                 <h3 className="text-base font-medium">{t.planning.setup.confirm}</h3>
                 <p className="my-3 text-muted">{t.planning.setup.write(selected.length)}</p>
-                {guide.changes
-                  .filter(({ path }) => selected.includes(path))
+                {selectedChanges.some(({ removedLines }) => removedLines > 0) && (
+                  <section aria-label={t.planning.setup.removesContent} className="my-4">
+                    <h4 className="font-medium text-danger">{t.planning.setup.removesContent}</h4>
+                    {selectedChanges
+                      .filter(({ removedLines }) => removedLines > 0)
+                      .map((change) => fileChange(change, true))}
+                  </section>
+                )}
+                {selectedChanges
+                  .filter(({ removedLines }) => !removedLines)
                   .map((change) => fileChange(change, true))}
                 <p className="mt-3 text-muted">{t.planning.setup.refusal}</p>
               </section>
             ) : (
               <>
-                <ul aria-label={t.planning.setup.projectChecks} className="space-y-4">
-                  {attention.map((check) => {
-                    const changes = guide.changes.filter(({ checkId }) => checkId === check.id);
-                    return (
-                      <li key={check.id}>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="warning">{t.planning.setup.needsAttention}</Badge>
-                          <h3 className="text-sm font-medium">
-                            {t.planning.setup.checks[check.id].name}
-                          </h3>
-                        </div>
-                        <p className="my-2 text-muted">{t.planning.setup.checks[check.id].why}</p>
-                        {changes.map((change) => fileChange(change))}
-                        {!changes.length && (
-                          <p className="text-sm text-muted">
-                            {check.id === "glossary" || check.id === "adrs"
-                              ? t.planning.setup.checks[check.id].manual
-                              : check.id === "markdown" &&
-                                  guide.changes.some(({ checkId }) => checkId === "tracker")
-                                ? t.planning.setup.trackerFix
-                                : t.planning.setup.noAutomaticFix}
-                          </p>
-                        )}
-                      </li>
-                    );
-                  })}
-                  {guide.changes.map(
-                    (change) =>
-                      change.reasonId && (
-                        <li key={change.path}>
-                          <h3 className="text-sm font-medium">
-                            {t.planning.setup.reasons[change.reasonId].name}
-                          </h3>
-                          <p className="my-2 text-muted">
-                            {t.planning.setup.reasons[change.reasonId].why}
-                          </p>
-                          {fileChange(change)}
-                        </li>
-                      ),
-                  )}
-                </ul>
-                {!!ready.length && (
-                  <Disclosure
-                    label={t.planning.setup.readyCount(ready.length)}
-                    className="mt-4 border-t border-border pt-2"
-                  >
-                    <ul className="space-y-3">
-                      {ready.map((check) => (
-                        <li key={check.id}>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <Badge variant="success">{t.planning.setup.ready}</Badge>
-                            <h3 className="text-sm font-medium">
-                              {t.planning.setup.checks[check.id].name}
-                            </h3>
-                          </div>
-                          <p className="mt-2 text-muted">{t.planning.setup.checks[check.id].why}</p>
-                        </li>
-                      ))}
-                    </ul>
-                  </Disclosure>
+                {finished && (
+                  <p className="mb-4" role="status">
+                    {t.planning.setup.noChanges}
+                  </p>
                 )}
-                {!guide.changes.length && <p className="my-3">{t.planning.setup.noChanges}</p>}
+                {!finished && (
+                  <fieldset
+                    aria-label={t.planning.setup.projectChecks}
+                    className="min-w-0 space-y-6"
+                  >
+                    {groups.map((group) => (
+                      <section key={group.id} aria-label={t.planning.setup.groups[group.id]}>
+                        <h3 className="mb-3 text-base font-medium">
+                          {t.planning.setup.groups[group.id]}
+                        </h3>
+                        <ul className="space-y-4">
+                          {guide.checks
+                            .filter(({ id }) => group.checks.includes(id))
+                            .map((check) => {
+                              const copy =
+                                check.id === "localRunData" || check.id === "roadmap"
+                                  ? t.planning.setup.reasons[check.id]
+                                  : t.planning.setup.checks[check.id];
+                              const changes = guide.changes.filter(
+                                (change) =>
+                                  (change.checkId ?? change.reasonId) === check.id &&
+                                  (!change.requires || selected.includes(change.requires)),
+                              );
+                              return (
+                                <li key={check.id}>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <h4 className="text-sm font-medium">{copy.name}</h4>
+                                    <Badge
+                                      variant={
+                                        check.status === "ready"
+                                          ? "success"
+                                          : check.status === "needs-change"
+                                            ? "warning"
+                                            : "secondary"
+                                      }
+                                    >
+                                      {t.planning.setup.statuses[check.status]}
+                                    </Badge>
+                                  </div>
+                                  <p className="my-2 text-muted">{copy.why}</p>
+                                  {check.id === "tracker" && guide.tracker === "github-issues" && (
+                                    <p className="mb-2 text-sm text-muted">
+                                      {t.planning.setup.githubTracker}
+                                    </p>
+                                  )}
+                                  {changes.map((change) => fileChange(change))}
+                                  {(check.id === "glossary" || check.id === "adrs") &&
+                                    !check.ready && (
+                                      <p className="text-sm text-muted">
+                                        {t.planning.setup.checks[check.id].manual}
+                                      </p>
+                                    )}
+                                  {check.status === "needs-change" && !changes.length && (
+                                    <p className="text-sm text-muted">
+                                      {t.planning.setup.noAutomaticFix}
+                                    </p>
+                                  )}
+                                </li>
+                              );
+                            })}
+                        </ul>
+                      </section>
+                    ))}
+                  </fieldset>
+                )}
               </>
             )}
             {!confirming && (
-              <Disclosure
-                label={t.planning.setup.skills}
-                className="mt-4 border-t border-border pt-2"
+              <section
+                aria-label={t.planning.setup.skills}
+                className="mt-6 border-t border-border pt-4"
               >
-                <p className="my-3 text-muted">{t.planning.setup.skillExplanation}</p>
+                <h3 className="text-base font-medium">{t.planning.setup.skills}</h3>
+                <p className="my-3 text-sm text-muted">{t.planning.setup.skillExplanation}</p>
                 {!guide.skills.length && <p>{t.planning.setup.noSkills}</p>}
-                {guide.skills.map((agent) => (
-                  <section
-                    key={agent.agent}
-                    aria-label={t.planning.setup.agentSkills(agent.displayName)}
-                    className="my-3"
-                  >
-                    <h4 className="mb-2 font-medium">{agent.displayName}</h4>
-                    {agent.skills.length ? (
-                      <ul className="space-y-3">
-                        {agent.skills.map((skill) => {
-                          const workflow = Object.hasOwn(workflows, skill.workflowId)
-                            ? workflows[skill.workflowId]
-                            : undefined;
-                          const builtIn = workflow && uncustomisedBuiltIn(workflow);
-                          const stage = workflow?.stages.find(({ id }) => id === skill.stageId);
-                          return (
-                            <li key={JSON.stringify([skill.workflowId, skill.stageId])}>
-                              {builtIn ? workflowName(workflow, t) : skill.workflow} /{" "}
-                              {builtIn && stage ? stageName(workflow, stage, t) : skill.stage}:{" "}
-                              <code>{skill.skill}</code> —{" "}
-                              <strong>
-                                {skill.status === "unknown"
-                                  ? t.planning.setup.unknown
-                                  : skill.status === "found"
-                                    ? t.planning.setup.found
-                                    : t.planning.setup.missing}
-                              </strong>
-                              {skill.installationHint && (
-                                <p>{installationHint(skill.installationHint)}</p>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    ) : (
-                      <p>{t.planning.setup.noSkills}</p>
-                    )}
-                  </section>
-                ))}
-              </Disclosure>
+                {guide.skills.map((agent) => {
+                  const unavailable = agent.skills.filter(({ status }) => status !== "found");
+                  return (
+                    <Disclosure
+                      key={agent.agent}
+                      label={t.planning.setup.skillSummary(
+                        agent.displayName,
+                        agent.skills.filter(({ status }) => status === "found").length,
+                        agent.skills.length,
+                        agent.skills.filter(({ status }) => status === "unknown").length,
+                      )}
+                    >
+                      <section
+                        aria-label={t.planning.setup.agentSkills(agent.displayName)}
+                        className="my-2 pl-4"
+                      >
+                        {!agent.skills.length ? (
+                          <p>{t.planning.setup.noSkills}</p>
+                        ) : !unavailable.length ? (
+                          <p>{t.planning.setup.allSkillsFound}</p>
+                        ) : null}
+                        {[...new Set(unavailable.map(({ workflowId }) => workflowId))].map(
+                          (workflowId) => {
+                            const skills = unavailable.filter(
+                              (skill) => skill.workflowId === workflowId,
+                            );
+                            const workflow = Object.hasOwn(workflows, workflowId)
+                              ? workflows[workflowId]
+                              : undefined;
+                            const builtIn = workflow && uncustomisedBuiltIn(workflow);
+                            return (
+                              <section key={workflowId} className="my-3">
+                                <h4 className="mb-2 text-sm font-medium">
+                                  {builtIn ? workflowName(workflow, t) : skills[0].workflow}
+                                </h4>
+                                <ul className="space-y-3">
+                                  {skills.map((skill) => {
+                                    const stage = workflow?.stages.find(
+                                      ({ id }) => id === skill.stageId,
+                                    );
+                                    return (
+                                      <li key={skill.stageId} className="text-sm">
+                                        {builtIn && stage
+                                          ? stageName(workflow, stage, t)
+                                          : skill.stage}
+                                        : <code>{skill.skill}</code> —{" "}
+                                        <strong>
+                                          {skill.status === "unknown"
+                                            ? t.planning.setup.unknown
+                                            : t.planning.setup.missing}
+                                        </strong>
+                                        {skill.installationHint && (
+                                          <p className="mt-1 text-muted">
+                                            {installationHint(skill.installationHint)}
+                                          </p>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </section>
+                            );
+                          },
+                        )}
+                      </section>
+                    </Disclosure>
+                  );
+                })}
+              </section>
             )}
           </>
         )}

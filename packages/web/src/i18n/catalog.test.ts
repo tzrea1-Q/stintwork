@@ -42,11 +42,13 @@ const samples: Record<string, unknown[][]> = {
   "planning.customise.title": [["Repo 原文"], ["功能"], ["Latin"]],
   "planning.customise.commit": [["Repo 原文"]],
   "planning.setup.committed": [["Repo 原文"]],
-  "planning.setup.summary": [
-    [0, 0],
-    [2, 4],
+  "planning.setup.replacesLines": [[1], [46]],
+  "planning.setup.skillSummary": [
+    ["Repo 原文", 10, 10, 0],
+    ["Repo 原文", 0, 10, 10],
+    ["Repo 原文", 1, 3, 1],
+    ["Repo 原文", 0, 0, 0],
   ],
-  "planning.setup.readyCount": [[0], [3]],
   "planning.setup.review": [[0], [4]],
   "planning.setup.changeLabel": [["Repo 原文"]],
   "planning.setup.preview": [["Repo 原文"]],

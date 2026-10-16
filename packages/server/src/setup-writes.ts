@@ -52,7 +52,12 @@ export function applySetup(root: string, files: RepoFiles, selected: readonly Se
     const entries = selected.map((change) => {
       const path = target(root, change.path);
       const proposal = plan.changes.find(({ path }) => path === change.path);
-      if (!proposal || proposal.before !== change.before || proposal.content !== change.content)
+      if (
+        !proposal ||
+        proposal.before !== change.before ||
+        proposal.content !== change.content ||
+        (proposal.requires && !selected.some(({ path }) => path === proposal.requires))
+      )
         throw new SetupWriteRefusal(`Setup preview changed for ${change.path}. Reopen the guide.`);
       const stat = lstatSync(path, { throwIfNoEntry: false });
       const indexEntry = git(["ls-files", "--stage", "--", change.path]);

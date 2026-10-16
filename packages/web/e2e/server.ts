@@ -27,7 +27,9 @@ process.once("SIGTERM", () => void stop());
 process.once("SIGINT", () => void stop());
 
 try {
-  await cp(fileURLToPath(new URL("./fixtures/project/", import.meta.url)), root, {
+  const fixture =
+    process.env.PLAYWRIGHT_FIXTURE === "github-project" ? "github-project" : "project";
+  await cp(fileURLToPath(new URL(`./fixtures/${fixture}/`, import.meta.url)), root, {
     recursive: true,
   });
   const git = (args: string[]) =>

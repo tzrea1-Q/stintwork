@@ -147,7 +147,7 @@ export function TopBar({
               <LanguageMenu />
               <DropdownMenuSeparator className="my-1 border-t border-border" />
               <DropdownMenuItem aria-haspopup="dialog" onSelect={() => setSetupOpen(true)}>
-                {t.topBar.projectSetup}…{" "}
+                {t.topBar.projectSetup}{" "}
                 <span className="ml-auto pl-4 text-muted">
                   {ready}/{checks.length}
                 </span>
