@@ -486,7 +486,7 @@ test.each([
       expect(screen.getByText(t.planning.setup.noAutomaticFix)).toBeVisible();
       expect(screen.getByText(t.planning.setup.statuses["needs-change"])).toBeVisible();
       expect(
-        screen.getByRole("button", { name: t.planning.setup.review(0), exact: true }),
+        screen.getByRole("button", { name: (name) => name === t.planning.setup.review(0) }),
       ).toBeDisabled();
     } else {
       expect(screen.getByText(t.planning.setup.noChanges)).toBeVisible();
