@@ -5,9 +5,11 @@ Local runs use installed Google Chrome (`PLAYWRIGHT_CHROME_CHANNEL=chrome`); CI 
 CI installs it with `pnpm --filter @stintwork/web exec playwright install --with-deps chromium`.
 
 The harness launches the real server from source using `sourceNodeArgs`, serves `packages/web/dist`,
-and copies `fixtures/project` into a temporary git repository. It skips agent detection and removes
-the repository and stops the server on shutdown. No login or external network is needed.
-Use `PLAYWRIGHT_PORT` to change the default port (4178); no existing server is reused.
+and copies `fixtures/project` and `fixtures/github-project` into separate temporary git repositories.
+The GitHub fixture is written from scratch and exercises Project setup against a declared tracker,
+not the contents of any real project. The harness skips agent detection and removes both repositories
+and stops both servers on shutdown. No login or external network is needed.
+Use `PLAYWRIGHT_PORT` to change the default ports (4178 and the following port); no existing server is reused.
 
 `assertLayout` checks document overflow, visible portalled overlays (16px gutters), and clipped text
 within its `region` (default `body`). Deliberate truncation requires `data-truncate` and a `title`

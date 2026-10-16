@@ -1,7 +1,7 @@
 # 07 — M8 exit
 
 Status: ready-for-human
-Blocked by: 06, 08, 09
+Blocked by: 06, 08, 09, 10
 
 ## What to build
 
@@ -23,3 +23,5 @@ M7 stays active. go-public 04 can start only after this exit passes and its own 
 **Coordinator, 2026-10-13:** The maintainer's walk-through found the Setup popover design unacceptable. Ticket 08 replaces it with a dialog organised by check; M8 exit now waits for both 06 and 08.
 
 **Coordinator, 2026-10-15:** The maintainer asked for a simpler top bar during the walk-through. Ticket 09 moves language and project setup into Settings, project warnings into Needs you, and milestone switching into the board toolbar; M8 exit now waits for 06, 08 and 09.
+
+**Coordinator, 2026-10-16:** The real-project Project setup review found unclear guidance and a pre-selected destructive tracker replacement. Ticket 10 preserves existing trackers by default and redesigns the dialog; M8 exit now waits for 06, 08, 09 and 10.

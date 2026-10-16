@@ -20,23 +20,29 @@ const existingInstructions = Array.from(
   (_, index) => `Existing instruction 原文 ${index + 1}\n`,
 ).join("");
 const guide = {
+  tracker: "local-markdown",
   checks: [
-    { id: "tracker", ready: true },
-    { id: "markdown", ready: true },
-    { id: "agents", ready: false },
-    { id: "glossary", ready: false },
-    { id: "adrs", ready: true },
+    { id: "tracker", ready: true, status: "ready" },
+    { id: "agents", ready: false, status: "needs-change" },
+    { id: "localRunData", ready: true, status: "ready" },
+    { id: "roadmap", ready: false, status: "optional" },
+    { id: "glossary", ready: false, status: "optional" },
+    { id: "adrs", ready: true, status: "ready" },
   ],
   changes: [
     {
       path: "AGENTS.md",
       checkId: "agents",
+      removedLines: 0,
+      selectedByDefault: true,
       before: `# Existing developer instructions\n${existingInstructions}`,
       content: `# Existing developer instructions\n${existingInstructions}${"A long proposed instruction 中文 ".repeat(150)}\n${"Another instruction 原文\n".repeat(40)}`,
     },
     {
       path: ".stintwork/roadmap.md",
       reasonId: "roadmap",
+      removedLines: 0,
+      selectedByDefault: true,
       before: null,
       content: "# Proposed roadmap\n",
     },
@@ -70,7 +76,7 @@ for (const language of ["en", "zh-CN"] as const) {
       : (["light"] as const)) {
       test(`top bar ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
         const t = language === "en" ? en : zhCN;
-        let setupState: "populated" | "loading" | "error" | "empty" = "populated";
+        let setupState: "populated" | "loading" | "error" | "empty" | "manual" = "populated";
         let emptyWarnings = false;
         let applied: unknown;
         let applyAttempts = 0;
@@ -144,8 +150,20 @@ for (const language of ["en", "zh-CN"] as const) {
             else
               await route.fulfill({
                 json:
-                  state === "empty"
-                    ? { checks: guide.checks, changes: [], warnings: [], skills: [] }
+                  state === "empty" || state === "manual"
+                    ? {
+                        ...guide,
+                        checks:
+                          state === "empty"
+                            ? guide.checks.map((check) =>
+                                check.status === "needs-change"
+                                  ? { ...check, ready: true, status: "ready" }
+                                  : check,
+                              )
+                            : guide.checks,
+                        changes: [],
+                        warnings: state === "empty" ? [] : guide.warnings,
+                      }
                     : guide,
               });
           }
@@ -357,7 +375,7 @@ for (const language of ["en", "zh-CN"] as const) {
         const openSetup = async () => {
           await setupTrigger.click();
           await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
-          const item = page.getByRole("menuitem", { name: `${t.topBar.projectSetup}… 3/5` });
+          const item = page.getByRole("menuitem", { name: `${t.topBar.projectSetup} 3/5` });
           await expect(item).toBeVisible();
           await item.click();
           await expect(page.locator(".setup-guide")).toHaveAttribute("data-state", "open");
@@ -372,9 +390,9 @@ for (const language of ["en", "zh-CN"] as const) {
             exact: true,
           }),
         ).toBeChecked();
-        await expect(setup).toHaveAccessibleDescription(t.planning.setup.summary(2, 2));
+        await expect(setup).toHaveAccessibleDescription(t.planning.setup.description);
         const setupBody = setup.locator(".setup-body");
-        const checks = setup.getByRole("list", { name: t.planning.setup.projectChecks });
+        const checks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
         await expect(checks).toBeVisible();
         const bodyBounds = await setupBody.boundingBox();
         const checksBounds = await checks.boundingBox();
@@ -385,7 +403,7 @@ for (const language of ["en", "zh-CN"] as const) {
         );
         await expect(
           checks.getByText(t.planning.setup.checks.agents.name, { exact: true }),
-        ).toBeInViewport({ ratio: 1 });
+        ).toBeVisible();
         const setupWarnings = setup.getByRole("alert", { name: t.warningCallout.title(2) });
         await expect(setupWarnings.getByText(warningFirstLine, { exact: true })).toBeVisible();
         await expect(setupWarnings.getByText("docs/中文.md:", { exact: false })).not.toBeVisible();
@@ -403,20 +421,19 @@ for (const language of ["en", "zh-CN"] as const) {
         await capture("setup-warnings-expanded", '[role="dialog"]');
         await page.keyboard.press("Enter");
         await expect(setupWarnings.getByText("docs/中文.md:", { exact: false })).not.toBeVisible();
-        await expect(setup.getByText(t.planning.setup.skillExplanation)).not.toBeVisible();
-        await setup.getByText(t.planning.setup.readyCount(3), { exact: true }).click();
+        await expect(setup.getByText(t.planning.setup.skillExplanation)).toBeVisible();
         await expect(
           setup.getByText(t.planning.setup.checks.tracker.name, { exact: true }),
         ).toBeVisible();
-        await capture("setup-ready-expanded", '[role="dialog"]');
-        await setup.getByText(t.planning.setup.readyCount(3), { exact: true }).click();
-        const skills = setup.getByText(t.planning.setup.skills, { exact: true });
+        const skills = setup.getByText(t.planning.setup.skillSummary("Codex", 0, 1, 0), {
+          exact: true,
+        });
         await skills.focus();
         await page.keyboard.press("Enter");
-        await expect(setup.getByText(t.planning.setup.skillExplanation)).toBeVisible();
+        await expect(setup.getByText("/to-spec", { exact: true })).toBeVisible();
         await capture("setup-skills-expanded", '[role="dialog"]');
         await page.keyboard.press("Enter");
-        await expect(setup.getByText(t.planning.setup.skillExplanation)).not.toBeVisible();
+        await expect(setup.getByText("/to-spec", { exact: true })).not.toBeVisible();
         const agentsChange = setup.getByRole("region", {
           name: t.planning.setup.changeLabel("AGENTS.md"),
           exact: true,
@@ -503,7 +520,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(setup).not.toBeVisible();
         await expect(setupTrigger).toBeFocused();
 
-        for (const state of ["loading", "error", "empty"] as const) {
+        for (const state of ["loading", "error", "empty", "manual"] as const) {
           setupState = state;
           await openSetup();
           await expect(setup).toBeVisible();
@@ -511,10 +528,30 @@ for (const language of ["en", "zh-CN"] as const) {
             await expect(setup.getByRole("status")).toHaveText(t.planning.setup.loading);
           else if (state === "error")
             await expect(setup.getByRole("alert")).toHaveText(t.planning.setup.errors.load);
-          else
+          else {
+            const checks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
+            const complete = setup.getByText(t.planning.setup.noChanges, { exact: true });
             await expect(
-              setup.getByText(t.planning.setup.noChanges, { exact: true }),
+              setup.getByText(t.planning.setup.skillSummary("Codex", 0, 1, 0), { exact: true }),
             ).toBeVisible();
+            await expect(setup.getByRole("checkbox")).toHaveCount(0);
+            if (state === "empty") {
+              await expect(complete).toBeVisible();
+              await expect(checks).toHaveCount(0);
+              await expect(
+                setup.getByRole("button", { name: t.planning.setup.close, exact: true }),
+              ).toBeEnabled();
+            } else {
+              await expect(complete).toHaveCount(0);
+              await expect(checks).toBeVisible();
+              await expect(
+                checks.getByText(t.planning.setup.noAutomaticFix, { exact: true }),
+              ).toBeVisible();
+              await expect(
+                setup.getByRole("button", { name: t.planning.setup.review(0), exact: true }),
+              ).toBeDisabled();
+            }
+          }
           await capture(`setup-${state}`, '[role="dialog"]');
           await expectFooter();
           if (state === "error") {
@@ -556,6 +593,89 @@ for (const language of ["en", "zh-CN"] as const) {
         await capture("warnings-empty", '[role="dialog"]');
         await page.mouse.click(4, 4);
         await expect(warnings).not.toBeVisible();
+      });
+    }
+  }
+}
+
+for (const language of ["en", "zh-CN"] as const) {
+  for (const width of [1440, 1024, 768, 390]) {
+    for (const colorScheme of width === 1440 || width === 390
+      ? (["light", "dark"] as const)
+      : (["light"] as const)) {
+      test(`GitHub Project setup ${width}px ${language} ${colorScheme}`, async ({
+        page,
+      }, testInfo) => {
+        const t = language === "en" ? en : zhCN;
+        const port = Number(process.env.PLAYWRIGHT_PORT ?? 4178) + 1;
+        const url = `http://127.0.0.1:${port}`;
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.addInitScript(
+          (choice) => localStorage.setItem("stintwork.language", choice),
+          language,
+        );
+        const response = await page.request.get(`${url}/api/setup`);
+        expect(response.ok()).toBe(true);
+        const plan = await response.json();
+        expect(plan.tracker).toBe("github-issues");
+        await page.goto(url);
+        const settings = page.getByRole("button", { name: t.topBar.settings });
+        await settings.click();
+        await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
+        await page.getByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) }).click();
+        const dialog = page.getByRole("dialog", { name: t.planning.setup.title });
+        await expect(dialog).toHaveAttribute("data-state", "open");
+        await expect(dialog).toHaveAccessibleDescription(t.planning.setup.githubNotice);
+        await expect(
+          dialog.getByText(t.planning.setup.githubTracker, { exact: true }),
+        ).toBeVisible();
+        for (const change of plan.changes.filter(
+          (change: { removedLines: number }) => change.removedLines > 0,
+        )) {
+          const region = dialog.getByRole("region", {
+            name: t.planning.setup.changeLabel(change.path),
+            exact: true,
+          });
+          await expect(region.getByRole("checkbox")).not.toBeChecked();
+          await expect(
+            region.getByText(t.planning.setup.replacesLines(change.removedLines)),
+          ).toBeVisible();
+        }
+        await expect(dialog.getByRole("checkbox", { name: "CLAUDE.md", exact: true })).toHaveCount(
+          0,
+        );
+        await assertLayout(page, { region: '[role="dialog"]' });
+        await page.screenshot({ path: testInfo.outputPath("github-setup.png"), fullPage: true });
+        const replacement = dialog.getByRole("checkbox", {
+          name: new RegExp(t.planning.setup.switchTracker),
+        });
+        await replacement.check();
+        await expect(
+          dialog.getByRole("checkbox", { name: "CLAUDE.md", exact: true }),
+        ).not.toBeChecked();
+        const selected = await dialog
+          .getByRole("checkbox")
+          .evaluateAll(
+            (inputs) => inputs.filter((input) => (input as HTMLInputElement).checked).length,
+          );
+        await dialog
+          .getByRole("button", { name: t.planning.setup.review(selected), exact: true })
+          .click();
+        const review = dialog.getByRole("region", { name: t.planning.setup.confirm });
+        await expect(review).toBeFocused();
+        const destructive = review.getByRole("region", { name: t.planning.setup.removesContent });
+        await expect(destructive).toBeVisible();
+        await expect(destructive.locator("details")).toHaveAttribute("open", "");
+        await expect(destructive.locator('[data-diff-kind="removed"]').first()).toBeVisible();
+        await assertLayout(page, { region: '[role="dialog"]' });
+        await page.screenshot({
+          path: testInfo.outputPath("github-setup-review.png"),
+          fullPage: true,
+        });
+        await page.keyboard.press("Escape");
+        await expect(dialog).not.toBeVisible();
+        await expect(settings).toBeFocused();
       });
     }
   }

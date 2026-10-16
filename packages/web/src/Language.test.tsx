@@ -8,6 +8,7 @@ import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { LanguageProvider, languageStorageKey, useErrorText, useLanguage } from "./i18n/language";
+import { zhCN } from "./i18n/zh-CN";
 
 const files = {
   ".scratch/example/spec.md": "# Repo title 中文",
@@ -340,7 +341,7 @@ test("warnings and setup checklist chrome translate without changing core warnin
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("button", { name: "设置" }));
   await user.click(await screen.findByRole("menuitem", { name: /项目设置/ }));
-  const setup = within(await screen.findByRole("dialog", { name: "设置项目" }));
+  const setup = within(await screen.findByRole("dialog", { name: "项目设置" }));
   expect(await setup.findByText("工单跟踪指南")).toBeInTheDocument();
   expect(setup.getByText("Agent 指令")).toBeInTheDocument();
   expect(setup.getByText("docs/agents/issue-tracker.md")).toBeInTheDocument();
@@ -424,7 +425,7 @@ test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
             workflow: definition.name,
             stage: stage.name,
             skill: stage.skill,
-            status: "found",
+            status: "missing",
           })),
     );
     vi.stubGlobal(
@@ -480,31 +481,35 @@ test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
     );
     await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(await screen.findByRole("menuitem", { name: /项目设置/ }));
-    const setup = await screen.findByRole("dialog", { name: "设置项目" });
-    await within(setup).findByText("无需更改设置文件。");
-    await user.click(within(setup).getByText("阶段技能可用性", { exact: true }));
+    const setup = await screen.findByRole("dialog", { name: "项目设置" });
+    await within(setup).findByText(zhCN.planning.setup.noChanges);
+    await user.click(
+      within(setup).getByText(
+        zhCN.planning.setup.skillSummary("Codex", 0, workflowSkills.length + 3, 3),
+        { exact: true },
+      ),
+    );
     const skills = within(await screen.findByRole("region", { name: "Codex 技能" }));
     const rows = skills.getAllByRole("listitem");
     expect(rows[0]).toHaveTextContent(
-      customisation === "built-in"
-        ? "功能 / 澄清:"
-        : `${workflow.name} / ${workflow.stages[0].name}:`,
+      customisation === "built-in" ? "澄清:" : `${workflow.stages[0].name}:`,
     );
     if (customisation === "built-in")
       for (const name of ["澄清", "规格说明", "工单", "实现", "审查"])
-        expect(skills.getByText(`功能 / ${name}:`, { exact: false })).toBeInTheDocument();
-    expect(skills.getByText("缺陷 / 诊断:", { exact: false })).toBeInTheDocument();
-    expect(skills.getByText("快速 / 执行:", { exact: false })).toBeInTheDocument();
-    expect(skills.getByText("Team 原文 / Design 原文:", { exact: false })).toBeInTheDocument();
-    expect(
-      skills.getByText("Unknown 原文 / Unknown stage 原文:", { exact: false }),
-    ).toBeInTheDocument();
-    expect(
-      skills.getByText(
-        `${customisation === "built-in" ? "功能" : workflow.name} / Extra stage 原文:`,
-        { exact: false },
-      ),
-    ).toBeInTheDocument();
+        expect(skills.getAllByText(`${name}:`, { exact: false }).length).toBeGreaterThan(0);
+    for (const name of [
+      customisation === "built-in" ? "功能" : workflow.name,
+      "缺陷",
+      "快速",
+      "Team 原文",
+      "Unknown 原文",
+    ])
+      expect(skills.getByRole("heading", { name })).toBeInTheDocument();
+    expect(skills.getByText("诊断:", { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("执行:", { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("Design 原文:", { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("Unknown stage 原文:", { exact: false })).toBeInTheDocument();
+    expect(skills.getByText("Extra stage 原文:", { exact: false })).toBeInTheDocument();
     for (const skill of workflowSkills)
       expect(skills.getAllByText(skill.skill as string).length).toBeGreaterThan(0);
   },

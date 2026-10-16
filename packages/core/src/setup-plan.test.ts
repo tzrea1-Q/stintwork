@@ -64,15 +64,31 @@ test("an existing Agent skills heading without the tracker pointer still gets a 
   expect(change?.content).toContain("docs/agents/issue-tracker.md");
 });
 
-test("a nonlocal tracker shows its current content and the proposed local replacement", () => {
+test("a nonlocal tracker offers only an opt-in destructive local replacement", () => {
   const plan = planSetup(
     createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "Use GitHub Issues." }),
   );
   expect(plan.changes[0]).toMatchObject({
-    checkId: "markdown",
+    checkId: "tracker",
     before: "Use GitHub Issues.",
     content: expect.stringContaining(".scratch/"),
+    removedLines: 1,
+    selectedByDefault: false,
   });
+  expect(plan.tracker).toBe("github-issues");
+  expect(plan.checks[0].status).toBe("other-tracker");
+  expect(plan.changes.filter(({ checkId }) => checkId === "agents")).toEqual([
+    expect.objectContaining({
+      path: "AGENTS.md",
+      selectedByDefault: false,
+      requires: setupPaths[0],
+    }),
+    expect.objectContaining({
+      path: "CLAUDE.md",
+      selectedByDefault: false,
+      requires: setupPaths[0],
+    }),
+  ]);
 });
 
 test("every proposal serves an attention check or an independent reason", () => {
@@ -86,9 +102,8 @@ test("every proposal serves an attention check or an independent reason", () => 
   ]);
   for (const change of plan.changes.filter(({ checkId }) => checkId))
     expect(plan.checks.find(({ id }) => id === change.checkId)?.ready).toBe(false);
-  expect(plan.checks).toContainEqual({ id: "markdown", ready: false });
-  expect(plan.checks).toContainEqual({ id: "glossary", ready: false });
-  expect(plan.checks).toContainEqual({ id: "adrs", ready: false });
+  expect(plan.checks).toContainEqual({ id: "glossary", ready: false, status: "optional" });
+  expect(plan.checks).toContainEqual({ id: "adrs", ready: false, status: "optional" });
 });
 
 test("unreadable and binary targets are warnings, not replacement proposals", () => {
@@ -103,4 +118,56 @@ test("unreadable and binary targets are warnings, not replacement proposals", ()
   expect(plan.changes.map(({ path }) => path)).not.toContain("AGENTS.md");
   expect(plan.changes.map(({ path }) => path)).not.toContain(".gitignore");
   expect(plan.warnings.map(({ path }) => path)).toEqual(["AGENTS.md", ".gitignore"]);
+});
+
+test.each([
+  "# Issue tracker: GitHub\n\nUse gh issue list.\nKeep labels and triage in GitHub.\n",
+  "# Issue tracker: Team queue\n\nUse the team's queue.\nKeep its routing rules.\n",
+  "",
+])("existing trackers are never switched by default: %j", (content) => {
+  const plan = planSetup(createMemoryRepoFiles({ [setupPaths[0]]: content }));
+  const replacement = plan.changes.find(({ path }) => path === setupPaths[0]);
+  expect(replacement).toMatchObject({ before: content, selectedByDefault: false });
+  expect(replacement?.removedLines).toBe(content ? 3 : 0);
+  const defaults = plan.changes.filter(({ selectedByDefault }) => selectedByDefault);
+  expect(defaults.map(({ path }) => path)).toEqual([".gitignore", ".stintwork/roadmap.md"]);
+  expect(defaults.every(({ removedLines }) => removedLines === 0)).toBe(true);
+});
+
+test("a local guide is preserved, appends remove no lines, and new pointers require a tracker", () => {
+  const content = "# Issue tracker: Local Markdown\n\nTickets live in .scratch/.\n";
+  const plan = planSetup(
+    createMemoryRepoFiles({ [setupPaths[0]]: content, "AGENTS.md": "# Rules\n" }),
+  );
+  expect(plan.changes.some(({ path }) => path === setupPaths[0])).toBe(false);
+  expect(
+    plan.changes.every(({ removedLines, selectedByDefault }) => !removedLines && selectedByDefault),
+  ).toBe(true);
+  expect(plan.changes.find(({ path }) => path === "AGENTS.md")?.requires).toBeUndefined();
+  expect(
+    planSetup(createMemoryRepoFiles({})).changes.find(({ path }) => path === "AGENTS.md"),
+  ).toMatchObject({ requires: setupPaths[0], selectedByDefault: true });
+});
+
+test.each([
+  "# Rules\n\n## Agent skills\n\n### Issue tracker\nUse docs/team-queue.md.\n",
+  "# Rules\n\nUse GitHub Issues and gh issue view.\n",
+  "# Rules\n\nSee [Ticket tracker](docs/team-queue.md).\n",
+  "# Rules\n\nSee docs/agents/issue-tracker.md.\n",
+])("never duplicates or rewrites an existing tracker pointer: %j", (content) => {
+  const plan = planSetup(
+    createMemoryRepoFiles({
+      "AGENTS.md": content,
+      [setupPaths[0]]: "# Issue tracker: GitHub\n\nUse gh issue list.\n",
+    }),
+  );
+  expect(plan.changes.some(({ path }) => path === "AGENTS.md")).toBe(false);
+});
+
+test("removed-line metadata matches the diff, including an unterminated appended line", () => {
+  const plan = planSetup(createMemoryRepoFiles({ "AGENTS.md": "Keep this unterminated line" }));
+  expect(plan.changes.find(({ path }) => path === "AGENTS.md")).toMatchObject({
+    removedLines: 1,
+    selectedByDefault: false,
+  });
 });

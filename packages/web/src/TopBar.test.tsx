@@ -135,7 +135,7 @@ test("complete setup removes the warning description and keeps its count in Sett
   expect(trigger).not.toHaveAttribute("aria-describedby");
   expect(trigger.querySelector("[data-warning-dot]")).not.toBeInTheDocument();
   await user.click(trigger);
-  expect(await screen.findByRole("menuitem", { name: /Project setup…/ })).toHaveTextContent("5/5");
+  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("5/5");
 });
 
 test("the top bar exposes only the three actions and announces warnings without adding them to the count", async () => {

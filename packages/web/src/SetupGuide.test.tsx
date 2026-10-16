@@ -115,26 +115,36 @@ test.each(["en", "zh-CN"] as const)(
     renderSetup();
     const { dialog, trigger, t } = await open(user, language);
     const panel = within(dialog);
-    expect(dialog).toHaveAccessibleDescription(t.planning.setup.summary(5, 5));
+    expect(dialog).toHaveAccessibleDescription(t.planning.setup.description);
     const warning = panel.getByRole("alert", { name: t.warningCallout.title(1) });
     expect(within(warning).getByText("Core warning 原文", { exact: true })).toBeVisible();
     expect(within(warning).getByText("docs/中文.md: Core warning 原文")).not.toBeVisible();
     await user.click(within(warning).getByText(t.warningCallout.details));
     expect(within(warning).getByText("docs/中文.md: Core warning 原文")).toBeVisible();
     await user.click(within(warning).getByText(t.warningCallout.details));
-    expect(panel.getByRole("list", { name: t.planning.setup.projectChecks })).toBeVisible();
+    expect(panel.getByRole("group", { name: t.planning.setup.projectChecks })).toBeVisible();
+    for (const name of Object.values(t.planning.setup.groups))
+      expect(panel.getByRole("region", { name })).toBeVisible();
+    const optional = panel.getByRole("region", { name: t.planning.setup.groups.optional });
+    expect(
+      within(optional).queryByText(t.planning.setup.statuses["needs-change"]),
+    ).not.toBeInTheDocument();
     expect(panel.getByText(t.planning.setup.checks.glossary.manual)).toBeVisible();
     expect(panel.getByText(t.planning.setup.checks.adrs.manual)).toBeVisible();
-    expect(panel.getByText(t.planning.setup.trackerFix)).toBeVisible();
     expect(panel.getByText(t.planning.setup.reasons.localRunData.why)).toBeVisible();
     for (const change of initial.changes)
       expect(panel.getAllByText(change.path, { exact: true })).toHaveLength(1);
-    expect(panel.getByText(t.planning.setup.skillExplanation)).not.toBeVisible();
-    await user.click(panel.getByText(t.planning.setup.skills, { exact: true }));
     expect(panel.getByText(t.planning.setup.skillExplanation)).toBeVisible();
+    const claudeSummary = panel.getByText(t.planning.setup.skillSummary("Claude Code", 1, 2, 0));
+    const grokSummary = panel.getByText(t.planning.setup.skillSummary("Grok Build", 0, 1, 1));
+    expect(claudeSummary.closest("details")).not.toHaveAttribute("open");
+    expect(grokSummary.closest("details")).not.toHaveAttribute("open");
+    await user.click(claudeSummary);
     expect(
       panel.getByRole("region", { name: t.planning.setup.agentSkills("Claude Code") }),
-    ).toHaveTextContent(`/to-spec — ${t.planning.setup.found}`);
+    ).toHaveTextContent(`/to-tickets — ${t.planning.setup.missing}`);
+    expect(panel.queryByText("/to-spec", { exact: true })).not.toBeInTheDocument();
+    await user.click(grokSummary);
     expect(
       panel.getByRole("region", { name: t.planning.setup.agentSkills("Grok Build") }),
     ).toHaveTextContent(`/design — ${t.planning.setup.unknown}`);
@@ -169,36 +179,128 @@ test("preview disclosures are independent and preserve long developer content", 
   expect(roadmap.querySelector("details")).not.toHaveAttribute("open");
 });
 
-test("an existing nonlocal tracker puts its fix under local Markdown, not the ready guide", async () => {
-  const contents = Object.fromEntries(
-    planSetup(createMemoryRepoFiles({})).changes.map(({ path, content }) => [path, content]),
-  );
+test("an unknown tracker gets a plain notice and is untouched by default confirmation", async () => {
   const initial = {
     ...guide(),
     ...planSetup(
       createMemoryRepoFiles({
-        ...contents,
-        "docs/agents/issue-tracker.md": "Use GitHub Issues.",
-        "GLOSSARY.md": "# Project terms",
-        "docs/adr/0001-choice.md": "# A decision",
+        "docs/agents/issue-tracker.md": "# Issue tracker: Team queue\n\nUse the team queue.\n",
       }),
     ),
   };
-  initial.skills = [];
+  const fetch = server(initial);
+  const user = userEvent.setup();
+  renderSetup();
+  await user.click(screen.getByRole("button", { name: en.topBar.settings }));
+  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
+  const dialog = await screen.findByRole("dialog", { name: en.planning.setup.title });
+  await within(dialog).findByRole("checkbox", {
+    name: new RegExp(en.planning.setup.switchTracker),
+  });
+  expect(dialog).toHaveAccessibleDescription(en.planning.setup.otherNotice);
+  await user.click(within(dialog).getByRole("button", { name: en.planning.setup.review(2) }));
+  await user.click(within(dialog).getByRole("button", { name: en.planning.setup.apply }));
+  const posted = JSON.parse(String(fetch.mock.calls.at(-1)?.[1]?.body));
+  expect(posted.changes.map(({ path }: { path: string }) => path)).toEqual([
+    ".gitignore",
+    ".stintwork/roadmap.md",
+  ]);
+});
+
+test("all-found skills stay a single collapsed agent summary, not stage rows", async () => {
+  const initial = guide();
+  initial.skills = [
+    {
+      agent: "codex",
+      displayName: "Codex",
+      skills: Array.from({ length: 10 }, (_, index) => ({
+        workflowId: "feature",
+        workflow: "Feature",
+        stageId: String(index),
+        stage: `Stage ${index}`,
+        skill: `/stage-${index}`,
+        status: "found",
+      })),
+    },
+  ];
   server(initial);
   const user = userEvent.setup();
   renderSetup();
-  await user.click(screen.getByRole("button", { name: "Settings" }));
-  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
-  const checkbox = await screen.findByRole("checkbox", { name: "docs/agents/issue-tracker.md" });
-  const row = checkbox.closest("li");
-  if (!row) throw new Error("Missing check row");
-  expect(within(row).getByText(en.planning.setup.checks.markdown.name)).toBeVisible();
-  expect(screen.getByText(en.planning.setup.checks.tracker.name)).not.toBeVisible();
-  expect(screen.getByRole("dialog")).toHaveAccessibleDescription(en.planning.setup.summary(1, 1));
-  await user.click(screen.getByText(en.planning.setup.skills, { exact: true }));
-  expect(screen.getByText(en.planning.setup.noSkills)).toBeVisible();
+  const { dialog } = await open(user);
+  const summary = within(dialog).getByText(en.planning.setup.skillSummary("Codex", 10, 10, 0));
+  expect(summary).toBeVisible();
+  expect(summary.closest("details")).not.toHaveAttribute("open");
+  expect(within(dialog).queryByText("/stage-0")).not.toBeInTheDocument();
+  await user.click(summary);
+  const skills = within(dialog).getByRole("region", {
+    name: en.planning.setup.agentSkills("Codex"),
+  });
+  expect(within(skills).getByText(en.planning.setup.allSkillsFound)).toBeVisible();
+  expect(within(skills).queryByRole("listitem")).not.toBeInTheDocument();
+  expect(within(dialog).getAllByText(en.planning.setup.skillExplanation)).toHaveLength(1);
 });
+
+test.each(["en", "zh-CN"] as const)(
+  "%s preserves GitHub tracking by default and reviews explicit destructive changes",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const tracker = "# Issue tracker: GitHub\n\nUse gh issue list to choose work.\n";
+    const initial = {
+      ...guide(),
+      ...planSetup(createMemoryRepoFiles({ "docs/agents/issue-tracker.md": tracker })),
+    };
+    const fetch = server(initial);
+    const user = userEvent.setup();
+    renderSetup();
+    const t = language === "en" ? en : zhCN;
+    await user.click(screen.getByRole("button", { name: t.topBar.settings }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: t.planning.setup.title });
+    let checkbox = await within(dialog).findByRole("checkbox", {
+      name: new RegExp(t.planning.setup.switchTracker),
+    });
+    expect(dialog).toHaveAccessibleDescription(t.planning.setup.githubNotice);
+    expect(within(dialog).getByText(t.planning.setup.githubTracker)).toBeVisible();
+    expect(checkbox).not.toBeChecked();
+    expect(within(dialog).getByText(t.planning.setup.replacesLines(2))).toHaveClass("text-danger");
+    expect(within(dialog).queryByRole("checkbox", { name: "AGENTS.md" })).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: t.planning.setup.review(2) }));
+    expect(
+      within(dialog).queryByRole("region", { name: t.planning.setup.removesContent }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("docs/agents/issue-tracker.md", { exact: true }),
+    ).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: t.planning.setup.back }));
+    checkbox = within(dialog).getByRole("checkbox", {
+      name: new RegExp(t.planning.setup.switchTracker),
+    });
+    await user.click(checkbox);
+    expect(within(dialog).getByRole("checkbox", { name: "AGENTS.md" })).not.toBeChecked();
+    await user.click(within(dialog).getByRole("checkbox", { name: "AGENTS.md" }));
+    await user.click(checkbox);
+    expect(within(dialog).queryByRole("checkbox", { name: "AGENTS.md" })).not.toBeInTheDocument();
+    await user.click(checkbox);
+    expect(within(dialog).getByRole("checkbox", { name: "AGENTS.md" })).not.toBeChecked();
+    await user.click(within(dialog).getByRole("button", { name: t.planning.setup.review(3) }));
+    const destructive = within(dialog).getByRole("region", {
+      name: t.planning.setup.removesContent,
+    });
+    expect(destructive).toBeVisible();
+    expect(within(destructive).getByText(t.planning.setup.replacesLines(2))).toBeVisible();
+    expect(destructive.querySelector("details")).toHaveAttribute("open");
+    expect(destructive.querySelector('[data-diff-kind="removed"]')).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: t.planning.setup.apply }));
+    const posted = JSON.parse(String(fetch.mock.calls.at(-1)?.[1]?.body));
+    expect(posted.changes.map(({ path }: { path: string }) => path)).toEqual([
+      "docs/agents/issue-tracker.md",
+      ".gitignore",
+      ".stintwork/roadmap.md",
+    ]);
+  },
+);
 
 test("loading offers only Cancel and becomes selectable after the preview arrives", async () => {
   let release = (_response: Response) => {};
@@ -230,14 +332,17 @@ test("keyboard selection reviews only selected diffs, goes back and commits afte
   const { trigger } = await open(user);
   for (const checkbox of screen.getAllByRole("checkbox")) await user.click(checkbox);
   expect(screen.getByRole("button", { name: en.planning.setup.review(0) })).toBeDisabled();
+  await user.click(screen.getByRole("checkbox", { name: "docs/agents/issue-tracker.md" }));
   screen.getByRole("checkbox", { name: "AGENTS.md" }).focus();
   await user.keyboard(" ");
-  await user.click(screen.getByRole("button", { name: en.planning.setup.review(1) }));
+  await user.click(screen.getByRole("button", { name: en.planning.setup.review(2) }));
   const review = await screen.findByRole("region", { name: en.planning.setup.confirm });
   expect(review).toHaveFocus();
   expect(within(review).getByText("AGENTS.md")).toBeVisible();
   expect(within(review).queryByText("CLAUDE.md")).not.toBeInTheDocument();
-  const diff = within(review).getByRole("region", { name: en.codeBlock });
+  const diff = within(review).getByRole("region", {
+    name: en.planning.setup.changeLabel("AGENTS.md"),
+  });
   expect(diff).toHaveTextContent("@@");
   expect(diff.querySelectorAll('[data-diff-kind="added"]').length).toBeGreaterThan(0);
   expect(diff.querySelector('[data-diff-kind="context"]')).toHaveTextContent("# Developer rules");
@@ -245,7 +350,7 @@ test("keyboard selection reviews only selected diffs, goes back and commits afte
   expect(fetch).toHaveBeenCalledTimes(1);
   await user.click(screen.getByRole("button", { name: en.planning.setup.back }));
   expect(screen.getByRole("checkbox", { name: "AGENTS.md" })).toBeChecked();
-  await user.click(screen.getByRole("button", { name: en.planning.setup.review(1) }));
+  await user.click(screen.getByRole("button", { name: en.planning.setup.review(2) }));
   await user.click(screen.getByRole("button", { name: en.planning.setup.apply }));
   expect(await screen.findByRole("status")).toHaveTextContent(
     en.planning.setup.committed("aaaaaaa"),
@@ -258,7 +363,9 @@ test("keyboard selection reviews only selected diffs, goes back and commits afte
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       confirmed: true,
-      changes: guide().changes.filter(({ path }) => path === "AGENTS.md"),
+      changes: guide().changes.filter(
+        ({ path }) => path === "AGENTS.md" || path === "docs/agents/issue-tracker.md",
+      ),
     }),
   });
   await user.click(screen.getByRole("button", { name: en.planning.setup.close }));
@@ -345,23 +452,53 @@ test.each(["cancel", "escape", "outside"])(
   },
 );
 
-test("ready checks fold together and empty setup offers Close, not a write", async () => {
-  const initial = guide();
-  initial.changes = [];
-  initial.checks = initial.checks.map((check) => ({ ...check, ready: true }));
-  server(initial);
-  const user = userEvent.setup();
-  renderSetup();
-  await user.click(screen.getByRole("button", { name: "Settings" }));
-  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
-  expect(await screen.findByText(en.planning.setup.noChanges)).toBeVisible();
-  expect(screen.getByText(en.planning.setup.checks.glossary.name)).not.toBeVisible();
-  await user.click(screen.getByText(en.planning.setup.readyCount(5)));
-  expect(screen.getByText(en.planning.setup.checks.glossary.name)).toBeVisible();
-  expect(screen.getAllByText(en.planning.setup.ready, { exact: true })).toHaveLength(5);
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: en.planning.setup.close })).toBeEnabled();
-});
+test.each([
+  ["en", false],
+  ["zh-CN", false],
+  ["en", true],
+  ["zh-CN", true],
+] as const)(
+  "%s setup without proposals retains skills and respects manual attention: %s",
+  async (language, needsManualChange) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    const initial = guide();
+    initial.changes = [];
+    initial.checks = initial.checks.map((check) =>
+      check.status === "needs-change" && !(needsManualChange && check.id === "agents")
+        ? { ...check, ready: true, status: "ready" }
+        : check,
+    );
+    const fetch = server(initial);
+    const user = userEvent.setup();
+    renderSetup();
+    await user.click(screen.getByRole("button", { name: t.topBar.settings }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) }),
+    );
+    expect(
+      await screen.findByText(t.planning.setup.skillSummary("Claude Code", 1, 2, 0)),
+    ).toBeVisible();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    if (needsManualChange) {
+      expect(screen.queryByText(t.planning.setup.noChanges)).not.toBeInTheDocument();
+      expect(screen.getByRole("group", { name: t.planning.setup.projectChecks })).toBeVisible();
+      expect(screen.getByText(t.planning.setup.noAutomaticFix)).toBeVisible();
+      expect(screen.getByText(t.planning.setup.statuses["needs-change"])).toBeVisible();
+      expect(
+        screen.getByRole("button", { name: (name) => name === t.planning.setup.review(0) }),
+      ).toBeDisabled();
+    } else {
+      expect(screen.getByText(t.planning.setup.noChanges)).toBeVisible();
+      expect(
+        screen.queryByRole("group", { name: t.planning.setup.projectChecks }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: t.planning.setup.close })).toBeEnabled();
+    }
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]?.method).not.toBe("POST");
+  },
+);
 
 test.each(["network", "server", "invalid"])(
   "%s load failure offers retry without file writes",

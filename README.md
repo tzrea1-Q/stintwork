@@ -56,7 +56,7 @@ The CLI supports `--no-open`, `--help` and `--version`. With `--no-open`, open t
 ## Features
 
 - **Pipeline board:** stages and a **Needs you** queue for questions, permission requests, gate approvals and memory proposals.
-- **Guided setup:** the **Setup** button at the top of the board previews files to add or change. Select the changes and confirm one commit. Skill detection reports found, missing or can't tell; it does not install skills.
+- **Project setup:** open **Settings → Project setup** to preview files to add or change. Existing trackers stay unchanged by default; replacements require opt-in and show how many lines they remove. Select the changes and confirm one commit. Collapsed agent summaries report skill availability; they do not install skills.
 - **Permissions per stint:** choose **Ask**, **Edit freely** or **Autonomous**. Read the agent-specific warnings in the brief preview; these levels depend on the agent and are not an independent security boundary.
 - **Custom workflows:** **Customise** copies a built-in to `.stintwork/workflows/` for you to edit its YAML.
 - **Roadmap editing:** **Edit roadmap** changes milestones and their work items, with one commit per edit.

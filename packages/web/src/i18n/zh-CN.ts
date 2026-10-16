@@ -223,13 +223,24 @@ export const zhCN: Catalog = {
       cancel: "取消",
     },
     setup: {
-      title: "设置项目",
+      title: "项目设置",
       complete: "所选更改已提交。",
-      summary: (attention: number, files: number) =>
-        `${attention} 项需要处理 · 将修改 ${files} 个文件，一次提交`,
       ready: "已就绪",
-      needsAttention: "需要处理",
-      readyCount: (count: number) => `${count} 项已就绪`,
+      statuses: {
+        ready: "已就绪",
+        "needs-change": "需要更改",
+        optional: "可选",
+        "other-tracker": "使用其他跟踪器",
+      },
+      groups: { required: "必需", recommended: "推荐", optional: "锦上添花" },
+      githubNotice:
+        "此项目使用 GitHub Issues。Stintwork 目前仅显示本地 Markdown 中的工单；读取 GitHub Issues 已列入计划。",
+      otherNotice:
+        "此项目使用其他跟踪器。Stintwork 目前仅显示本地 Markdown 中的工单；读取 GitHub Issues 已列入计划。",
+      githubTracker: "使用 GitHub Issues",
+      switchTracker: "切换到本地 Markdown",
+      replacesLines: (count: number) => `替换 ${count} 行`,
+      removesContent: "以下更改将移除现有内容",
       previewDiff: "预览差异",
       projectChecks: "项目检查",
       noContentChanges: "内容没有更改。",
@@ -237,21 +248,19 @@ export const zhCN: Catalog = {
       close: "关闭",
       retry: "重试",
       saving: "正在提交…",
-      trackerFix: "选择上方的工单跟踪指南更改，同时启用本地 Markdown 跟踪。",
       noAutomaticFix: "没有安全的自动更改。请先查看项目警告，再自行编辑。",
       checks: {
         tracker: { name: "工单跟踪指南", why: "告诉 Agent 在哪里读取和编写工单。" },
-        markdown: { name: "本地 Markdown 跟踪", why: "将工作项、规格说明和工单保留在项目记录中。" },
         agents: { name: "Agent 指令", why: "将 Agent 指令连接到工单跟踪指南。" },
         glossary: {
           name: "术语表",
           why: "为 Agent 提供统一的项目用语。",
-          manual: "设置不会创建术语表：术语需要你提供项目领域知识。",
+          manual: "项目设置不会创建术语表：术语需要你提供项目领域知识。",
         },
         adrs: {
           name: "决策记录",
           why: "为下一次 Stint 保留决策及其原因。",
-          manual: "设置不会编写决策记录：需要实际的项目决策及其原因。",
+          manual: "项目设置不会编写决策记录：需要实际的项目决策及其原因。",
         },
       },
       reasons: {
@@ -259,25 +268,26 @@ export const zhCN: Catalog = {
         roadmap: { name: "里程碑路线图", why: "创建里程碑路线图。" },
       },
       errors: {
-        load: "无法加载设置。",
-        apply: "无法应用设置。",
+        load: "无法加载项目设置。",
+        apply: "无法应用项目设置。",
       },
-      committed: (commit: string) => joinChinese("设置已提交：", commit, "。"),
-      description: "选择更改并确认后才会修改文件。只写入项目文件。",
+      committed: (commit: string) => joinChinese("项目设置已提交：", commit, "。"),
+      description:
+        "Stintwork 从 .scratch/ 中的本地 Markdown 查找工作项，Agent 通过 AGENTS.md 找到跟踪器。项目设置帮助连接这些文件，并避免将本地运行数据纳入 Git；审查并确认后才会写入。",
       changes: "拟议文件更改",
       current: "当前内容",
       proposed: "拟议内容",
-      confirm: "确认设置",
+      confirm: "确认项目设置",
       refusal: "目标文件存在未提交的更改时将拒绝写入。不会更改其他文件。",
       apply: "确认并提交",
       back: "返回选择",
       review: (count: number) => `审查更改（${count}）`,
-      noChanges: "无需更改设置文件。",
+      noChanges: "此项目已为 Stintwork 设置就绪。",
       skills: "阶段技能可用性",
       skillExplanation:
         "只读检查声明的技能位置。已找到仅表示文件存在，不代表技能经过测试。不会检查其他目录布局。Stintwork 不会安装技能或更改 Agent 配置。",
       noSkills: "已加载的工作流中没有阶段技能。",
-      loading: "正在加载设置…",
+      loading: "正在加载项目设置…",
       create: "创建",
       change: "更改",
       unknown: "无法确定",
@@ -287,6 +297,11 @@ export const zhCN: Catalog = {
       preview: (path: string) => joinChinese("预览", path),
       write: (count: number) => joinChinese("在一次提交中写入", count, "个所选文件："),
       agentSkills: (name: string) => joinChinese(name, "技能"),
+      skillSummary: (name: string, found: number, total: number, unknown: number) =>
+        unknown === total && total > 0
+          ? joinChinese(name, "：无法检查")
+          : joinChinese(name, `：共 ${total} 项，已找到 ${found} 项`),
+      allSkillsFound: "所有阶段技能均已找到。",
       installHint: (agent: string, skill: string, locations: string | undefined) =>
         joinChinese(
           "使用 npx skills@latest add mattpocock/skills，选择",

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { detectSetup } from "./setup.js";
+import type { SetupReport } from "./setup.js";
+import { unifiedLineDiff } from "./line-diff.js";
 import type { RepoFiles, Warning } from "./work-items.js";
 
 export const setupPaths = [
@@ -14,14 +16,22 @@ export type SetupChange = {
   path: (typeof setupPaths)[number];
   before: string | null;
   content: string;
+  removedLines: number;
+  selectedByDefault: boolean;
+  requires?: (typeof setupPaths)[number];
   checkId?: SetupCheckId;
   reasonId?: "localRunData" | "roadmap";
 };
-export type SetupCheckId = "tracker" | "markdown" | "agents" | "glossary" | "adrs";
+export type SetupCheckId = "tracker" | "agents" | "localRunData" | "roadmap" | "glossary" | "adrs";
 export type SetupPlan = {
+  tracker: SetupReport["tracker"];
   changes: SetupChange[];
   warnings: Warning[];
-  checks: { id: SetupCheckId; ready: boolean }[];
+  checks: {
+    id: SetupCheckId;
+    ready: boolean;
+    status: "ready" | "needs-change" | "optional" | "other-tracker";
+  }[];
 };
 
 const tracker = `# Issue tracker: Local Markdown
@@ -58,7 +68,17 @@ function append(existing: string | null, block: string) {
 
 export function planSetup(files: RepoFiles): SetupPlan {
   const setup = detectSetup(files);
-  const plan: SetupPlan = { changes: [], warnings: [...setup.warnings], checks: [] };
+  const plan: SetupPlan = {
+    tracker: setup.tracker,
+    changes: [],
+    warnings: [...setup.warnings],
+    checks: [],
+  };
+  const switching = setup.hasIssueTracker && !setup.usesLocalMarkdown;
+  let hasPointer = false;
+  let hasOtherPointer = false;
+  let ignoresLocalRunData = false;
+  let hasRoadmap = false;
   for (const path of setupPaths) {
     try {
       const before = files.read(path) ?? null;
@@ -66,43 +86,77 @@ export function planSetup(files: RepoFiles): SetupPlan {
         throw new Error("File contains binary or invalid text");
       let content = before;
       if (path === setupPaths[0] && !setup.usesLocalMarkdown) content = tracker;
-      if (
-        path === "AGENTS.md" &&
-        !(before && /^## Agent skills\s*$/m.test(before) && before.includes(setupPaths[0]))
-      )
-        content = append(before, agentSkills);
+      if (path === "AGENTS.md") {
+        hasPointer = before?.includes(setupPaths[0]) ?? false;
+        hasOtherPointer =
+          !hasPointer &&
+          /\b(?:issue|ticket)[ -]tracker\b|\bgithub\s+issues\b|\bgh\s+issue\b/i.test(before ?? "");
+        if (!hasPointer && !hasOtherPointer) content = append(before, agentSkills);
+      }
       if (path === "CLAUDE.md" && before === null) content = "@AGENTS.md\n";
-      if (path === ".gitignore" && !/^\/?\.stintwork\/local\/?\s*$/m.test(before ?? ""))
-        content = append(before, ".stintwork/local/\n");
-      if (path === ".stintwork/roadmap.md" && before === null)
-        content = "# Roadmap\n\n## First milestone\nId: first-milestone\nStatus: planned\n";
+      if (path === ".gitignore") {
+        ignoresLocalRunData = /^\/?\.stintwork\/local\/?\s*$/m.test(before ?? "");
+        if (!ignoresLocalRunData) content = append(before, ".stintwork/local/\n");
+      }
+      if (path === ".stintwork/roadmap.md") {
+        hasRoadmap = before !== null;
+        if (!hasRoadmap)
+          content = "# Roadmap\n\n## First milestone\nId: first-milestone\nStatus: planned\n";
+      }
       if (content !== before && content !== null) {
         const purpose =
           path === setupPaths[0]
-            ? { checkId: setup.hasIssueTracker ? ("markdown" as const) : ("tracker" as const) }
+            ? { checkId: "tracker" as const }
             : path === "AGENTS.md" || path === "CLAUDE.md"
               ? { checkId: "agents" as const }
               : {
                   reasonId:
                     path === ".gitignore" ? ("localRunData" as const) : ("roadmap" as const),
                 };
-        plan.changes.push({ path, before, content, ...purpose });
+        const removedLines = unifiedLineDiff(before, content).reduce(
+          (count, hunk) => count + hunk.lines.filter(({ kind }) => kind === "removed").length,
+          0,
+        );
+        const requires =
+          !setup.usesLocalMarkdown && (path === "AGENTS.md" || path === "CLAUDE.md")
+            ? setupPaths[0]
+            : undefined;
+        plan.changes.push({
+          path,
+          before,
+          content,
+          removedLines,
+          selectedByDefault: !removedLines && !(switching && (requires || path === setupPaths[0])),
+          ...(requires ? { requires } : {}),
+          ...purpose,
+        });
       }
     } catch (error) {
       plan.warnings.push({ path, message: `Cannot propose setup: ${String(error)}` });
     }
   }
   plan.checks = [
-    { id: "tracker", ready: setup.hasIssueTracker },
-    { id: "markdown", ready: setup.usesLocalMarkdown },
+    {
+      id: "tracker",
+      ready: setup.usesLocalMarkdown,
+      status: switching ? "other-tracker" : setup.usesLocalMarkdown ? "ready" : "needs-change",
+    },
     {
       id: "agents",
-      ready:
-        (setup.hasAgents || setup.hasClaude) &&
-        !plan.changes.some(({ checkId }) => checkId === "agents"),
+      ready: hasPointer && !plan.changes.some(({ checkId }) => checkId === "agents"),
+      status:
+        switching || hasOtherPointer
+          ? "other-tracker"
+          : hasPointer && !plan.changes.some(({ checkId }) => checkId === "agents")
+            ? "ready"
+            : "needs-change",
     },
-    { id: "glossary", ready: setup.hasGlossary },
-    { id: "adrs", ready: setup.hasAdrs },
+    ...(["localRunData", "roadmap"] as const).map((id) => {
+      const ready = id === "localRunData" ? ignoresLocalRunData : hasRoadmap;
+      return { id, ready, status: ready ? ("ready" as const) : ("optional" as const) };
+    }),
+    { id: "glossary", ready: setup.hasGlossary, status: setup.hasGlossary ? "ready" : "optional" },
+    { id: "adrs", ready: setup.hasAdrs, status: setup.hasAdrs ? "ready" : "optional" },
   ];
   return plan;
 }

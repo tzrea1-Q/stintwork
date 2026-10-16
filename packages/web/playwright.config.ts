@@ -20,16 +20,20 @@ export default defineConfig({
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },
-  webServer: {
+  webServer: ["project", "github-project"].map((fixture, index) => ({
     command: [
       process.execPath,
       ...sourceNodeArgs(fileURLToPath(new URL("./e2e/server.ts", import.meta.url))),
     ]
       .map((argument) => JSON.stringify(argument))
       .join(" "),
-    url: `http://127.0.0.1:${port}/api/health`,
-    env: { PLAYWRIGHT_PORT: String(port), STINTWORK_SKIP_AGENT_DETECTION: "1" },
+    url: `http://127.0.0.1:${port + index}/api/health`,
+    env: {
+      PLAYWRIGHT_PORT: String(port + index),
+      PLAYWRIGHT_FIXTURE: fixture,
+      STINTWORK_SKIP_AGENT_DETECTION: "1",
+    },
     reuseExistingServer: false,
     gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
-  },
+  })),
 });
