@@ -76,7 +76,7 @@ for (const language of ["en", "zh-CN"] as const) {
       : (["light"] as const)) {
       test(`top bar ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
         const t = language === "en" ? en : zhCN;
-        let setupState: "populated" | "loading" | "error" | "empty" = "populated";
+        let setupState: "populated" | "loading" | "error" | "empty" | "manual" = "populated";
         let emptyWarnings = false;
         let applied: unknown;
         let applyAttempts = 0;
@@ -150,13 +150,19 @@ for (const language of ["en", "zh-CN"] as const) {
             else
               await route.fulfill({
                 json:
-                  state === "empty"
+                  state === "empty" || state === "manual"
                     ? {
-                        tracker: guide.tracker,
-                        checks: guide.checks,
+                        ...guide,
+                        checks:
+                          state === "empty"
+                            ? guide.checks.map((check) =>
+                                check.status === "needs-change"
+                                  ? { ...check, ready: true, status: "ready" }
+                                  : check,
+                              )
+                            : guide.checks,
                         changes: [],
-                        warnings: [],
-                        skills: [],
+                        warnings: state === "empty" ? [] : guide.warnings,
                       }
                     : guide,
               });
@@ -514,7 +520,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(setup).not.toBeVisible();
         await expect(setupTrigger).toBeFocused();
 
-        for (const state of ["loading", "error", "empty"] as const) {
+        for (const state of ["loading", "error", "empty", "manual"] as const) {
           setupState = state;
           await openSetup();
           await expect(setup).toBeVisible();
@@ -522,10 +528,30 @@ for (const language of ["en", "zh-CN"] as const) {
             await expect(setup.getByRole("status")).toHaveText(t.planning.setup.loading);
           else if (state === "error")
             await expect(setup.getByRole("alert")).toHaveText(t.planning.setup.errors.load);
-          else
+          else {
+            const checks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
+            const complete = setup.getByText(t.planning.setup.noChanges, { exact: true });
             await expect(
-              setup.getByText(t.planning.setup.noChanges, { exact: true }),
+              setup.getByText(t.planning.setup.skillSummary("Codex", 0, 1, 0), { exact: true }),
             ).toBeVisible();
+            await expect(setup.getByRole("checkbox")).toHaveCount(0);
+            if (state === "empty") {
+              await expect(complete).toBeVisible();
+              await expect(checks).toHaveCount(0);
+              await expect(
+                setup.getByRole("button", { name: t.planning.setup.close, exact: true }),
+              ).toBeEnabled();
+            } else {
+              await expect(complete).toHaveCount(0);
+              await expect(checks).toBeVisible();
+              await expect(
+                checks.getByText(t.planning.setup.noAutomaticFix, { exact: true }),
+              ).toBeVisible();
+              await expect(
+                setup.getByRole("button", { name: t.planning.setup.review(0), exact: true }),
+              ).toBeDisabled();
+            }
+          }
           await capture(`setup-${state}`, '[role="dialog"]');
           await expectFooter();
           if (state === "error") {

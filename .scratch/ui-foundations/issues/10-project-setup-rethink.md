@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 10 — Rethink Project setup
 
-Status: ready-for-human
+Status: ready-for-agent
 Blocked by: none
 
 ## Findings
@@ -66,3 +66,15 @@ Changed paths:
 - Browser harness: `packages/web/e2e/top-bar.spec.ts`, `packages/web/e2e/server.ts`, `packages/web/playwright.config.ts`, `packages/web/e2e/README.md`, `packages/web/e2e/fixtures/github-project/AGENTS.md`, `packages/web/e2e/fixtures/github-project/docs/agents/issue-tracker.md`.
 - Documentation: `README.md`, `README.zh-CN.md`, `docs/getting-started.md`, `docs/plan.md`, `docs/release-notes/0.1.0.md`, `docs/release-notes/0.1.1.md`.
 - Tracker: `.scratch/ui-foundations/issues/07-m8-exit.md`, `.scratch/ui-foundations/issues/10-project-setup-rethink.md`.
+
+**Codex, 2026-10-16 (coordinator browser follow-up):** Reset Status to `ready-for-agent`. Coordinator reported format, lint, typecheck, 2,241/2,241 unit tests and build passing for the committed branch. Browser run 1 had 195 passes and 21 failures. Inspected its log, error contexts and the 1440px English failure screenshot: all 20 existing top-bar cases stopped at the same empty-state assertion because the mocked response removed proposals but retained the required agent-instructions check's `needs-change` status. The dialog correctly kept the manual-fix explanation visible instead of falsely declaring the project ready. The remaining GitHub Chinese/light case timed out launching Chrome (180 seconds), before test actions or assertions; the other 11 GitHub cases passed in that run. No product-code, browser timeout or retry changes are justified by that launch failure.
+
+Spec/coverage clarification: “no automatic proposals” is not equivalent to “set up”. The complete fixture now marks its outstanding required check ready while leaving informational optional statuses intact; it retains the skill summary. Added a separate manual-attention state to every existing top-bar width/language/scheme case: it must retain the checks and manual-fix explanation, must not show the complete message, and must disable Review changes (0). Both no-proposal states retain collapsed skills and contain no checkboxes. Component coverage now checks this distinction in both languages and asserts that opening either state makes no write. Product safety, status semantics and overlay-readiness waits are unchanged.
+
+Follow-up checks actually run:
+
+- Biome format and lint passed for `packages/web/e2e/top-bar.spec.ts` and `packages/web/src/SetupGuide.test.tsx`; licence-header check passed (323 package source files); `git diff --check` passed.
+- Playwright discovery passed: 32 top-bar cases (20 existing cases now also exercise manual attention, plus 12 GitHub cases). No sockets were bound and no browser rerun or screenshot/layout pass is claimed.
+- Local component validation was attempted, not passed: the initial attempt could not resolve the absent web `node_modules`; temporarily linking the existing main-checkout installation allowed execution, but the two-file run ended with 8 passing / 19 failing tests and 17 uncaught errors, including `unifiedLineDiff is not a function`. Web typecheck likewise failed on missing workspace modules and old core types. Read-only verification found the main checkout had moved to `fd2c18a` (ticket 09), whose core source does not export `unifiedLineDiff`; this is the workspace-resolution artifact, not evidence against the coordinator's earlier successful check. The temporary web dependency link was removed. No dependencies were installed, no aliases/config workarounds were added, and no commit was made.
+
+Coordinator rerun: apply these two test-file changes in the checkout where this branch and workspace packages resolve together, rerun the component/type checks and `pnpm test:e2e`. The earlier temporary-config handoff above is superseded: use the normal commands, without aliases or `TSX_TSCONFIG_PATH`. If Chrome launch times out again before assertions, capture the launch failure separately from dialog failures. Keep this ticket and M8 exit pending until browser verification completes.

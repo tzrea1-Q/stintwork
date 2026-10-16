@@ -452,23 +452,53 @@ test.each(["cancel", "escape", "outside"])(
   },
 );
 
-test("empty setup retains skill summaries and offers Close, not a write", async () => {
-  const initial = guide();
-  initial.changes = [];
-  initial.checks = initial.checks.map((check) => ({ ...check, ready: true, status: "ready" }));
-  server(initial);
-  const user = userEvent.setup();
-  renderSetup();
-  await user.click(screen.getByRole("button", { name: "Settings" }));
-  await user.click(await screen.findByRole("menuitem", { name: /Project setup/ }));
-  expect(await screen.findByText(en.planning.setup.noChanges)).toBeVisible();
-  expect(
-    screen.queryByRole("group", { name: en.planning.setup.projectChecks }),
-  ).not.toBeInTheDocument();
-  expect(screen.getByText(en.planning.setup.skillSummary("Claude Code", 1, 2, 0))).toBeVisible();
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: en.planning.setup.close })).toBeEnabled();
-});
+test.each([
+  ["en", false],
+  ["zh-CN", false],
+  ["en", true],
+  ["zh-CN", true],
+] as const)(
+  "%s setup without proposals retains skills and respects manual attention: %s",
+  async (language, needsManualChange) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    const initial = guide();
+    initial.changes = [];
+    initial.checks = initial.checks.map((check) =>
+      check.status === "needs-change" && !(needsManualChange && check.id === "agents")
+        ? { ...check, ready: true, status: "ready" }
+        : check,
+    );
+    const fetch = server(initial);
+    const user = userEvent.setup();
+    renderSetup();
+    await user.click(screen.getByRole("button", { name: t.topBar.settings }));
+    await user.click(
+      await screen.findByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) }),
+    );
+    expect(
+      await screen.findByText(t.planning.setup.skillSummary("Claude Code", 1, 2, 0)),
+    ).toBeVisible();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    if (needsManualChange) {
+      expect(screen.queryByText(t.planning.setup.noChanges)).not.toBeInTheDocument();
+      expect(screen.getByRole("group", { name: t.planning.setup.projectChecks })).toBeVisible();
+      expect(screen.getByText(t.planning.setup.noAutomaticFix)).toBeVisible();
+      expect(screen.getByText(t.planning.setup.statuses["needs-change"])).toBeVisible();
+      expect(
+        screen.getByRole("button", { name: t.planning.setup.review(0), exact: true }),
+      ).toBeDisabled();
+    } else {
+      expect(screen.getByText(t.planning.setup.noChanges)).toBeVisible();
+      expect(
+        screen.queryByRole("group", { name: t.planning.setup.projectChecks }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: t.planning.setup.close })).toBeEnabled();
+    }
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][1]?.method).not.toBe("POST");
+  },
+);
 
 test.each(["network", "server", "invalid"])(
   "%s load failure offers retry without file writes",
