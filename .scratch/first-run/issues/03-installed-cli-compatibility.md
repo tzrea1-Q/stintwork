@@ -1,6 +1,6 @@
 # 03 — Verify installed-CLI adapter compatibility
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -106,3 +106,5 @@ Coordinator-approved policy refinement: daily CLI auto-updates (0.148.0 to 0.163
 This refines ADR 0011's meaning of proven-compatible without changing its decision; its only edit is the requested constraint sentence. Ticket 04's What to build now requires a cheap prompt-free ACP `initialize` + new-session handshake at stint start for a compatible-by-range installed CLI, with a surfaced `handshake failed` reason and pinned bundled fallback for that stint on failure. Its seven acceptance checkboxes and all Status lines remain unchanged. The pure policy does not perform or wire that handshake here; launch integration remains tickets 04/05, with no agent/global configuration or credential changes and no commit.
 
 Validation after the range-policy update: `pnpm --config.verify-deps-before-run=false format:check`, `pnpm --config.verify-deps-before-run=false lint`, `pnpm --config.verify-deps-before-run=false typecheck`, `pnpm --config.verify-deps-before-run=false vitest run packages/agents --configLoader native` (18 files / 158 tests), and `node spikes/acp-probe/selftest.mjs` all passed. Lint reports only the existing informational Biome deprecation. Tests cover the floors, daily updates within range, next-major exclusion, missing/malformed/prerelease/unsafe versions, numeric ordering/build metadata, pinned-adapter evidence isolation and explicit-negative precedence. `git diff --check` passed; guards verify unchanged Status lines, ticket 03's unchanged pre-Comments text, seven ticket 04 checkboxes and exactly the requested single-line ADR addition. No real agents were run by the implementing agent; evidence remains limited to the coordinator's recorded darwin-arm64 probes.
+
+**Coordinator, 2026-10-17:** Ran all real probes on darwin-arm64 with the maintainer's logins (runs listed above): Claude installed 2.1.295 and bundled 2.1.293, Codex installed 0.163.0 and bundled 0.159.3 each pass basic, commands, permission (Ask mode), cancel and resume. Policy is a tested range per pinned adapter, confirmed by a handshake at stint start (ticket 04). Codex review: no findings after the Windows npm fix. Resolved; other platforms remain unprobed.
