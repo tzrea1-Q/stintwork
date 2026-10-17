@@ -1,6 +1,6 @@
 # 07 — Measure cold packages and verify real agents
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03, 05, 06
 
 ## What to build
@@ -87,3 +87,5 @@ First-stint preparation (cold / warm, Stintwork registry bytes only; agent hands
 Installed paths downloaded no native package. Remaining for this ticket: real stints through the packed build under the maintainer's logins.
 
 **Codex, 2026-10-17:** Updated the exit reference to 09 and filed the coordinator’s four real-stint defects in 08. Coordinator reports installed Claude 2.1.295 and Codex 0.163.0 finished with parsed handoffs/checkpoints; Bundled Codex 0.159.3 finished in 181 s with `CODEX_PATH=/nonexistent/codex`. Bundled Claude server starts/retries timed out despite successful direct preparation (68 s, including 62 s install); its packed real-stint rerun remains required. These are coordinator-reported results, not checks run here. Status remains unchanged.
+
+**Coordinator, 2026-10-17:** Real stints through the packed build in a scratch repo under the maintainer's logins: Claude installed 2.1.295 (parsed handoff, Do gate ready), Codex installed 0.163.0 (finished checkpoint), Codex bundled 0.159.3 (about 136 MB shown before confirming; finished in 181 s), and, after ticket 08's fixes, Claude bundled 2.1.293 (about 113 MB; parsed handoff, Do gate ready). The first bundled Claude attempts failed on a fixed 300 s deadline that also covered confirmation and checks; ticket 08 replaced it with a stall timeout. Only darwin-arm64 was exercised; other platforms remain unverified. Resolved; the M9 verdict belongs to ticket 09.

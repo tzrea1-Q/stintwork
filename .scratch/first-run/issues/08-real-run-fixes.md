@@ -1,6 +1,6 @@
 # 08 — Fix defects from real packed stints
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05
 
 ## What to build
@@ -81,3 +81,5 @@ packages/web/src/i18n/zh-CN.ts
 **Codex, 2026-10-17:** Fixed the independent review’s configured-environment regression. The server no longer supplies `preparedAgentEnvironment(preparedAgent)` built from `process.env`; it passes the prepared selection to the registered launcher, which preserves its configured environment and applies the selected executable itself. Replaced the shallow server launcher-input assertion with actual child-process regressions using `createClaudeCodeAgent(env)` and `createCodexAgent({ env })`, an isolated prepared adapter and the existing fake ACP agent. Both reproduced the wrong inherited HOME before the fix and pass after it; both also assert the selected executable overrides a bogus configured override and the stint finishes. No agent launch implementation, Status line, dependency or pin changed; no commit.
 
 Validation for this follow-up: `pnpm --config.verify-deps-before-run=false format:check`, `lint` and `typecheck` passed (existing informational Biome deprecation only). `pnpm --config.verify-deps-before-run=false vitest run packages/agents packages/server/src/stints.test.ts --configLoader native --testNamePattern '^(?!HTTP start streams|rich events and pending permission|HTTP preparation disconnect)' --maxWorkers 2 --reporter dot` passed: 23 files / 255 tests, with the three socket cases explicitly excluded. The two new regression cases were also run alone before and after the fix. `git diff --check` and the unchanged Status guard passed. Build, package smoke, browser, sockets and real agents were not rerun for this server-only follow-up; the coordinator’s earlier full-suite results remain separate evidence.
+
+**Coordinator, 2026-10-17:** Verified on the repacked build (darwin-arm64, maintainer's logins, fresh scratch repo and agent cache, server started with `CLAUDE_CODE_EXECUTABLE=/nonexistent/claude CODEX_PATH=/nonexistent/codex`): bundled Claude 2.1.293 downloaded, prepared and wrote its file within 90 s, then ended with a parsed handoff and a ready Do gate. Restarted with the real CLIs visible: `/api/agents` reports `source: pending, reason: unverified` and the card shows "Not prepared · Installed CLI found, checked at stint start" with no Bundled badge. Full suite passed before the environment fix (2349 unit tests, smoke:package, browser suite); after it, build and 485 server tests pass. Two Codex reviews: the second found the registered-environment regression, fixed with regressions for both agents. Resolved.
