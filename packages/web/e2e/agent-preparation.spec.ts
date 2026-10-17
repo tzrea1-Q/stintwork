@@ -29,13 +29,18 @@ async function preparationFake(page: Page) {
         stintId: `fixture-${attempt}`,
         progress: {
           phase,
-          source,
-          reason: source === "bundled" ? "handshake failed" : "compatible",
-          executable: {
-            path: `/fixture/${"long-directory/".repeat(12)}codex`,
-            version: source === "bundled" ? "0.159.3" : "0.163.0",
-          },
-          adapterVersion: "2.1.1",
+          ...(phase === "confirm"
+            ? {
+                source,
+                reason: source === "bundled" ? "handshake failed" : "compatible",
+                executable: {
+                  path: `/fixture/${"long-directory/".repeat(12)}codex`,
+                  version: source === "bundled" ? "0.159.3" : "0.163.0",
+                },
+                adapterVersion: "2.1.1",
+                ...(source === "bundled" ? { downloadBytes: 136113744 } : {}),
+              }
+            : {}),
         },
       });
     window.addEventListener("fixture-preparation", ((event: CustomEvent<string>) => {
@@ -47,6 +52,12 @@ async function preparationFake(page: Page) {
         });
         controller?.close();
         controller = undefined;
+      } else if (event.detail === "agent-ready") {
+        send({
+          type: "availability",
+          agent: "codex",
+          availability: { available: true, canStart: true },
+        });
       } else progress(event.detail);
     }) as EventListener);
     window.fetch = async (input, options) => {
@@ -150,9 +161,10 @@ for (const language of ["en", "zh-CN"] as const) {
                 reason: state === "ready" ? "compatible" : "missing",
                 executable: {
                   path: `/fixture/${"long-path/".repeat(20)}codex`,
-                  version: "0.159.3",
+                  version: state === "ready" ? "0.163.0" : "0.159.3",
                 },
                 adapterVersion: "2.1.1",
+                ...(state === "ready" ? {} : { downloadBytes: 136113744 }),
               },
             };
             await trigger.click();
@@ -164,7 +176,18 @@ for (const language of ["en", "zh-CN"] as const) {
             ).toBeEnabled();
             if (state === "login-required")
               await expect(dialog.getByText("codex login", { exact: true })).toBeVisible();
-            await capture(page, testInfo, state);
+            if (state === "ready") {
+              await expect(
+                dialog.getByText(`Codex 0.163.0 · ${t.stints.preparation.adapter} 2.1.1`),
+              ).toBeVisible();
+              await expect(dialog.getByText(/long-path/)).toBeHidden();
+            }
+            await capture(page, testInfo, state === "ready" ? "installed-ready" : state);
+            if (state === "ready") {
+              await dialog.getByText(t.stints.preparation.details, { exact: true }).click();
+              await expect(dialog.getByText(/long-path/)).toBeVisible();
+              await assertLayout(page, { region: ".brief-preview-sheet" });
+            }
             const picker = dialog.getByRole("combobox", { name: t.stints.agent, exact: true });
             await picker.click();
             await page.keyboard.press("Escape");
@@ -210,19 +233,23 @@ for (const language of ["en", "zh-CN"] as const) {
           const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });
           await dialog.getByRole("button", { name: t.stints.start, exact: true }).click();
           await expect(
-            dialog.getByRole("heading", {
-              name: `${t.stints.preparation.source}: ${t.stints.preparation.bundled}`,
+            dialog.getByText(`${t.stints.preparation.source}: ${t.stints.preparation.bundled}`, {
               exact: true,
             }),
           ).toBeVisible();
-          await expect(dialog.getByText(t.stints.preparation.bundledNotice)).toBeVisible();
+          await expect(dialog.getByText(t.stints.preparation.bundledNotice(136))).toBeVisible();
           await capture(page, testInfo, "bundled-before-download");
           await dialog.getByRole("button", { name: t.stints.preparation.confirm }).click();
           await expect(
-            dialog
-              .getByRole("status")
-              .filter({ hasText: t.coreText["agent.preparation.installing"] }),
+            dialog.getByRole("status").filter({ hasText: t.stints.preparation.phases.installing }),
           ).toBeVisible();
+          await expect(
+            dialog.getByRole("progressbar", { name: t.stints.preparation.progress }),
+          ).toHaveAttribute("aria-valuetext", t.stints.preparation.phases.installing);
+          await expect(
+            dialog.getByText(t.stints.preparation.preparing, { exact: true }),
+          ).toBeVisible();
+          await expect(dialog.getByText("Codex 0.159.3", { exact: false })).toBeVisible();
           await capture(page, testInfo, "downloading");
           await dialog.getByRole("button", { name: t.stints.preparation.cancel }).click();
           await expect(
@@ -231,8 +258,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await capture(page, testInfo, "cancelled");
           await dialog.getByRole("button", { name: t.stints.preparation.retry }).click();
           await expect(
-            dialog.getByRole("heading", {
-              name: `${t.stints.preparation.source}: ${t.stints.preparation.installed}`,
+            dialog.getByText(`${t.stints.preparation.source}: ${t.stints.preparation.installed}`, {
               exact: true,
             }),
           ).toBeVisible();
@@ -253,12 +279,19 @@ for (const language of ["en", "zh-CN"] as const) {
               phase,
             );
             await expect(
-              dialog
-                .getByRole("status")
-                .filter({ hasText: t.coreText[`agent.preparation.${phase}`] }),
+              dialog.getByRole("status").filter({
+                hasText: t.stints.preparation.phases[phase === "ready" ? "smoke" : phase],
+              }),
             ).toBeVisible();
             await capture(page, testInfo, phase);
           }
+          await page.evaluate(() =>
+            window.dispatchEvent(new CustomEvent("fixture-preparation", { detail: "agent-ready" })),
+          );
+          await expect(
+            dialog.getByText(t.stints.preparation.states.ready, { exact: true }),
+          ).toBeVisible();
+          await capture(page, testInfo, "confirmed-installed-ready");
           await page.evaluate(() =>
             window.dispatchEvent(new CustomEvent("fixture-preparation", { detail: "success" })),
           );

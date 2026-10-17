@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { builtinModules } from "node:module";
 import { chmod, cp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -50,6 +51,7 @@ await cp(new URL("../packages/core/workflows/", import.meta.url), new URL("workf
   recursive: true,
 });
 const profiles = new URL("../packages/agents/profiles/", import.meta.url);
+const estimates = JSON.parse(await readFile(new URL("download-sizes.json", profiles), "utf8"));
 for (const agent of ["claude", "codex"]) {
   for (const profile of await readdir(new URL(`${agent}/`, profiles))) {
     const directory = new URL(`${agent}/${profile}/`, profiles);
@@ -57,6 +59,16 @@ for (const agent of ["claude", "codex"]) {
     const lock = JSON.parse(await readFile(new URL("package-lock.json", directory), "utf8"));
     assert.equal(lock.lockfileVersion, 3);
     assert.deepEqual(lock.packages[""].dependencies, manifest.dependencies);
+    if (profile.startsWith("bundled-")) {
+      const estimate = estimates[`${agent}/${profile}`];
+      assert.equal(
+        estimate?.lockDigest,
+        createHash("sha256")
+          .update(await readFile(new URL("package-lock.json", directory)))
+          .digest("hex"),
+      );
+      assert(Number.isSafeInteger(estimate.downloadBytes) && estimate.downloadBytes > 0);
+    }
   }
 }
 for (const input of Object.keys(result.metafile.inputs))

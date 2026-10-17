@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile, spawn } from "node:child_process";
+import { CoreTextError } from "@stintwork/core";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -36,6 +37,7 @@ import { toAcpReadable } from "./stdio.js";
 
 export type AgentSourceReason = ReturnType<typeof selectAgentSource>["reason"] | "handshake failed";
 export type AgentPreparationEvent = {
+  downloadBytes?: number;
   agent: CachedAgent;
   adapterVersion: string;
   phase: "selected" | "waiting" | "installing" | "verifying" | "smoke" | "ready";
@@ -615,6 +617,34 @@ export async function prepareAgent(
     ? { source: "bundled" as const, reason: sourceOverride.reason }
     : selectAgentSource(agent, detected);
   const { source, reason } = selection;
+  const host = adapterHost();
+  const profile = await releasedProfile(options, source, host);
+  let downloadBytes: number | undefined;
+  if (source === "bundled") {
+    try {
+      const estimates = JSON.parse(
+        await readFile(
+          join(options.profilesDirectory ?? adapterProfilesDirectory(), "download-sizes.json"),
+          "utf8",
+        ),
+      );
+      const estimate = estimates[profileName(agent, source, host)];
+      if (
+        estimate?.lockDigest !== profile.lockDigest ||
+        !Number.isSafeInteger(estimate.downloadBytes) ||
+        estimate.downloadBytes <= 0
+      )
+        throw new CoreTextError({ code: "agent.downloadSizeUnavailable" });
+      downloadBytes = estimate.downloadBytes;
+    } catch (error) {
+      // Synthetic test profiles need not ship release download metadata.
+      if (
+        !options.profilesDirectory ||
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      )
+        throw new CoreTextError({ code: "agent.downloadSizeUnavailable" }, { cause: error });
+    }
+  }
   const progress = (phase: AgentPreparationEvent["phase"], details = {}) =>
     onProgress?.({
       agent,
@@ -622,6 +652,7 @@ export async function prepareAgent(
       source,
       reason,
       phase,
+      downloadBytes,
       ...details,
     });
   const proposedExecutable =
@@ -637,13 +668,12 @@ export async function prepareAgent(
       source,
       reason,
       phase: "selected",
+      downloadBytes,
       executable: proposedExecutable,
     },
     signal,
   );
   signal.throwIfAborted();
-  const host = adapterHost();
-  const profile = await releasedProfile(options, source, host);
   const cacheKey = digest(
     JSON.stringify({
       agent,

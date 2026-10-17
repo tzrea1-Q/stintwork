@@ -34,6 +34,8 @@ export const coreTextEnglish = {
   "agent.preparation.smoke": "Checking executable startup",
   "agent.preparation.ready": "Packages prepared; checking stint readiness",
   "agent.preparationCancelled": "Agent preparation cancelled. You can retry.",
+  "agent.downloadSizeUnavailable":
+    "Released download size is missing or stale. Ask the maintainer for matching agent profiles, then retry.",
   "agent.executableDetails": template(
     { path: "string", version: "string", adapter: "string" },
     ({ path, version, adapter }) =>

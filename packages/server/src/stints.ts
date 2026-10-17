@@ -276,6 +276,14 @@ export function addStintRoutes(
       return context.json(coreTextWire({ reason: coreText({ code: "stint.stageChanged" }) }), 409);
     const state: ActiveStint = { id: randomUUID(), setupCancellation: new AbortController() };
     const streaming = context.req.header("accept") === "application/x-ndjson";
+    const cancelSetup = () => {
+      state.stopRequested = true;
+      state.setupCancellation?.abort();
+      void state.handle?.cancel();
+    };
+    const requestSignal = context.req.raw.signal;
+    requestSignal.addEventListener("abort", cancelSetup, { once: true });
+    if (requestSignal.aborted) cancelSetup();
     let send: (message: unknown) => void = () => {};
     function progress(event: AgentPreparationProgress) {
       send({ type: "preparation", stintId: state.id, progress: event });
@@ -287,6 +295,7 @@ export function addStintRoutes(
         prepared = resolvePreparation;
       });
       try {
+        state.setupCancellation?.signal.throwIfAborted();
         let preparedAgent: PreparedAgent | undefined;
         let selected: AgentSelection | PreparedAgent | undefined;
         const prepareOverride = options.prepareAgent;
@@ -760,6 +769,7 @@ export function addStintRoutes(
           503,
         );
       } finally {
+        requestSignal.removeEventListener("abort", cancelSetup);
         prepared();
       }
     };
@@ -770,11 +780,7 @@ export function addStintRoutes(
       send = (message) => {
         void output.write(`${JSON.stringify(coreTextWire(message))}\n`).catch(() => {});
       };
-      output.onAbort(() => {
-        state.stopRequested = true;
-        state.setupCancellation?.abort();
-        void state.handle?.cancel();
-      });
+      output.onAbort(cancelSetup);
       send({ type: "starting", stintId: state.id });
       const response = await runStart();
       await output.write(

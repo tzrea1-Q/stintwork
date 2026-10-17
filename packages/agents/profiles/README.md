@@ -29,6 +29,16 @@ the runtime only executes frozen `npm ci --ignore-scripts --omit=optional` witho
 `--force`. `--manifests-only` regenerates manifests without contacting a registry.
 No postinstall/preparation scripts are required or permitted by these profiles.
 The package builder copies the profiles into `dist/agent-profiles/`.
+
+`download-sizes.json` records compressed tarball payload totals for each bundled
+host profile, keyed by the SHA-256 of its exact shipped lock. These estimates sum
+all non-optional lock entries, using cached tarball body sizes or cached registry
+`dist.size` with matching SHA-512 integrity (the same evidence source as the dated
+research). They exclude metadata, retries and transport overhead; a warm cache may
+need no download. Regenerating a lock also requires recalculating its estimate
+from those exact artifacts. Build and preparation reject a stale lock digest;
+board detection never reads registry metadata. The confirmation stream carries
+`downloadBytes` before any cache/install work, rounded to decimal MB by the UI.
 Generation runs npm in the staged profile's cwd without `--prefix`, avoiding
 symlinked-temp path differences on macOS. Every staged lock must pass the same
 `releasedProfile` validator as runtime preparation before it is written to the

@@ -102,3 +102,55 @@ pnpm --config.verify-deps-before-run=false smoke:package
 ```
 
 Run the package smoke with network or a fully populated isolated store. Playwright was not run, and no browser screenshots or layout passes are claimed. The frontend guide's coordinator review at 1440/390px in both languages remains pending; the new browser cases also cover 1024/768/360px and the required colour schemes. No ticket acceptance box or milestone is marked complete from these unperformed checks.
+
+**Codex, 2026-10-17, coordinator review follow-up:** Fixed the smoke dependency walk to validate manifests only at installed package roots, including scoped and nested dependencies. Shipped profile manifests remain assets; smoke separately asserts all profiles/locks and download metadata are present, byte-identical and unresolved. Added a runnable `node --test scripts/package-dependencies.test.mjs` regression covering shipped profile manifests, actual eager adapters, install hooks and native modules.
+
+Stint setup now connects the raw request signal to cancellation, checks an already-aborted signal before preparation, and removes the listener after setup. New fake-driven server cases cover disconnection during preflight, an already-aborted request and cancellation during preparation; they prove no launch and successful retry without a retained lock, with explicit worktree-mutation assertions for the early aborts. The preview clears cached readiness on every explicit start and accepts Ready only from current-start availability confirmation. Phase-only updates preserve selection metadata, including messages with only a phase; changing source discards the previous selection's metadata.
+
+The Agent section now uses a compact source badge, executable/adapter version summary and short reason. Its executable path lives in the shared collapsed Details Disclosure/CodeBlock. Live badges and labelled indeterminate progress appear inside the Agent section; cancellation/errors remain there and the footer contains buttons. The Codex sandbox warning has its own separated area. All copy, including the missing/stale size error, has en/zh-CN entries.
+
+Added `packages/agents/profiles/download-sizes.json`: compressed tarball totals for each of the 14 bundled host profiles, derived from all non-optional entries in the exact shipped locks. Artifact sizes came from the read-only npm cache's tarball records or cached registry `dist.size`, matched by SHA-512 integrity; no registry request or agent execution was needed. Each total carries its lock's SHA-256; build and preparation reject stale metadata. Confirmation receives the host-profile total before cache/install work (darwin-arm64 Codex: 136,113,744 bytes, shown as about 136 MB). Estimates exclude registry metadata, retries and transport overhead; warm caches may need no download. Existing manifests, pins, locks and production/dev dependency declarations are unchanged.
+
+Updated the Playwright fake and screenshots for installed ready, bundled confirmation with size, downloading with phase, failed/retry and cancelled, across en/zh-CN at 1440/390/360px, retaining 1024/768px and light/dark coverage. Phase-only fake messages also exercise retained version metadata. Playwright/browser screenshots were not run here.
+
+Checks actually run:
+
+- `pnpm --config.verify-deps-before-run=false format:check`, `lint`, `typecheck`, and `build` passed. Lint retains only the existing informational Biome deprecation; build retains the existing third-party `use client`/chunk-size warnings.
+- Complete agents suite plus the changed brief/catalog tests passed: 23 files / 277 tests (194 agents tests and 83 web tests). Complete web suite passed: 53 files / 591 tests. After the final copy/error refinements, the cache/core-text/brief/catalog run passed again: 4 files / 306 tests.
+- `pnpm --config.verify-deps-before-run=false vitest run packages/server/src/stints.test.ts --configLoader native --testNamePattern '^(?!HTTP start streams|rich events and pending permission)'` passed: 16 tests; the two socket cases were explicitly excluded for this sandbox. The three raw-request regressions passed. No full server/socket pass is claimed.
+- `node --test scripts/package-dependencies.test.mjs` passed. After the successful normal build, a separate `npm pack --ignore-scripts` extracted-tarball check passed the actual dependency walk, all 16 profile/lock byte comparisons, absent profile node_modules, matching size metadata, and absence of resolvable ACP adapters. This was a tarball/content check, without a fresh consumer dependency installation, health/server checks or a complete `smoke:package` run.
+- `git diff --check` passed. No Status line, acceptance box, ticket 04/06/07, dependency manifest or released lock was changed. No commit.
+
+Follow-up changed files:
+
+```text
+.scratch/first-run/issues/05-board-startup-agent-preparation.md
+packages/agents/profiles/README.md
+packages/agents/profiles/download-sizes.json
+packages/agents/src/adapter-cache.ts
+packages/agents/src/adapter-cache.test.ts
+packages/core/src/agents.ts
+packages/core/src/core-text.ts
+packages/server/src/stints.ts
+packages/server/src/stints.test.ts
+packages/web/src/BriefPreview.tsx
+packages/web/src/BriefPreview.test.tsx
+packages/web/src/i18n/en.ts
+packages/web/src/i18n/zh-CN.ts
+packages/web/src/i18n/catalog.test.ts
+packages/web/e2e/agent-preparation.spec.ts
+scripts/build-package.mjs
+scripts/package-smoke.mjs
+scripts/package-dependencies.mjs
+scripts/package-dependencies.test.mjs
+```
+
+Coordinator reruns:
+
+```sh
+pnpm --config.verify-deps-before-run=false smoke:package
+pnpm --config.verify-deps-before-run=false test:e2e
+pnpm --config.verify-deps-before-run=false vitest run packages/server --configLoader native
+```
+
+Review the new screenshot artifacts at 1440/390/360px in both languages; no new screenshot/layout pass is claimed from this sandbox.

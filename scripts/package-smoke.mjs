@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
+import { checkInstalledDependencies } from "./package-dependencies.mjs";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -128,37 +129,18 @@ try {
     !relative(temporary, packageRoot).startsWith(".."),
     "Package resolves into the workspace.",
   );
-  const visited = new Set();
-  async function checkNativeModules(directory) {
-    const canonical = await realpath(directory);
-    if (visited.has(canonical)) return;
-    visited.add(canonical);
-    const manifestPath = join(directory, "package.json");
-    if (existsSync(manifestPath)) {
-      const dependency = JSON.parse(await readFile(manifestPath, "utf8"));
-      assert(
-        !/(?:claude-agent-(?:acp|sdk)|codex(?:-acp)?)(?:$|-)/.test(dependency.name ?? ""),
-        `Eager agent dependency: ${dependency.name}`,
-      );
-      assert(!dependency.gypfile, `Native build dependency: ${dependency.name}`);
-      for (const hook of ["preinstall", "install", "postinstall"])
-        assert(!dependency.scripts?.[hook], `Install hook in ${dependency.name}: ${hook}`);
-    }
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      assert(
-        !/(?:\.node$|^binding\.gyp$)/.test(entry.name),
-        `Native module: ${join(directory, entry.name)}`,
-      );
-      if (entry.isDirectory()) await checkNativeModules(join(directory, entry.name));
-    }
-  }
-  await checkNativeModules(join(consumer, "node_modules"));
+  await checkInstalledDependencies(join(consumer, "node_modules"));
   const require = createRequire(join(packageRoot, "dist/bin.js"));
   for (const adapter of ["claude-agent-acp", "codex-acp"])
     assert.throws(() => require.resolve(`@agentclientprotocol/${adapter}/dist/index.js`), {
       code: "MODULE_NOT_FOUND",
     });
   const profiles = new URL("../packages/agents/profiles/", import.meta.url);
+  assert(entries.includes("package/dist/agent-profiles/download-sizes.json"));
+  assert.equal(
+    await readFile(join(packageRoot, "dist/agent-profiles/download-sizes.json"), "utf8"),
+    await readFile(new URL("download-sizes.json", profiles), "utf8"),
+  );
   for (const agent of ["claude", "codex"]) {
     for (const profile of await readdir(new URL(`${agent}/`, profiles))) {
       for (const file of ["package.json", "package-lock.json"]) {
@@ -166,6 +148,10 @@ try {
         assert(
           entries.includes(`package/dist/agent-profiles/${path}`),
           `Missing released profile: ${path}`,
+        );
+        assert(
+          !existsSync(join(packageRoot, "dist/agent-profiles", agent, profile, "node_modules")),
+          `Resolved shipped profile: ${path}`,
         );
         assert.equal(
           await readFile(join(packageRoot, "dist/agent-profiles", path), "utf8"),

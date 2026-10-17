@@ -34,6 +34,7 @@ export type AgentSkillLocation = {
 };
 
 export type AgentSelection = {
+  downloadBytes?: number;
   source: "installed" | "bundled";
   reason:
     | "compatible"

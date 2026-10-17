@@ -710,9 +710,13 @@ function fakePreparation(afterConfirmation: () => void = () => {}) {
   });
 }
 
-async function streamedStart(project: ReturnType<typeof createProjectServer>) {
+async function streamedStart(
+  project: ReturnType<typeof createProjectServer>,
+  signal?: AbortSignal,
+) {
   const response = await project.app.request("/api/stints", {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
     body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
   });
@@ -846,4 +850,80 @@ test("preparation authentication-required points to the developer's login withou
       /^worktree /gm,
     ),
   ).toHaveLength(1);
+});
+
+test.each(["already aborted", "during preflight"])(
+  "a request disconnected %s never prepares or locks the work item",
+  async (when) => {
+    const launch = vi.fn<AgentLauncher>(() => ({
+      ready: Promise.resolve(),
+      done: Promise.resolve({ stopReason: "end_turn" }),
+      cancel: async () => {},
+    }));
+    const prepareAgent = fakePreparation();
+    let release: () => void = () => {};
+    let entered: () => void = () => {};
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const inspecting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let hold = false;
+    const registry = createAgentRegistry([
+      {
+        ...codexProfile,
+        launch,
+        detectAvailability: async () => {
+          if (hold) {
+            entered();
+            await pending;
+          }
+          return { available: false, canStart: true, kind: "not-prepared" };
+        },
+      },
+    ]);
+    const { project, root } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+    await project.app.request("/api/health");
+    const request = new AbortController();
+    if (when === "already aborted") request.abort();
+    else hold = true;
+    const starting = streamedStart(project, request.signal);
+    if (hold) {
+      await inspecting;
+      request.abort();
+      release();
+      hold = false;
+    }
+    const stream = await starting;
+    expect((await stream.until("result")).status).toBe(503);
+    expect(prepareAgent).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled();
+    expect(
+      execFileSync("git", ["worktree", "list", "--porcelain"], {
+        cwd: root,
+        encoding: "utf8",
+      }).match(/^worktree /gm),
+    ).toHaveLength(1);
+    expect((await start(project)).status).toBe(201);
+    expect(prepareAgent).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("raw request cancellation aborts pending preparation and releases the work item", async () => {
+  const prepareAgent = fakePreparation();
+  const launch = vi.fn<AgentLauncher>(() => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  }));
+  const { project } = await fixture(launch, { prepareAgent });
+  const request = new AbortController();
+  const stream = await streamedStart(project, request.signal);
+  await stream.until("preparation", "confirm");
+  request.abort();
+  expect((await stream.until("result")).status).toBe(503);
+  expect(prepareAgent.mock.calls[0][0].signal?.aborted).toBe(true);
+  expect(launch).not.toHaveBeenCalled();
+  expect((await start(project)).status).toBe(201);
 });

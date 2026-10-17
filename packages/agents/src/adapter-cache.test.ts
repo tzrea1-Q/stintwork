@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -17,6 +18,7 @@ import { once } from "node:events";
 import { afterEach, expect, test, vi } from "vitest";
 import {
   adapterHost,
+  adapterProfilesDirectory,
   adapterPins,
   nativePackage,
   profileManifest,
@@ -24,6 +26,7 @@ import {
 } from "./adapter-profiles.js";
 import {
   prepareAgent,
+  releasedProfile,
   type AgentPreparationEvent,
   type AgentPreparationOptions,
 } from "./adapter-cache.js";
@@ -563,4 +566,57 @@ test("source confirmation precedes cache writes/downloads and can cancel before 
   ).rejects.toThrow();
   expect(confirmed).toBe(true);
   await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("every shipped bundled download estimate matches its exact host-profile lock", async () => {
+  const directory = adapterProfilesDirectory();
+  const estimates = JSON.parse(await readFile(join(directory, "download-sizes.json"), "utf8"));
+  expect(Object.keys(estimates)).toHaveLength(14);
+  for (const [name, estimate] of Object.entries(estimates) as [
+    string,
+    { lockDigest: string; downloadBytes: number },
+  ][]) {
+    const lockBytes = await readFile(join(directory, name, "package-lock.json"));
+    expect(estimate.lockDigest).toBe(createHash("sha256").update(lockBytes).digest("hex"));
+    expect(estimate.downloadBytes).toBeGreaterThan(100_000_000);
+  }
+  expect(estimates["codex/bundled-darwin-arm64"].downloadBytes).toBe(136113744);
+});
+
+test("bundled confirmation carries the selected lock's download size before npm; stale metadata fails closed", async () => {
+  const { options } = await fixture();
+  const host = adapterHost();
+  const name = profileName("codex", "bundled", host);
+  const profile = await releasedProfile(options, "bundled", host);
+  const estimatesPath = join(options.profilesDirectory as string, "download-sizes.json");
+  const estimate = { lockDigest: profile.lockDigest, downloadBytes: 136113744 };
+  await writeFile(estimatesPath, JSON.stringify({ [name]: estimate }));
+  const events: AgentPreparationEvent[] = [];
+  const stop = new AbortController();
+  await expect(
+    prepareAgent(
+      {
+        ...options,
+        signal: stop.signal,
+        onProgress: (event) => events.push(event),
+        beforePrepare: async (event) => {
+          expect(event.downloadBytes).toBe(136113744);
+          stop.abort();
+        },
+      },
+      { reason: "handshake failed" },
+    ),
+  ).rejects.toThrow();
+  expect(events[0]).toMatchObject({
+    source: "bundled",
+    phase: "selected",
+    downloadBytes: 136113744,
+  });
+  await expect(readFile(join(options.cwd, "../npm-calls.jsonl"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await writeFile(estimatesPath, JSON.stringify({ [name]: { ...estimate, lockDigest: "stale" } }));
+  await expect(prepareAgent(options, { reason: "handshake failed" })).rejects.toMatchObject({
+    coreText: { code: "agent.downloadSizeUnavailable" },
+  });
 });

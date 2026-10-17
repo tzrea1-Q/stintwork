@@ -465,15 +465,16 @@ test.each(["en", "zh-CN"] as const)(
       phase: "confirm",
       adapterVersion: "2.1.1",
       executable: { path: "/cache/selected/codex", version: "0.159.3" },
+      downloadBytes: 136113744,
     };
     await act(async () => send({ type: "preparation", stintId: "preparing", progress }));
     expect(
-      await screen.findByRole("heading", {
-        name: `${t.stints.preparation.source}: ${t.stints.preparation.bundled}`,
-      }),
+      await screen.findByText(`${t.stints.preparation.source}: ${t.stints.preparation.bundled}`),
     ).toBeInTheDocument();
-    expect(screen.getByText(t.stints.preparation.bundledNotice)).toBeInTheDocument();
-    expect(screen.getByText("/cache/selected/codex")).toBeInTheDocument();
+    expect(screen.getByText(t.stints.preparation.bundledNotice(136))).toBeInTheDocument();
+    expect(screen.getByText("/cache/selected/codex")).not.toBeVisible();
+    await user.click(screen.getByText(t.stints.preparation.details, { exact: true }));
+    expect(screen.getByText("/cache/selected/codex")).toBeVisible();
     expect(fetch.mock.calls.some(([url]) => url.endsWith("/confirm-agent"))).toBe(false);
     await user.click(screen.getByRole("button", { name: t.stints.preparation.confirm }));
     expect(fetch).toHaveBeenCalledWith("/api/stints/preparing/confirm-agent", { method: "POST" });
@@ -481,12 +482,15 @@ test.each(["en", "zh-CN"] as const)(
       send({
         type: "preparation",
         stintId: "preparing",
-        progress: { ...progress, phase: "installing" },
+        progress: { source: "bundled", reason: "below-tested-range", phase: "installing" },
       }),
     );
     expect(
-      screen.getByText(t.coreText["agent.preparation.installing"], { exact: true }),
+      screen.getByText(t.stints.preparation.phases.installing, { exact: true }),
     ).toHaveAttribute("role", "status");
+    expect(screen.getByText(/Codex 0.159.3/)).toBeInTheDocument();
+    expect(screen.getByText("/cache/selected/codex")).toBeVisible();
+    expect(screen.getByText(t.stints.preparation.bundledNotice(136))).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: t.stints.preparation.cancel }));
     const retry = await screen.findByRole("button", { name: t.stints.preparation.retry });
     expect(retry).toBeEnabled();
@@ -574,5 +578,91 @@ test("closing an explicit start aborts the request; cancellation is available du
   await user.keyboard("{Escape}");
   expect(signal?.aborted).toBe(true);
   expect(trigger).toHaveFocus();
+  await act(async () => controller.close());
+});
+
+test("a new preparation clears cached readiness, keeps phase metadata and resets it on source changes", async () => {
+  const user = userEvent.setup();
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const send = async (value: unknown) =>
+    act(async () => controller.enqueue(new TextEncoder().encode(`${JSON.stringify(value)}\n`)));
+  const cached = {
+    ...codexProfile,
+    availability: {
+      available: true,
+      selection: {
+        source: "installed",
+        reason: "compatible",
+        executable: { path: "/old/codex", version: "0.163.0" },
+        adapterVersion: "2.1.1",
+      },
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url !== "/api/stints")
+        return new Response(JSON.stringify(url === "/api/agents" ? { agents: [cached] } : brief));
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(value) {
+            controller = value;
+          },
+        }),
+        { headers: { "Content-Type": "application/x-ndjson" } },
+      );
+    }),
+  );
+  render(<TicketBriefPreview item={item} ticket={ticket} />);
+  await user.click(screen.getByRole("button", { name: "Start stint" }));
+  expect(
+    await screen.findByText(en.stints.preparation.states.ready, { exact: true }),
+  ).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /^Start$/ }));
+  expect(
+    screen.queryByText(en.stints.preparation.states.ready, { exact: true }),
+  ).not.toBeInTheDocument();
+  await send({
+    type: "preparation",
+    progress: {
+      source: "installed",
+      reason: "compatible",
+      phase: "selected",
+      executable: { path: "/new/codex", version: "0.164.0" },
+      adapterVersion: "2.1.1",
+    },
+  });
+  await user.click(screen.getByText(en.stints.preparation.details, { exact: true }));
+  for (const phase of ["waiting", "installing", "verifying", "smoke", "ready"]) {
+    await send({
+      type: "preparation",
+      progress: { phase },
+    });
+    expect(screen.getByText(/Codex 0.164.0 · adapter 2.1.1/)).toBeInTheDocument();
+    expect(screen.getByText("/new/codex")).toBeVisible();
+    expect(
+      screen.queryByText(en.stints.preparation.states.ready, { exact: true }),
+    ).not.toBeInTheDocument();
+  }
+  await send({
+    type: "preparation",
+    progress: {
+      source: "bundled",
+      reason: "handshake failed",
+      phase: "selected",
+      adapterVersion: "2.1.1",
+      downloadBytes: 136113744,
+    },
+  });
+  expect(screen.queryByText("/new/codex")).not.toBeInTheDocument();
+  expect(screen.queryByText(/0.164.0/)).not.toBeInTheDocument();
+  expect(screen.getByText(en.stints.preparation.bundledNotice(136))).toBeInTheDocument();
+  await send({
+    type: "availability",
+    agent: "codex",
+    availability: { available: true, selection: { source: "bundled", reason: "handshake failed" } },
+  });
+  expect(screen.getByText(en.stints.preparation.states.ready, { exact: true })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
   await act(async () => controller.close());
 });
