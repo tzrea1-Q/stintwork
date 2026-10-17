@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { builtinModules } from "node:module";
-import { chmod, cp, mkdir, readFile, rm } from "node:fs/promises";
+import { chmod, cp, mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 
@@ -49,6 +50,32 @@ await cp(new URL("../packages/web/dist/", import.meta.url), new URL("web/", outp
 await cp(new URL("../packages/core/workflows/", import.meta.url), new URL("workflows/", output), {
   recursive: true,
 });
+const profiles = new URL("../packages/agents/profiles/", import.meta.url);
+const estimates = JSON.parse(await readFile(new URL("download-sizes.json", profiles), "utf8"));
+for (const agent of ["claude", "codex"]) {
+  for (const profile of await readdir(new URL(`${agent}/`, profiles))) {
+    const directory = new URL(`${agent}/${profile}/`, profiles);
+    const manifest = JSON.parse(await readFile(new URL("package.json", directory), "utf8"));
+    const lock = JSON.parse(await readFile(new URL("package-lock.json", directory), "utf8"));
+    assert.equal(lock.lockfileVersion, 3);
+    assert.deepEqual(lock.packages[""].dependencies, manifest.dependencies);
+    if (profile.startsWith("bundled-")) {
+      const estimate = estimates[`${agent}/${profile}`];
+      assert.equal(
+        estimate?.lockDigest,
+        createHash("sha256")
+          .update(await readFile(new URL("package-lock.json", directory)))
+          .digest("hex"),
+      );
+      assert(Number.isSafeInteger(estimate.downloadBytes) && estimate.downloadBytes > 0);
+    }
+  }
+}
+for (const input of Object.keys(result.metafile.inputs))
+  assert(
+    !/node_modules\/.*(?:claude-agent-acp|codex-acp|claude-agent-sdk|@openai\/codex)/.test(input),
+    `Eager adapter bundled: ${input}`,
+  );
 await cp(
   new URL("../packages/agents/profiles/", import.meta.url),
   new URL("agent-profiles/", output),
@@ -57,4 +84,6 @@ await cp(
   },
 );
 await chmod(new URL("bin.js", output), 0o755);
-console.log("Built stintwork package: CLI bundle, web app and workflow YAML.");
+console.log(
+  "Built stintwork package: CLI bundle, web app, workflow YAML and released agent profiles/locks.",
+);

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { CodeBlock } from "./ui/CodeBlock";
+import { Disclosure } from "./ui/Disclosure";
 import {
   translateCoreText,
   readResponseJson,
@@ -10,6 +11,8 @@ import {
 
 import {
   builtInWorkflows,
+  readCoreTextWire,
+  type AgentPreparationProgress,
   type AgentProfile,
   agentUnavailable,
   type Brief,
@@ -22,10 +25,11 @@ import {
   type PermissionLevel,
   type WorkflowDefinitions,
 } from "@stintwork/core";
-import { Copy, X } from "lucide-react";
+import { Copy, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import { Button } from "./ui/Button";
+import { Badge } from "./ui/Badge";
 import { SelectField } from "./ui/SelectField";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 
@@ -73,6 +77,7 @@ function StintBriefAction({
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
   const [open, setOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
   const reasonId = useId();
   const availability = briefAvailability(item, ticket, workflows);
   const reason = item.activeStint
@@ -82,8 +87,8 @@ function StintBriefAction({
       : translateCoreText(availability, t);
 
   useEffect(() => {
-    if (reason) setOpen(false);
-  }, [reason]);
+    if (reason && !starting) setOpen(false);
+  }, [reason, starting]);
 
   return (
     <div className="brief-action mb-4 flex flex-wrap items-center gap-3 text-sm">
@@ -99,8 +104,9 @@ function StintBriefAction({
           {reason}
         </p>
       )}
-      {open && !reason && (
+      {open && (!reason || starting) && (
         <BriefPreviewSheet
+          onStartingChange={setStarting}
           slug={item.slug}
           ticketNumber={ticket?.number ?? null}
           stageName={stage ? translatedStageName(workflow, stage, t) : ""}
@@ -118,7 +124,9 @@ function BriefPreviewSheet({
   ticketNumber,
   stageName,
   onClose,
+  onStartingChange,
 }: {
+  onStartingChange: (starting: boolean) => void;
   slug: string;
   ticketNumber: number | null;
   stageName: string;
@@ -141,6 +149,11 @@ function BriefPreviewSheet({
   });
   const [copyStatus, setCopyStatus] = useState("");
   const [starting, setStarting] = useState(false);
+  const [preparation, setPreparation] = useState<AgentPreparationProgress | null>(null);
+  const [cancelled, setCancelled] = useState(false);
+  const startRequest = useRef<AbortController>();
+  const [stintId, setStintId] = useState<string>();
+  const cancelRequested = useRef(false);
   const [startError, setStartError] = useErrorText();
   const selectedAgent = agents.find(({ id }) => id === agent);
   const availability = selectedAgent ? agentUnavailable(selectedAgent) : null;
@@ -202,25 +215,123 @@ function BriefPreviewSheet({
     }
   }
 
+  useEffect(
+    () => () => {
+      startRequest.current?.abort();
+    },
+    [],
+  );
+
+  async function preparationAction(action: "stop" | "confirm-agent") {
+    if (!stintId) return;
+    const previous = preparation;
+    if (action === "stop") {
+      cancelRequested.current = true;
+      setCancelled(true);
+    } else setPreparation((event) => (event ? { ...event, phase: "waiting" } : event));
+    try {
+      const response = await fetch(`/api/stints/${encodeURIComponent(stintId)}/${action}`, {
+        method: "POST",
+      });
+      if (!response.ok)
+        throw new CoreTextError(await readResponseJson(response), t.stints.startFailed);
+    } catch (cause) {
+      if (action === "stop") {
+        cancelRequested.current = false;
+        setCancelled(false);
+      } else setPreparation(previous);
+      setStartError(cause instanceof Error ? cause : t.stints.startFailed);
+    }
+  }
+
   async function start() {
     if (!brief || !agent || starting || unavailable) return;
     setStarting(true);
+    onStartingChange(true);
+    setPreparation(null);
+    setAgents((current) =>
+      current.map((candidate) =>
+        candidate.id === agent
+          ? {
+              ...candidate,
+              availability: {
+                ...candidate.availability,
+                available: false,
+                canStart: true,
+                kind: "not-prepared",
+                reason: undefined,
+              },
+            }
+          : candidate,
+      ),
+    );
+    setCancelled(false);
+    cancelRequested.current = false;
+    setStintId(undefined);
+    startRequest.current = new AbortController();
     setStartError("");
     try {
       const response = await fetch("/api/stints", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+        signal: startRequest.current.signal,
         body: JSON.stringify({ workItem: slug, ticket: ticketNumber, agent, permissionLevel }),
       });
       if (!response.ok) {
         const failure: { reason?: string } = await readResponseJson(response);
         throw new CoreTextError(failure, t.stints.startFailed);
       }
-      onClose();
+      if (response.headers.get("content-type")?.includes("application/x-ndjson")) {
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error(t.stints.startFailed);
+        const decoder = new TextDecoder();
+        let pending = "";
+        let completed = false;
+        for (;;) {
+          const { value, done } = await reader.read();
+          pending += decoder.decode(value, { stream: !done });
+          const lines = pending.split("\n");
+          pending = lines.pop() ?? "";
+          for (const line of lines) {
+            if (!line) continue;
+            const event = JSON.parse(line);
+            if (event.type === "availability")
+              setAgents((current) =>
+                current.map((candidate) =>
+                  candidate.id === event.agent
+                    ? {
+                        ...candidate,
+                        availability: readCoreTextWire(
+                          event.availability,
+                        ) as AgentProfile["availability"],
+                      }
+                    : candidate,
+                ),
+              );
+            if (event.stintId) setStintId(event.stintId);
+            if (event.type === "preparation")
+              setPreparation((current) => ({
+                ...(!event.progress.source || current?.source === event.progress.source
+                  ? current
+                  : {}),
+                ...event.progress,
+              }));
+            if (event.type === "result") {
+              completed = true;
+              if (event.status !== 201) throw new CoreTextError(event.body, t.stints.startFailed);
+            }
+          }
+          if (done) break;
+        }
+        if (!completed) throw new Error(t.stints.startFailed);
+      }
+      if (!cancelRequested.current) onClose();
     } catch (cause) {
-      setStartError(cause instanceof Error ? cause : t.stints.startFailed);
+      if (!cancelRequested.current)
+        setStartError(cause instanceof Error ? cause : t.stints.startFailed);
     } finally {
       setStarting(false);
+      onStartingChange(false);
     }
   }
 
@@ -255,7 +366,7 @@ function BriefPreviewSheet({
           </DialogDescription>
         </header>
         <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 [&_h3]:mb-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2">
-          <section>
+          <section aria-label={t.stints.agent}>
             <h3>{t.stints.agent}</h3>
             <label htmlFor={`${selectId}-agent`}>
               <span className="sr-only">{t.stints.agent}</span>
@@ -263,7 +374,12 @@ function BriefPreviewSheet({
                 id={`${selectId}-agent`}
                 aria-label={t.stints.agent}
                 value={agent}
-                onValueChange={setAgent}
+                onValueChange={(value) => {
+                  setAgent(value);
+                  setPreparation(null);
+                  setStartError("");
+                  setCancelled(false);
+                }}
                 aria-describedby={agentAvailabilityId}
                 disabled={!agents.length || starting}
                 options={[
@@ -296,11 +412,131 @@ function BriefPreviewSheet({
                   : t.stints.noAgents
                 : t.stints.readingAgents}
             </p>
-            {warnings.map((warning) => (
-              <p key={warning.text} role="alert" className="warning text-warning">
-                {translateCoreText(warning, t)}
-              </p>
-            ))}
+            {selectedAgent &&
+              (() => {
+                const selection = preparation ?? selectedAgent.availability?.selection;
+                const copy = t.stints.preparation;
+                const state = selectedAgent.availability?.available
+                  ? "ready"
+                  : selectedAgent.availability?.kind === "login-required"
+                    ? "login-required"
+                    : startError
+                      ? "preparation-failed"
+                      : (selectedAgent.availability?.kind ?? "not-prepared");
+                const phase =
+                  preparation?.phase === "ready" && state !== "ready"
+                    ? "smoke"
+                    : preparation?.phase;
+                const activePreparation = starting && !cancelled && state !== "ready";
+                return (
+                  <div className="mt-3 space-y-2 rounded-md border border-border bg-surface p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {selection && (
+                        <Badge variant="secondary">
+                          {copy.source}: {copy[selection.source]}
+                        </Badge>
+                      )}
+                      <Badge
+                        variant={
+                          cancelled
+                            ? "secondary"
+                            : state === "ready"
+                              ? "success"
+                              : state === "preparation-failed"
+                                ? "danger"
+                                : "warning"
+                        }
+                      >
+                        {cancelled
+                          ? copy.cancelledState
+                          : activePreparation
+                            ? preparation?.phase === "confirm"
+                              ? copy.awaitingConfirmation
+                              : copy.preparing
+                            : copy.states[state]}
+                      </Badge>
+                    </div>
+                    {selection && (
+                      <>
+                        <p className="font-medium">
+                          {selectedAgent.displayName}{" "}
+                          {selection.executable?.version ?? copy.unchecked}
+                          {selection.adapterVersion &&
+                            ` · ${copy.adapter} ${selection.adapterVersion}`}
+                        </p>
+                        <p className="text-muted">{copy.reasons[selection.reason]}</p>
+                        {selection.reason !== "native" && (
+                          <p className="text-muted">
+                            {selection.source === "bundled"
+                              ? selection.downloadBytes
+                                ? copy.bundledNotice(
+                                    Math.round(selection.downloadBytes / 1_000_000),
+                                  )
+                                : copy.bundledSizePending
+                              : copy.installedNotice}
+                          </p>
+                        )}
+                        {selection.executable?.path && (
+                          <Disclosure label={copy.details}>
+                            <span className="text-muted">{copy.executable}</span>
+                            <CodeBlock>{selection.executable.path}</CodeBlock>
+                          </Disclosure>
+                        )}
+                      </>
+                    )}
+                    {(activePreparation || cancelled) && (
+                      <div role="status">
+                        {cancelled
+                          ? copy.cancelled
+                          : phase
+                            ? copy.phases[phase]
+                            : copy.phases.smoke}
+                        {activePreparation &&
+                          phase &&
+                          phase !== "selected" &&
+                          phase !== "confirm" && (
+                            <div
+                              role="progressbar"
+                              aria-label={copy.progress}
+                              aria-valuetext={copy.phases[phase]}
+                              className="mt-2 inline-flex text-muted"
+                            >
+                              <LoaderCircle
+                                aria-hidden="true"
+                                className="size-icon-sm motion-safe:animate-spin"
+                              />
+                            </div>
+                          )}
+                      </div>
+                    )}
+                    {startError && (
+                      <p role="alert" className="warning text-warning">
+                        {startError}
+                      </p>
+                    )}
+                    {!unavailable && !startError && selectedAgent.availability?.reason && (
+                      <p>{translateCoreText(selectedAgent.availability.reason, t)}</p>
+                    )}
+                    {selectedAgent.availability?.kind === "login-required" && (
+                      <p>
+                        {copy.loginHint}{" "}
+                        <code>
+                          {selectedAgent.capabilities.authenticationRequired.loginCommand}
+                        </code>
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            {warnings.length > 0 && (
+              <div className="mt-4 border-t border-border pt-4">
+                {warnings.map((warning) => (
+                  <p key={warning.text} role="alert" className="warning text-warning">
+                    {translateCoreText(warning, t)}
+                  </p>
+                ))}
+              </div>
+            )}
           </section>
           <section>
             <h3>{t.stints.permissionLevel}</h3>
@@ -450,19 +686,31 @@ function BriefPreviewSheet({
             </>
           )}
         </div>
-        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border p-4 text-sm text-muted">
-          {startError && (
-            <p role="alert" className="warning text-warning">
-              {startError}
-            </p>
+        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border p-4 text-sm text-muted [overflow-wrap:anywhere]">
+          {starting && (
+            <Button disabled={!stintId || cancelled} onClick={() => void preparationAction("stop")}>
+              {t.stints.preparation.cancel}
+            </Button>
           )}
-          <Button
-            variant="primary"
-            disabled={!brief || !agent || starting || !!error || !!unavailable}
-            onClick={() => void start()}
-          >
-            {starting ? t.stints.starting : t.stints.start}
-          </Button>
+          {starting && preparation?.phase === "confirm" && !cancelled && (
+            <Button variant="primary" onClick={() => void preparationAction("confirm-agent")}>
+              {t.stints.preparation.confirm}
+            </Button>
+          )}
+          {starting && preparation?.phase !== "confirm" && (
+            <Button variant="primary" disabled>
+              {t.stints.starting}
+            </Button>
+          )}
+          {!starting && (
+            <Button
+              variant="primary"
+              disabled={!brief || !agent || starting || !!error || !!unavailable}
+              onClick={() => void start()}
+            >
+              {startError || cancelled ? t.stints.preparation.retry : t.stints.start}
+            </Button>
+          )}
         </footer>
       </DialogContent>
     </Dialog>

@@ -10,6 +10,38 @@ function template<const Shape extends Record<string, "string" | readonly string[
   return Object.assign(render, { shape });
 }
 export const coreTextEnglish = {
+  "agent.cliChanged": "Agent CLI changed during inspection. Retry preparation.",
+  "agent.grokMissing": "Grok Build not found. Install Grok Build and sign in with grok login.",
+  "agent.source.installed": "Agent source: Installed",
+  "agent.source.bundled": "Agent source: Bundled",
+  "agent.reason.compatible": "Installed CLI is within the tested range; confirmed at stint start.",
+  "agent.reason.missing":
+    "A compatible installed CLI could not be verified. Use the pinned bundled agent with your existing login.",
+  "agent.reason.below-tested-range":
+    "Installed CLI is below the tested range. Use the pinned bundled agent.",
+  "agent.reason.unparseable": "Installed CLI version is unverified. Use the pinned bundled agent.",
+  "agent.reason.incompatible": "Installed CLI is incompatible. Use the pinned bundled agent.",
+  "agent.reason.handshake failed":
+    "Installed CLI handshake failed. Use the pinned bundled agent for this stint.",
+  "agent.reason.unverified":
+    "Source is provisional until stint start checks the installed CLI version.",
+  "agent.reason.native": "Uses your separately installed Grok CLI and login.",
+  "agent.preparation.selected": "Selected executable source",
+  "agent.preparation.confirm": "Review Agent source before preparation",
+  "agent.preparation.waiting": "Waiting for the selected adapter cache",
+  "agent.preparation.installing": "Downloading the selected pinned adapter and dependencies",
+  "agent.preparation.verifying": "Verifying the selected adapter",
+  "agent.preparation.smoke": "Checking executable startup",
+  "agent.preparation.ready": "Packages prepared; checking stint readiness",
+  "agent.preparationCancelled": "Agent preparation cancelled. You can retry.",
+  "agent.downloadSizeUnavailable":
+    "Released download size is missing or stale. Ask the maintainer for matching agent profiles, then retry.",
+  "agent.executableDetails": template(
+    { path: "string", version: "string", adapter: "string" },
+    ({ path, version, adapter }) =>
+      `Executable: ${path} · Version: ${version}${adapter ? ` · Adapter: ${adapter}` : ""}`,
+  ),
+
   "creation.invalidSlug":
     "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
   "creation.exists": template(
@@ -253,9 +285,9 @@ export const coreTextEnglish = {
   "agent.authenticationRequired": "Authentication required",
   "agent.codexTimeout": "Codex availability check timed out. Refresh agent availability.",
   "agent.codexMissing":
-    "Codex not found. Install Codex and sign in with codex login. Stintwork includes @agentclientprotocol/codex-acp@2.1.1.",
+    "Codex not found. Install Codex and sign in with codex login. Stintwork prepares @agentclientprotocol/codex-acp@2.1.1.",
   "agent.claudeMissing":
-    "Claude Code not found. Install Claude Code and sign in with claude auth login. Stintwork includes @agentclientprotocol/claude-agent-acp@0.88.0.",
+    "Claude Code not found. Install Claude Code and sign in with claude auth login. Stintwork prepares @agentclientprotocol/claude-agent-acp@0.88.0.",
   "stint.reviewEndedEarly": "The Review stint ended before findings were collected.",
   "stint.findingsIncomplete": "The findings request did not complete.",
   "stint.handoffTimeout": "Handoff timed out.",

@@ -397,7 +397,9 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(trigger).toBeFocused();
           noAgents = false;
           await trigger.click();
-          const start = dialog.getByRole("button", { name: t.stints.start, exact: true });
+          const start = dialog.getByRole("button", {
+            name: new RegExp(`^(${t.stints.start}|${t.stints.preparation.retry})$`),
+          });
           await expect(start).toBeEnabled();
           for (const label of [t.stints.agent, t.stints.permissionLevel]) {
             const picker = dialog.getByRole("combobox", { name: label, exact: true });

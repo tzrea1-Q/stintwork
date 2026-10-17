@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { expect, test } from "vitest";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
+import { Dialog, DialogContent, DialogTitle } from "./Dialog";
 
 function MilestoneSelect() {
   const [value, setValue] = useState("m1");
@@ -99,4 +100,27 @@ test("Escape and outside press dismiss without changing the selected value", asy
   await waitFor(() => expect(screen.queryByRole("listbox")).not.toBeInTheDocument());
   expect(trigger).toHaveTextContent("First milestone");
   expect(trigger).toHaveFocus();
+});
+
+test("immediately cancelling a nested select dismisses only the select and returns focus", async () => {
+  render(
+    <Dialog defaultOpen>
+      <DialogContent aria-describedby={undefined}>
+        <DialogTitle>Edit item</DialogTitle>
+        <MilestoneSelect />
+      </DialogContent>
+    </Dialog>,
+  );
+  const dialog = screen.getByRole("dialog", { name: "Edit item" });
+  const trigger = screen.getByRole("combobox", { name: "Milestone" });
+  trigger.focus();
+  act(() => {
+    trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(dialog).toBeVisible();
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  await userEvent.setup().keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });

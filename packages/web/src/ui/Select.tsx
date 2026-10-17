@@ -1,11 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as Primitive from "@radix-ui/react-select";
 import { Check, ChevronDown } from "lucide-react";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { forwardRef, useState, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "./Button";
 import { cn } from "./cn";
 
-export const Select = Primitive.Root;
+export function Select({
+  open,
+  defaultOpen = false,
+  onOpenChange,
+  ...props
+}: ComponentPropsWithoutRef<typeof Primitive.Root>) {
+  const [currentOpen, setOpen] = useState(defaultOpen);
+  return (
+    <Primitive.Root
+      {...props}
+      open={open ?? currentOpen}
+      onOpenChange={(nextOpen) => {
+        flushSync(() => {
+          setOpen(nextOpen);
+          onOpenChange?.(nextOpen);
+        });
+        // Workaround: refresh Radix 1.2's parent Escape listener synchronously until upstream fixes layer changes.
+        flushSync(() => document.dispatchEvent(new CustomEvent("dismissableLayer.update")));
+      }}
+    />
+  );
+}
 export const SelectValue = Primitive.Value;
 
 export const SelectTrigger = forwardRef<

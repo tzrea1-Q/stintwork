@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
@@ -17,6 +18,7 @@ import { once } from "node:events";
 import { afterEach, expect, test, vi } from "vitest";
 import {
   adapterHost,
+  adapterProfilesDirectory,
   adapterPins,
   nativePackage,
   profileManifest,
@@ -24,6 +26,7 @@ import {
 } from "./adapter-profiles.js";
 import {
   prepareAgent,
+  releasedProfile,
   type AgentPreparationEvent,
   type AgentPreparationOptions,
 } from "./adapter-cache.js";
@@ -328,11 +331,17 @@ test("CLI changes trigger reselection; Codex 0.148.0 falls below the approved ra
 
 test("real fake-ACP handshake failure selects bundled with a visible reason", async () => {
   const { options, calls, events } = await fixture();
+  const confirmed: string[] = [];
   const prepared = await prepareAgentForStint({
     ...options,
+    beforePrepare: async (event) => {
+      confirmed.push(event.source);
+      if (event.source === "bundled") expect(await calls()).toHaveLength(1);
+    },
     env: { ...options.env, TEST_HANDSHAKE: "fail" },
   });
   expect(prepared).toMatchObject({ source: "bundled", reason: "handshake failed" });
+  expect(confirmed).toEqual(["installed", "bundled"]);
   expect(events).toContainEqual(
     expect.objectContaining({ phase: "selected", source: "bundled", reason: "handshake failed" }),
   );
@@ -421,15 +430,21 @@ test("failed npm, missing locks, and cancellation leave no published/partial ent
   ).rejects.toThrow("retry with the same released pins");
   expect(await readdir(join(options.cacheDirectory as string, "entries"))).toEqual([]);
   const controller = new AbortController();
+  let cancelAfterStartup: Promise<void> | undefined;
   const cancelled = prepareAgent({
     ...options,
     env: { ...options.env, TEST_NPM: "hang" },
     signal: controller.signal,
     onProgress(event) {
-      if (event.phase === "installing") setTimeout(() => controller.abort(), 50);
+      if (event.phase === "installing")
+        cancelAfterStartup = expect
+          .poll(calls)
+          .toHaveLength(2)
+          .then(() => controller.abort());
     },
   });
   await expect(cancelled).rejects.toThrow();
+  await cancelAfterStartup;
   expect(await readdir(join(options.cacheDirectory as string, "entries"))).toEqual([]);
   const prepared = await prepareAgent(options);
   expect(await calls()).toHaveLength(3);
@@ -526,4 +541,82 @@ test("npm JS entry lookup supports the Windows npm.cmd layout without a shell", 
   expect(await npmEntry({ Path: root }, "win32")).toBe(expected);
   await script(join(root, "codex.exe"), "");
   expect(findExecutable("codex", { Path: root }, "win32")).toBe(join(root, "codex.exe"));
+});
+
+test("source confirmation precedes cache writes/downloads and can cancel before preparation", async () => {
+  const { options, calls } = await fixture();
+  const controller = new AbortController();
+  let confirmed = false;
+  await expect(
+    prepareAgent({
+      ...options,
+      signal: controller.signal,
+      beforePrepare: async (event, signal) => {
+        expect(event).toMatchObject({
+          source: "installed",
+          reason: "compatible",
+          executable: { version: "0.163.0" },
+        });
+        await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
+        confirmed = true;
+        controller.abort();
+        signal.throwIfAborted();
+      },
+    }),
+  ).rejects.toThrow();
+  expect(confirmed).toBe(true);
+  await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
+});
+
+test("every shipped bundled download estimate matches its exact host-profile lock", async () => {
+  const directory = adapterProfilesDirectory();
+  const estimates = JSON.parse(await readFile(join(directory, "download-sizes.json"), "utf8"));
+  expect(Object.keys(estimates)).toHaveLength(14);
+  for (const [name, estimate] of Object.entries(estimates) as [
+    string,
+    { lockDigest: string; downloadBytes: number },
+  ][]) {
+    const lockBytes = await readFile(join(directory, name, "package-lock.json"));
+    expect(estimate.lockDigest).toBe(createHash("sha256").update(lockBytes).digest("hex"));
+    expect(estimate.downloadBytes).toBeGreaterThan(100_000_000);
+  }
+  expect(estimates["codex/bundled-darwin-arm64"].downloadBytes).toBe(136113744);
+});
+
+test("bundled confirmation carries the selected lock's download size before npm; stale metadata fails closed", async () => {
+  const { options } = await fixture();
+  const host = adapterHost();
+  const name = profileName("codex", "bundled", host);
+  const profile = await releasedProfile(options, "bundled", host);
+  const estimatesPath = join(options.profilesDirectory as string, "download-sizes.json");
+  const estimate = { lockDigest: profile.lockDigest, downloadBytes: 136113744 };
+  await writeFile(estimatesPath, JSON.stringify({ [name]: estimate }));
+  const events: AgentPreparationEvent[] = [];
+  const stop = new AbortController();
+  await expect(
+    prepareAgent(
+      {
+        ...options,
+        signal: stop.signal,
+        onProgress: (event) => events.push(event),
+        beforePrepare: async (event) => {
+          expect(event.downloadBytes).toBe(136113744);
+          stop.abort();
+        },
+      },
+      { reason: "handshake failed" },
+    ),
+  ).rejects.toThrow();
+  expect(events[0]).toMatchObject({
+    source: "bundled",
+    phase: "selected",
+    downloadBytes: 136113744,
+  });
+  await expect(readFile(join(options.cwd, "../npm-calls.jsonl"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  await writeFile(estimatesPath, JSON.stringify({ [name]: { ...estimate, lockDigest: "stale" } }));
+  await expect(prepareAgent(options, { reason: "handshake failed" })).rejects.toMatchObject({
+    coreText: { code: "agent.downloadSizeUnavailable" },
+  });
 });

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile, spawn } from "node:child_process";
+import { CoreTextError } from "@stintwork/core";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -36,6 +37,7 @@ import { toAcpReadable } from "./stdio.js";
 
 export type AgentSourceReason = ReturnType<typeof selectAgentSource>["reason"] | "handshake failed";
 export type AgentPreparationEvent = {
+  downloadBytes?: number;
   agent: CachedAgent;
   adapterVersion: string;
   phase: "selected" | "waiting" | "installing" | "verifying" | "smoke" | "ready";
@@ -43,7 +45,7 @@ export type AgentPreparationEvent = {
   reason: AgentSourceReason;
   elapsedMs?: number;
   success?: boolean;
-  executable?: { path: string; version?: string };
+  executable?: { path: string; version?: string; identity?: string };
 };
 export type PreparedAgent = {
   agent: CachedAgent;
@@ -64,6 +66,7 @@ export type AgentPreparationOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
   onProgress?: (event: AgentPreparationEvent) => void;
+  beforePrepare?: (event: AgentPreparationEvent, signal: AbortSignal) => Promise<void>;
 };
 
 export class InstalledAgentInitializationError extends Error {}
@@ -614,6 +617,34 @@ export async function prepareAgent(
     ? { source: "bundled" as const, reason: sourceOverride.reason }
     : selectAgentSource(agent, detected);
   const { source, reason } = selection;
+  const host = adapterHost();
+  const profile = await releasedProfile(options, source, host);
+  let downloadBytes: number | undefined;
+  if (source === "bundled") {
+    try {
+      const estimates = JSON.parse(
+        await readFile(
+          join(options.profilesDirectory ?? adapterProfilesDirectory(), "download-sizes.json"),
+          "utf8",
+        ),
+      );
+      const estimate = estimates[profileName(agent, source, host)];
+      if (
+        estimate?.lockDigest !== profile.lockDigest ||
+        !Number.isSafeInteger(estimate.downloadBytes) ||
+        estimate.downloadBytes <= 0
+      )
+        throw new CoreTextError({ code: "agent.downloadSizeUnavailable" });
+      downloadBytes = estimate.downloadBytes;
+    } catch (error) {
+      // Synthetic test profiles need not ship release download metadata.
+      if (
+        !options.profilesDirectory ||
+        !(error instanceof Error && "code" in error && error.code === "ENOENT")
+      )
+        throw new CoreTextError({ code: "agent.downloadSizeUnavailable" }, { cause: error });
+    }
+  }
   const progress = (phase: AgentPreparationEvent["phase"], details = {}) =>
     onProgress?.({
       agent,
@@ -621,16 +652,28 @@ export async function prepareAgent(
       source,
       reason,
       phase,
+      downloadBytes,
       ...details,
     });
-  progress(
-    "selected",
-    detected
-      ? { elapsedMs: detected.elapsedMs, success: !!detected.version, executable: detected }
-      : {},
+  const proposedExecutable =
+    source === "installed" ? detected : { path: "", version: adapterPins[agent].cliVersion };
+  progress("selected", {
+    executable: proposedExecutable,
+    ...(detected ? { elapsedMs: detected.elapsedMs, success: !!detected.version } : {}),
+  });
+  await options.beforePrepare?.(
+    {
+      agent,
+      adapterVersion: adapterPins[agent].version,
+      source,
+      reason,
+      phase: "selected",
+      downloadBytes,
+      executable: proposedExecutable,
+    },
+    signal,
   );
-  const host = adapterHost();
-  const profile = await releasedProfile(options, source, host);
+  signal.throwIfAborted();
   const cacheKey = digest(
     JSON.stringify({
       agent,

@@ -1,0 +1,58 @@
+{
+  "claude/bundled-darwin-arm64": {
+    "lockDigest": "4e7bd849ae742529db12ac62bc768cf2db55e503d888ef8e9ce121fb1b37f133",
+    "downloadBytes": 113101291
+  },
+  "claude/bundled-darwin-x64": {
+    "lockDigest": "cd26874dd896356e5db07e3e57e8e2061768e8df5682849db690a03784ec9374",
+    "downloadBytes": 117227571
+  },
+  "claude/bundled-linux-arm64": {
+    "lockDigest": "1d8628354e8d5a0e0a5c38e9a6a1b3d0c78dc6044774794242836efeaba4e9d6",
+    "downloadBytes": 123169220
+  },
+  "claude/bundled-linux-arm64-musl": {
+    "lockDigest": "dd2510c15b81f26d43e4ba2a21341753ec6ffe96d6e6231656d45ebd0534ac17",
+    "downloadBytes": 120706977
+  },
+  "claude/bundled-linux-x64": {
+    "lockDigest": "eb1bc39009a356f2962b3bfc1294311ce2672ed337fa904f0767c9a8c2ad01b7",
+    "downloadBytes": 122911097
+  },
+  "claude/bundled-linux-x64-musl": {
+    "lockDigest": "02893b941b19403123663cd4d3a113cc11b31a8dc64db9df0f5d4855ab2c8b06",
+    "downloadBytes": 120674949
+  },
+  "claude/bundled-win32-arm64": {
+    "lockDigest": "98729a8e534d9050070ccbb017599ba793f6485fea0ed0b1b1f7b5dc64da494f",
+    "downloadBytes": 121649091
+  },
+  "claude/bundled-win32-x64": {
+    "lockDigest": "444b0b263978e3cce5bd98fc29eb8a4e4f591df7a49fc3e5f49e52eb651178ea",
+    "downloadBytes": 125762780
+  },
+  "codex/bundled-darwin-arm64": {
+    "lockDigest": "f34d1cd347f88ab0482ade9271243aa31ef7b7b4a571eb1a380e7dec92679550",
+    "downloadBytes": 136113744
+  },
+  "codex/bundled-darwin-x64": {
+    "lockDigest": "68976dc7301729e4b9337f7abd30f41c8484e2b8ca7ee3cdbfa237653684af19",
+    "downloadBytes": 145135860
+  },
+  "codex/bundled-linux-arm64": {
+    "lockDigest": "1bdbaaf8d8439e8ace2725c8f85257dcf0f13dbbd28d58fa914ca0203ee6b78f",
+    "downloadBytes": 157309720
+  },
+  "codex/bundled-linux-x64": {
+    "lockDigest": "da9dd895e5c06f4406947f22dc5aa7f3251b1f3308568a571adc9231ccbd4d45",
+    "downloadBytes": 164730594
+  },
+  "codex/bundled-win32-arm64": {
+    "lockDigest": "cb225ce86316f97fa081c7a3c3d5ec566021c37140fd31c939d67e983aeeb040",
+    "downloadBytes": 153562893
+  },
+  "codex/bundled-win32-x64": {
+    "lockDigest": "3352d05db0bac9421ee3d2b2b8661fcf5f2b516dc93e8edc8601e2f937daefe1",
+    "downloadBytes": 164005835
+  }
+}

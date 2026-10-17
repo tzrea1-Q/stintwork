@@ -14,6 +14,10 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "stints.preparation.bundledNotice": [[136], [165]],
+  "coreText.agent.executableDetails": [
+    [{ path: "/cache/agent", version: "0.159.3", adapter: "2.1.1" }],
+  ],
   "warningCallout.title": [[1], [3]],
   "connection.errors.requestFailed": [[503], [404]],
   "coreText.agent.internalErrorDetail": [[{ detail: ": Agent diagnostic 原文" }]],

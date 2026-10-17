@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { errorText, CoreTextError, type AgentAvailability } from "@stintwork/core";
-
-import { AgentAuthenticationError } from "./authentication.js";
-import { findExecutable } from "./executable.js";
+import { prepareAgentForStint } from "./prepare-agent.js";
+import { inspectAgentAvailability } from "./availability.js";
 import { type AgentLauncher, startAgentStint } from "./index.js";
 import { codexProfile } from "./profiles.js";
 import type { RegisteredAgent } from "./registry.js";
@@ -23,49 +21,10 @@ export function createCodexAgent(
   return {
     ...codexProfile,
     launch,
-    async detectAvailability(): Promise<AgentAvailability> {
-      const checkedAt = new Date().toISOString();
-      const env = options.env ?? process.env;
-      if (!findExecutable(env.CODEX_PATH || "codex", env))
-        return {
-          available: false,
-          kind: "missing-executable",
-          reason: { text: `Codex not found. ${codexProfile.installationHint}` },
-          checkedAt,
-        };
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      try {
-        const stint = launch({
-          agent: codexProfile.id,
-          cwd: options.cwd ?? process.cwd(),
-          prompt: "",
-          onEvent: () => {},
-          checkAvailability: true,
-        });
-        const timeout = new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => {
-            reject(new CoreTextError({ code: "agent.codexTimeout" }));
-            void stint.cancel().catch(() => {});
-          }, options.timeoutMs ?? 20_000);
-        });
-        await Promise.race([stint.done, timeout]);
-        return { available: true, checkedAt };
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        return {
-          available: false,
-          kind:
-            error instanceof AgentAuthenticationError || /authentication required/i.test(reason)
-              ? "login-required"
-              : /not found/i.test(reason)
-                ? "missing-executable"
-                : "check-failed",
-          reason: errorText(error),
-          checkedAt,
-        };
-      } finally {
-        clearTimeout(timer);
-      }
+    prepare: (preparation) =>
+      prepareAgentForStint({ ...preparation, agent: "codex", env: options.env ?? process.env }),
+    async detectAvailability() {
+      return inspectAgentAvailability("codex", options.env ?? process.env, this.availability);
     },
   };
 }

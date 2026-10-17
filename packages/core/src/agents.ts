@@ -33,15 +33,44 @@ export type AgentSkillLocation = {
   kind: "skills" | "prompts";
 };
 
+export type AgentSelection = {
+  downloadBytes?: number;
+  source: "installed" | "bundled";
+  reason:
+    | "compatible"
+    | "missing"
+    | "below-tested-range"
+    | "unparseable"
+    | "incompatible"
+    | "handshake failed"
+    | "unverified"
+    | "native";
+  executable?: { path: string; version?: string; identity?: string };
+  adapterVersion?: string;
+};
+
+export type AgentPreparationProgress = AgentSelection & {
+  phase: "selected" | "waiting" | "installing" | "verifying" | "smoke" | "ready" | "confirm";
+};
+
 export type AgentAvailability = {
   available: boolean;
   reason?: CoreText;
-  kind?: "login-required" | "missing-executable" | "check-failed";
+  kind?:
+    | "login-required"
+    | "missing-executable"
+    | "check-failed"
+    | "not-prepared"
+    | "incompatible"
+    | "preparation-failed";
+  canStart?: boolean;
+  selection?: AgentSelection;
+  installedIdentity?: string;
   checkedAt?: string;
 };
 
 export function agentUnavailable(agent: AgentProfile): CoreText | null {
-  if (agent.availability?.available !== false) return null;
+  if (agent.availability?.available !== false || agent.availability.canStart) return null;
   if (agent.availability.reason?.text.trim()) return agent.availability.reason;
   return coreText({
     code: "agent.unavailable",

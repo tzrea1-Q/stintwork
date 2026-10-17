@@ -12,7 +12,7 @@ import {
   refreshAgentAvailability,
 } from "./index.js";
 import { grokPermissionWarning, readGrokConfig } from "./grok-config.js";
-import { createFakeAgentLauncher, sourceNodeArgs } from "./testing.js";
+import { sourceNodeArgs } from "./testing.js";
 
 const folders: string[] = [];
 async function fixture(config?: string) {
@@ -79,44 +79,29 @@ test.each([
   expect(await readFile(configPath, "utf8")).toBe(config);
 });
 
-test("availability probes never prompt for work, invent modes, or authenticate; a login refresh recovers", async () => {
+test("Grok availability and refresh never await its long native readiness path", async () => {
   const { cwd, configPath } = await fixture('permission_mode = "always-approve"');
-  let authRequired = true;
-  const agent = createGrokAgent({
-    configPath,
-    cwd,
-    launch: (options) =>
-      createFakeAgentLauncher(
-        [
-          { type: "expect-prompt", includes: "Work" },
-          { type: "write", path: "work.txt", content: "Work" },
-        ],
-        [],
-        { profile: "grok", authRequired },
-      )(options),
+  const executable = join(cwd, "grok");
+  await writeFile(executable, "must not run");
+  await chmod(executable, 0o755);
+  vi.stubEnv("PATH", cwd);
+  const launch = vi.fn(() => {
+    throw new Error("Must not launch");
   });
-  const registry = createAgentRegistry([agent]);
+  const agent = createGrokAgent({ configPath, cwd, launch });
   await refreshAgentAvailability(agent);
-  expect(describeAgents(registry)[0]).toMatchObject({
-    capabilities: { modes: [], defaultMode: null, permissionMode: "always-approve" },
+  await refreshAgentAvailability(agent, true);
+  expect(describeAgents(createAgentRegistry([agent]))[0]).toMatchObject({
     availability: {
       available: false,
-      kind: "login-required",
-      reason: { text: expect.stringContaining("grok login") },
+      canStart: true,
+      kind: "not-prepared",
+      selection: { source: "installed", reason: "native" },
     },
     warnings: [grokPermissionWarning],
   });
-  const checkedAt = agent.availability?.checkedAt;
-  await refreshAgentAvailability(agent);
-  expect(agent.availability?.checkedAt).toBe(checkedAt);
-  authRequired = false;
-  await refreshAgentAvailability(agent);
-  expect(agent.availability).toMatchObject({ available: false, kind: "login-required" });
-  await refreshAgentAvailability(agent, true);
-  expect(agent.availability).toMatchObject({ available: true });
-  await expect(readFile(join(cwd, "work.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  expect(launch).not.toHaveBeenCalled();
   await writeFile(configPath, 'permission_mode = "manual"');
-  await refreshAgentAvailability(agent);
   expect(agent.capabilities.permissionMode).toBe("manual");
   expect(agent.warnings).toEqual([]);
 });
@@ -150,6 +135,6 @@ test("the native launcher invokes grok agent stdio using the developer's PATH an
   expect(agent.availability).toMatchObject({
     available: false,
     kind: "missing-executable",
-    reason: { text: expect.stringContaining("Install Grok Build") },
+    canStart: false,
   });
 });

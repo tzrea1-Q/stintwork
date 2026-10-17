@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import assert from "node:assert/strict";
+import { checkInstalledDependencies } from "./package-dependencies.mjs";
 import { execFile, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import {
@@ -28,7 +29,8 @@ const offline = process.argv.includes("--offline");
 const temporary = await realpath(await mkdtemp(join(tmpdir(), "stintwork-package-smoke-")));
 const outside = relative(root, temporary);
 assert(outside.startsWith(".."), "The package smoke test must be outside the monorepo.");
-const env = { ...process.env, STINTWORK_SKIP_AGENT_DETECTION: "1" };
+const env = { ...process.env };
+delete env.STINTWORK_SKIP_AGENT_DETECTION;
 for (const key of Object.keys(env)) {
   if (["NODE_PATH", "NODE_OPTIONS", "INIT_CWD"].includes(key) || key.startsWith("GIT_"))
     delete env[key];
@@ -95,6 +97,11 @@ try {
     !/(?:workspace:|@stintwork\/)/.test(manifestText),
     "Workspace reference in packed manifest.",
   );
+  for (const group of ["dependencies", "optionalDependencies"])
+    assert(
+      !Object.keys(manifest[group] ?? {}).some((name) => /claude-agent|codex/.test(name)),
+      "Eager adapter/native dependency.",
+    );
   const { stdout: bundle } = await execute(
     "tar",
     ["-xOzf", tarball, "package/dist/bin.js"],
@@ -122,34 +129,36 @@ try {
     !relative(temporary, packageRoot).startsWith(".."),
     "Package resolves into the workspace.",
   );
-  const visited = new Set();
-  async function checkNativeModules(directory) {
-    const canonical = await realpath(directory);
-    if (visited.has(canonical)) return;
-    visited.add(canonical);
-    const manifestPath = join(directory, "package.json");
-    if (existsSync(manifestPath)) {
-      const dependency = JSON.parse(await readFile(manifestPath, "utf8"));
-      assert(!dependency.gypfile, `Native build dependency: ${dependency.name}`);
-      for (const hook of ["preinstall", "install", "postinstall"])
-        assert(!dependency.scripts?.[hook], `Install hook in ${dependency.name}: ${hook}`);
-    }
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      assert(
-        !/(?:\.node$|^binding\.gyp$)/.test(entry.name),
-        `Native module: ${join(directory, entry.name)}`,
-      );
-      if (entry.isDirectory()) await checkNativeModules(join(directory, entry.name));
-    }
-  }
-  await checkNativeModules(join(consumer, "node_modules"));
+  await checkInstalledDependencies(join(consumer, "node_modules"));
   const require = createRequire(join(packageRoot, "dist/bin.js"));
-  for (const adapter of ["claude-agent-acp", "codex-acp"]) {
-    const entry = await realpath(require.resolve(`@agentclientprotocol/${adapter}/dist/index.js`));
-    assert(
-      !relative(temporary, entry).startsWith(".."),
-      `Adapter resolves outside the consumer: ${entry}`,
-    );
+  for (const adapter of ["claude-agent-acp", "codex-acp"])
+    assert.throws(() => require.resolve(`@agentclientprotocol/${adapter}/dist/index.js`), {
+      code: "MODULE_NOT_FOUND",
+    });
+  const profiles = new URL("../packages/agents/profiles/", import.meta.url);
+  assert(entries.includes("package/dist/agent-profiles/download-sizes.json"));
+  assert.equal(
+    await readFile(join(packageRoot, "dist/agent-profiles/download-sizes.json"), "utf8"),
+    await readFile(new URL("download-sizes.json", profiles), "utf8"),
+  );
+  for (const agent of ["claude", "codex"]) {
+    for (const profile of await readdir(new URL(`${agent}/`, profiles))) {
+      for (const file of ["package.json", "package-lock.json"]) {
+        const path = `${agent}/${profile}/${file}`;
+        assert(
+          entries.includes(`package/dist/agent-profiles/${path}`),
+          `Missing released profile: ${path}`,
+        );
+        assert(
+          !existsSync(join(packageRoot, "dist/agent-profiles", agent, profile, "node_modules")),
+          `Resolved shipped profile: ${path}`,
+        );
+        assert.equal(
+          await readFile(join(packageRoot, "dist/agent-profiles", path), "utf8"),
+          await readFile(new URL(path, profiles), "utf8"),
+        );
+      }
+    }
   }
   for (const name of (
     await readdir(new URL("../packages/core/workflows/", import.meta.url))
@@ -210,9 +219,24 @@ try {
     );
     await chmod(path, 0o755);
   }
+  const agentLaunched = join(temporary, "agent-launched");
+  for (const name of ["claude", "codex", "grok"]) {
+    const path = join(browserDirectory, name);
+    await writeFile(
+      path,
+      `#!${process.execPath}\nrequire("node:fs").writeFileSync(${JSON.stringify(agentLaunched)}, "launched"); process.exit(1);\n`,
+    );
+    await chmod(path, 0o755);
+  }
   child = spawn(executable, ["--no-open"], {
     cwd: project,
-    env: { ...projectEnv, PATH: `${browserDirectory}${delimiter}${env.PATH ?? ""}` },
+    env: {
+      ...projectEnv,
+      STINTWORK_AGENT_CACHE: join(temporary, "agent-cache"),
+      CLAUDE_CODE_EXECUTABLE: join(browserDirectory, "claude"),
+      CODEX_PATH: join(browserDirectory, "codex"),
+      PATH: `${browserDirectory}${delimiter}${env.PATH ?? ""}`,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   });
   closed = new Promise((resolve) => child.once("close", resolve));
@@ -263,6 +287,19 @@ try {
     assert.equal(response.status, 200);
     assert((await response.arrayBuffer()).byteLength > 0);
   }
+  const availability = await fetch(`${url}/api/agents?refresh=true`, {
+    signal: AbortSignal.timeout(5000),
+  });
+  assert.equal(availability.status, 200);
+  const agents = (await availability.json()).agents;
+  assert.equal(agents.length, 3);
+  assert(
+    agents.every(
+      (agent) => !agent.availability.available && agent.availability.kind === "not-prepared",
+    ),
+  );
+  assert(!existsSync(agentLaunched), "Board/refresh launched an agent.");
+  assert(!existsSync(join(temporary, "agent-cache")), "Board/refresh prepared an adapter.");
   assert(!existsSync(browserOpened), "--no-open launched a browser.");
   console.log(
     "Packed package smoke passed: version, help, health, project, web assets and no browser.",
