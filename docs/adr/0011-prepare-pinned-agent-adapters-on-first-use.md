@@ -14,4 +14,4 @@ This replaces the [first-release decision](../../.scratch/first-release/spec.md#
 
 Board budgets: ≤60 seconds and ≤10 MiB downloaded; measurement details and the comparable-baseline limit are in [ticket 07](../../.scratch/first-run/issues/07-cold-package-real-agent-evidence.md).
 
-Maintainer approval is required before implementation; this record does not pass the M9 exit.
+Approved by the maintainer on 2026-10-17. This record does not pass the M9 exit.

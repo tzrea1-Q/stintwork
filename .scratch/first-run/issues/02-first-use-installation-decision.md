@@ -1,6 +1,6 @@
 # 02 — Record first-use adapter installation decision
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -26,3 +26,5 @@ Define cache identity/ownership, atomic preparation, offline/retry behavior and 
 Checks: `pnpm --config.verify-deps-before-run=false format:check` and `pnpm --config.verify-deps-before-run=false lint` passed; lint reports the existing informational `biome.json:24` deprecation. These checks do not cover Markdown; word-count, whitespace, relative-link, checkbox-count and scope guards passed separately. No runtime, compatibility, package or cold-install tests were run for this documentation revision.
 
 **Coordinator, 2026-10-17:** Reviewed; shortened to repo ADR length on request. Waiting for the maintainer to approve ADR 0011 (the narrow ADR 0003 change) before ticket 04 starts. Ticket 03 proceeds meanwhile.
+
+**Coordinator, 2026-10-17:** The maintainer approved ADR 0011 (including the tested-range rule) in chat. Resolved; ticket 04 starts.
