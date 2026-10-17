@@ -11,6 +11,10 @@ Board startup and every availability refresh must neither download adapters/nati
 
 Show preparation progress and retry at stint start. Say whether the installed CLI or bundled agent is selected and why, including when an installed CLI is absent or unverified. Do not hide the bundled fallback or treat it as a request to install/upgrade the developer's global agent. Grok remains the developer's separately installed native CLI and login.
 
+Preserve one published npm package, Node >=22.12, bundled workspace code, built web assets and workflow YAML. Do not merely move the adapters to optionalDependencies: default npm installation still downloads them. Grok stays native `grok agent stdio`, without Stintwork installing Grok packages.
+
+Use only read-only local detection and cached evidence on board/availability paths; never label an untested agent ready. Show “Agent source: Installed” or “Agent source: Bundled”, selected executable path/version, adapter version and reason. Show the proposed source and download before preparation, retain actual source/reason at launch, and offer cancellation as well as retry. Keep the board usable offline with an honest “not prepared” state; document that offline npx needs the root cached and that package readiness proves neither login nor offline provider inference. Authentication errors point to the developer's own login command; never invoke login automatically, edit agent configuration or read, copy, store or proxy credentials.
+
 ## Acceptance criteria
 
 - [ ] Root and agents packaging no longer eagerly install ACP adapters/native agent payloads; the packed package has no workspace-only leakage.

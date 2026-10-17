@@ -1,6 +1,6 @@
 # 02 — Record first-use adapter installation decision
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01
 
 ## What to build
@@ -20,3 +20,9 @@ Define cache identity/ownership, atomic preparation, offline/retry behavior and 
 - [ ] Cache ownership, offline/failure recovery and separate board/first-stint measurement budgets are explicit.
 
 ## Comments
+
+**Codex, 2026-10-17:** Rewrote ADR 0011 as a short decision record: selected-agent preparation only on explicit first use, compatible installed CLI preferred, pinned bundled fallback otherwise, never on board startup/availability refresh. It replaces eager first-release adapter dependencies, retains ADR 0002's pins/probes and narrows ADR 0003 only for first-use fallback downloads, preserving own-login/no-credentials. Moved missing probe evidence/release rules to 03, lock/pin/cache/launch details to 04, packaging/offline/source UI details to 05, security/failure regression cases to 06, and measurement/accounting details to 07. Kept the minimal glossary change. Maintainer approval of the record remains required before implementation; compatible-pair and measured response-body evidence remain pending. No Status changes, product code, existing ADR edits or commit.
+
+Checks: `pnpm --config.verify-deps-before-run=false format:check` and `pnpm --config.verify-deps-before-run=false lint` passed; lint reports the existing informational `biome.json:24` deprecation. These checks do not cover Markdown; word-count, whitespace, relative-link, checkbox-count and scope guards passed separately. No runtime, compatibility, package or cold-install tests were run for this documentation revision.
+
+**Coordinator, 2026-10-17:** Reviewed; shortened to repo ADR length on request. Waiting for the maintainer to approve ADR 0011 (the narrow ADR 0003 change) before ticket 04 starts. Ticket 03 proceeds meanwhile.

@@ -49,8 +49,12 @@ _Avoid_: Command, prompt, plugin
 ## Agents and stints
 
 **Agent**:
-A coding agent the developer already has installed and signed in to, such as Claude Code, Codex or Grok Build.
+A coding agent used under the developer's own login, such as Claude Code, Codex or Grok Build.
 _Avoid_: Model, bot, harness, runtime
+
+**Agent source**:
+Which executable a stint uses: **Installed** is the developer's compatible CLI; **Bundled** is the pinned fallback prepared by Stintwork on explicit first use.
+_Avoid_: Agent version (a version does not identify its source)
 
 **Stint**:
 One agent's turn on one stage of a work item, optionally on one ticket. It starts from a brief and ends with a handoff.
@@ -113,6 +117,7 @@ Product and agent names stay unchanged. Stint and Agent are also left untranslat
 | Gate | 关卡 |
 | Skill | 技能 |
 | Agent | Agent |
+| Agent source (Installed / Bundled) | Agent 来源（已安装 / 内置） |
 | Stint | Stint |
 | Brief | 简报 |
 | Handoff | 交接 |
