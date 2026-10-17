@@ -14,12 +14,12 @@ The first-release spec aimed to show the board in under a minute. M9 makes that 
 
 ## Solution
 
-Research the installed adapters before choosing an installation change. Separate the dependencies needed to show the board from those needed to start a stint.
+Separate board dependencies from explicit first-use preparation: cache pinned adapters, prefer compatible installed CLIs, and otherwise prepare only that agent's pinned bundled native package under the developer's existing login.
 
 - **Research first.** Inspect how each adapter finds its agent binary, whether it can use the developer's installed CLI, and what Grok Build needs. Measure the root package and dependencies by platform.
 - **Compare options.** Include using an installed CLI, installing an adapter on first use into a cache with pinned versions, optional dependencies and the current approach. Do not assume an SDK adapter can run against the standalone CLI.
-- **Record the decision.** If the recommendation changes how adapters are installed, write a decision record before implementation. Preserve ADR 0002's pinned adapter-version guarantee and ADR 0003's own-agent and own-login boundary.
-- **Implement after the spike.** The spike proposes implementation tickets in Comments. The coordinator files them in dependency order before the exit ticket and adds them to its blockers.
+- **Record the decision.** Ticket 02 records the chosen approach before implementation, preserving ADR 0002's pins and ADR 0003's own-agent/own-login boundary.
+- **Implement after the spike.** Tickets 02–07 precede exit ticket 08. Show preparation progress and installed/bundled source and reason at stint start; never download adapters/native agents during board startup or availability refresh.
 
 ## User Stories
 
@@ -31,12 +31,12 @@ Research the installed adapters before choosing an installation change. Separate
 
 ## Implementation Decisions
 
-- **No installation choice yet:** ticket 01 inspects local `node_modules` and package metadata without network access. Its report is `docs/research/2026-10-17-first-run.md`.
+- **Chosen approach:** use a verified reusable first-use adapter cache with exact versions and a pinned dependency closure. Omit native packages for proven-compatible installed CLIs; otherwise prepare only the selected agent's pinned bundled native package (Codex 0.159.3 for unproven installed 0.148.0), keeping the developer's login and global CLI unchanged. Research: `docs/research/2026-10-17-first-run.md`.
 - **Agent resolution:** trace environment variables, PATH lookup and bundled optional dependencies to the actual launch path for Claude Code and Codex. Record what is supported, what is not, and the installed files that prove it. Include Grok Build's native `grok agent stdio` path.
 - **Measurements:** run `npm pack --dry-run` on the root package. Record package versions, packed and unpacked sizes, platform coverage and dependency paths. Separate root tarball size, compressed dependency downloads and unpacked disk size. Mark unavailable platform or download measurements rather than guessing or using network access in the spike.
 - **Choice criteria:** compare first-board bytes and time, first-stint setup, compatibility with installed CLIs, pinned versions, cache reuse, offline behaviour and recovery from interrupted or failed installs. The report recommends one approach and sets measurable size and time limits.
-- **Decision record:** if installation changes, propose a ticket for the new record before implementation. It must explain how pinned adapter versions remain guaranteed and how it relates to ADR 0002; do not edit existing decision records silently.
-- **Scope after research:** the coordinator files the proposed implementation and verification tickets. This spec does not prescribe a cache layout or add an installation mechanism before the spike.
+- **Decision record:** ticket 02 must be approved before implementation and explain pins and the bundled fallback's relationship to ADR 0002/0003; do not edit existing records silently.
+- **Scope after research:** filed tickets 02–07 implement and verify the approved choice; ticket 08 records the exit. Cache layout remains an implementation decision.
 
 ## Testing Decisions
 
@@ -44,12 +44,12 @@ Research the installed adapters before choosing an installation change. Separate
 - **Research evidence:** cite local package files and launch paths, record commands and actual results, and distinguish supported behaviour from an untested possibility. Missing local packages or cached download metadata are recorded as limits.
 - **Cold install:** use an isolated empty npm cache, not the developer's cache. Time `npx stintwork@latest` or the packed tarball through the board becoming usable in a real repo. Record the version or tarball revision, OS and architecture, connection conditions, elapsed time and downloaded bytes. Compare against the current dependency baseline on the same basis.
 - **Real agents:** after the change, start a real stint with each installed agent under the developer's own login. Record the agent and adapter versions and result. A board-only check or fake ACP agent is not proof that a real stint starts.
-- **Exit test:** the cold install shows the board within 60 seconds on a typical home connection, the download is a small fraction of today's, and a real stint still starts with each installed agent. The spike may tighten the size and time limits. Ticket 02 records all results before M9 is set shipped.
+- **Exit test:** the cold install shows the board within 60 seconds on a typical home connection, the download is a small fraction of today's, and real stints work through compatible installed CLIs or the selected pinned bundled fallback. The spike may tighten the size and time limits. Ticket 08 records all results before M9 is set shipped.
 
 ## Out of Scope
 
 - Product implementation during the research spike, or filing implementation tickets before the coordinator reviews its recommendation.
-- Installing agents, signing in, reading credentials or changing the developer's agent configuration.
+- Installing/upgrading global agent CLIs, signing in, reading credentials or changing agent configuration; only the selected pinned bundled fallback may be prepared at first use.
 - Unpinned adapter downloads, changing agent support or the ACP contract without verification.
 - Stints surviving restarts, the GitHub tracker and more agents; these remain M10–M12.
 - Publishing v0.2 or making the repo public; those belong to M13.
@@ -59,4 +59,4 @@ Research the installed adapters before choosing an installation change. Separate
 
 - **Changed 2026-10-17:** the maintainer replaced the feedback-driven M9 with Fast first run. M8 finishes first; M9 does not wait for an outside-developer test.
 - The 225 MB and 317 MB observations explain the spike, not its final download budget. The report sets the size and time limits from evidence.
-- The exit ticket initially depends only on 01. The coordinator inserts implementation tickets before it and updates its `Blocked by` line when filing them.
+- Exit ticket 08 depends on 01–07; filing these tickets does not pass the exit or change M9's status.
