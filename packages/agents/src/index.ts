@@ -29,6 +29,8 @@ import { createPermissionForwarding } from "./permission-forwarding.js";
 import { codexProfile } from "./profiles.js";
 import { AgentAuthenticationError } from "./authentication.js";
 import { adapterEntry } from "./adapter-entry.js";
+import { preparedAgentEnvironment, type PreparedAgent } from "./adapter-cache.js";
+import { findExecutable } from "./executable.js";
 
 export { AgentAuthenticationError } from "./authentication.js";
 export { createCodexAgent } from "./codex.js";
@@ -47,8 +49,23 @@ export { grokProfile } from "./profiles.js";
 export type { AfterTurnRequest } from "./after-turn.js";
 export { handoffRequest } from "./handoff.js";
 export { findingsFormat, findingsRequest, parseFindings } from "./findings.js";
+export {
+  prepareAgent,
+  inspectInstalledAgent,
+  agentCacheDirectory,
+  preparedAgentEnvironment,
+  type PreparedAgent,
+  type AgentPreparationOptions,
+  type AgentPreparationEvent,
+  type AgentSourceReason,
+} from "./adapter-cache.js";
+export { prepareAgentForStint } from "./prepare-agent.js";
+export { selectAgentSource } from "./executable.js";
+export { adapterPins } from "./adapter-profiles.js";
 
 export type AgentStintOptions = {
+  preparedAgent?: PreparedAgent;
+  env?: NodeJS.ProcessEnv;
   permissionLevel?: PermissionLevel;
   agent: string;
   cwd: string;
@@ -77,15 +94,21 @@ export type AgentStint = {
   cancel: () => Promise<void>;
 };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
-export type AdapterLauncher = (cwd: string) => ChildProcessWithoutNullStreams;
+export type AdapterLauncher = (
+  cwd: string,
+  env?: NodeJS.ProcessEnv,
+) => ChildProcessWithoutNullStreams;
 
 const agentReadyTimeoutMs = 60_000;
 
 export function createAgentLauncher(
   launchAdapter: AdapterLauncher,
   profile: AgentProfile = codexProfile,
+  defaultEnv: NodeJS.ProcessEnv = process.env,
 ): AgentLauncher {
   return ({
+    preparedAgent,
+    env = defaultEnv,
     agent,
     cwd,
     additionalDirectories = [],
@@ -160,7 +183,15 @@ export function createAgentLauncher(
         "@agentclientprotocol/sdk"
       );
       if (cancelled) return { stopReason: "cancelled" };
-      child = launchAdapter(cwd);
+      if (preparedAgent && preparedAgent.agent !== agent)
+        throw new Error("Prepared agent does not match the requested stint.");
+      child = preparedAgent
+        ? spawn(process.execPath, [preparedAgent.adapterEntry], {
+            cwd,
+            stdio: "pipe",
+            env: preparedAgentEnvironment(preparedAgent, env),
+          })
+        : launchAdapter(cwd, env);
       const forwarding = createPermissionForwarding(
         ndJsonStream(Writable.toWeb(child.stdin), toAcpReadable(child.stdout)),
       );
@@ -489,10 +520,14 @@ export function createAgentLauncher(
   };
 }
 
-export const startAgentStint: AgentLauncher = createAgentLauncher((cwd) =>
-  spawn(process.execPath, [adapterEntry("codex-acp")], {
+export const startAgentStint: AgentLauncher = createAgentLauncher((cwd, env = process.env) => {
+  const executable = env.CODEX_PATH ? findExecutable(env.CODEX_PATH, env) : undefined;
+  return spawn(process.execPath, [adapterEntry("codex-acp")], {
     cwd,
     stdio: "pipe",
-    env: process.env,
-  }),
-);
+    env: {
+      ...env,
+      ...(executable ? { CODEX_PATH: executable } : {}),
+    },
+  });
+});

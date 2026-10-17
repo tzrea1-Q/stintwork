@@ -15,13 +15,18 @@ export function createCodexAgent(
     timeoutMs?: number;
   } = {},
 ): RegisteredAgent {
-  const launch = options.launch ?? startAgentStint;
+  const launch =
+    options.launch ??
+    (options.env
+      ? (stint) => startAgentStint({ ...stint, env: stint.env ?? options.env })
+      : startAgentStint);
   return {
     ...codexProfile,
     launch,
     async detectAvailability(): Promise<AgentAvailability> {
       const checkedAt = new Date().toISOString();
-      if (!findExecutable("codex", options.env ?? process.env))
+      const env = options.env ?? process.env;
+      if (!findExecutable(env.CODEX_PATH || "codex", env))
         return {
           available: false,
           kind: "missing-executable",

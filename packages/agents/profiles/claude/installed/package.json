@@ -1,0 +1,12 @@
+{
+  "name": "stintwork-claude-installed",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@agentclientprotocol/claude-agent-acp": "0.88.0",
+    "@anthropic-ai/claude-agent-sdk": "0.3.293"
+  },
+  "overrides": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.293"
+  }
+}
