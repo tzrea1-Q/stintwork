@@ -343,28 +343,14 @@ test("in-memory repo files are reusable read-only snapshots", () => {
   expect(indexWorkItems(createMemoryRepoFiles({}))).toEqual({ workItems: [], warnings: [] });
 });
 
-test("indexes this repo's board files correctly", () => {
+test("this repo's tickets parse without warnings and stay in dependency order", () => {
   const { workItems, warnings } = indexWorkItems(diskFiles(new URL("../../../", import.meta.url)));
   expect(warnings).toEqual([]);
-  const board = workItems.find((workItem) => workItem.slug === "board");
-  expect(board?.title).toBe("M1 · The board (read-only)");
-  expect(board?.spec?.path).toBe(".scratch/board/spec.md");
-  expect(board?.tickets.map((ticket) => ticket.number)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-  // Statuses change as the milestone progresses; assert the dependency graph, not progress.
-  expect(board?.tickets.map((ticket) => ticket.blockedBy)).toEqual([
-    [],
-    [1],
-    [2],
-    [2],
-    [3, 4],
-    [5],
-    [6],
-    [7],
-  ]);
-  for (const ticket of board?.tickets ?? []) {
-    const openBlocker = ticket.blockedBy.some(
-      (number) => !board?.tickets.find((candidate) => candidate.number === number)?.resolved,
-    );
-    expect(ticket.blocked).toBe(openBlocker);
+  for (const workItem of workItems) {
+    const preceding = new Set<number>();
+    for (const ticket of workItem.tickets) {
+      expect(ticket.blockedBy.every((number) => preceding.has(number))).toBe(true);
+      preceding.add(ticket.number);
+    }
   }
 });

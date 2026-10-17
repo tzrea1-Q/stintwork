@@ -11,7 +11,7 @@ async function capture(page: Page, testInfo: TestInfo, state: string) {
   const dialog = page.locator('.brief-preview-sheet[data-state="open"]');
   await expect(dialog).toBeVisible();
   await assertLayout(page, { region: ".brief-preview-sheet" });
-  await dialog.screenshot({ path: testInfo.outputPath(`${state}.png`) });
+  await dialog.screenshot({ path: testInfo.outputPath(`${state}.png`), animations: "disabled" });
 }
 
 // Browser-local streaming fake: Playwright route.fulfill buffers a whole response.
@@ -115,44 +115,48 @@ for (const language of ["en", "zh-CN"] as const) {
           );
         });
 
-        test("local states, loading, source details, keyboard dismissal and focus return", async ({
-          page,
-        }, testInfo) => {
-          const loading = gate();
-          let availability: AgentAvailability = {
-            available: false,
-            kind: "not-prepared",
-            canStart: true,
-          };
-          await page.route("**/api/agents", (route) =>
-            route.fulfill({ json: { agents: [{ ...codexProfile, availability }] } }),
-          );
-          await page.route("**/api/work-items/dialog-item/brief-preview", async (route) => {
-            await loading.ready;
-            await route.fulfill({ json: dialogBrief });
-          });
-          await page.goto("/?item=dialog-item");
-          const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
-          const trigger = parent.getByRole("button", { name: t.stints.startStint, exact: true });
-          const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });
-          const agentSection = dialog.getByRole("region", { name: t.stints.agent, exact: true });
-          await trigger.click();
-          await expect(dialog.getByText(t.stints.readingBrief)).toBeVisible();
-          await capture(page, testInfo, "loading");
-          loading.release();
-          await expect(
-            dialog.getByRole("button", { name: t.stints.start, exact: true }),
-          ).toBeEnabled();
-          await page.keyboard.press("Escape");
-          await expect(trigger).toBeFocused();
-          for (const state of [
-            "not-prepared",
-            "missing-executable",
-            "login-required",
-            "incompatible",
-            "preparation-failed",
-            "ready",
-          ] as const) {
+        // Each state gets its own budget; screenshots and keyboard checks no longer accumulate.
+        for (const state of [
+          "not-prepared",
+          "missing-executable",
+          "login-required",
+          "incompatible",
+          "preparation-failed",
+          "ready",
+        ] as const) {
+          test(`local ${state}, source details, keyboard dismissal and focus return`, async ({
+            page,
+          }, testInfo) => {
+            const loading = gate();
+            let availability: AgentAvailability = {
+              available: false,
+              kind: "not-prepared",
+              canStart: true,
+            };
+            await page.route("**/api/agents", (route) =>
+              route.fulfill({ json: { agents: [{ ...codexProfile, availability }] } }),
+            );
+            await page.route("**/api/work-items/dialog-item/brief-preview", async (route) => {
+              await loading.ready;
+              await route.fulfill({ json: dialogBrief });
+            });
+            await page.goto("/?item=dialog-item");
+            const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+            const trigger = parent.getByRole("button", { name: t.stints.startStint, exact: true });
+            const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });
+            const agentSection = dialog.getByRole("region", { name: t.stints.agent, exact: true });
+            if (state === "not-prepared") {
+              await trigger.click();
+              await expect(dialog.getByText(t.stints.readingBrief)).toBeVisible();
+              await capture(page, testInfo, "loading");
+              loading.release();
+              await expect(
+                dialog.getByRole("button", { name: t.stints.start, exact: true }),
+              ).toBeEnabled();
+              await page.keyboard.press("Escape");
+              await expect(trigger).toBeFocused();
+            } else loading.release();
+
             availability = {
               available: state === "ready",
               canStart: true,
@@ -198,8 +202,8 @@ for (const language of ["en", "zh-CN"] as const) {
             await expect(dialog).toBeVisible();
             await page.keyboard.press("Escape");
             await expect(trigger).toBeFocused();
-          }
-        });
+          });
+        }
 
         test("bundled notice before download, progress, cancel, failure, retry and actual installed source", async ({
           page,

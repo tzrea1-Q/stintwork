@@ -927,3 +927,160 @@ test("raw request cancellation aborts pending preparation and releases the work 
   expect(launch).not.toHaveBeenCalled();
   expect((await start(project)).status).toBe(201);
 });
+
+test.each([
+  "Offline cold miss",
+  "Registry integrity mismatch",
+  "Disk full",
+  "Permission denied",
+  "Provider unavailable",
+])(
+  "%s during preparation stays unavailable, writes no worktree/log and permits explicit retry",
+  async (message) => {
+    const launch = vi.fn<AgentLauncher>(() => ({
+      ready: Promise.resolve(),
+      done: Promise.resolve({ stopReason: "end_turn" }),
+      cancel: async () => {},
+    }));
+    const prepareAgent = fakePreparation();
+    prepareAgent.mockImplementationOnce(async (options) => {
+      options.onProgress?.({ ...selectedPreparation, phase: "installing" });
+      throw new Error(message);
+    });
+    const registry = createAgentRegistry([{ ...codexProfile, launch }]);
+    const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+    const ticket = await readFile(join(root, ticketPath));
+    const response = await start(project);
+    expect(response.status).toBe(503);
+    expect((await response.json()).reason).toContain(message);
+    expect(prepareAgent).toHaveBeenCalledTimes(1);
+    expect(launch).not.toHaveBeenCalled();
+    const agents = await (await project.app.request("/api/agents?refresh=true")).json();
+    expect(agents.agents[0].availability).toMatchObject({
+      available: false,
+      canStart: true,
+      kind: "preparation-failed",
+    });
+    expect(
+      execFileSync("git", ["worktree", "list", "--porcelain"], {
+        cwd: root,
+        encoding: "utf8",
+      }).match(/^worktree /gm),
+    ).toHaveLength(1);
+    expect(await readFile(join(root, ticketPath))).toEqual(ticket);
+    await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+    expect((await start(project)).status).toBe(201);
+    expect(prepareAgent).toHaveBeenCalledTimes(2);
+    expect(launch).toHaveBeenCalledWith(
+      expect.objectContaining({ preparedAgent: selectedPreparation }),
+    );
+  },
+);
+
+test("package completion is not login readiness; Ready waits for the current launch", async () => {
+  let ready!: () => void;
+  const readiness = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const launch = vi.fn<AgentLauncher>(() => ({
+    ready: readiness,
+    done: readiness.then(() => ({ stopReason: "end_turn" })),
+    cancel: async () => {
+      ready();
+    },
+  }));
+  const registry = createAgentRegistry([
+    {
+      ...codexProfile,
+      launch,
+      async detectAvailability() {
+        return this.availability ?? { available: false, canStart: true, kind: "not-prepared" };
+      },
+    },
+  ]);
+  const { project } = await fixture(launch, {
+    prepareAgent: fakePreparation(),
+    agentRegistry: registry,
+  });
+  const stream = await streamedStart(project);
+  const confirmation = await stream.until("preparation", "confirm");
+  await project.app.request(`/api/stints/${confirmation.stintId}/confirm-agent`, {
+    method: "POST",
+  });
+  await stream.until("preparation", "ready");
+  await expect.poll(() => launch.mock.calls.length).toBe(1);
+  const agents = await (await project.app.request("/api/agents")).json();
+  expect(agents.agents[0].availability).toMatchObject({ available: false, kind: "not-prepared" });
+  ready();
+  expect((await stream.until("result")).status).toBe(201);
+  expect(
+    (await (await project.app.request("/api/agents")).json()).agents[0].availability.available,
+  ).toBe(true);
+});
+
+test("HTTP preparation disconnect cancels before download and a new request retries", async () => {
+  let cancelled!: () => void;
+  const cancellation = new Promise<void>((resolve) => {
+    cancelled = resolve;
+  });
+  const download = vi.fn();
+  const prepareAgent = fakePreparation(download);
+  prepareAgent.mockImplementationOnce(async (options) => {
+    options.signal?.addEventListener("abort", cancelled, { once: true });
+    const event = { ...selectedPreparation, phase: "selected" as const };
+    await options.beforePrepare?.(event, options.signal as AbortSignal);
+    options.signal?.throwIfAborted();
+    download();
+    return selectedPreparation;
+  });
+  const launch = vi.fn<AgentLauncher>(() => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  }));
+  const { root, project } = await fixture(launch, { prepareAgent });
+  const server = await project.start();
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Expected TCP address");
+  const url = `http://127.0.0.1:${address.port}`;
+  const controller = new AbortController();
+  const response = await fetch(`${url}/api/stints`, {
+    method: "POST",
+    signal: controller.signal,
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+  });
+  if (!response.body) throw new Error("Expected preparation stream");
+  const reader = response.body.getReader();
+  let data = "";
+  while (!data.includes('"phase":"confirm"')) {
+    const chunk = await reader.read();
+    if (chunk.done) throw new Error("Stream ended before source confirmation");
+    data += new TextDecoder().decode(chunk.value);
+  }
+  controller.abort();
+  await cancellation;
+  expect(download).not.toHaveBeenCalled();
+  expect(launch).not.toHaveBeenCalled();
+  await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
+  // A conflict while cancellation finishes is safe; the first accepted retry must launch once.
+  await expect
+    .poll(async () => {
+      const retry = await fetch(`${url}/api/stints`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+      });
+      await retry.text();
+      return retry.status;
+    })
+    .toBe(201);
+  expect(prepareAgent).toHaveBeenCalledTimes(2);
+  expect(launch).toHaveBeenCalledTimes(1);
+});

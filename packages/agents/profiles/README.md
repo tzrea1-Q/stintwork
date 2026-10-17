@@ -75,7 +75,10 @@ The default namespace is `~/Library/Caches/stintwork/agents` on macOS,
 be outside the project. A nonempty directory without Stintwork's ownership marker
 is refused: never point it at a normal npm cache, global installation or agent
 configuration. Owned children are `entries/`, `locks/` and `npm-cache/`; npm uses
-only this private cache and empty local/global npmrc files. It cannot inherit
+only this private cache and empty local/global npmrc files. Downloads live in a
+per-key `npm-cache/<cache-key>/` directory: verified publication removes that
+key's downloads, while failures retain them for a retry with the same pins.
+Other keys and the developer's npm cache are never cleared. It cannot inherit
 `npm_config_*` settings. npm output is suppressed and persistent npm logs disabled.
 
 Entries key agent/adapter, manifest+lock digest, installed/bundled profile,

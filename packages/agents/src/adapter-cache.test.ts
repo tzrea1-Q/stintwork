@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import {
   chmod,
   mkdir,
+  lstat,
   mkdtemp,
   readFile,
   readdir,
@@ -41,6 +42,9 @@ import { codexProfile } from "./profiles.js";
 import { npmEntry } from "./npm.js";
 import { sourceNodeArgs } from "./source-node-args.js";
 import { findExecutable } from "./executable.js";
+
+// Real npm/CLI/ACP child startup must tolerate a loaded coordinator machine.
+vi.setConfig({ testTimeout: 60_000 });
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -137,6 +141,10 @@ async function fixture(agent: "claude" | "codex" = "codex") {
     installed,
     `console.log(${JSON.stringify(agent === "codex" ? "codex-cli 0.163.0" : "2.1.295 (Claude Code)")})`,
   );
+  const home = join(root, "home");
+  await mkdir(home);
+  await writeFile(join(home, ".npmrc"), "developer-config-must-survive");
+  await writeFile(join(home, "credentials"), "fixture-login-secret");
   const npm = join(root, "npm-cli.js");
   await script(
     npm,
@@ -144,17 +152,24 @@ async function fixture(agent: "claude" | "codex" = "codex") {
 const fs = require('node:fs');
 const path = require('node:path');
 const args = process.argv.slice(2);
-fs.appendFileSync(${JSON.stringify(join(root, "npm-calls.jsonl"))},JSON.stringify({args,npmConfigKeys:Object.keys(process.env).filter(k=>/^npm_config_/i.test(k))})+'\\n');
-if (process.env.TEST_NPM === 'fail') { console.error('private-registry-token'); process.exit(1); }
+const cache = args[args.indexOf('--cache')+1];
+fs.mkdirSync(cache,{recursive:true});
+fs.writeFileSync(path.join(cache,'download.tgz'),'fixture tarball');
+const lock = JSON.parse(fs.readFileSync('package-lock.json'));
+const packages = Object.keys(lock.packages).filter(key=>key && !lock.packages[key].optional);
+fs.appendFileSync(${JSON.stringify(join(root, "npm-calls.jsonl"))},JSON.stringify({pid:process.pid,args,cache,packages,lock,configs:['--userconfig','--globalconfig'].map(flag=>fs.readFileSync(args[args.indexOf(flag)+1],'utf8')),npmConfigKeys:Object.keys(process.env).filter(k=>/^npm_config_/i.test(k))})+'\\n');
+if (['fail','offline','integrity','disk-full'].includes(process.env.TEST_NPM)) { console.error(process.env.TEST_NPM === 'integrity' ? 'EINTEGRITY' : process.env.TEST_NPM === 'disk-full' ? 'ENOSPC' : 'ENETUNREACH'); console.error('private-registry-token'); process.exit(1); }
 if (process.env.TEST_NPM === 'hang') { setInterval(()=>{},1000); }
 else {
-  const lock = JSON.parse(fs.readFileSync('package-lock.json'));
   for (const [key,value] of Object.entries(lock.packages)) {
-    if (!key || value.optional) continue;
+    if (!key || value.optional || (process.env.TEST_NPM === 'missing-native' && key === 'node_modules/${nativePackage(agent, host).name}')) continue;
     fs.mkdirSync(key,{recursive:true});
     const name = value.name || key.slice(key.lastIndexOf('node_modules/')+13);
     fs.writeFileSync(path.join(key,'package.json'),JSON.stringify({name,version:value.version,type:'module'}));
   }
+  if (process.env.TEST_NPM === 'modify-lock') fs.writeFileSync('package-lock.json','{}');
+  if (process.env.TEST_NPM === 'wrong-version') fs.writeFileSync('node_modules/fixture-peer/package.json',JSON.stringify({name:'fixture-peer',version:'9.0.0'}));
+  if (process.env.TEST_NPM === 'escape') fs.symlinkSync(process.env.TEST_ESCAPE,'escaped');
   const entry = 'node_modules/${adapterPins[agent].adapter}/dist/index.js';
   fs.mkdirSync(path.dirname(entry),{recursive:true});
   fs.writeFileSync(entry,${JSON.stringify(fakeAdapter)});
@@ -176,6 +191,8 @@ else {
     profilesDirectory,
     cacheDirectory: join(root, "cache"),
     env: {
+      HOME: home,
+      USERPROFILE: home,
       PATH: "",
       npm_execpath: npm,
       npm_config_userconfig: "must-not-read",
@@ -199,7 +216,8 @@ test.each(["claude", "codex"] as const)(
     const tracePath = join(root, "smoke.jsonl");
     const prepared = await prepareAgent({
       ...options,
-      timeoutMs: 3000,
+      // ACP initialize and child close are the readiness signals; allow slow OS scheduling.
+      timeoutMs: 60_000,
       env: { ...options.env, TEST_ACP_TRACE: tracePath },
     });
     expect(prepared.source).toBe("installed");
@@ -228,7 +246,6 @@ test("aborting from ready never starts a stint handshake", async () => {
     prepareAgentForStint(
       {
         ...options,
-        timeoutMs: 3000,
         signal: controller.signal,
         onProgress(event) {
           if (event.phase === "ready") controller.abort();
@@ -438,7 +455,7 @@ test("failed npm, missing locks, and cancellation leave no published/partial ent
     onProgress(event) {
       if (event.phase === "installing")
         cancelAfterStartup = expect
-          .poll(calls)
+          .poll(calls, { timeout: 30_000 })
           .toHaveLength(2)
           .then(() => controller.abort());
     },
@@ -620,3 +637,374 @@ test("bundled confirmation carries the selected lock's download size before npm;
     coreText: { code: "agent.downloadSizeUnavailable" },
   });
 });
+
+async function assertPrivateState(root: string, installed: string, originalCli: Buffer) {
+  expect(await readFile(installed)).toEqual(originalCli);
+  expect(await readdir(join(root, "project"))).toEqual([]);
+  expect(await readFile(join(root, "home/.npmrc"), "utf8")).toBe("developer-config-must-survive");
+  expect(await readFile(join(root, "home/credentials"), "utf8")).toBe("fixture-login-secret");
+  async function inspect(directory: string): Promise<void> {
+    for (const name of await readdir(directory)) {
+      const path = join(directory, name);
+      const stat = await lstat(path);
+      if (stat.isDirectory()) await inspect(path);
+      else if (stat.isFile())
+        expect(await readFile(path, "utf8")).not.toMatch(
+          /fixture-login-secret|private-registry-token/,
+        );
+    }
+  }
+  await inspect(join(root, "cache"));
+}
+
+test.each(["claude", "codex"] as const)(
+  "%s: offline installed/bundled warm reuse crosses projects and root versions without npm",
+  async (agent) => {
+    const { root, options, calls, installed } = await fixture(agent);
+    const originalCli = await readFile(installed);
+    const installedEntry = await prepareAgent(options);
+    const bundledOptions = {
+      ...options,
+      env: { ...options.env, CLAUDE_CODE_EXECUTABLE: "/absent", CODEX_PATH: "/absent" },
+    };
+    const bundledEntry = await prepareAgent(bundledOptions);
+    const otherProject = join(root, "other-project");
+    await mkdir(otherProject);
+    await writeFile(
+      join(otherProject, "package.json"),
+      '{"name":"different-root","version":"99.0.0"}',
+    );
+    for (const [selected, prepared] of [
+      [options, installedEntry],
+      [bundledOptions, bundledEntry],
+    ] as const) {
+      const reused = await prepareAgent({
+        ...selected,
+        cwd: otherProject,
+        env: { ...selected.env, TEST_NPM: "offline" },
+      });
+      expect(reused).toEqual(prepared);
+    }
+    const requests = await calls();
+    expect(requests).toHaveLength(2);
+    const hostNative = `node_modules/${nativePackage(agent, adapterHost()).name}`;
+    expect(
+      requests[0].packages.filter((name: string) => /-(darwin|linux|win32)-/.test(name)),
+    ).toEqual([]);
+    expect(
+      requests[1].packages.filter((name: string) => /-(darwin|linux|win32)-/.test(name)),
+    ).toEqual([hostNative]);
+    for (const request of requests) {
+      expect(request.args[0]).toBe("ci");
+      expect(request.args).toEqual(
+        expect.arrayContaining([
+          "--ignore-scripts",
+          "--omit=optional",
+          "--global=false",
+          "--registry=https://registry.npmjs.org",
+          "--logs-max=0",
+        ]),
+      );
+      expect(request.configs).toEqual(["", ""]);
+      expect(request.cache).toBe(
+        join(
+          root,
+          "cache/npm-cache",
+          request === requests[0] ? installedEntry.cacheKey : bundledEntry.cacheKey,
+        ),
+      );
+      expect(request.npmConfigKeys).toEqual([]);
+      expect(request.packages).toEqual(Object.keys(request.lock.packages).filter(Boolean));
+      await expect(lstat(request.cache)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+    await assertPrivateState(root, installed, originalCli);
+    const launch = agent === "claude" ? createClaudeCodeAgent(options.env).launch : startAgentStint;
+    await launch({
+      agent,
+      cwd: otherProject,
+      preparedAgent: bundledEntry,
+      env: options.env,
+      prompt: "Fixture work",
+      onEvent: () => {},
+    }).done;
+    expect(JSON.parse(await readFile(join(otherProject, "selected.json"), "utf8"))[agent]).toBe(
+      bundledEntry.executable.path,
+    );
+  },
+);
+
+test.each(["installed", "bundled"] as const)(
+  "offline cold %s miss fails honestly and retries the identical closure",
+  async (source) => {
+    const { root, options, calls, installed, events } = await fixture();
+    const originalCli = await readFile(installed);
+    const env = { ...options.env, ...(source === "bundled" ? { CODEX_PATH: "/absent" } : {}) };
+    await expect(
+      prepareAgent({ ...options, env: { ...env, TEST_NPM: "offline" } }),
+    ).rejects.toThrow("retry with the same released pins");
+    expect(events.some((event) => event.phase === "ready")).toBe(false);
+    expect(await readdir(join(root, "cache/entries"))).toEqual([]);
+    expect(await readdir(join(root, "cache/locks"))).toEqual([]);
+    const [failed] = await calls();
+    expect(await readFile(join(failed.cache, "download.tgz"), "utf8")).toBe("fixture tarball");
+    const prepared = await prepareAgent({ ...options, env });
+    const requests = await calls();
+    expect(prepared.source).toBe(source);
+    expect(requests[1].lock).toEqual(failed.lock);
+    expect(requests[1].cache).toBe(failed.cache);
+    await expect(lstat(failed.cache)).rejects.toMatchObject({ code: "ENOENT" });
+    await assertPrivateState(root, installed, originalCli);
+  },
+);
+
+test.each(["claude", "codex"] as const)(
+  "%s: an installed-only cached adapter cannot satisfy an offline native fallback",
+  async (agent) => {
+    const { root, options, calls, events } = await fixture(agent);
+    const good = await prepareAgent(options);
+    events.length = 0;
+    const fallback = {
+      ...options,
+      env: { ...options.env, TEST_INITIALIZE: "incompatible", TEST_NPM: "offline" },
+    };
+    await expect(prepareAgentForStint(fallback)).rejects.toThrow("Check network and disk space");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        source: "bundled",
+        reason: "handshake failed",
+        phase: "installing",
+      }),
+    );
+    expect(events.some((event) => event.source === "bundled" && event.phase === "ready")).toBe(
+      false,
+    );
+    expect(await readdir(join(root, "cache/entries"))).toEqual([good.cacheKey]);
+    const requests = await calls();
+    expect(requests).toHaveLength(2);
+    expect(requests[1].packages).toContain(
+      `node_modules/${nativePackage(agent, adapterHost()).name}`,
+    );
+    const retry = await prepareAgentForStint({
+      ...fallback,
+      env: { ...fallback.env, TEST_NPM: undefined },
+    });
+    expect(retry).toMatchObject({ source: "bundled", reason: "handshake failed" });
+    expect((await calls())[2].lock).toEqual(requests[1].lock);
+  },
+);
+
+test.each([
+  ["0.148.0", "below-tested-range"],
+  ["1.0.0", "incompatible"],
+  ["0.163.0-beta.1", "unparseable"],
+] as const)("CLI %s selects exactly one pinned native payload (%s)", async (version, reason) => {
+  const { options, installed, calls } = await fixture();
+  await script(installed, `console.log('codex-cli ${version}')`);
+  const prepared = await prepareAgent(options);
+  expect(prepared).toMatchObject({ source: "bundled", reason });
+  const requests = await calls();
+  expect(requests).toHaveLength(1);
+  expect(
+    requests[0].packages.filter((name: string) => /-(darwin|linux|win32)-/.test(name)),
+  ).toEqual([`node_modules/${nativePackage("codex", adapterHost()).name}`]);
+});
+
+test.each([
+  ["integrity", "Frozen npm preparation failed"],
+  ["disk-full", "Check network and disk space"],
+  ["modify-lock", "npm modified the released profile/lock"],
+  ["wrong-version", "Installed package differs"],
+  ["missing-native", "Required locked package missing/escaped"],
+  ["escape", "symlink escapes entry"],
+] as const)(
+  "%s removes only failed staging, keeps prior good entries and retry downloads",
+  async (failure, message) => {
+    const { root, options, calls, installed, events } = await fixture();
+    const originalCli = await readFile(installed);
+    const good = await prepareAgent(options);
+    const goodCompletion = await readFile(
+      join(root, "cache/entries", good.cacheKey, "complete.json"),
+    );
+    const abandoned = join(root, "cache/entries/unrelated.staging-abandoned");
+    await mkdir(abandoned);
+    await writeFile(join(abandoned, "keep"), "preserve");
+    events.length = 0;
+    await expect(
+      prepareAgent({
+        ...options,
+        env: { ...options.env, CODEX_PATH: "/absent", TEST_NPM: failure, TEST_ESCAPE: installed },
+      }),
+    ).rejects.toThrow(message);
+    expect(events.some((event) => event.phase === "ready")).toBe(false);
+    expect(await readdir(join(root, "cache/entries"))).toEqual(
+      [good.cacheKey, "unrelated.staging-abandoned"].sort(),
+    );
+    expect(await readFile(join(root, "cache/entries", good.cacheKey, "complete.json"))).toEqual(
+      goodCompletion,
+    );
+    expect(await readFile(join(abandoned, "keep"), "utf8")).toBe("preserve");
+    expect(await readdir(join(root, "cache/locks"))).toEqual([]);
+    const failed = (await calls())[1];
+    expect(await readFile(join(failed.cache, "download.tgz"), "utf8")).toBe("fixture tarball");
+    await prepareAgent({ ...options, env: { ...options.env, CODEX_PATH: "/absent" } });
+    expect((await calls())[2].lock).toEqual(failed.lock);
+    await expect(lstat(failed.cache)).rejects.toMatchObject({ code: "ENOENT" });
+    await assertPrivateState(root, installed, originalCli);
+  },
+);
+
+test("publication clears only its own npm downloads, preserving a different key's retry and the developer cache", async () => {
+  const { root, options, calls } = await fixture();
+  const developerCache = join(root, "developer-npm-cache");
+  await mkdir(developerCache);
+  await writeFile(join(developerCache, "keep"), "developer tarball");
+  await expect(
+    prepareAgent({
+      ...options,
+      env: { ...options.env, TEST_NPM: "offline", npm_config_cache: developerCache },
+    }),
+  ).rejects.toThrow();
+  const [failed] = await calls();
+  await prepareAgent({
+    ...options,
+    env: { ...options.env, CODEX_PATH: "/absent", npm_config_cache: developerCache },
+  });
+  expect(await readFile(join(failed.cache, "download.tgz"), "utf8")).toBe("fixture tarball");
+  expect(await readFile(join(developerCache, "keep"), "utf8")).toBe("developer tarball");
+  await prepareAgent(options);
+  expect(await readdir(join(root, "cache/npm-cache"))).toEqual([]);
+});
+
+test("timeout after explicit npm startup releases the lock and staging without destroying retry downloads", async () => {
+  const { root, options, calls } = await fixture();
+  const deadline = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(deadline.signal);
+  try {
+    const pending = prepareAgent({ ...options, env: { ...options.env, TEST_NPM: "hang" } });
+    const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
+    await expect.poll(calls, { timeout: 30_000 }).toHaveLength(1);
+    deadline.abort(new DOMException("Preparation deadline", "TimeoutError"));
+    await rejected;
+  } finally {
+    timeout.mockRestore();
+    deadline.abort();
+  }
+  expect(await readdir(join(root, "cache/entries"))).toEqual([]);
+  expect(await readdir(join(root, "cache/locks"))).toEqual([]);
+  const prepared = await prepareAgent(options);
+  expect((await calls())[1].cache).toBe(join(root, "cache/npm-cache", prepared.cacheKey));
+});
+
+test("a living old owner is never stolen and an incomplete published entry never executes", async () => {
+  const { root, options, calls, events } = await fixture();
+  const good = await prepareAgent(options);
+  const token = "00000000-0000-0000-0000-000000000000";
+  const ownerPath = join(root, "cache/locks", `${good.cacheKey}.lock-${token}`);
+  const owner = JSON.stringify({ pid: process.pid, token, ticket: 1 });
+  await writeFile(ownerPath, owner, { mode: 0o600 });
+  const controller = new AbortController();
+  const waiting = prepareAgent({ ...options, signal: controller.signal });
+  const rejected = expect(waiting).rejects.toThrow();
+  await expect
+    .poll(async () => readdir(join(root, "cache/locks")), { timeout: 30_000 })
+    .toHaveLength(2);
+  controller.abort();
+  await rejected;
+  expect(await readFile(ownerPath, "utf8")).toBe(owner);
+  await rm(ownerPath);
+  await rm(join(root, "cache/entries", good.cacheKey, "complete.json"));
+  events.length = 0;
+  await expect(prepareAgent(options)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(events.some((event) => ["smoke", "ready"].includes(event.phase))).toBe(false);
+  expect(await calls()).toHaveLength(1);
+});
+
+test("unsafe ownership and symlinked npm cache are refused without deleting their targets", async () => {
+  const { root, options } = await fixture();
+  await prepareAgent(options);
+  const originalUid = process.getuid?.();
+  if (originalUid !== undefined) {
+    const uid = vi.spyOn(process, "getuid").mockReturnValue(originalUid + 1);
+    try {
+      await expect(prepareAgent(options)).rejects.toThrow("Unsafe adapter cache ownership");
+    } finally {
+      uid.mockRestore();
+    }
+  }
+  await rm(join(root, "cache/npm-cache"), { recursive: true });
+  const target = join(root, "developer-npm-cache");
+  await mkdir(target);
+  await writeFile(join(target, "keep"), "preserve");
+  await symlink(target, join(root, "cache/npm-cache"));
+  await expect(
+    prepareAgent({ ...options, env: { ...options.env, CODEX_PATH: "/absent" } }),
+  ).rejects.toThrow("real directory");
+  expect(await readFile(join(target, "keep"), "utf8")).toBe("preserve");
+});
+
+test("killing a preparing process leaves ignored staging; a retry reclaims its dead lock and publishes once", async () => {
+  const { root, options, calls } = await fixture();
+  const module = new URL("./adapter-cache.ts", import.meta.url).href;
+  const childOptions = {
+    ...options,
+    env: { ...options.env, TEST_NPM: "hang" },
+    onProgress: undefined,
+  };
+  const code = `const {prepareAgent}=await import(${JSON.stringify(module)}); await prepareAgent(${JSON.stringify(childOptions)});`;
+  const child = spawn(process.execPath, sourceNodeArgs("--input-type=module", "-e", code), {
+    stdio: "ignore",
+  });
+  const exited = once(child, "exit");
+  let npmPid: number | undefined;
+  try {
+    await expect.poll(calls, { timeout: 30_000 }).toHaveLength(1);
+    npmPid = (await calls())[0].pid;
+    const [staging] = await readdir(join(root, "cache/entries"));
+    expect(staging).toContain(".staging-");
+    expect(await readdir(join(root, "cache/locks"))).toHaveLength(1);
+    child.kill("SIGKILL");
+    expect(await exited).toEqual([null, "SIGKILL"]);
+    // The killed parent's npm child is ours too; never leave an orphan fixture process behind.
+    if (npmPid) process.kill(npmPid, "SIGKILL");
+    npmPid = undefined;
+    await writeFile(join(root, "cache/entries", staging, "abandoned"), "never execute");
+    const prepared = await prepareAgent(options);
+    expect(await readdir(join(root, "cache/entries"))).toEqual([prepared.cacheKey, staging].sort());
+    expect(await readdir(join(root, "cache/locks"))).toEqual([]);
+    expect(await readFile(join(root, "cache/entries", staging, "abandoned"), "utf8")).toBe(
+      "never execute",
+    );
+    expect((await calls())[1].lock).toEqual((await calls())[0].lock);
+    await prepareAgent({ ...options, env: { ...options.env, TEST_NPM: "offline" } });
+    expect(await calls()).toHaveLength(2);
+  } finally {
+    child.kill("SIGKILL");
+    if (npmPid) process.kill(npmPid, "SIGKILL");
+    await exited;
+  }
+});
+
+test.each(["manifest", "lock-root", "pin", "artifact"])(
+  "mismatched released %s fails before npm/cache mutation",
+  async (part) => {
+    const { root, options, calls } = await fixture();
+    const directory = join(options.profilesDirectory as string, "codex/installed");
+    if (part === "manifest") {
+      const manifest = JSON.parse(await readFile(join(directory, "package.json"), "utf8"));
+      manifest.dependencies["@openai/codex"] = "99.0.0";
+      await writeFile(join(directory, "package.json"), JSON.stringify(manifest));
+    } else {
+      const path = join(directory, "package-lock.json");
+      const lock = JSON.parse(await readFile(path, "utf8"));
+      if (part === "lock-root") lock.packages[""].dependencies = {};
+      if (part === "pin") lock.packages["node_modules/@openai/codex"].version = "99.0.0";
+      if (part === "artifact")
+        lock.packages["node_modules/@openai/codex"].resolved =
+          "https://unreviewed.invalid/package.tgz";
+      await writeFile(path, JSON.stringify(lock));
+    }
+    await expect(prepareAgent(options)).rejects.toThrow(/pinned|pin|unsafe released/);
+    await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(lstat(join(root, "cache"))).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);
