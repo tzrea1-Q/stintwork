@@ -694,6 +694,7 @@ export async function prepareAgent(
   progress("waiting");
   const unlock = await acquireLock(locks, cacheKey, signal);
   let staging: string | undefined;
+  let npmCache: string | undefined;
   let installedFiles: Record<string, string> | undefined;
   try {
     const existing = await lstat(entry).catch((error) => {
@@ -719,7 +720,8 @@ export async function prepareAgent(
       await writeFile(join(staging, "package-lock.json"), profile.lockBytes, { mode: 0o600 });
       await writeFile(join(staging, ".npmrc"), "", { mode: 0o600 });
       await writeFile(join(staging, ".global-npmrc"), "", { mode: 0o600 });
-      const npmCache = await privateDirectory(join(root, "npm-cache"));
+      const downloads = await privateDirectory(join(root, "npm-cache"));
+      npmCache = await privateDirectory(join(downloads, cacheKey));
       progress("installing");
       await runNpm(["ci", ...isolatedNpmArgs(staging, npmCache)], {
         cwd: staging,
@@ -793,6 +795,8 @@ export async function prepareAgent(
       await rename(staging, entry);
       staging = undefined;
     }
+    // Retain failed downloads for the same-key retry; never clear another preparation's cache.
+    if (npmCache) await rm(npmCache, { recursive: true, force: true });
     const offset = source === "bundled" ? relative(directory, executable.path) : undefined;
     const version = executable.version;
     if (!version) throw new Error("Selected executable has no verified version.");

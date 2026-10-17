@@ -178,7 +178,7 @@ test.each(["01oops", "0 (Invalid)", "9007199254740992 (Too large)", "None, 01", 
   },
 );
 
-test("indexes this repo's board and first-stint tickets without warnings", () => {
+test("indexes this repo's tickets without warnings and in dependency order", () => {
   const root = new URL("../../../", import.meta.url);
   const { workItems, warnings } = indexWorkItems({
     list: (prefix) =>
@@ -190,9 +190,7 @@ test("indexes this repo's board and first-stint tickets without warnings", () =>
   expect(warnings).toEqual([]);
   // This repo's own plan keeps growing; assert that its tickets parse and are in dependency
   // order, not the current inventory.
-  for (const slug of ["board", "first-stint"]) {
-    const tickets = workItems.find((item) => item.slug === slug)?.tickets ?? [];
-    expect(tickets.length).toBeGreaterThan(0);
+  for (const { tickets } of workItems) {
     const position = new Map(tickets.map((ticket, index) => [ticket.number, index]));
     for (const ticket of tickets) {
       for (const blocker of ticket.blockedBy) {

@@ -153,12 +153,13 @@ test("indexes this repository's real project files read from disk", () => {
       .map((path) => [path, readFileSync(join(root, path), "utf8")]),
   );
   const snapshot = indexProject(createMemoryRepoFiles(contents), { name: "Stintwork" });
-  const board = snapshot.workItems.find((item) => item.slug === "board");
-  expect(board).toMatchObject({ title: expect.stringContaining("board"), milestone: "m1" });
-  expect(board?.tickets.map((item) => item.path)).toEqual(
-    paths.filter((path) => /^\.scratch\/board\/issues\/\d+-[^/]+\.md$/.test(path)).sort(),
-  );
-  expect(board?.tickets.some((item) => item.number === 5)).toBe(true);
+  for (const workItem of snapshot.workItems) {
+    const preceding = new Set<number>();
+    for (const ticket of workItem.tickets) {
+      expect(ticket.blockedBy.every((number) => preceding.has(number))).toBe(true);
+      preceding.add(ticket.number);
+    }
+  }
   expect(snapshot.setup).toMatchObject({ hasAgents: true, hasGlossary: true, hasAdrs: true });
   expect(snapshot.warnings).toEqual([]);
 });
