@@ -1,6 +1,6 @@
 # 05 — Separate board startup from agent preparation
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 04
 
 ## What to build
@@ -168,3 +168,5 @@ Checks run this round:
 - `git diff --check` and unchanged Status/acceptance-line checks passed. Changes are limited to `BriefPreview.tsx`, its test, `ui/Select.tsx`, its test, `e2e/agent-preparation.spec.ts`, and these Comments. No commit; Status lines remain unchanged.
 
 The supplied traces were inspected as recorded artifacts; no browser suite or new screenshots were run in this socket-restricted sandbox. Coordinator: rerun `pnpm --config.verify-deps-before-run=false test:e2e` (the shared Select fix also warrants the other dialog/select cases), then review preparation and reduced-motion screenshots at the required widths/languages. Build and package smoke were not rerun for these web-only changes.
+
+**Coordinator, 2026-10-17:** Verified: format, lint, typecheck, build, unit tests (2300), smoke:package and the browser suite pass (two timeouts under load average 23-28 passed on rerun: adapter-cache claude smoke test and three agent-preparation specs; ticket 06 should make both less timing-sensitive). Three Codex reviews: preflight disconnect left the work item locked, stale Ready badge, metadata lost on phase updates, plus a shared Select bug where one Escape closed both picker and dialog — all fixed with regressions; final review clean. Screenshot review: compact source card, download size before confirmation, indeterminate progress. Packed-tarball check (darwin-arm64, registry.npmjs.org, empty npm cache): install 32 s, npm cache 16 MB, node_modules 21 MB, no agent packages; board served about 1 s after start with the agent cache untouched. Resolved.
