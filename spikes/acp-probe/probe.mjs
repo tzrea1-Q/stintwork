@@ -4,10 +4,11 @@ import { Readable, Writable } from 'node:stream';
 import { appendFileSync, createWriteStream } from 'node:fs';
 import { access, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { performance } from 'node:perf_hooks';
 import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk';
+import { environment, inside, lockIdentity, nativePackage, packageInfo, PINS } from './lib/prefix.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const execute = promisify(execFile);
@@ -72,15 +73,74 @@ async function createFixture(runDir) {
   return { path: await realpath(fixture), commit: (await git('rev-parse', 'HEAD')).stdout.trim() };
 }
 
-async function agentSpawnSpec(agent, signal) {
-  if (agent === 'grok') return { command: 'grok', args: ['agent', 'stdio'] };
-  const command = join(here, 'node_modules/.bin', `${agent}-agent-acp`);
-  if (agent === 'codex') return { command: join(here, 'node_modules/.bin/codex-acp'), args: [] };
-  const { stdout } = await execute('/bin/zsh', ['-lc', 'command -v claude'], { signal });
-  const executable = stdout.trim().split('\n').at(-1);
-  if (!isAbsolute(executable ?? '')) throw new Error('command -v claude did not return an absolute executable path');
+export async function resolveAgent(agent, { adapterPrefix, executable } = {}, metadata = {}) {
+  Object.assign(metadata, { agentSource: null, adapterPrefix: adapterPrefix ? resolve(adapterPrefix) : null, environment: environment() });
+  if (agent === 'grok' && (adapterPrefix || executable)) throw new Error('Prefix/executable options are only supported for Claude and Codex');
+  const prefix = adapterPrefix ? await realpath(resolve(adapterPrefix)) : undefined;
+  metadata.adapterPrefix = prefix ?? null;
+  const env = { CLAUDE_CODE_EXECUTABLE: '', CODEX_PATH: '' };
+  let spec;
+  if (agent === 'grok') {
+    for (const directory of (process.env.PATH ?? '').split(delimiter)) {
+      const path = resolve(directory, 'grok');
+      try { await access(path, constants.X_OK); executable = path; break; } catch (error) {
+        if (!['ENOENT', 'EACCES'].includes(error.code)) throw error;
+      }
+    }
+    if (!executable) throw new Error('grok not found on PATH');
+    spec = { command: executable, args: ['agent', 'stdio'] };
+  } else {
+    const pin = PINS[agent];
+    const adapter = await packageInfo(pin.adapter, join(prefix ?? here, 'package.json'), prefix);
+    if (!adapter) throw new Error(`Missing ${pin.adapter} in adapter prefix`);
+    const dependency = await packageInfo(pin.dependency, adapter.path, prefix);
+    if (!dependency) throw new Error(`Missing ${pin.dependency} in adapter prefix`);
+    const entry = await realpath(join(dirname(adapter.path), 'dist/index.js'));
+    if (prefix && !inside(prefix, entry)) throw new Error('Adapter entry escapes prefix');
+    metadata.adapter = { name: adapter.name, version: adapter.version, entry };
+    metadata.sdkOrLauncher = { name: dependency.name, version: dependency.version, path: dependency.path, bundledCliVersion: dependency.data.claudeCodeVersion ?? null };
+    const packages = [];
+    for (const name of Object.keys(dependency.data.optionalDependencies ?? {})) {
+      const native = await packageInfo(name, dependency.path, prefix);
+      if (native) packages.push({ name, packageName: native.data.name, version: native.version, path: native.path });
+    }
+    metadata.nativePackages = { present: packages.length > 0, packages };
+    metadata.lock = await lockIdentity(join(prefix ?? here, prefix ? 'package-lock.json' : 'pnpm-lock.yaml'));
+    if (!executable && !prefix) {
+      executable = agent === 'codex' ? process.env.CODEX_PATH : process.env.CLAUDE_CODE_EXECUTABLE;
+      if (!executable && agent === 'claude') {
+        const { stdout } = await execute('/bin/zsh', ['-lc', 'command -v claude'], { timeout: 5000 });
+        executable = stdout.trim().split('\n').at(-1);
+      }
+    }
+    metadata.agentSource = executable ? 'installed' : 'bundled';
+    if (executable) {
+      executable = resolve(executable);
+      env[agent === 'claude' ? 'CLAUDE_CODE_EXECUTABLE' : 'CODEX_PATH'] = executable;
+    } else {
+      const native = await packageInfo(nativePackage(agent).name, dependency.path, prefix);
+      if (!native) throw new Error(`Missing bundled native package for ${agent}`);
+      if (agent === 'claude') executable = join(dirname(native.path), process.platform === 'win32' ? 'claude.exe' : 'claude');
+      else {
+        const target = `${process.arch === 'arm64' ? 'aarch64' : 'x86_64'}-${{ darwin: 'apple-darwin', linux: 'unknown-linux-musl', win32: 'pc-windows-msvc' }[process.platform]}`;
+        executable = join(dirname(native.path), 'vendor', target, 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex');
+      }
+    }
+    spec = { command: process.execPath, args: [entry], env };
+  }
+  metadata.agentSource ??= 'installed';
+  metadata.executable = { path: executable, version: null, versionTimeoutMs: 60_000 };
   await access(executable, constants.X_OK);
-  return { command, args: [], env: { CLAUDE_CODE_EXECUTABLE: executable } };
+  metadata.executable.realPath = await realpath(executable);
+  if (prefix && metadata.agentSource === 'bundled' && !inside(prefix, metadata.executable.realPath)) throw new Error('Bundled executable escapes prefix');
+  const started = performance.now();
+  try {
+    const version = await execute(executable, ['--version'], { env: { ...process.env, ...env }, timeout: metadata.executable.versionTimeoutMs, maxBuffer: 64 * 1024 });
+    Object.assign(metadata.executable, { version: version.stdout.trim(), versionStderr: version.stderr.trim() });
+  } finally {
+    metadata.executable.versionWallTimeMs = performance.now() - started;
+  }
+  return { spec, metadata };
 }
 
 function makeConnection(context, spec, label) {
@@ -254,10 +314,33 @@ function makeConnection(context, spec, label) {
       const rawResponse = state.rawResponses.findLast((item) => item.method === 'session/new')?.message.result ?? response;
       sessionState(response.sessionId).response = rawResponse;
       log('new_session_response', { label, response: rawResponse });
-      const modeId = process.env.PROBE_MODE;
-      if (modeId && rawResponse.modes?.availableModes?.some((mode) => mode.id === modeId)) {
+      const isPermission = context.scenario === 'permission';
+      const permissionLevel = isPermission && context.permissionMode === 'ask' ? 'ask' : null;
+      const availableModes = rawResponse.modes?.availableModes ?? [];
+      let modeId = isPermission ? null : process.env.PROBE_MODE ?? null;
+      if (permissionLevel) {
+        const { tsImport } = await import('tsx/esm/api');
+        const { permissionPolicy } = await tsImport('../../packages/core/src/permission-levels.ts', import.meta.url);
+        modeId = permissionPolicy({
+          id: context.agent, displayName: context.agent,
+          capabilities: { modes: availableModes.map(({ id }) => id), defaultMode: null },
+        }, permissionLevel).mode;
+      }
+      const selection = {
+        sessionId: response.sessionId, permissionLevel,
+        advertisedDefaultMode: rawResponse.modes?.currentModeId ?? null,
+        requestedMode: modeId, chosenMode: rawResponse.modes?.currentModeId ?? null,
+      };
+      if (isPermission) (result.facts.sessionModes ??= []).push(selection);
+      if (modeId && !availableModes.some((mode) => mode.id === modeId) && permissionLevel) {
+        selection.chosenMode = null;
+        throw new Error(`${context.agent} does not offer the required ${modeId} mode for Stintwork Ask`);
+      }
+      if (modeId && availableModes.some((mode) => mode.id === modeId)) {
+        selection.chosenMode = null;
         await guard(() => connection.setSessionMode({ sessionId: response.sessionId, modeId }));
-        log('set_session_mode', { label, modeId });
+        selection.chosenMode = modeId;
+        log('set_session_mode', { label, modeId, permissionLevel, sessionId: response.sessionId });
       }
       return response.sessionId;
     },
@@ -367,7 +450,7 @@ async function scenarioBody(context, spec, cancelAfterMs) {
     const rejectWorked = !result.facts.reject.fileExists && result.facts.reject.requests.some((item) => item.response.outcome.outcome === 'selected');
     const arrived = result.facts.allow.requests.length > 0 && result.facts.reject.requests.length > 0;
     const status = result.facts.reject.fileExists ? 'fail' : !arrived ? 'unsupported' : allowWorked && rejectWorked ? 'pass' : 'fail';
-    result.facts.reason = arrived ? 'Checked allow/reject outcomes in default mode' : 'No permission request in one or both default-mode sessions; rejection was not demonstrated';
+    result.facts.reason = arrived ? `Checked allow/reject outcomes with permission-mode=${context.permissionMode}` : `No permission request in one or both sessions (permission-mode=${context.permissionMode}); rejection was not demonstrated`;
     return { status };
   }
   if (scenario === 'cancel') {
@@ -417,19 +500,19 @@ async function scenarioBody(context, spec, cancelAfterMs) {
   return { status: result.facts.heronReturned ? 'pass' : 'fail' };
 }
 
-async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawnSpec, cancelAfterMs }) {
+async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawnSpec, launchError, cancelAfterMs, permissionMode }) {
   const started = performance.now();
   const eventFile = join(runDir, `${scenario}.jsonl`);
   await writeFile(eventFile, '');
   const log = (event, data = {}) => appendFileSync(eventFile, `${JSON.stringify({ timestamp: new Date().toISOString(), elapsedMs: performance.now() - started, event, ...data })}\n`);
   const result = { scenario, status: 'error', facts: {}, connections: [], eventFile };
-  const context = { agent, scenario, fixture, runDir, log, result, clients: [] };
-  const controller = new AbortController();
+  const context = { agent, scenario, fixture, runDir, log, result, clients: [], permissionMode };
   let timer;
-  log('scenario_start', { agent, scenario, fixture, timeoutSec });
+  log('scenario_start', { agent, scenario, fixture, timeoutSec, permissionMode });
   try {
+    if (launchError) throw launchError;
     const outcome = await Promise.race([
-      (async () => scenarioBody(context, spawnSpec ?? await agentSpawnSpec(agent, controller.signal), cancelAfterMs))(),
+      scenarioBody(context, spawnSpec, cancelAfterMs),
       new Promise((unused, reject) => {
         timer = setTimeout(() => {
           const error = new Error(`Scenario exceeded ${timeoutSec}s`);
@@ -447,7 +530,6 @@ async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawn
     log('scenario_error', { status: result.status, error: result.error, authMethods: result.authMethods });
   } finally {
     context.ended = true;
-    controller.abort();
     clearTimeout(timer);
     await Promise.all(context.clients.map((client) => client.stop(result.status)));
   }
@@ -456,20 +538,34 @@ async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawn
   return result;
 }
 
-export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120, root = join(here, 'runs'), spawnSpec, cancelAfterMs = 8000 }) {
+export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120, root = join(here, 'runs'), spawnSpec, adapterPrefix, executable, cancelAfterMs = 8000, permissionMode = 'ask' }) {
   if (!['claude', 'codex', 'grok'].includes(agent)) throw new Error('agent must be claude, codex, or grok');
   if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new Error('timeout-sec must be a positive number');
   if (!scenarios.length || scenarios.some((scenario) => !SCENARIOS.includes(scenario))) throw new Error('Unknown scenario');
+  if (!['ask', 'default'].includes(permissionMode)) throw new Error('permission-mode must be ask or default');
   await mkdir(root, { recursive: true });
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const runDir = resolve(root, `${timestamp}-${agent}`);
   await mkdir(runDir);
   const fixture = await createFixture(runDir);
-  const summary = { agent, sdkVersion: '1.7.0', timestamp, runDir, fixture, timeoutSec, scenarios: [] };
+  const summary = { agent, sdkVersion: '1.7.0', timestamp, runDir, fixture, timeoutSec, permissionMode, invocation: { adapterPrefix: adapterPrefix ? resolve(adapterPrefix) : null, executable: executable ? resolve(executable) : null }, scenarios: [] };
+  let launchError;
+  if (spawnSpec) summary.runtime = { testOverride: true, environment: environment() };
+  else {
+    summary.runtime = {};
+    try {
+      const resolved = await resolveAgent(agent, { adapterPrefix, executable }, summary.runtime);
+      spawnSpec = resolved.spec;
+      summary.runtime = resolved.metadata;
+    } catch (error) {
+      launchError = error;
+      summary.runtime.error = errorInfo(error);
+    }
+  }
   const summaryFile = join(runDir, 'summary.json');
   await writeFile(summaryFile, `${JSON.stringify(summary, null, 2)}\n`);
   for (const scenario of scenarios) {
-    summary.scenarios.push(await runScenario({ agent, scenario, fixture: fixture.path, runDir, timeoutSec, spawnSpec, cancelAfterMs }));
+    summary.scenarios.push(await runScenario({ agent, scenario, fixture: fixture.path, runDir, timeoutSec, spawnSpec, launchError, cancelAfterMs, permissionMode }));
     await writeFile(summaryFile, `${JSON.stringify(summary, null, 2)}\n`);
   }
   return summary;
@@ -494,11 +590,14 @@ function parseArgs(args) {
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
     if (flag === '--help' || flag === '-h') return { help: true };
-    if (!['--agent', '--scenario', '--timeout-sec'].includes(flag)) throw new Error(`Unknown argument: ${flag}`);
+    if (!['--agent', '--scenario', '--timeout-sec', '--adapter-prefix', '--executable', '--permission-mode'].includes(flag)) throw new Error(`Unknown argument: ${flag}`);
     const value = args[++index];
     if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
     if (flag === '--agent') options.agent = value;
     else if (flag === '--scenario') options.scenario = value;
+    else if (flag === '--adapter-prefix') options.adapterPrefix = value;
+    else if (flag === '--executable') options.executable = value;
+    else if (flag === '--permission-mode') options.permissionMode = value;
     else options.timeoutSec = Number(value);
   }
   return { ...options, scenarios: options.scenario === 'all' ? SCENARIOS : [options.scenario] };
@@ -508,7 +607,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const options = parseArgs(process.argv.slice(2));
     if (options.help) {
-      console.log('Usage: node probe.mjs --agent <claude|codex|grok> --scenario <basic|commands|permission|cancel|resume|all> [--timeout-sec N]');
+      console.log('Usage: node probe.mjs --agent <claude|codex|grok> --scenario <basic|commands|permission|cancel|resume|all> [--timeout-sec N] [--adapter-prefix DIR] [--executable PATH] [--permission-mode ask|default]');
     } else {
       const summary = await runProbe(options);
       console.log(`\nAgent: ${summary.agent}\nFixture: ${summary.fixture.path}\n`);

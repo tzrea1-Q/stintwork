@@ -51,17 +51,26 @@ new AgentSideConnection((client) => {
       assert.deepEqual(request.mcpServers, []);
       if (mode === 'auth') throw RequestError.authRequired({ detail: 'fake login is missing' }, 'auth_required: fake login is missing');
       const sessionId = randomUUID();
-      sessions.set(sessionId, { cwd: request.cwd });
+      sessions.set(sessionId, { cwd: request.cwd, modeId: 'default' });
       await client.sessionUpdate({ sessionId, update: {
         sessionUpdate: 'available_commands_update',
         availableCommands: [{ name: 'probe-skill', description: 'Test skill' }],
       } });
       return {
         sessionId,
-        modes: { currentModeId: 'default', availableModes: [{ id: 'default', name: 'Default' }] },
+        modes: { currentModeId: 'default', availableModes: [
+          { id: 'default', name: 'Default' },
+          ...(mode === 'no_ask_mode' ? [] : [{ id: 'read-only', name: 'Read only' }]),
+        ] },
         models: { currentModelId: 'fake-model', availableModels: [{ modelId: 'fake-model', name: 'Fake model' }] },
         configOptions: [],
       };
+    },
+    async setSessionMode({ sessionId, modeId }) {
+      assert.ok(['default', 'read-only'].includes(modeId));
+      assert.notEqual(mode, 'no_ask_mode');
+      sessions.get(sessionId).modeId = modeId;
+      return {};
     },
     loadSession: restore,
     resumeSession: restore,
@@ -110,7 +119,7 @@ new AgentSideConnection((client) => {
       } else if (text.includes('touch PERMISSION_PROBE.txt')) {
         const toolCall = { toolCallId: 'touch-tool', title: 'touch PERMISSION_PROBE.txt', kind: 'execute', status: 'pending', rawInput: { command: 'touch PERMISSION_PROBE.txt' } };
         await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'tool_call', ...toolCall } });
-        let allowed = mode === 'no_permission';
+        let allowed = mode === 'no_permission' || (mode === 'ask_required' && session.modeId !== 'read-only');
         if (!allowed) {
           const offered = mode === 'fallback_options' ? options.filter((option) => option.kind.endsWith('_always'))
             : mode === 'missing_reject' ? options.filter((option) => option.kind.startsWith('allow_')) : options;

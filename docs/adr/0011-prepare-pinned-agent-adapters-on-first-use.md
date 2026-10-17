@@ -6,6 +6,7 @@ This replaces the [first-release decision](../../.scratch/first-release/spec.md#
 
 ## Constraints
 
+- Compatible means within the tested version range for the pinned adapter, confirmed by a handshake at stint start.
 - Pin `@agentclientprotocol/claude-agent-acp@0.88.0` with SDK/native packages 0.3.293, and `@agentclientprotocol/codex-acp@2.1.1` with launcher 0.159.3 and host-native package `0.159.3-<platform>-<arch>`. Ship the complete released dependency lock and integrity values; no runtime version resolution. Installed paths omit native packages.
 - Publish cache entries atomically only after verification; reuse across projects. Ownership, failure recovery and compatibility evidence belong to tickets [03](../../.scratch/first-run/issues/03-installed-cli-compatibility.md) and [04](../../.scratch/first-run/issues/04-first-use-adapter-cache.md).
 - Keep the board usable offline with a clear “not prepared” state; cold offline npx still requires the root package cached.
