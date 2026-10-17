@@ -1,6 +1,6 @@
 # 03 — Make the repo public
 
-Status: ready-for-human
+Status: deferred
 Blocked by: 01, 02
 
 ## What to build
@@ -16,3 +16,5 @@ After 01 and 02 merge, the maintainer confirms and changes `tzrea1-Q/stintwork` 
 - [ ] Private security reporting is available as described in SECURITY; no vulnerability is posted publicly to test it.
 
 ## Comments
+
+**Coordinator, 2026-10-17:** This work happens in M13 · v0.2 release and going public, not M7. The repo stays private until then. The maintainer changes visibility; the coordinator records the public CI, README, issue-template and private-reporting checks here.

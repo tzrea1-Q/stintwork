@@ -12,7 +12,7 @@ Feature CSS defines most styling. CSS-variable tokens exist in `style.css` but a
 
 ## Solution
 
-Build the foundations in ADR 0010, migrate the existing screens, and check them in a real browser before the outside-developer test.
+Build the foundations in ADR 0010, migrate the existing screens, and check them in a real browser for release readiness.
 
 - **Shared controls:** Radix primitives wrapped once in `packages/web/src/ui/`, with behaviour tests and Tailwind styles.
 - **Shared styling:** CSS-variable tokens in `packages/web/src/styles/tokens.css`, mapped into Tailwind's theme for both colour schemes. System fonts replace remote font loading.
@@ -27,7 +27,7 @@ Build the foundations in ADR 0010, migrate the existing screens, and check them 
 3. As a keyboard user, I want consistent focus and dismissal, so that I can use menus and overlays without a mouse.
 4. As a developer, I want the local UI to use system fonts, so that it works without a remote font service.
 5. As a coding agent, I want shared components and a frontend guide, so that each web change follows the same patterns.
-6. As the maintainer, I want browser evidence before merging, so that layout bugs are found before outside developers use the UI.
+6. As the maintainer, I want browser evidence before merging, so that layout bugs are found before the public release.
 
 ## Implementation Decisions
 
@@ -38,7 +38,7 @@ Build the foundations in ADR 0010, migrate the existing screens, and check them 
 - **Layout:** no horizontal page scroll at the supported widths. Toolbars wrap or collapse deliberately. Overlays have a 16px viewport gutter and scroll internally as needed. Long names expose their full text by title or tooltip; English and Chinese containers do not assume fixed text widths.
 - **Behaviour and copy:** preserve existing actions, state, language detection and the saved `stintwork.language` choice. Strings come from both catalogs, with glossary terms and `coreText` for core and server text. Views continue to read state and send actions through the existing layer (ADR 0006).
 - **Browser harness:** ticket 01 creates `packages/web/e2e/` with a repeatable fixture project, server start and layout-check helper. The root `pnpm test:e2e` forwards to the web package's script. CI downloads the Playwright browser; local runs may use the installed Chrome channel. Browser tests need no real agent login or private project.
-- **Release boundary:** M8 runs now while M7 stays active. go-public 01–03 can proceed; go-public 04 waits for M8's exit. M9 remains the outside-developer feedback milestone, with scope set after M7.
+- **Release boundary:** M8 finishes for release readiness while M7 stays active for repo preparation. After the human walk-through, development continues with M9 · Fast first run. The outside-developer test and fixes follow the public release, outside v0.2; neither gates development.
 
 ## Testing Decisions
 
@@ -54,11 +54,11 @@ Build the foundations in ADR 0010, migrate the existing screens, and check them 
 - New views, workflows or product actions; Lists and Cockpit stay later.
 - Core or server behaviour changes, agent integration and stint resume.
 - Remote fonts, native modules in the shipped package, the shadcn CLI or pixel-by-pixel screenshot comparisons.
-- Running the outside-developer test or setting M9's feedback scope.
+- Running the outside-developer test or fixing its findings; both follow the public release.
 - Setting M8 shipped before its exit test passes.
 
 ## Further Notes
 
-- The coordinator's 2026-10-13 analysis and the maintainer's request set this milestone's scope; it does not wait for M7 feedback.
+- The coordinator's 2026-10-13 analysis and the maintainer's request set this milestone's scope. The 2026-10-17 decision keeps the exit test unchanged and makes release readiness the reason for it.
 - The stopped language-menu draft is folded into ticket 02. Drawer reuse follows in 05; no ticket is added to ui-language.
-- The dependencies below are within this work item. go-public 04's separate M8 exit gate is recorded in its Coordinator comment.
+- Ticket dependencies are within this work item. M8 no longer gates go-public 04.
