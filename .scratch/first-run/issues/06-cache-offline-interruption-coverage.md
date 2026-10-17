@@ -1,6 +1,6 @@
 # 06 — Cover cache, offline and interruption behavior
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 04, 05
 
 ## What to build
@@ -65,3 +65,5 @@ pnpm --config.verify-deps-before-run=false --dir packages/web exec playwright te
 ```
 
 The server command includes the new real HTTP disconnect regression and both existing WebSocket cases excluded here. Review the browser screenshots/layout at 1440/1024/768/390/360px in en/zh-CN, light/dark at 1440/390px. Socket binding and network are unavailable here, so browser/socket execution remains pending. Real registry/native/agent-login/provider/platform checks remain ticket 07; these hermetic offline preparation tests prove neither real-agent compatibility nor offline provider inference. Build/package smoke were not rerun for this ticket. Legacy shared npm download-cache contents are retained; only newly scoped successful attempts are pruned.
+
+**Coordinator, 2026-10-17:** Verified: format, lint, typecheck, build, unit tests (2333), smoke:package and the full browser suite pass under load average 12-17. Codex review clean. Core tracker tests were broadened to durable properties (parse, no warnings, dependency order), which AGENTS.md requires. Resolved.
