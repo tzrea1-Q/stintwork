@@ -1094,6 +1094,8 @@ test.each(["claude", "codex"] as const)(
     const env = {
       ...process.env,
       HOME: "/fixture/configured-agent-home",
+      // The fake adapter imports workspace source; CI has no built package exports.
+      NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ""} --conditions=development`,
       [override]: "/nonexistent/agent",
     };
     const registered = agent === "claude" ? createClaudeCodeAgent(env) : createCodexAgent({ env });
