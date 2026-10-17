@@ -25,7 +25,7 @@ Stintwork is published on npm. See the [getting-started guide](docs/getting-star
 
 ### Set up your agents
 
-Stintwork uses your own installed agent CLIs and logins: for each agent you want it to use, install its CLI on PATH and sign in.
+Stintwork uses your existing agent logins. Compatible installed CLIs are preferred; Claude Code and Codex can also use a pinned bundled fallback at explicit stint start. Grok Build requires your separately installed CLI.
 
 | Agent | CLI | Sign in | Status |
 |---|---|---|---|
@@ -33,9 +33,9 @@ Stintwork uses your own installed agent CLIs and logins: for each agent you want
 | Codex | `codex` | `codex login` | Verified over ACP |
 | Grok Build | `grok` | `grok login` | Experimental; not verified end to end |
 
-Stintwork includes the Claude Code and Codex ACP adapters, not their CLIs or logins; it does not handle your credentials. Set up at least one agent to start; you can set up several, choose one per stage or stint, and switch between stints.
+Board startup and availability refresh only read local files; they never download or launch agents. Untested agents show **Not prepared**. At explicit stint start, review **Agent source (Installed / Bundled)**, executable path/version, adapter version and selection reason. Confirm before downloading, cancel preparation or retry failures. Missing, incompatible or unverified Claude/Codex CLIs can use the pinned bundled fallback. Only the selected agent is prepared in a cache outside the project; global CLIs are unchanged.
 
-When a missing CLI or login is detected, the agent picker disables that agent and shows an installation or sign-in hint; detected login requirements also appear in **Needs you** with the login command and **Refresh agent availability**.
+When login is required, run your own login command above and retry; Stintwork never invokes login or reads, stores or proxies credentials. Offline npx requires the root Stintwork package already cached. Uncached agent preparation needs a connection; prepared packages prove neither login readiness nor offline provider inference. See [agent preparation](packages/agents/profiles/README.md) for cache paths and overrides.
 
 The CLI supports `--no-open`, `--help` and `--version`. With `--no-open`, open the printed address yourself. Stop the server with Ctrl+C.
 

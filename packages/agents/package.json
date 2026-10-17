@@ -20,12 +20,12 @@
     "build": "tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "@agentclientprotocol/claude-agent-acp": "0.88.0",
     "@agentclientprotocol/sdk": "1.7.0",
-    "@agentclientprotocol/codex-acp": "2.1.1",
     "@stintwork/core": "workspace:*"
   },
   "devDependencies": {
-    "tsx": "4.23.15"
+    "tsx": "4.23.15",
+    "@agentclientprotocol/claude-agent-acp": "0.88.0",
+    "@agentclientprotocol/codex-acp": "2.1.1"
   }
 }

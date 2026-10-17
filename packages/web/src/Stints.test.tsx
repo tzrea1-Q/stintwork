@@ -77,7 +77,8 @@ test("the picker renders registry names and posts the selected registered agent 
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    signal: expect.any(AbortSignal),
     body: JSON.stringify({
       workItem: "first",
       ticket: 1,
@@ -141,7 +142,8 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
   await user.click(screen.getByRole("button", { name: "Start" }));
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    signal: expect.any(AbortSignal),
     body: JSON.stringify({
       workItem: "first",
       ticket: 1,

@@ -5,9 +5,11 @@ import {
   createMemoryRepoFiles,
   indexProject,
 } from "@stintwork/core";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { en } from "./i18n/en";
+import { zhCN } from "./i18n/zh-CN";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { codexProfile } from "../../agents/src/profiles";
 import { TicketBriefPreview } from "./BriefPreview";
@@ -414,4 +416,163 @@ test("future handoff and changed-path inputs render as structured brief sections
     expect(screen.getByText(text)).toBeInTheDocument();
   }
   expect(screen.getAllByText(specPath, { selector: "li code" })).toHaveLength(2);
+});
+
+test.each(["en", "zh-CN"] as const)(
+  "%s preparation streams source, confirms before download, cancels and retries",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    let controller: ReadableStreamDefaultController<Uint8Array>;
+    const encode = new TextEncoder();
+    const send = (event: unknown) =>
+      controller.enqueue(encode.encode(`${JSON.stringify(event)}\n`));
+    let starts = 0;
+    const load = previewFetch();
+    const fetch = vi.fn(async (url: string) => {
+      if (url === "/api/stints") {
+        starts++;
+        return new Response(
+          new ReadableStream<Uint8Array>({
+            start(value) {
+              controller = value;
+            },
+          }),
+          { headers: { "Content-Type": "application/x-ndjson" } },
+        );
+      }
+      if (url.endsWith("/stop")) {
+        send({ type: "result", status: 503, body: { reason: "Cancelled" } });
+        controller.close();
+        return new Response("{}", { status: 202 });
+      }
+      if (url.endsWith("/confirm-agent")) return new Response("{}");
+      return load(url);
+    });
+    vi.stubGlobal("fetch", fetch);
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <TicketBriefPreview item={item} ticket={ticket} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: t.stints.startStint }));
+    await screen.findByRole("heading", { name: t.stints.fullPrompt });
+    await user.click(screen.getByRole("button", { name: t.stints.start }));
+    const progress = {
+      source: "bundled",
+      reason: "below-tested-range",
+      phase: "confirm",
+      adapterVersion: "2.1.1",
+      executable: { path: "/cache/selected/codex", version: "0.159.3" },
+    };
+    await act(async () => send({ type: "preparation", stintId: "preparing", progress }));
+    expect(
+      await screen.findByRole("heading", {
+        name: `${t.stints.preparation.source}: ${t.stints.preparation.bundled}`,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(t.stints.preparation.bundledNotice)).toBeInTheDocument();
+    expect(screen.getByText("/cache/selected/codex")).toBeInTheDocument();
+    expect(fetch.mock.calls.some(([url]) => url.endsWith("/confirm-agent"))).toBe(false);
+    await user.click(screen.getByRole("button", { name: t.stints.preparation.confirm }));
+    expect(fetch).toHaveBeenCalledWith("/api/stints/preparing/confirm-agent", { method: "POST" });
+    await act(async () =>
+      send({
+        type: "preparation",
+        stintId: "preparing",
+        progress: { ...progress, phase: "installing" },
+      }),
+    );
+    expect(
+      screen.getByText(t.coreText["agent.preparation.installing"], { exact: true }),
+    ).toHaveAttribute("role", "status");
+    await user.click(screen.getByRole("button", { name: t.stints.preparation.cancel }));
+    const retry = await screen.findByRole("button", { name: t.stints.preparation.retry });
+    expect(retry).toBeEnabled();
+    await user.click(retry);
+    expect(starts).toBe(2);
+    await act(async () => {
+      send({
+        type: "availability",
+        agent: "codex",
+        availability: { available: false, canStart: true, kind: "preparation-failed" },
+      });
+      send({ type: "result", status: 503, body: { reason: "Offline fixture failure" } });
+      controller.close();
+    });
+    expect(await screen.findByText("Offline fixture failure")).toHaveAttribute("role", "alert");
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("button", { name: t.stints.startStint })).toHaveFocus();
+  },
+);
+
+test.each([
+  "not-prepared",
+  "missing-executable",
+  "login-required",
+  "incompatible",
+  "preparation-failed",
+  "ready",
+] as const)("%s is honest and recoverable in the stint-start picker", async (state) => {
+  const agent = {
+    ...codexProfile,
+    availability: {
+      available: state === "ready",
+      kind: state === "ready" ? undefined : state,
+      canStart: true,
+      selection: { source: "bundled", reason: "missing", adapterVersion: "2.1.1" },
+    },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async (url: string) =>
+        new Response(JSON.stringify(url === "/api/agents" ? { agents: [agent] } : brief)),
+    ),
+  );
+  const user = userEvent.setup();
+  render(<TicketBriefPreview item={item} ticket={ticket} />);
+  await user.click(screen.getByRole("button", { name: "Start stint" }));
+  expect(await screen.findByText(en.stints.preparation.states[state])).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Start" })).toBeEnabled();
+  if (state === "login-required")
+    expect(screen.getByText("codex login", { selector: "code" })).toBeInTheDocument();
+});
+
+test("closing an explicit start aborts the request; cancellation is available during version inspection", async () => {
+  const user = userEvent.setup();
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  let signal: AbortSignal | undefined;
+  const load = previewFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string, options?: RequestInit) => {
+      if (url !== "/api/stints") return load(url);
+      signal = options?.signal as AbortSignal;
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(value) {
+            controller = value;
+          },
+        }),
+        { headers: { "Content-Type": "application/x-ndjson" } },
+      );
+    }),
+  );
+  render(<TicketBriefPreview item={item} ticket={ticket} />);
+  const trigger = screen.getByRole("button", { name: "Start stint" });
+  await user.click(trigger);
+  await screen.findByRole("heading", { name: "Full prompt" });
+  await user.click(screen.getByRole("button", { name: "Start" }));
+  await act(async () =>
+    controller.enqueue(
+      new TextEncoder().encode(`${JSON.stringify({ type: "starting", stintId: "inspecting" })}\n`),
+    ),
+  );
+  expect(screen.getByRole("button", { name: en.stints.preparation.cancel })).toBeEnabled();
+  await user.keyboard("{Escape}");
+  expect(signal?.aborted).toBe(true);
+  expect(trigger).toHaveFocus();
+  await act(async () => controller.close());
 });

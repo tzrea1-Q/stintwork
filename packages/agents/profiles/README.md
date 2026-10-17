@@ -1,11 +1,10 @@
 # Released adapter profiles
 
-Ticket 04's explicit first-use seam. Each directory contains an exact `package.json`
-and must ship its reviewed npm v3 `package-lock.json`. The coordinator generates and
-commits the locks with registry access; they are deliberately absent in this
-offline implementation. Missing locks or integrity data are hard errors, never a
+Each directory ships an exact `package.json` and reviewed npm v3
+`package-lock.json`. Missing locks or integrity data are hard errors, never a
 request to resolve versions at runtime. Test locks are synthetic fixtures, not
-release evidence.
+release evidence. Neither board startup nor availability refresh executes a CLI,
+prepares packages or starts ACP. Only an explicit stint start invokes preparation.
 
 Claude: adapter 0.88.0, SDK/native 0.3.293 (CLI 2.1.293). Codex: adapter 2.1.1,
 launcher 0.159.3, required native alias `@openai/codex-<os>-<arch>` resolving to
@@ -104,6 +103,9 @@ Ticket 05 consumes exports from `@stintwork/agents`:
   absolute adapter entry, adapter version, cache key and released lock digest.
 - `AgentPreparationOptions`: agent, cwd, env, AbortSignal, progress callback,
   timeout, cache and profile directory overrides (fixture seams).
+  `beforePrepare(event, signal)` pauses before any cache/install work for each
+  source selection, including handshake fallback. The web start stream waits for
+  source confirmation there; cancellation rejects the wait through its signal.
 - `AgentPreparationEvent`: selected/waiting/installing/verifying/smoke/ready,
   agent, adapter version, source/reason, optional executable and elapsed/success.
 - `inspectInstalledAgent`, pure `selectAgentSource`, `adapterPins` and
@@ -116,7 +118,21 @@ Ticket 05 consumes exports from `@stintwork/agents`:
   `preparedAgentEnvironment` applies the same absolute CLI override to adapter
   subprocess helpers. Never persist the environment or cache login readiness.
 
-No board, server or UI calls the preparation API yet. Ticket 05 owns that wiring,
-cheap availability, cancellation/retry/source UI, removal of eager dependencies
-and remaining package smoke checks; 06 owns broad adversarial/server/UI coverage;
-07 owns real-agent/platform and package/network/time measurements.
+The server invokes preparation only at explicit stint start and passes its result
+directly to the launcher. The web start request accepts `application/x-ndjson`:
+`starting` supplies the cancellation id, `preparation` streams source/progress,
+and `result` carries the final HTTP status/body. `confirm-agent` continues the
+selected source; the existing `stop` action aborts preparation and leaves retry
+available. Nonstreaming clients retain the existing JSON response contract.
+The source, reason, executable and adapter details are also recorded in the stint
+log after preparation succeeds. Availability retains explicit-start evidence only
+while the local executable identity is unchanged; package completion alone never
+marks an agent ready. Grok keeps native `grok agent stdio` and checks readiness only
+at explicit start, under the developer's own login.
+
+The root package ships profiles/locks without adapter dependencies. Both adapters
+are agents-package devDependencies for the existing launcher tests only. Ticket 06
+owns broader adversarial coverage; 07 owns real-agent/platform, network and timing
+evidence. Offline npx needs the root package cached. Warm package readiness proves
+neither login nor offline provider inference. Stintwork never invokes login or
+reads, stores or proxies credentials.

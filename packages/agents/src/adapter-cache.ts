@@ -43,7 +43,7 @@ export type AgentPreparationEvent = {
   reason: AgentSourceReason;
   elapsedMs?: number;
   success?: boolean;
-  executable?: { path: string; version?: string };
+  executable?: { path: string; version?: string; identity?: string };
 };
 export type PreparedAgent = {
   agent: CachedAgent;
@@ -64,6 +64,7 @@ export type AgentPreparationOptions = {
   signal?: AbortSignal;
   timeoutMs?: number;
   onProgress?: (event: AgentPreparationEvent) => void;
+  beforePrepare?: (event: AgentPreparationEvent, signal: AbortSignal) => Promise<void>;
 };
 
 export class InstalledAgentInitializationError extends Error {}
@@ -623,12 +624,24 @@ export async function prepareAgent(
       phase,
       ...details,
     });
-  progress(
-    "selected",
-    detected
-      ? { elapsedMs: detected.elapsedMs, success: !!detected.version, executable: detected }
-      : {},
+  const proposedExecutable =
+    source === "installed" ? detected : { path: "", version: adapterPins[agent].cliVersion };
+  progress("selected", {
+    executable: proposedExecutable,
+    ...(detected ? { elapsedMs: detected.elapsedMs, success: !!detected.version } : {}),
+  });
+  await options.beforePrepare?.(
+    {
+      agent,
+      adapterVersion: adapterPins[agent].version,
+      source,
+      reason,
+      phase: "selected",
+      executable: proposedExecutable,
+    },
+    signal,
   );
+  signal.throwIfAborted();
   const host = adapterHost();
   const profile = await releasedProfile(options, source, host);
   const cacheKey = digest(

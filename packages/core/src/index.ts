@@ -47,6 +47,8 @@ export {
 } from "./checks.js";
 export type {
   AgentAvailability,
+  AgentSelection,
+  AgentPreparationProgress,
   AgentCapabilityProfile,
   AgentPermissionOption,
   AgentProfile,

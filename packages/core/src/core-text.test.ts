@@ -168,11 +168,11 @@ test.each([
   ["agent.codexTimeout", "Codex availability check timed out. Refresh agent availability."],
   [
     "agent.codexMissing",
-    "Codex not found. Install Codex and sign in with codex login. Stintwork includes @agentclientprotocol/codex-acp@2.1.1.",
+    "Codex not found. Install Codex and sign in with codex login. Stintwork prepares @agentclientprotocol/codex-acp@2.1.1.",
   ],
   [
     "agent.claudeMissing",
-    "Claude Code not found. Install Claude Code and sign in with claude auth login. Stintwork includes @agentclientprotocol/claude-agent-acp@0.88.0.",
+    "Claude Code not found. Install Claude Code and sign in with claude auth login. Stintwork prepares @agentclientprotocol/claude-agent-acp@0.88.0.",
   ],
   ["stint.reviewEndedEarly", "The Review stint ended before findings were collected."],
   ["stint.findingsIncomplete", "The findings request did not complete."],

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -36,6 +36,9 @@ async function fixture(config?: string, launcher: AgentLauncher = launch, inspec
   const parent = await mkdtemp(join(tmpdir(), "stintwork-grok-server-"));
   const root = join(parent, "project");
   const configPath = join(parent, "grok-config.toml");
+  const cli = join(parent, "grok");
+  await writeFile(cli, `#!${process.execPath}\nconsole.log("grok 1.0.0-fixture");`);
+  await chmod(cli, 0o755);
   if (config !== undefined) await writeFile(configPath, config);
   execFileSync("git", ["init", "--quiet", "--initial-branch=main", root]);
   for (const [path, content] of Object.entries({
@@ -67,7 +70,12 @@ async function fixture(config?: string, launcher: AgentLauncher = launch, inspec
   );
   const agentRegistry = createAgentRegistry([
     inspect
-      ? createGrokAgent({ configPath, launch: launcher, cwd: root })
+      ? createGrokAgent({
+          configPath,
+          launch: launcher,
+          cwd: root,
+          env: { ...process.env, PATH: parent },
+        })
       : {
           ...grokProfile,
           launch: launcher,
@@ -169,7 +177,7 @@ test("a missing Grok login refuses a start before creating a worktree and clears
     createFakeAgentLauncher([], [], { profile: "grok", authRequired })(options),
   );
   const response = await start(project);
-  expect(response.status).toBe(409);
+  expect(response.status).toBe(503);
   expect(await response.json()).toEqual({
     reason: expect.stringContaining("grok login"),
     reasonMessage: {
@@ -200,6 +208,8 @@ test("a missing Grok login refuses a start before creating a worktree and clears
   await project.app.request("/api/agents");
   expect((await snapshot(project)).attentionItems).toEqual(attention);
   await project.app.request("/api/agents?refresh=true");
+  expect((await snapshot(project)).attentionItems).toEqual(attention);
+  expect((await start(project)).status).toBe(201);
   expect((await snapshot(project)).attentionItems).toEqual([]);
 });
 
@@ -238,7 +248,7 @@ test("Authentication required from an actual Grok stint is logged and rebuilds a
   expect((await snapshot(tracked.project)).attentionItems).toEqual(before.attentionItems);
 });
 
-test("a successful availability recheck clears authentication lost between the probe and actual stint", async () => {
+test("explicit retry clears authentication lost after readiness; refresh never launches Grok", async () => {
   let authRequired = true;
   const { project } = await fixture(undefined, (options) =>
     createFakeAgentLauncher([], [], {
@@ -250,6 +260,8 @@ test("a successful availability recheck clears authentication lost between the p
   expect((await snapshot(project)).attentionItems[0]?.kind).toBe("login-required");
   authRequired = false;
   await project.app.request("/api/agents?refresh=true");
+  expect((await snapshot(project)).attentionItems[0]?.kind).toBe("login-required");
+  expect((await start(project)).status).toBe(201);
   expect((await snapshot(project)).attentionItems).toEqual([]);
 });
 
@@ -272,8 +284,10 @@ test("a Grok login attention item arrives and clears in live HTTP/WebSocket snap
   });
   await once(tracked.socket, "open");
   await fetch(`${url}/api/agents`);
+  await start(project);
   await expect.poll(() => snapshots.at(-1)?.attentionItems[0]?.kind).toBe("login-required");
   authRequired = false;
   await fetch(`${url}/api/agents?refresh=true`);
+  await start(project);
   await expect.poll(() => snapshots.at(-1)?.attentionItems).toEqual([]);
 });

@@ -263,7 +263,8 @@ test("the brief preview defaults to the persisted stage agent and starts that ag
   await user.click(sheet.getByRole("button", { name: "Start" }));
   expect(fetch).toHaveBeenLastCalledWith("/api/stints", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Accept: "application/x-ndjson" },
+    signal: expect.any(AbortSignal),
     body: JSON.stringify({
       workItem: "first",
       ticket: 1,

@@ -138,7 +138,7 @@ afterEach(async () => {
 test("installation hints ask for the developer's CLI and login, not another adapter install", () => {
   for (const profile of [codexProfile, claudeProfile]) {
     expect(profile.installationHint).toMatch(/^Install (?:Codex|Claude Code) and sign in with /);
-    expect(profile.installationHint).toContain("Stintwork includes @agentclientprotocol/");
+    expect(profile.installationHint).toContain("Stintwork prepares @agentclientprotocol/");
   }
 });
 

@@ -65,6 +65,7 @@ export { adapterPins } from "./adapter-profiles.js";
 
 export type AgentStintOptions = {
   preparedAgent?: PreparedAgent;
+  nativeExecutable?: string;
   env?: NodeJS.ProcessEnv;
   permissionLevel?: PermissionLevel;
   agent: string;
@@ -97,6 +98,7 @@ export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (
   cwd: string,
   env?: NodeJS.ProcessEnv,
+  nativeExecutable?: string,
 ) => ChildProcessWithoutNullStreams;
 
 const agentReadyTimeoutMs = 60_000;
@@ -108,6 +110,7 @@ export function createAgentLauncher(
 ): AgentLauncher {
   return ({
     preparedAgent,
+    nativeExecutable,
     env = defaultEnv,
     agent,
     cwd,
@@ -191,7 +194,7 @@ export function createAgentLauncher(
             stdio: "pipe",
             env: preparedAgentEnvironment(preparedAgent, env),
           })
-        : launchAdapter(cwd, env);
+        : launchAdapter(cwd, env, nativeExecutable);
       const forwarding = createPermissionForwarding(
         ndJsonStream(Writable.toWeb(child.stdin), toAcpReadable(child.stdout)),
       );
@@ -531,3 +534,5 @@ export const startAgentStint: AgentLauncher = createAgentLauncher((cwd, env = pr
     },
   });
 });
+
+export { installedAgentIdentity, readExecutableIdentity } from "./availability.js";

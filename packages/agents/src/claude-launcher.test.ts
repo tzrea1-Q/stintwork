@@ -89,5 +89,5 @@ test("Claude's adapter is pinned exactly and receives the installed executable a
   });
   expect(await readFile(join(directory, "greeting.txt"), "utf8")).toBe("Claude greeting");
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  expect(manifest.dependencies["@agentclientprotocol/claude-agent-acp"]).toBe("0.88.0");
+  expect(manifest.devDependencies["@agentclientprotocol/claude-agent-acp"]).toBe("0.88.0");
 });

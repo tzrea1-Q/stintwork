@@ -328,11 +328,17 @@ test("CLI changes trigger reselection; Codex 0.148.0 falls below the approved ra
 
 test("real fake-ACP handshake failure selects bundled with a visible reason", async () => {
   const { options, calls, events } = await fixture();
+  const confirmed: string[] = [];
   const prepared = await prepareAgentForStint({
     ...options,
+    beforePrepare: async (event) => {
+      confirmed.push(event.source);
+      if (event.source === "bundled") expect(await calls()).toHaveLength(1);
+    },
     env: { ...options.env, TEST_HANDSHAKE: "fail" },
   });
   expect(prepared).toMatchObject({ source: "bundled", reason: "handshake failed" });
+  expect(confirmed).toEqual(["installed", "bundled"]);
   expect(events).toContainEqual(
     expect.objectContaining({ phase: "selected", source: "bundled", reason: "handshake failed" }),
   );
@@ -421,15 +427,21 @@ test("failed npm, missing locks, and cancellation leave no published/partial ent
   ).rejects.toThrow("retry with the same released pins");
   expect(await readdir(join(options.cacheDirectory as string, "entries"))).toEqual([]);
   const controller = new AbortController();
+  let cancelAfterStartup: Promise<void> | undefined;
   const cancelled = prepareAgent({
     ...options,
     env: { ...options.env, TEST_NPM: "hang" },
     signal: controller.signal,
     onProgress(event) {
-      if (event.phase === "installing") setTimeout(() => controller.abort(), 50);
+      if (event.phase === "installing")
+        cancelAfterStartup = expect
+          .poll(calls)
+          .toHaveLength(2)
+          .then(() => controller.abort());
     },
   });
   await expect(cancelled).rejects.toThrow();
+  await cancelAfterStartup;
   expect(await readdir(join(options.cacheDirectory as string, "entries"))).toEqual([]);
   const prepared = await prepareAgent(options);
   expect(await calls()).toHaveLength(3);
@@ -526,4 +538,29 @@ test("npm JS entry lookup supports the Windows npm.cmd layout without a shell", 
   expect(await npmEntry({ Path: root }, "win32")).toBe(expected);
   await script(join(root, "codex.exe"), "");
   expect(findExecutable("codex", { Path: root }, "win32")).toBe(join(root, "codex.exe"));
+});
+
+test("source confirmation precedes cache writes/downloads and can cancel before preparation", async () => {
+  const { options, calls } = await fixture();
+  const controller = new AbortController();
+  let confirmed = false;
+  await expect(
+    prepareAgent({
+      ...options,
+      signal: controller.signal,
+      beforePrepare: async (event, signal) => {
+        expect(event).toMatchObject({
+          source: "installed",
+          reason: "compatible",
+          executable: { version: "0.163.0" },
+        });
+        await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
+        confirmed = true;
+        controller.abort();
+        signal.throwIfAborted();
+      },
+    }),
+  ).rejects.toThrow();
+  expect(confirmed).toBe(true);
+  await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
 });

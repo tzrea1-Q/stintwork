@@ -418,7 +418,9 @@ test("Stop during dependency setup refuses the pending start and never launches 
   );
   const response = await starting;
   expect(response.status).toBe(503);
-  expect((await response.json()).reason).toBe("Stint stopped during worktree setup.");
+  expect(await response.json()).toMatchObject({
+    reasonMessage: { code: "agent.preparationCancelled" },
+  });
   const stint = await ended(root, id);
   expect(stint).toMatchObject({
     status: "stopped",

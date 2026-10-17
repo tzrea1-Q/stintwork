@@ -5,6 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
+  AgentAuthenticationError,
   createAgentRegistry,
   createClaudeCodeAgent,
   type RegisteredAgent,
@@ -214,58 +215,58 @@ test.each([true, false])(
       checkpointCommit: expect.any(String),
     });
     const again = await start(project);
-    expect(again.status).toBe(409);
+    expect(again.status).toBe(503);
     expect(await again.json()).toEqual(refusal);
-    expect((await snapshot(project)).workItems[0].stints).toHaveLength(1);
+    expect((await snapshot(project)).workItems[0].stints).toHaveLength(2);
   },
 );
 
-test("cached logged-out detection refuses before writes; explicit refresh clears login attention and enables a stint", async () => {
+test("board detection never executes Claude; an explicit preparation login failure is retryable", async () => {
   const envDirectory = await mkdtemp(join(tmpdir(), "stintwork-claude-stub-"));
-  const state = join(envDirectory, "logged-in");
-  const checks = join(envDirectory, "checks");
+  const marker = join(envDirectory, "checks");
   const executable = join(envDirectory, "claude");
-  await writeFile(state, "false");
   await writeFile(
     executable,
-    `#!${process.execPath}\nconst fs = require("node:fs");
-if (JSON.stringify(process.argv.slice(2)) !== JSON.stringify(["auth", "status", "--json"])) process.exit(2);
-fs.appendFileSync(${JSON.stringify(checks)}, "checked\\n");
-const loggedIn = fs.readFileSync(${JSON.stringify(state)}, "utf8") === "true";
-console.log(JSON.stringify({ loggedIn, privateField: "do-not-publish" })); process.exit(loggedIn ? 0 : 1);\n`,
+    `#!${process.execPath}\nrequire('node:fs').writeFileSync(${JSON.stringify(marker)}, "must not launch");`,
   );
   await chmod(executable, 0o755);
+  let loggedIn = false;
   try {
-    const agent = {
+    const agent: RegisteredAgent = {
       ...createClaudeCodeAgent({ PATH: envDirectory }),
+      prepare: async () => {
+        if (!loggedIn) throw new AgentAuthenticationError(fakeAgentProfiles.claude);
+        return {
+          source: "installed",
+          reason: "compatible",
+          executable: { path: executable, version: "2.1.295" },
+        };
+      },
       launch: createFakeAgentLauncher([], [{ type: "message", text: handoff }], {
         profile: "claude",
       }),
     };
     const { root, project } = await fixture(agent);
+    expect((await snapshot(project)).agents[0].availability).toMatchObject({
+      available: false,
+      kind: "not-prepared",
+    });
     const response = await start(project);
-    expect(response.status).toBe(409);
+    expect(response.status).toBe(503);
     expect((await response.json()).reason).toContain("claude auth login");
     await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
       code: "ENOENT",
     });
     expect(git(root, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
-    expect(git(root, "status", "--porcelain")).toBe("");
-    expect((await snapshot(project)).attentionItems[0].kind).toBe("login-required");
-    await writeFile(state, "true");
-    const cached = await project.app.request("/api/agents");
-    expect(cached.headers.get("Cache-Control")).toBe("no-store");
-    expect((await cached.json()).agents[0].availability.available).toBe(false);
-    expect(await readFile(checks, "utf8")).toBe("checked\n");
+    loggedIn = true;
     const refreshed = await project.app.request("/api/agents?refresh=true");
-    const description = await refreshed.json();
-    expect(description.agents[0].availability.available).toBe(true);
-    expect(JSON.stringify(description)).not.toContain("do-not-publish");
-    expect((await snapshot(project)).attentionItems).toEqual([]);
+    expect((await refreshed.json()).agents[0].availability.kind).toBe("login-required");
+    await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
     expect((await start(project)).status).toBe(201);
     await expect
       .poll(async () => (await snapshot(project)).workItems[0].stints[0]?.status)
       .toBe("finished");
+    expect((await snapshot(project)).attentionItems).toEqual([]);
   } finally {
     await rm(envDirectory, { recursive: true, force: true });
   }

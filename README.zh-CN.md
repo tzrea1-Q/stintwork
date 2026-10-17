@@ -25,7 +25,7 @@ Stintwork 已发布到 npm。[入门指南](docs/getting-started.md)（英文）
 
 ### 配置智能体
 
-Stintwork 使用你自己安装的智能体 CLI 和已有的登录状态：每个想让 Stintwork 使用的智能体，都需要你安装其 CLI，确保能通过 PATH 找到，并完成登录。
+Stintwork 使用你已有的 Agent 登录状态。兼容的已安装 CLI 优先；Claude Code 和 Codex 也可在明确开始 Stint 时使用固定版本的内置备用程序。Grok Build 需要你自行安装其 CLI。
 
 | 智能体 | CLI | 登录命令 | 状态 |
 |---|---|---|---|
@@ -33,9 +33,9 @@ Stintwork 使用你自己安装的智能体 CLI 和已有的登录状态：每�
 | Codex | `codex` | `codex login` | 已通过 ACP 验证 |
 | Grok Build | `grok` | `grok login` | 实验性支持，尚未完成端到端验证 |
 
-Stintwork 内置 Claude Code 和 Codex 的 ACP 适配器，但不包含它们的 CLI 或登录状态，也不处理你的凭据。开始前至少配置好一个智能体；也可以配置多个，为每个阶段或每轮工作选择一个，在两轮工作之间切换。
+打开看板和刷新 Agent 可用性只读取本地文件，不下载或启动 Agent。未经测试的 Agent 显示“尚未准备”。明确开始 Stint 后，界面显示 **Agent 来源（已安装 / 内置）**、可执行文件路径和版本、适配器版本及选择原因；确认下载前可以取消，失败后可以重试。不兼容、缺失或未经验证的 Claude/Codex CLI 可选择固定版本的内置备用程序。只准备选中的 Agent，缓存位于项目之外；不会升级全局 CLI。
 
-检测到 CLI 未安装或尚未登录时，该智能体会在选择列表中被禁用，并显示安装或登录提示；需要登录的智能体还会出现在 **Needs you** 中，显示登录命令和 **Refresh agent availability**（刷新智能体可用状态）按钮。
+需要登录时，请自行运行表中的登录命令后重试；Stintwork 从不自动登录，也不读取、存储或代理凭据。离线打开需要 npm 已缓存 Stintwork 根包；未缓存的 Agent 准备需要联网。包准备成功不代表已登录，也不代表提供商推理可离线进行。缓存路径与覆盖设置见 [Agent 准备说明](packages/agents/profiles/README.md)。
 
 CLI 支持 `--no-open`、`--help` 和 `--version`。加上 `--no-open` 后不会自动打开浏览器，需要自行打开终端显示的地址。按 Ctrl+C 停止服务器。
 
