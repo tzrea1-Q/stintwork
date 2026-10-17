@@ -11,6 +11,8 @@ Record a compatibility selection policy for ticket 04: prefer a proven-compatibl
 
 **Coordinator-run checks:** real authenticated stints, permissions/cancel/resume probes and bundled-versus-installed interoperability need the developer's real agents/login and usually provider network; package preparation needs registry network or complete cached artifacts. Any loopback socket checks require socket access. The implementing agent may add/run isolated fake-process checks without those resources, but must record blocked real/network/socket checks for the coordinator rather than claiming passes. Do not read credentials, sign in, change agent settings or upgrade global CLIs.
 
+Record OS/architecture/libc, Node version and released lock identity alongside executable identity/version, adapter versions, commands and results. Probe every supported bundled combination separately from installed combinations. Exercise structured streaming, tools, skills discovery/invocation, cancellation and session resume according to each capability profile; Claude must cover SDK stream-json/control/permissions, and Codex app-server JSON-RPC v2 initialization, threads, turns, tools and approvals. Historical probes are not current proof. Rerun contract probes whenever adapters, the released dependency closure or supported CLI pairs change, and before release. Grok remains experimental until current evidence establishes otherwise.
+
 ## Acceptance criteria
 
 - [ ] Probe commands and results identify adapter, CLI, SDK/native reference versions, executable paths and tested environment.

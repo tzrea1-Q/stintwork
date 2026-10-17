@@ -11,6 +11,10 @@ Measure the usable board with normal detection, <=60 seconds, <=10 MiB registry 
 
 **Coordinator-run checks:** registry cold installs/byte counting require network; HTTP servers, browser checks and any counting proxy require sockets/browser access; genuine stints and ACP contract probes require real agents and the developer's existing logins, normally with provider network. The agent may add the harness and run available isolated checks, but must leave missing permissions/resources as explicit coordinator checks in Comments. Do not access credentials or change logins/global CLIs. This ticket supplies evidence to ticket 08; it does not itself mark M9 shipped.
 
+Target a root tarball <=2 MiB compressed, included within the 10 MiB board budget. The coordinator's 1078-second / 304 MB cache / 652 MB node_modules observations are a time/disk baseline, not HTTP response-body bytes or browser readiness; obtain a comparable measured whole-install response-body baseline for the 10% calculation rather than using disk growth or the research's native-tarball lower bound. Preserve the coordinator's observation below as historical evidence.
+
+Use identical host/network/registry conditions for baseline and candidate; count metadata, retries, redirects and tarballs, logging protocol overhead separately if captured. Record a browser-rendered usable board (including opening a work-item detail or creating a work item), not health alone, with normal detection. Report every cold run and local-tarball transfer/time exclusions. For cold and warm first stints, record preparation time separately from time through the first real structured event, executable/adapter versions, released lock identity, source and reason. Current real-agent/platform execution or root-pack gaps are blockers, not inferred passes; this ticket does not authorize publishing.
+
 ## Acceptance criteria
 
 - [ ] Valid baseline/candidate tarballs have recorded versions/SHAs, packed/unpacked sizes, contents and dependency identities; missing build results are blockers, not size claims.

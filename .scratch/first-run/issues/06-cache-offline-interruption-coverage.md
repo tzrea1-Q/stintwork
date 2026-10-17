@@ -9,6 +9,8 @@ Add focused fixture-driven coverage at the existing preparation, launcher, serve
 
 Exercise warm cross-project reuse, offline cold misses, corrupt/incomplete entries, integrity/registry errors, cancellation or process termination during preparation, stale/concurrent preparation, explicit retry and CLI-version changes. Count requested packages so compatible paths fetch no native payload and fallback paths fetch only the selected agent's pinned host-native package. Test a cached adapter whose bundled native package is still absent: offline fallback preparation must fail clearly rather than claim ready or run partial content. Local preparation success offline is not proof of provider-backed inference offline.
 
+Also cover missing/mismatched released locks and integrity data, disabled install scripts/no unrecorded fetches, unsafe cache ownership, symlink escapes, shared writable entries, post-install file corruption, timeout and disk-full cleanup. Verify only the failed attempt's staging is removed, stale ownership is reclaimed only once its process is gone, and concurrent callers reuse one verified publication. Keep package completion separate from login readiness; authentication/permission/provider failures must not trigger source switching. Check read-only board inspection, honest untested/not-prepared states and pre-download source/cancellation UI, without credential data entering cache entries or logs.
+
 ## Acceptance criteria
 
 - [ ] Warm cross-project/root-version reuse performs no package downloads and preserves recorded pins and executable selection.
