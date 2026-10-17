@@ -1,0 +1,13 @@
+{
+  "name": "stintwork-codex-bundled-darwin-x64",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@agentclientprotocol/codex-acp": "2.1.1",
+    "@openai/codex": "0.159.3",
+    "@openai/codex-darwin-x64": "npm:@openai/codex@0.159.3-darwin-x64"
+  },
+  "overrides": {
+    "@openai/codex": "0.159.3"
+  }
+}

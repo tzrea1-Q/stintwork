@@ -15,18 +15,23 @@ const execFileAsync = promisify(execFile);
 export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): RegisteredAgent {
   return {
     ...claudeProfile,
-    launch: createAgentLauncher((cwd) => {
-      const executable = findExecutable(env.CLAUDE_CODE_EXECUTABLE || "claude", env);
-      if (!executable) throw new Error(`Claude Code not found. ${claudeProfile.installationHint}`);
-      return spawn(process.execPath, [adapterEntry("claude-agent-acp")], {
-        cwd,
-        stdio: "pipe",
-        env: {
-          ...env,
-          CLAUDE_CODE_EXECUTABLE: executable,
-        },
-      });
-    }, claudeProfile),
+    launch: createAgentLauncher(
+      (cwd, launchEnv = env) => {
+        const executable = findExecutable(launchEnv.CLAUDE_CODE_EXECUTABLE || "claude", launchEnv);
+        if (!executable)
+          throw new Error(`Claude Code not found. ${claudeProfile.installationHint}`);
+        return spawn(process.execPath, [adapterEntry("claude-agent-acp")], {
+          cwd,
+          stdio: "pipe",
+          env: {
+            ...launchEnv,
+            CLAUDE_CODE_EXECUTABLE: executable,
+          },
+        });
+      },
+      claudeProfile,
+      env,
+    ),
     async detectAvailability(): Promise<AgentAvailability> {
       const checkedAt = new Date().toISOString();
       const executable = findExecutable(env.CLAUDE_CODE_EXECUTABLE || "claude", env);

@@ -49,5 +49,12 @@ await cp(new URL("../packages/web/dist/", import.meta.url), new URL("web/", outp
 await cp(new URL("../packages/core/workflows/", import.meta.url), new URL("workflows/", output), {
   recursive: true,
 });
+await cp(
+  new URL("../packages/agents/profiles/", import.meta.url),
+  new URL("agent-profiles/", output),
+  {
+    recursive: true,
+  },
+);
 await chmod(new URL("bin.js", output), 0o755);
 console.log("Built stintwork package: CLI bundle, web app and workflow YAML.");
