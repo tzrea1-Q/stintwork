@@ -16,7 +16,7 @@ import {
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, delimiter, join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
 const execute = promisify(execFile);
@@ -76,6 +76,7 @@ try {
   }
   for (const entry of [
     "package/dist/bin.js",
+    "package/dist/prepare-agent.js",
     "package/dist/web/index.html",
     "package/README.md",
     "package/README.zh-CN.md",
@@ -131,6 +132,8 @@ try {
   );
   await checkInstalledDependencies(join(consumer, "node_modules"));
   const require = createRequire(join(packageRoot, "dist/bin.js"));
+  const preparation = await import(pathToFileURL(join(packageRoot, "dist/prepare-agent.js")).href);
+  assert.equal(typeof preparation.prepareAgentForStint, "function");
   for (const adapter of ["claude-agent-acp", "codex-acp"])
     assert.throws(() => require.resolve(`@agentclientprotocol/${adapter}/dist/index.js`), {
       code: "MODULE_NOT_FOUND",
