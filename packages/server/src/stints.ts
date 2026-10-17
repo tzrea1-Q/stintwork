@@ -34,7 +34,6 @@ import {
   handoffRequest,
   findingsRequest,
   readExecutableIdentity,
-  preparedAgentEnvironment,
   type PreparedAgent,
   type AgentPreparationOptions,
 } from "@stintwork/agents";
@@ -630,7 +629,7 @@ export function addStintRoutes(
             agent: agent.id,
             cwd: worktree.path,
             ...(preparedAgent
-              ? { preparedAgent, env: preparedAgentEnvironment(preparedAgent) }
+              ? { preparedAgent }
               : selected?.executable
                 ? { nativeExecutable: selected.executable.path }
                 : {}),

@@ -7,6 +7,8 @@ import { dirname, join } from "node:path";
 import { createFakeAgentLauncher } from "@stintwork/agents/testing";
 import {
   createAgentRegistry,
+  createClaudeCodeAgent,
+  createCodexAgent,
   readExecutableIdentity,
   type AgentLauncher,
   type AgentPreparationOptions,
@@ -22,7 +24,7 @@ import {
 } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
-import { claudeProfile, codexProfile } from "../../agents/src/profiles.js";
+import { codexProfile } from "../../agents/src/profiles.js";
 import type { StintServerOptions } from "./stints.js";
 import { createProjectServer } from "./index.js";
 
@@ -1086,35 +1088,44 @@ test("HTTP preparation disconnect cancels before download and a new request retr
 });
 
 test.each(["claude", "codex"] as const)(
-  "%s: server launch receives selected Bundled executable over inherited bogus override",
+  "%s: server launch preserves the registered environment while pinning the selected executable",
   async (agent) => {
     const override = agent === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
-    const previous = process.env[override];
-    process.env[override] = "/nonexistent/agent";
-    try {
-      const prepared = { ...selectedPreparation, agent };
-      const launch = vi.fn<AgentLauncher>(() => ({
-        ready: Promise.resolve(),
-        done: Promise.resolve({ stopReason: "end_turn" }),
-        cancel: async () => {},
+    const env = {
+      ...process.env,
+      HOME: "/fixture/configured-agent-home",
+      [override]: "/nonexistent/agent",
+    };
+    const registered = agent === "claude" ? createClaudeCodeAgent(env) : createCodexAgent({ env });
+    const { project, tracked } = await fixture(undefined, {
+      launchAgent: undefined,
+      agentRegistry: createAgentRegistry([registered]),
+    });
+    const adapterEntry = join(tracked.parent, "adapter.mjs");
+    await writeFile(
+      adapterEntry,
+      `
+      import { writeFileSync } from "node:fs";
+      import { register } from ${JSON.stringify(import.meta.resolve("tsx/esm/api"))};
+      register();
+      writeFileSync("launched-environment.json", JSON.stringify({
+        home: process.env.HOME,
+        executable: process.env[${JSON.stringify(override)}],
       }));
-      const registry = createAgentRegistry([
-        { ...(agent === "claude" ? claudeProfile : codexProfile), launch },
-      ]);
-      const { project } = await fixture(launch, {
-        agentRegistry: registry,
-        prepareAgent: async () => prepared,
-      });
-      expect((await start(project, { workItem: "first", ticket: 1, agent })).status).toBe(201);
-      expect(launch).toHaveBeenCalledWith(
-        expect.objectContaining({
-          preparedAgent: prepared,
-          env: expect.objectContaining({ [override]: prepared.executable.path }),
-        }),
-      );
-    } finally {
-      if (previous === undefined) delete process.env[override];
-      else process.env[override] = previous;
-    }
+      process.env.STINTWORK_FAKE_OPTIONS = ${JSON.stringify(JSON.stringify({ profile: agent }))};
+      await import(${JSON.stringify(new URL("../../agents/src/fake-agent.ts", import.meta.url).href)});
+    `,
+    );
+    registered.prepare = async () => ({ ...selectedPreparation, agent, adapterEntry });
+    const response = await start(project, { workItem: "first", ticket: 1, agent });
+    expect(response.status, await response.clone().text()).toBe(201);
+    const { stint }: { stint: Stint } = await response.json();
+    expect(
+      JSON.parse(await readFile(join(stint.worktree.path, "launched-environment.json"), "utf8")),
+    ).toEqual({
+      home: env.HOME,
+      executable: selectedPreparation.executable.path,
+    });
+    await finished(project, stint.id);
   },
 );
