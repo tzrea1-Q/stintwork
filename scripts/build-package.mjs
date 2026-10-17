@@ -31,7 +31,23 @@ await startCli(process.argv.slice(2), version, fileURLToPath(new URL("./web/", i
   banner: { js: "#!/usr/bin/env node\n// SPDX-License-Identifier: Apache-2.0" },
   metafile: true,
 });
-for (const entry of Object.values(result.metafile.outputs)) {
+// The measurement harness must exercise the installed package without starting a prompt.
+const preparation = await build({
+  entryPoints: [fileURLToPath(new URL("../packages/agents/src/prepare-agent.ts", import.meta.url))],
+  outfile: fileURLToPath(new URL("prepare-agent.js", output)),
+  platform: "node",
+  target: "node22.12",
+  format: "esm",
+  bundle: true,
+  conditions: ["development"],
+  external: Object.keys(manifest.dependencies),
+  banner: { js: "// SPDX-License-Identifier: Apache-2.0" },
+  metafile: true,
+});
+for (const entry of Object.values({
+  ...result.metafile.outputs,
+  ...preparation.metafile.outputs,
+})) {
   for (const dependency of entry.imports) {
     if (!dependency.external) continue;
     assert(
@@ -71,7 +87,7 @@ for (const agent of ["claude", "codex"]) {
     }
   }
 }
-for (const input of Object.keys(result.metafile.inputs))
+for (const input of Object.keys({ ...result.metafile.inputs, ...preparation.metafile.inputs }))
   assert(
     !/node_modules\/.*(?:claude-agent-acp|codex-acp|claude-agent-sdk|@openai\/codex)/.test(input),
     `Eager adapter bundled: ${input}`,
