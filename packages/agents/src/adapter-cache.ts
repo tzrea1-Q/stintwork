@@ -64,7 +64,7 @@ export type AgentPreparationOptions = {
   cacheDirectory?: string;
   profilesDirectory?: string;
   signal?: AbortSignal;
-  timeoutMs?: number;
+  stallTimeoutMs?: number;
   onProgress?: (event: AgentPreparationEvent) => void;
   beforePrepare?: (event: AgentPreparationEvent, signal: AbortSignal) => Promise<void>;
 };
@@ -606,10 +606,7 @@ export async function prepareAgent(
       "Only Claude Code and Codex use the adapter cache; Grok keeps its native launch.",
     );
   const env = options.env ?? process.env;
-  const signal = AbortSignal.any([
-    ...(options.signal ? [options.signal] : []),
-    AbortSignal.timeout(options.timeoutMs ?? 300_000),
-  ]);
+  const signal = options.signal ?? new AbortController().signal;
   signal.throwIfAborted();
   const started = performance.now();
   const detected = sourceOverride ? undefined : await inspectInstalledAgent(agent, env, signal);
@@ -727,7 +724,8 @@ export async function prepareAgent(
         cwd: staging,
         env: isolatedNpmEnvironment(env),
         signal,
-        timeout: options.timeoutMs ?? 300_000,
+        stallTimeoutMs: options.stallTimeoutMs ?? 60_000,
+        progressDirectories: [staging, npmCache],
       });
       progress("verifying");
       if (
@@ -742,17 +740,13 @@ export async function prepareAgent(
     const versionStart = performance.now();
     let executable: Awaited<ReturnType<typeof inspectInstalledAgent>>;
     try {
-      executable =
-        source === "installed"
-          ? await inspectInstalledAgent(agent, env, signal)
-          : await inspectInstalledAgent(
-              agent,
-              {
-                ...env,
-                [agent === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH"]: verified.executable,
-              },
-              signal,
-            );
+      const selectedPath = source === "installed" ? detected?.path : verified.executable;
+      if (!selectedPath) throw new Error("Selected executable is missing.");
+      executable = await inspectInstalledAgent(
+        agent,
+        preparedAgentEnvironment({ agent, executable: { path: selectedPath } }, env),
+        signal,
+      );
       if (
         !executable?.version ||
         (source === "installed"

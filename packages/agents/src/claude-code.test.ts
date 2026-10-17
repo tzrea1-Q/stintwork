@@ -36,7 +36,7 @@ test("Claude detection and refresh only read files; unchanged explicit-start evi
     available: false,
     canStart: true,
     kind: "not-prepared",
-    selection: { source: "bundled", reason: "unverified" },
+    selection: { source: "pending", reason: "unverified" },
   });
   const identity = installedAgentIdentity("claude", env);
   agent.availability = {

@@ -670,3 +670,104 @@ test("a new preparation clears cached readiness, keeps phase metadata and resets
   await user.keyboard("{Escape}");
   await act(async () => controller.close());
 });
+
+test.each([en, zhCN])(
+  "an unchecked installed CLI has a pending source and a separate version label ($language)",
+  async (t) => {
+    const user = userEvent.setup();
+    localStorage.setItem(languageStorageKey, t === en ? "en" : "zh-CN");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              url === "/api/agents"
+                ? {
+                    agents: [
+                      {
+                        ...codexProfile,
+                        availability: {
+                          available: false,
+                          canStart: true,
+                          kind: "not-prepared",
+                          selection: {
+                            source: "pending",
+                            reason: "unverified",
+                            adapterVersion: "2.1.1",
+                          },
+                        },
+                      },
+                    ],
+                  }
+                : brief,
+            ),
+          ),
+      ),
+    );
+    render(
+      <LanguageProvider>
+        <TicketBriefPreview item={item} ticket={ticket} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: t.stints.startStint }));
+    expect(await screen.findByText(t.stints.preparation.reasons.unverified)).toBeInTheDocument();
+    expect(
+      screen.queryByText(`${t.stints.preparation.source}: ${t.stints.preparation.bundled}`),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByText(`${t.stints.preparation.version}: ${t.stints.preparation.unchecked}`),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(t.stints.preparation.bundledSizePending)).not.toBeInTheDocument();
+  },
+);
+
+test("retry retains the bundled selection version, size and executable until reselection", async () => {
+  const user = userEvent.setup();
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const send = async (event: unknown) =>
+    act(async () => controller.enqueue(new TextEncoder().encode(`${JSON.stringify(event)}\n`)));
+  const load = previewFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) => {
+      if (url !== "/api/stints") return load(url);
+      return new Response(
+        new ReadableStream<Uint8Array>({
+          start(value) {
+            controller = value;
+          },
+        }),
+        { headers: { "Content-Type": "application/x-ndjson" } },
+      );
+    }),
+  );
+  render(<TicketBriefPreview item={item} ticket={ticket} />);
+  await user.click(screen.getByRole("button", { name: "Start stint" }));
+  await user.click(await screen.findByRole("button", { name: "Start" }));
+  await send({
+    type: "preparation",
+    progress: {
+      source: "bundled",
+      reason: "missing",
+      phase: "selected",
+      adapterVersion: "2.1.1",
+      executable: { path: "/cache/codex", version: "0.159.3" },
+      downloadBytes: 136113744,
+    },
+  });
+  await send({
+    type: "availability",
+    agent: "codex",
+    availability: { available: false, canStart: true, kind: "preparation-failed" },
+  });
+  await send({ type: "result", status: 503, body: { reason: "Timeout fixture" } });
+  await act(async () => controller.close());
+  await user.click(await screen.findByRole("button", { name: en.stints.preparation.retry }));
+  expect(screen.getByText("Codex 0.159.3 · adapter 2.1.1")).toBeInTheDocument();
+  expect(screen.getByText(en.stints.preparation.bundledNotice(136))).toBeInTheDocument();
+  await send({ type: "preparation", progress: { phase: "waiting" } });
+  expect(screen.getByText("Codex 0.159.3 · adapter 2.1.1")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  await act(async () => controller.close());
+});

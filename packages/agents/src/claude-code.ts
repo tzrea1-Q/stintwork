@@ -12,8 +12,11 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
   return {
     ...claudeProfile,
     launch: createAgentLauncher(
-      (cwd, launchEnv = env) => {
-        const executable = findExecutable(launchEnv.CLAUDE_CODE_EXECUTABLE || "claude", launchEnv);
+      (cwd, launchEnv = env, nativeExecutable) => {
+        const executable = findExecutable(
+          nativeExecutable ?? (launchEnv.CLAUDE_CODE_EXECUTABLE || "claude"),
+          launchEnv,
+        );
         if (!executable)
           throw new Error(`Claude Code not found. ${claudeProfile.installationHint}`);
         return spawn(process.execPath, [adapterEntry("claude-agent-acp")], {

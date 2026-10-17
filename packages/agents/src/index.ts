@@ -523,16 +523,16 @@ export function createAgentLauncher(
   };
 }
 
-export const startAgentStint: AgentLauncher = createAgentLauncher((cwd, env = process.env) => {
-  const executable = env.CODEX_PATH ? findExecutable(env.CODEX_PATH, env) : undefined;
-  return spawn(process.execPath, [adapterEntry("codex-acp")], {
-    cwd,
-    stdio: "pipe",
-    env: {
-      ...env,
-      ...(executable ? { CODEX_PATH: executable } : {}),
-    },
-  });
-});
+export const startAgentStint: AgentLauncher = createAgentLauncher(
+  (cwd, env = process.env, nativeExecutable) => {
+    const executable = findExecutable(nativeExecutable ?? (env.CODEX_PATH || "codex"), env);
+    if (!executable) throw new Error(`Codex not found. ${codexProfile.installationHint}`);
+    return spawn(process.execPath, [adapterEntry("codex-acp")], {
+      cwd,
+      stdio: "pipe",
+      env: preparedAgentEnvironment({ agent: "codex", executable: { path: executable } }, env),
+    });
+  },
+);
 
 export { installedAgentIdentity, readExecutableIdentity } from "./availability.js";

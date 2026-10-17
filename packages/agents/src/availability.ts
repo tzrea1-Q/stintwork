@@ -49,7 +49,7 @@ export function inspectAgentAvailability(
     installedIdentity: installed?.identity,
     checkedAt: new Date().toISOString(),
     selection: {
-      source: agent === "grok" ? "installed" : "bundled",
+      source: agent === "grok" ? "installed" : installed ? "pending" : "bundled",
       reason: agent === "grok" ? "native" : installed ? "unverified" : "missing",
       ...(agent === "grok"
         ? { executable: installed }

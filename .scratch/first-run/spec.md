@@ -19,7 +19,7 @@ Separate board dependencies from explicit first-use preparation: cache pinned ad
 - **Research first.** Inspect how each adapter finds its agent binary, whether it can use the developer's installed CLI, and what Grok Build needs. Measure the root package and dependencies by platform.
 - **Compare options.** Include using an installed CLI, installing an adapter on first use into a cache with pinned versions, optional dependencies and the current approach. Do not assume an SDK adapter can run against the standalone CLI.
 - **Record the decision.** Ticket 02 records the chosen approach before implementation, preserving ADR 0002's pins and ADR 0003's own-agent/own-login boundary.
-- **Implement after the spike.** Tickets 02–07 precede exit ticket 08. Show preparation progress and installed/bundled source and reason at stint start; never download adapters/native agents during board startup or availability refresh.
+- **Implement after the spike.** Tickets 02–08 precede exit ticket 09. Show preparation progress and installed/bundled source and reason at stint start; never download adapters/native agents during board startup or availability refresh.
 
 ## User Stories
 
@@ -36,7 +36,7 @@ Separate board dependencies from explicit first-use preparation: cache pinned ad
 - **Measurements:** run `npm pack --dry-run` on the root package. Record package versions, packed and unpacked sizes, platform coverage and dependency paths. Separate root tarball size, compressed dependency downloads and unpacked disk size. Mark unavailable platform or download measurements rather than guessing or using network access in the spike.
 - **Choice criteria:** compare first-board bytes and time, first-stint setup, compatibility with installed CLIs, pinned versions, cache reuse, offline behaviour and recovery from interrupted or failed installs. The report recommends one approach and sets measurable size and time limits.
 - **Decision record:** ticket 02 must be approved before implementation and explain pins and the bundled fallback's relationship to ADR 0002/0003; do not edit existing records silently.
-- **Scope after research:** filed tickets 02–07 implement and verify the approved choice; ticket 08 records the exit. Cache layout remains an implementation decision.
+- **Scope after research:** filed tickets 02–08 implement and verify the approved choice; ticket 09 records the exit. Cache layout remains an implementation decision.
 
 ## Testing Decisions
 
@@ -44,7 +44,7 @@ Separate board dependencies from explicit first-use preparation: cache pinned ad
 - **Research evidence:** cite local package files and launch paths, record commands and actual results, and distinguish supported behaviour from an untested possibility. Missing local packages or cached download metadata are recorded as limits.
 - **Cold install:** use an isolated empty npm cache, not the developer's cache. Time `npx stintwork@latest` or the packed tarball through the board becoming usable in a real repo. Record the version or tarball revision, OS and architecture, connection conditions, elapsed time and downloaded bytes. Compare against the current dependency baseline on the same basis.
 - **Real agents:** after the change, start a real stint with each installed agent under the developer's own login. Record the agent and adapter versions and result. A board-only check or fake ACP agent is not proof that a real stint starts.
-- **Exit test:** the cold install shows the board within 60 seconds on a typical home connection, the download is a small fraction of today's, and real stints work through compatible installed CLIs or the selected pinned bundled fallback. The spike may tighten the size and time limits. Ticket 08 records all results before M9 is set shipped.
+- **Exit test:** the cold install shows the board within 60 seconds on a typical home connection, the download is a small fraction of today's, and real stints work through compatible installed CLIs or the selected pinned bundled fallback. The spike may tighten the size and time limits. Ticket 09 records all results before M9 is set shipped.
 
 ## Out of Scope
 
@@ -59,4 +59,8 @@ Separate board dependencies from explicit first-use preparation: cache pinned ad
 
 - **Changed 2026-10-17:** the maintainer replaced the feedback-driven M9 with Fast first run. M8 finishes first; M9 does not wait for an outside-developer test.
 - The 225 MB and 317 MB observations explain the spike, not its final download budget. The report sets the size and time limits from evidence.
-- Exit ticket 08 depends on 01–07; filing these tickets does not pass the exit or change M9's status.
+- Exit ticket 09 depends on 01–08; filing these tickets does not pass the exit or change M9's status.
+
+## Comments
+
+**Codex, 2026-10-17:** Filed real-run fixes as ticket 08; the M9 exit is now ticket 09, blocked by 01–08. No Status or exit verdict changed.

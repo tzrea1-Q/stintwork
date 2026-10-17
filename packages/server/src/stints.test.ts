@@ -22,7 +22,7 @@ import {
 } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
-import { codexProfile } from "../../agents/src/profiles.js";
+import { claudeProfile, codexProfile } from "../../agents/src/profiles.js";
 import type { StintServerOptions } from "./stints.js";
 import { createProjectServer } from "./index.js";
 
@@ -1084,3 +1084,37 @@ test("HTTP preparation disconnect cancels before download and a new request retr
   expect(prepareAgent).toHaveBeenCalledTimes(2);
   expect(launch).toHaveBeenCalledTimes(1);
 });
+
+test.each(["claude", "codex"] as const)(
+  "%s: server launch receives selected Bundled executable over inherited bogus override",
+  async (agent) => {
+    const override = agent === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
+    const previous = process.env[override];
+    process.env[override] = "/nonexistent/agent";
+    try {
+      const prepared = { ...selectedPreparation, agent };
+      const launch = vi.fn<AgentLauncher>(() => ({
+        ready: Promise.resolve(),
+        done: Promise.resolve({ stopReason: "end_turn" }),
+        cancel: async () => {},
+      }));
+      const registry = createAgentRegistry([
+        { ...(agent === "claude" ? claudeProfile : codexProfile), launch },
+      ]);
+      const { project } = await fixture(launch, {
+        agentRegistry: registry,
+        prepareAgent: async () => prepared,
+      });
+      expect((await start(project, { workItem: "first", ticket: 1, agent })).status).toBe(201);
+      expect(launch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          preparedAgent: prepared,
+          env: expect.objectContaining({ [override]: prepared.executable.path }),
+        }),
+      );
+    } finally {
+      if (previous === undefined) delete process.env[override];
+      else process.env[override] = previous;
+    }
+  },
+);

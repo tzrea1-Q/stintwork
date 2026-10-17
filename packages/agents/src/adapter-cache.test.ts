@@ -33,6 +33,7 @@ import {
 } from "./adapter-cache.js";
 import {
   prepareAgentForStint,
+  createCodexAgent,
   createClaudeCodeAgent,
   startAgentStint,
   AgentAuthenticationError,
@@ -65,8 +66,12 @@ const readline = await import('node:readline');
 let cwd;
 for await (const line of readline.createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
-  if (process.env.TEST_ACP_TRACE) fs.appendFileSync(process.env.TEST_ACP_TRACE, JSON.stringify({pid:process.pid,method:request.method})+'\\n');
+  if (process.env.TEST_ACP_TRACE) fs.appendFileSync(process.env.TEST_ACP_TRACE, JSON.stringify({pid:process.pid,method:request.method,claude:process.env.CLAUDE_CODE_EXECUTABLE,codex:process.env.CODEX_PATH})+'\\n');
   if (!('id' in request)) continue;
+  if (request.method === 'initialize' && process.env.TEST_SELECTED_AGENT) {
+    const {execFileSync} = await import('node:child_process');
+    execFileSync(process.env[process.env.TEST_SELECTED_AGENT === 'claude' ? 'CLAUDE_CODE_EXECUTABLE' : 'CODEX_PATH'], ['--version']);
+  }
   if (request.method === 'initialize' && process.env.TEST_INITIALIZE && !(process.env.CODEX_PATH || process.env.CLAUDE_CODE_EXECUTABLE).includes('/entries/')) {
     const failures = {
       incompatible: {code:-32601,message:'Method unsupported'},
@@ -217,7 +222,7 @@ test.each(["claude", "codex"] as const)(
     const prepared = await prepareAgent({
       ...options,
       // ACP initialize and child close are the readiness signals; allow slow OS scheduling.
-      timeoutMs: 60_000,
+      stallTimeoutMs: 60_000,
       env: { ...options.env, TEST_ACP_TRACE: tracePath },
     });
     expect(prepared.source).toBe("installed");
@@ -877,17 +882,18 @@ test("publication clears only its own npm downloads, preserving a different key'
 
 test("timeout after explicit npm startup releases the lock and staging without destroying retry downloads", async () => {
   const { root, options, calls } = await fixture();
-  const deadline = new AbortController();
-  const timeout = vi.spyOn(AbortSignal, "timeout").mockReturnValueOnce(deadline.signal);
+  const clock = vi.spyOn(performance, "now");
+  const pending = prepareAgent({ ...options, env: { ...options.env, TEST_NPM: "hang" } });
+  const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
   try {
-    const pending = prepareAgent({ ...options, env: { ...options.env, TEST_NPM: "hang" } });
-    const rejected = expect(pending).rejects.toMatchObject({ name: "TimeoutError" });
     await expect.poll(calls, { timeout: 30_000 }).toHaveLength(1);
-    deadline.abort(new DOMException("Preparation deadline", "TimeoutError"));
+    // Let the first sample see npm's startup writes, then advance only the monotonic clock.
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    const now = performance.now();
+    clock.mockReturnValue(now + 61_000);
     await rejected;
   } finally {
-    timeout.mockRestore();
-    deadline.abort();
+    clock.mockRestore();
   }
   expect(await readdir(join(root, "cache/entries"))).toEqual([]);
   expect(await readdir(join(root, "cache/locks"))).toEqual([]);
@@ -1006,5 +1012,103 @@ test.each(["manifest", "lock-root", "pin", "artifact"])(
     await expect(prepareAgent(options)).rejects.toThrow(/pinned|pin|unsafe released/);
     await expect(calls()).rejects.toMatchObject({ code: "ENOENT" });
     await expect(lstat(join(root, "cache"))).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);
+
+test.each(["claude", "codex"] as const)(
+  "%s: bundled smoke and cold/warm stint launches override inherited bogus executables",
+  async (agent) => {
+    const { root, options, calls } = await fixture(agent);
+    const tracePath = join(root, "selected-launches.jsonl");
+    const env = {
+      ...options.env,
+      CLAUDE_CODE_EXECUTABLE: "/nonexistent/claude",
+      CODEX_PATH: "/nonexistent/codex",
+      TEST_ACP_TRACE: tracePath,
+      TEST_SELECTED_AGENT: agent,
+    };
+    const launch =
+      agent === "claude" ? createClaudeCodeAgent(env).launch : createCodexAgent({ env }).launch;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const prepared = await prepareAgentForStint({ ...options, env });
+      expect(prepared.source).toBe("bundled");
+      const stint = launch({
+        agent,
+        cwd: options.cwd,
+        preparedAgent: prepared,
+        prompt: "Work",
+        onEvent: () => {},
+      });
+      await stint.ready;
+      await stint.done;
+      expect(JSON.parse(await readFile(join(options.cwd, "selected.json"), "utf8"))[agent]).toBe(
+        prepared.executable.path,
+      );
+    }
+    const trace = (await readFile(tracePath, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(trace.filter(({ method }) => method === "initialize")).toHaveLength(4);
+    for (const entry of trace) expect(entry[agent]).toContain("/entries/");
+    expect(await calls()).toHaveLength(1);
+  },
+);
+
+test.each(["claude", "codex"] as const)(
+  "%s: stint-start handshake receives the explicit executable after inherited env changes",
+  async (agent) => {
+    const { options } = await fixture(agent);
+    const override = agent === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
+    const launch = vi.fn<AgentLauncher>((stint) => {
+      expect(stint.env?.[override]).toBe(stint.preparedAgent?.executable.path);
+      return (agent === "claude" ? createClaudeCodeAgent().launch : startAgentStint)(stint);
+    });
+    await prepareAgentForStint(
+      {
+        ...options,
+        onProgress(event) {
+          if (event.phase === "ready" && options.env) options.env[override] = "/nonexistent/agent";
+        },
+      },
+      launch,
+    );
+    expect(launch).toHaveBeenCalledOnce();
+  },
+);
+
+test.each(["claude", "codex"] as const)(
+  "%s: confirmation cannot exhaust a total deadline before cold or warm smoke",
+  async (agent) => {
+    const { options } = await fixture(agent);
+    const originalTimeout = AbortSignal.timeout;
+    const deadline = new AbortController();
+    const timeout = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((ms) => (ms === 300_000 ? deadline.signal : originalTimeout(ms)));
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const prepared = await prepareAgent({
+          ...options,
+          env: {
+            ...options.env,
+            CLAUDE_CODE_EXECUTABLE: "/nonexistent/claude",
+            CODEX_PATH: "/nonexistent/codex",
+          },
+          beforePrepare: async (_event, signal) => {
+            deadline.abort(
+              new DOMException(
+                "Old total deadline expired while awaiting confirmation",
+                "TimeoutError",
+              ),
+            );
+            expect(signal.aborted).toBe(false);
+          },
+        });
+        expect(prepared.source).toBe("bundled");
+      }
+    } finally {
+      timeout.mockRestore();
+    }
   },
 );

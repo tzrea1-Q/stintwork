@@ -37,6 +37,7 @@ test.each(["missing", "non-executable", "directory", "executable"])(
       available: false,
       canStart: true,
       kind: kind === "executable" ? "not-prepared" : "missing-executable",
+      selection: { source: kind === "executable" ? "pending" : "bundled" },
     });
     expect(launch).not.toHaveBeenCalled();
   },

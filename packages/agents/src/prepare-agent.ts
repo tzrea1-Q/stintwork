@@ -2,6 +2,7 @@
 import { AgentAuthenticationError } from "./authentication.js";
 import {
   prepareAgent,
+  preparedAgentEnvironment,
   InstalledAgentInitializationError,
   isHandshakeIncompatibility,
   type AgentPreparationOptions,
@@ -34,7 +35,7 @@ export async function prepareAgentForStint(
   )({
     agent: options.agent,
     cwd: options.cwd,
-    env: options.env,
+    env: preparedAgentEnvironment(prepared, options.env),
     preparedAgent: prepared,
     prompt: "",
     checkAvailability: true,
