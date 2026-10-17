@@ -66,6 +66,22 @@ export type AgentPreparationOptions = {
   onProgress?: (event: AgentPreparationEvent) => void;
 };
 
+export class InstalledAgentInitializationError extends Error {}
+
+export function isHandshakeIncompatibility(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    // ACP authentication-required can carry a generic protocol message.
+    !(error instanceof Error && "code" in error && error.code === -32000) &&
+    !/auth|permission|denied|forbidden|provider|rate.limit|quota|network|connect|fetch|credential|login|sign.in|billing|usage.limit/i.test(
+      message,
+    ) &&
+    /protocol|method.*(?:not found|unsupported)|invalid (?:request|params|response)|does not offer|exited before|transport closed|took longer/i.test(
+      message,
+    )
+  );
+}
+
 function inside(directory: string, path: string): boolean {
   const offset = relative(directory, path);
   return (
@@ -706,11 +722,14 @@ export async function prepareAgent(
         preparedAgentEnvironment({ agent, executable }, env),
         directory,
         signal,
-      ).catch(() => {
+      ).catch((error) => {
         signal.throwIfAborted();
-        throw new Error(
-          "Pinned adapter startup smoke check failed. Check the released closure and retry.",
-        );
+        if (source === "installed" && isHandshakeIncompatibility(error))
+          throw new InstalledAgentInitializationError(
+            "Installed CLI rejected ACP initialization.",
+            { cause: error },
+          );
+        throw error;
       });
       progress("smoke", { elapsedMs: performance.now() - versionStart, success: true });
     } catch (error) {

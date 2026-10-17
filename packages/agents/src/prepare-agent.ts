@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { AgentAuthenticationError } from "./authentication.js";
-import { prepareAgent, type AgentPreparationOptions, type PreparedAgent } from "./adapter-cache.js";
+import {
+  prepareAgent,
+  InstalledAgentInitializationError,
+  isHandshakeIncompatibility,
+  type AgentPreparationOptions,
+  type PreparedAgent,
+} from "./adapter-cache.js";
 import { createAgentLauncher, type AgentLauncher } from "./index.js";
 import { claudeProfile, codexProfile } from "./profiles.js";
 
@@ -9,7 +15,14 @@ export async function prepareAgentForStint(
   options: AgentPreparationOptions,
   launch?: AgentLauncher,
 ): Promise<PreparedAgent> {
-  let prepared = await prepareAgent(options);
+  let prepared: PreparedAgent;
+  try {
+    prepared = await prepareAgent(options);
+  } catch (error) {
+    options.signal?.throwIfAborted();
+    if (!(error instanceof InstalledAgentInitializationError)) throw error;
+    prepared = await prepareAgent(options, { reason: "handshake failed" });
+  }
   options.signal?.throwIfAborted();
   if (prepared.source !== "installed") return prepared;
   const profile = options.agent === "claude" ? claudeProfile : codexProfile;
@@ -44,17 +57,7 @@ export async function prepareAgentForStint(
   } catch (error) {
     await cancel();
     options.signal?.throwIfAborted();
-    // Login, policy and provider failures are not evidence of CLI incompatibility.
-    const message = error instanceof Error ? error.message : String(error);
-    if (
-      error instanceof AgentAuthenticationError ||
-      /auth|permission|denied|forbidden|provider|rate.limit|quota|network|connect|fetch|credential|login|sign.in|billing|usage.limit/i.test(
-        message,
-      ) ||
-      !/protocol|method.*(?:not found|unsupported)|invalid (?:request|params|response)|does not offer|exited before|transport closed|took longer/i.test(
-        message,
-      )
-    )
+    if (error instanceof AgentAuthenticationError || !isHandshakeIncompatibility(error))
       throw error;
     prepared = await prepareAgent(options, { reason: "handshake failed" });
   } finally {

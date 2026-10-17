@@ -60,6 +60,17 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
   if (process.env.TEST_ACP_TRACE) fs.appendFileSync(process.env.TEST_ACP_TRACE, JSON.stringify({pid:process.pid,method:request.method})+'\\n');
   if (!('id' in request)) continue;
+  if (request.method === 'initialize' && process.env.TEST_INITIALIZE && !(process.env.CODEX_PATH || process.env.CLAUDE_CODE_EXECUTABLE).includes('/entries/')) {
+    const failures = {
+      incompatible: {code:-32601,message:'Method unsupported'},
+      auth: {code:-32000,message:'Authentication required'},
+      authGeneric: {code:-32000,message:'Invalid request'},
+      permission: {code:-32001,message:'Permission denied'},
+      provider: {code:-32603,message:'Provider protocol unavailable'},
+    };
+    process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:failures[process.env.TEST_INITIALIZE]})+'\\n');
+    continue;
+  }
   if (request.method === 'session/new' && process.env.TEST_HANDSHAKE === 'fail' && !(process.env.CODEX_PATH || process.env.CLAUDE_CODE_EXECUTABLE).includes('/entries/')) {
     process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:{code:-32601,message:'Method unsupported'}})+'\\n');
     continue;
@@ -327,6 +338,39 @@ test("real fake-ACP handshake failure selects bundled with a visible reason", as
   );
   expect(await calls()).toHaveLength(2);
 });
+
+test.each(["claude", "codex"] as const)(
+  "%s: installed initialize rejection prepares bundled once with handshake failed reason",
+  async (agent) => {
+    const { options, calls, events } = await fixture(agent);
+    const prepared = await prepareAgentForStint({
+      ...options,
+      env: { ...options.env, TEST_INITIALIZE: "incompatible" },
+    });
+    expect(prepared).toMatchObject({ source: "bundled", reason: "handshake failed" });
+    expect(
+      events.filter((event) => event.phase === "installing" && event.source === "bundled"),
+    ).toEqual([expect.objectContaining({ reason: "handshake failed" })]);
+    expect(await calls()).toHaveLength(2);
+  },
+);
+
+test.each([
+  ["auth", -32000, "Authentication required"],
+  ["authGeneric", -32000, "Invalid request"],
+  ["permission", -32001, "Permission denied"],
+  ["provider", -32603, "Provider protocol unavailable"],
+] as const)(
+  "installed initialize %s errors propagate unchanged without bundled preparation",
+  async (failure, code, message) => {
+    const { options, calls, events } = await fixture();
+    await expect(
+      prepareAgentForStint({ ...options, env: { ...options.env, TEST_INITIALIZE: failure } }),
+    ).rejects.toMatchObject({ code, message });
+    expect(events.some((event) => event.source === "bundled")).toBe(false);
+    expect(await calls()).toHaveLength(1);
+  },
+);
 
 test("authentication, permission and provider errors never select a different source", async () => {
   const { options, calls } = await fixture();
