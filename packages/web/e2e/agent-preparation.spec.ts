@@ -220,7 +220,7 @@ for (const language of ["en", "zh-CN"] as const) {
                       kind: "not-prepared",
                       canStart: true,
                       selection: {
-                        source: "bundled",
+                        source: "pending",
                         reason: "unverified",
                         adapterVersion: "2.1.1",
                       },

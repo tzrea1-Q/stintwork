@@ -385,6 +385,8 @@ export function addStintRoutes(
           }
         }
         state.setupCancellation?.signal.throwIfAborted();
+        if (selected?.source === "pending")
+          throw new Error("Agent source must be selected before launch.");
         const project = readProjectFiles();
         const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
         if (discoveryFailure) throw new Error(discoveryFailure.message);
@@ -496,7 +498,10 @@ export function addStintRoutes(
         if (selected) {
           const event = selected;
           const messages = [
-            coreText({ code: `agent.source.${event.source}` }),
+            coreText({
+              code:
+                event.source === "installed" ? "agent.source.installed" : "agent.source.bundled",
+            }),
             coreText({ code: `agent.reason.${event.reason}` }),
             coreText({
               code: "agent.executableDetails",

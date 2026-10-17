@@ -87,8 +87,13 @@ package version. Staging is a unique sibling on the same filesystem. An immutabl
 PID/token/ticket lock serializes processes using atomic, unique owner records;
 no age-based lock stealing is allowed. Dead owners alone can be reclaimed, and
 their unique filenames are never reused by new owners. A PID
-reused by the OS is conservatively treated as alive until timeout. Waiting and
-installation share a five-minute default deadline; cancellation uses AbortSignal.
+reused by the OS is conservatively treated as alive until cancellation. Waiting and
+source confirmation use the caller's AbortSignal, without a total deadline.
+Installation aborts after 60 seconds without filesystem progress in the owned
+staging/download-cache trees (`stallTimeoutMs` overrides this in fixtures). Polling
+checks file counts, sizes and modification times once per second, excluding npm
+logs; a progressing download/install may exceed five minutes. Cancellation remains
+available during every phase.
 Only the attempt's staging and owner file are cleaned on failure. Killed-process
 staging is ignored and never launched; previous complete entries are retained.
 Corrupt entries fail closed and are retained for inspection; use a fresh empty
@@ -115,7 +120,7 @@ Ticket 05 consumes exports from `@stintwork/agents`:
 - `PreparedAgent`: source, reason, absolute executable path/version/identity,
   absolute adapter entry, adapter version, cache key and released lock digest.
 - `AgentPreparationOptions`: agent, cwd, env, AbortSignal, progress callback,
-  timeout, cache and profile directory overrides (fixture seams).
+  `stallTimeoutMs`, cache and profile directory overrides (fixture seams).
   `beforePrepare(event, signal)` pauses before any cache/install work for each
   source selection, including handshake fallback. The web start stream waits for
   source confirmation there; cancellation rejects the wait through its signal.

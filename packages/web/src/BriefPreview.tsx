@@ -248,7 +248,7 @@ function BriefPreviewSheet({
     if (!brief || !agent || starting || unavailable) return;
     setStarting(true);
     onStartingChange(true);
-    setPreparation(null);
+    setPreparation((current) => (current ? { ...current, phase: "waiting" } : null));
     setAgents((current) =>
       current.map((candidate) =>
         candidate.id === agent
@@ -431,7 +431,7 @@ function BriefPreviewSheet({
                 return (
                   <div className="mt-3 space-y-2 rounded-md border border-border bg-surface p-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      {selection && (
+                      {selection && selection.source !== "pending" && (
                         <Badge variant="secondary">
                           {copy.source}: {copy[selection.source]}
                         </Badge>
@@ -459,13 +459,18 @@ function BriefPreviewSheet({
                     {selection && (
                       <>
                         <p className="font-medium">
-                          {selectedAgent.displayName}{" "}
-                          {selection.executable?.version ?? copy.unchecked}
+                          {selectedAgent.displayName}
+                          {selection.executable?.version && ` ${selection.executable.version}`}
                           {selection.adapterVersion &&
                             ` · ${copy.adapter} ${selection.adapterVersion}`}
                         </p>
+                        {!selection.executable?.version && (
+                          <p className="text-muted">
+                            {copy.version}: {copy.unchecked}
+                          </p>
+                        )}
                         <p className="text-muted">{copy.reasons[selection.reason]}</p>
-                        {selection.reason !== "native" && (
+                        {selection.reason !== "native" && selection.source !== "pending" && (
                           <p className="text-muted">
                             {selection.source === "bundled"
                               ? selection.downloadBytes

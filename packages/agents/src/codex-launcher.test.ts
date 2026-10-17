@@ -21,6 +21,8 @@ vi.mock("node:child_process", async (importOriginal) => {
     ) => {
       if (command !== process.execPath || args.length !== 1 || args[0] !== adapter)
         throw new Error("Expected the pinned Codex ACP executable.");
+      if (options.env?.CODEX_PATH !== process.execPath)
+        throw new Error("Selected Codex executable was not forwarded.");
       return original.spawn(
         process.execPath,
         sourceNodeArgs(fileURLToPath(new URL("./fake-agent.ts", import.meta.url))),
@@ -58,6 +60,8 @@ test("Codex uses the installed adapter even when no ACP command is on PATH", asy
   vi.stubEnv("PATH", directory);
   const stint = startAgentStint({
     agent: "codex",
+    nativeExecutable: process.execPath,
+    env: { ...process.env, CODEX_PATH: "/nonexistent/codex" },
     cwd: directory,
     prompt: "Work",
     onEvent: () => {},

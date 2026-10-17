@@ -682,7 +682,7 @@ export const zhCN: Catalog = {
         unparseable: "无法验证已安装的 CLI 版本。",
         incompatible: "已安装的 CLI 不兼容。",
         "handshake failed": "已安装的 CLI 握手失败。",
-        unverified: "开始 Stint 时将检查已安装的 CLI。",
+        unverified: "已找到已安装的 CLI，开始 Stint 时检查",
         native: "使用你已安装的 Grok CLI 和登录状态。",
       },
       phases: {

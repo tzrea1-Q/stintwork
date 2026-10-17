@@ -665,7 +665,7 @@ export const en = {
         unparseable: "Installed CLI version could not be verified.",
         incompatible: "Installed CLI is incompatible.",
         "handshake failed": "Installed CLI handshake failed.",
-        unverified: "Installed CLI will be checked at stint start.",
+        unverified: "Installed CLI found, checked at stint start",
         native: "Uses your installed Grok CLI and login.",
       },
       phases: {
