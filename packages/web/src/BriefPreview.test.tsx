@@ -472,6 +472,7 @@ test.each(["en", "zh-CN"] as const)(
       await screen.findByText(`${t.stints.preparation.source}: ${t.stints.preparation.bundled}`),
     ).toBeInTheDocument();
     expect(screen.getByText(t.stints.preparation.bundledNotice(136))).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.getByText("/cache/selected/codex")).not.toBeVisible();
     await user.click(screen.getByText(t.stints.preparation.details, { exact: true }));
     expect(screen.getByText("/cache/selected/codex")).toBeVisible();
@@ -488,6 +489,9 @@ test.each(["en", "zh-CN"] as const)(
     expect(
       screen.getByText(t.stints.preparation.phases.installing, { exact: true }),
     ).toHaveAttribute("role", "status");
+    const indicator = screen.getByRole("progressbar", { name: t.stints.preparation.progress });
+    expect(indicator).not.toHaveAttribute("aria-valuenow");
+    expect(indicator.querySelector("svg")).toHaveClass("motion-safe:animate-spin");
     expect(screen.getByText(/Codex 0.159.3/)).toBeInTheDocument();
     expect(screen.getByText("/cache/selected/codex")).toBeVisible();
     expect(screen.getByText(t.stints.preparation.bundledNotice(136))).toBeInTheDocument();

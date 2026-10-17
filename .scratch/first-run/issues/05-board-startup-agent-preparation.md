@@ -154,3 +154,17 @@ pnpm --config.verify-deps-before-run=false vitest run packages/server --configLo
 ```
 
 Review the new screenshot artifacts at 1440/390/360px in both languages; no new screenshot/layout pass is claimed from this sandbox.
+
+**Codex, 2026-10-17, browser review follow-up:** Scoped the long executable-path assertions to the Agent section's Details disclosure, so they cannot match the brief's separate changed-path code. The browser spec now explicitly observes listbox opening/closing while retaining the original focus-return and parent-dialog assertions.
+
+The focus failure is an app bug, not a wrong expectation. Inspected the coordinator's 768px English trace (`agent-preparation-agent-pr-1bfc5--dismissal-and-focus-return`) and 390px Chinese trace (`agent-preparation-agent-pr-260ce--dismissal-and-focus-return`): each shows an open listbox after the picker click; after one Escape, both that listbox and Brief preview disappear, leaving the work-item drawer. The shared Select now flushes open/close state and Radix's layer refresh synchronously, reusing the existing Tooltip workaround for Radix 1.2's Escape-listener registration. This fixes all Select callers at the shared seam. Added a fast nested-select cancellation regression: it failed before the fix with the parent dialog removed and focus on body, and passes after it; the next Escape still dismisses the parent. State flushing alone still reproduced the failure, so the explicit layer refresh is retained until upstream fixes it.
+
+Removed the full-width progress bar. Selection/confirmation show no progress indicator; actual preparation shows a labelled indeterminate open-circle spinner with `motion-safe:animate-spin`. Reduced-motion users receive a stationary open circle and the same phase text. No numeric completion value is claimed, and the indicator disappears on confirmed readiness. Existing bilingual preparation tests assert no indicator before confirmation and indeterminate semantics during downloading. Playwright now checks the same states plus actual normal/reduced-motion CSS and saves an additional reduced-motion screenshot across the existing width/language/colour-scheme matrix. No UI strings or dependencies were added.
+
+Checks run this round:
+
+- `pnpm --config.verify-deps-before-run=false format:check`, `lint`, and `typecheck` passed. Lint retains only the existing informational Biome deprecation.
+- The affected Select/SelectField/Dialog/brief tests passed: 4 files / 38 tests. Then `pnpm --config.verify-deps-before-run=false vitest run packages/web --configLoader native --maxWorkers 2` passed the entire web suite: 53 files / 592 tests.
+- `git diff --check` and unchanged Status/acceptance-line checks passed. Changes are limited to `BriefPreview.tsx`, its test, `ui/Select.tsx`, its test, `e2e/agent-preparation.spec.ts`, and these Comments. No commit; Status lines remain unchanged.
+
+The supplied traces were inspected as recorded artifacts; no browser suite or new screenshots were run in this socket-restricted sandbox. Coordinator: rerun `pnpm --config.verify-deps-before-run=false test:e2e` (the shared Select fix also warrants the other dialog/select cases), then review preparation and reduced-motion screenshots at the required widths/languages. Build and package smoke were not rerun for these web-only changes.

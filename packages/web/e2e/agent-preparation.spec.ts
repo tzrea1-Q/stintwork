@@ -104,7 +104,7 @@ for (const language of ["en", "zh-CN"] as const) {
       test.describe(`agent preparation ${width}px ${language} ${colorScheme}`, () => {
         test.beforeEach(async ({ page }) => {
           await page.setViewportSize({ width, height: 900 });
-          await page.emulateMedia({ colorScheme });
+          await page.emulateMedia({ colorScheme, reducedMotion: "no-preference" });
           await page.addInitScript(
             (choice) => localStorage.setItem("stintwork.language", choice),
             language,
@@ -135,6 +135,7 @@ for (const language of ["en", "zh-CN"] as const) {
           const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
           const trigger = parent.getByRole("button", { name: t.stints.startStint, exact: true });
           const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });
+          const agentSection = dialog.getByRole("region", { name: t.stints.agent, exact: true });
           await trigger.click();
           await expect(dialog.getByText(t.stints.readingBrief)).toBeVisible();
           await capture(page, testInfo, "loading");
@@ -180,17 +181,19 @@ for (const language of ["en", "zh-CN"] as const) {
               await expect(
                 dialog.getByText(`Codex 0.163.0 · ${t.stints.preparation.adapter} 2.1.1`),
               ).toBeVisible();
-              await expect(dialog.getByText(/long-path/)).toBeHidden();
+              await expect(agentSection.locator("details").getByText(/long-path/)).toBeHidden();
             }
             await capture(page, testInfo, state === "ready" ? "installed-ready" : state);
             if (state === "ready") {
               await dialog.getByText(t.stints.preparation.details, { exact: true }).click();
-              await expect(dialog.getByText(/long-path/)).toBeVisible();
+              await expect(agentSection.locator("details").getByText(/long-path/)).toBeVisible();
               await assertLayout(page, { region: ".brief-preview-sheet" });
             }
             const picker = dialog.getByRole("combobox", { name: t.stints.agent, exact: true });
             await picker.click();
+            await expect(page.getByRole("listbox")).toBeVisible();
             await page.keyboard.press("Escape");
+            await expect(page.getByRole("listbox")).toBeHidden();
             await expect(picker).toBeFocused();
             await expect(dialog).toBeVisible();
             await page.keyboard.press("Escape");
@@ -238,6 +241,7 @@ for (const language of ["en", "zh-CN"] as const) {
             }),
           ).toBeVisible();
           await expect(dialog.getByText(t.stints.preparation.bundledNotice(136))).toBeVisible();
+          await expect(dialog.getByRole("progressbar")).toHaveCount(0);
           await capture(page, testInfo, "bundled-before-download");
           await dialog.getByRole("button", { name: t.stints.preparation.confirm }).click();
           await expect(
@@ -250,6 +254,14 @@ for (const language of ["en", "zh-CN"] as const) {
             dialog.getByText(t.stints.preparation.preparing, { exact: true }),
           ).toBeVisible();
           await expect(dialog.getByText("Codex 0.159.3", { exact: false })).toBeVisible();
+          const progress = dialog.getByRole("progressbar", { name: t.stints.preparation.progress });
+          await expect(progress).not.toHaveAttribute("aria-valuenow");
+          const spinner = progress.locator("svg");
+          await expect(spinner).toHaveCSS("animation-name", "spin");
+          await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+          await expect(spinner).toHaveCSS("animation-name", "none");
+          await capture(page, testInfo, "downloading-reduced-motion");
+          await page.emulateMedia({ colorScheme, reducedMotion: "no-preference" });
           await capture(page, testInfo, "downloading");
           await dialog.getByRole("button", { name: t.stints.preparation.cancel }).click();
           await expect(
@@ -291,6 +303,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(
             dialog.getByText(t.stints.preparation.states.ready, { exact: true }),
           ).toBeVisible();
+          await expect(dialog.getByRole("progressbar")).toHaveCount(0);
           await capture(page, testInfo, "confirmed-installed-ready");
           await page.evaluate(() =>
             window.dispatchEvent(new CustomEvent("fixture-preparation", { detail: "success" })),

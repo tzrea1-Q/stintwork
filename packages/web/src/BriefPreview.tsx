@@ -25,7 +25,7 @@ import {
   type PermissionLevel,
   type WorkflowDefinitions,
 } from "@stintwork/core";
-import { Copy, X } from "lucide-react";
+import { Copy, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { BoardWorkItem } from "./WorkItemCard";
 import { Button } from "./ui/Button";
@@ -491,14 +491,22 @@ function BriefPreviewSheet({
                           : phase
                             ? copy.phases[phase]
                             : copy.phases.smoke}
-                        {activePreparation && (
-                          <div
-                            role="progressbar"
-                            aria-label={copy.progress}
-                            aria-valuetext={phase ? copy.phases[phase] : copy.phases.smoke}
-                            className="mt-2 h-1 rounded-full bg-accent motion-safe:animate-pulse"
-                          />
-                        )}
+                        {activePreparation &&
+                          phase &&
+                          phase !== "selected" &&
+                          phase !== "confirm" && (
+                            <div
+                              role="progressbar"
+                              aria-label={copy.progress}
+                              aria-valuetext={copy.phases[phase]}
+                              className="mt-2 inline-flex text-muted"
+                            >
+                              <LoaderCircle
+                                aria-hidden="true"
+                                className="size-icon-sm motion-safe:animate-spin"
+                              />
+                            </div>
+                          )}
                       </div>
                     )}
                     {startError && (
