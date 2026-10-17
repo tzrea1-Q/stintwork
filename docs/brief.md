@@ -134,7 +134,7 @@ Throughout: a ⌘K command palette, `c` to create, `j`/`k` to move, and a stable
 
 Teams and accounts, cloud runners, scheduled automations, a visual workflow editor, two-way GitHub Issues sync, mobile, autonomous swarms, more than one active stint per work item (parallel stints across work items are fine).
 
-v0.2 scope is in `docs/plan.md`: UI foundations in M8, reading GitHub Issues in M11 and a fourth agent, Gemini CLI, in M12. Further agent support follows the plan.
+v0.2 scope is in `docs/plan.md`: repo preparation in M7, UI foundations in M8, a fast first run in M9, stints surviving restarts in M10, reading GitHub Issues in M11 and a fourth agent, Gemini CLI, in M12. M13 releases v0.2 and makes the repo public. Outside-developer feedback follows the public release and sets later scope. Further agent support follows the plan.
 
 ## 13. First milestone: acceptance scenario
 
@@ -160,7 +160,7 @@ On one of your real repos:
 
 ## 15. Open questions
 
-1. **GitHub Issues.** v1 uses local Markdown only (ADR 0005). See `docs/plan.md` M11 for reading GitHub Issues through `gh` and the research spike on where specs and gate approvals live.
+1. **GitHub Issues.** v1 uses local Markdown only (ADR 0005). See `docs/plan.md` M11 for reading GitHub Issues through `gh` and the research spike on where specs and gate approvals live. If M11 runs long, M12 moves to v0.3 rather than delaying v0.2.
 2. **Is `.scratch/` committed?** The name suggests throwaway files, but here it is the project record. Proposal: commit it.
 3. **Approval provenance.** Is `workflow.yaml` in the feature folder the right place for approvals, or should they be a `Status:` line in `spec.md`?
 4. **Permission levels per agent.** Map Stintwork's own levels onto each agent's modes. Codex's default "Workspace access" mode never asks. Grok has no ACP modes and follows its own config (yours is `always-approve`).

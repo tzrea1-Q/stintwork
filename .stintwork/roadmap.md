@@ -38,7 +38,7 @@ Status: shipped
 
 - ui-language
 
-## M7 · Go public
+## M7 · Ready to go public
 Id: m7
 Status: active
 
@@ -50,9 +50,11 @@ Status: active
 
 - ui-foundations
 
-## M9 · What they ran into
+## M9 · Fast first run
 Id: m9
 Status: planned
+
+- first-run
 
 ## M10 · Stints survive restarts
 Id: m10
@@ -66,6 +68,6 @@ Status: planned
 Id: m12
 Status: planned
 
-## M13 · v0.2 release
+## M13 · v0.2 release and going public
 Id: m13
 Status: planned

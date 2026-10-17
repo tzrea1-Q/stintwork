@@ -1,6 +1,6 @@
 # Stintwork: production plan
 
-Status: draft for discussion · 2026-10-13. Vocabulary follows [`GLOSSARY.md`](../GLOSSARY.md). Decisions are recorded in [`docs/adr/`](adr/). The product is described in [`docs/brief.md`](brief.md).
+Status: draft for discussion · 2026-10-17. Vocabulary follows [`GLOSSARY.md`](../GLOSSARY.md). Decisions are recorded in [`docs/adr/`](adr/). The product is described in [`docs/brief.md`](brief.md).
 
 ## Goal
 
@@ -113,25 +113,23 @@ A Chinese-speaking developer can use the whole web UI in Simplified Chinese. Spe
 
 ### Goal
 
-Developers outside the project use Stintwork on their own repos and keep using it. Go public, build the UI foundations before the outside-developer test, and let their feedback set the next scope. Then fit more repos (GitHub Issues), hold up better (stints survive restarts) and work with more agents.
+Make Stintwork ready for developers outside the project: finish the UI foundations, start fast, survive restarts, fit GitHub-tracked repos and work with more agents. Then release v0.2 and go public. Feedback from outside developers is gathered after the public release and sets later scope.
 
-v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test moves to M7. M6 shipped after the maintainer approved the Chinese UI on 2026-10-13 (go-public 05 is resolved). Grok Build's end-to-end ticket (agent-polish 04) stays deferred until M12. `tzrea1-Q/stintwork` is still private.
+As of 2026-10-17, v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test now follows the public release, outside v0.2. M6 shipped after the maintainer approved the Chinese UI on 2026-10-13; go-public 05 is resolved. M8 has only ui-foundations 07's human walk-through left. go-public 01 and 02 are built and merged, waiting on the maintainer. Grok Build's end-to-end ticket (agent-polish 04) stays deferred until M12. `tzrea1-Q/stintwork` stays private until M13.
 
-**Rule:** if M9 turns out large, M11 and M12 move to v0.3 rather than delaying v0.2.
+**Rule:** if M11 runs long, M12 moves to v0.3 rather than delaying v0.2.
 
-**Order:** M8 runs now, alongside active M7. go-public 01–03 can proceed. go-public 04 waits for M8's exit because the testers' first impression is this UI. This cross-work-item gate is recorded in ticket 04's Comments; its `Blocked by` line names only tickets in go-public.
+**Order:** finish M8's human walk-through, then M9, M10 and M11. M12 may run alongside. M7 stays active while its maintainer confirmations are pending. Development does not wait on an outside-developer test.
 
-### M7 · Go public · M
+### M7 · Ready to go public · S
 
-Open the repo and find out whether developers outside the project can use it. Spec: `.scratch/go-public/spec.md`.
+Prepare the repo for the public release. Spec: `.scratch/go-public/spec.md`.
 
-- Make `tzrea1-Q/stintwork` public, with the maintainer's confirmation.
-- Issue templates and a short CONTRIBUTING explain how to report problems and how agents build the project. SECURITY points to private reporting. Scan tracked files and history before opening.
-- Link the repo from both READMEs and the npm package metadata.
-- After M8's exit, run the deferred M5 exit test with 3–5 outside developers and file findings as M9 tickets.
-- A native speaker's review of the Chinese catalog (M6 exit) can happen alongside.
+- go-public 01: issue templates, CONTRIBUTING, SECURITY and the tracked-file and history scan are built and merged. The maintainer confirms the SECURITY route and support policy.
+- go-public 02: repo links in both READMEs and npm metadata are built and merged. Any patch published before M13 carries them; the links become live when the repo is public.
+- Making the repo public (go-public 03) moves to M13. The outside-developer test is outside v0.2.
 
-**Exit test:** 3–5 outside developers each start a real task in their own repo within a minute, without help, and their findings are triaged into tickets.
+**Exit test:** go-public 01 and 02 are resolved after the maintainer's confirmation. Public-link checks wait for M13 and do not block this exit.
 
 ### M8 · UI foundations · L
 
@@ -144,14 +142,15 @@ Every screen fits the supported widths in English and Chinese, with shared contr
 
 **Exit test:** the browser suite passes in CI at all four widths in both languages, and the maintainer walks every screen at 1440, 768 and 390px in both languages without finding layout bugs. Only then is M8 set shipped.
 
-### M9 · What they ran into · size set after M7
+### M9 · Fast first run · M
 
-Fix what blocked the M7 developers.
+Open the board without downloading bundled native agent binaries the developer may already have. Spec: `.scratch/first-run/spec.md`.
 
-- Scope is deliberately empty until M7 ends.
-- Triage the M7 findings, then set the size and write the spec and tickets.
+- The maintainer saw a first `npx` run take a very long time on a real repo. Measured in this repo's `node_modules` on darwin-arm64 on 2026-10-17: `@anthropic-ai/claude-agent-sdk-darwin-arm64` is 225 MB and `@openai/codex-*-darwin-arm64` is 317 MB unpacked. Root dependencies `@agentclientprotocol/claude-agent-acp` 0.88.0 and `@agentclientprotocol/codex-acp` 2.1.1 pull them in even when the developer has the agent installed.
+- Start with a research spike: how each adapter finds its agent, whether it can use the developer's installed CLI, and options such as installing an adapter on first use into a cache with pinned versions or using optional dependencies. Measure package and download sizes.
+- If the spike changes how adapters are installed, write a decision record before implementation. Keep ADR 0002's pinned adapter-version guarantee, then file and implement the tickets.
 
-**Exit test:** the same developers retry and the blocking findings are gone.
+**Exit test:** with an empty npm cache, `npx stintwork@latest` (or the packed tarball) shows the board within 60 seconds on a typical home connection. The download is a small fraction of today's, and a real stint still starts with each installed agent. The spike may tighten the size and time limits.
 
 ### M10 · Stints survive restarts · M
 
@@ -183,20 +182,26 @@ Verify Grok Build and add Gemini CLI over ACP.
 
 **Exit test:** one real stint each with Grok Build and Gemini CLI, each ending in a parsed handoff.
 
-### M13 · v0.2 release · S
+### M13 · v0.2 release and going public · S
 
 Publish the release after its milestones pass.
 
 - Write release notes.
 - Run the ACP probe as a contract test against every agent.
 - Publish with the maintainer's confirmation.
+- The maintainer makes `tzrea1-Q/stintwork` public. Carry out go-public 03's public-repo checks.
 
-**Exit test:** the ACP contract tests pass for every agent and v0.2 is published on npm with release notes.
+**Exit test:** the ACP contract tests pass for every agent, v0.2 is on npm with release notes, and the repo is public. CI, both README renders and links, and issue templates are checked on the public repo, along with SECURITY's private reporting route.
 
 ### Open questions for v0.2
 
 1. **GitHub tracker files.** Where do the spec and `workflow.yaml` gate approvals live in an issue-tracked repo? The M11 research spike answers this before any spec.
-2. **Outside developers.** Who are the 3–5 developers, and how are they recruited? The maintainer's call.
+2. **M9 targets.** The spike sets the size and time limits.
+
+### After the public release
+
+- Run the outside-developer test with 3–5 developers (go-public 04 and first-release 12). It is outside v0.2 and does not gate development or release.
+- Fix what they ran into (the old M9). Set the scope from real outside feedback after the public release.
 
 ### Later (not in v0.2)
 
@@ -214,7 +219,8 @@ Publish the release after its milestones pass.
 | ACP adapters change or regress | Pin adapter versions; run the probe as a contract test before each release (ADR 0002) |
 | Provider rules on subscription use change again | Use only the developer's own CLIs and logins (ADR 0003); support API-key login; the terminal fallback (now Later) would keep every agent usable |
 | State drifts after crashes or restarts | M10 resumes active stints through ACP; derive state from files and git, keep checkpoint and stint-log recovery when resume fails |
-| Scope creep toward a "platform" | The "Later" list and brief §12 bound scope; M9 follows outside-developer feedback, and a large M9 moves M11 and M12 to v0.3 |
+| Scope creep toward a "platform" | The "Later" list and brief §12 bound scope; if M11 runs long, M12 moves to v0.3 rather than delaying v0.2 |
+| Installing adapters on first use could fail offline | M9's spike sets cache, offline and failure handling before choosing an installation approach |
 | One maintainer's bandwidth | Agents implement tickets via Stintwork itself from M2; Codex delegation for parallel work |
 
 ## Settled (2026-10-09)
