@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
+import {
+  execFileSync,
+  spawn,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
+import { EventEmitter, once } from "node:events";
 import type { Server } from "node:http";
 import {
   appendFile,
@@ -16,6 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { adapterCacheFixture } from "../../agents/test/adapter-cache-fixture.js";
 import { verifyRecordedAgent } from "../../agents/src/adapter-cache.js";
+import { toAcpReadable } from "../../agents/src/stdio.js";
 import {
   createAgentRegistry,
   createAgentLauncher,
@@ -53,6 +59,14 @@ import * as checkModule from "./checks.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { createProjectServer, createNodeRepoFiles } from "./index.js";
 import { recoverInterruptedStints } from "./stint-history.js";
+
+import { PassThrough, Writable } from "node:stream";
+import {
+  AgentSideConnection,
+  ndJsonStream,
+  PROTOCOL_VERSION,
+  type RequestPermissionResponse,
+} from "@agentclientprotocol/sdk";
 
 const fixtures: {
   parent: string;
@@ -3559,6 +3573,274 @@ function permissionSignal<T = void>() {
   });
   return { promise, resolve };
 }
+
+test.each(
+  [true, false].flatMap((matching) =>
+    ["allow-once", "reject"].map((optionId) => ({ matching, optionId })),
+  ),
+)(
+  "real-shaped continuation reissue is HTTP-answerable ($optionId, matching: $matching)",
+  async ({ matching, optionId }) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    // Shape copied from the coordinator's installed Claude 2.1.295 evidence; no provider calls.
+    const command = "git log --stat -6 --format='--- %h %s%n%b' && git status --short && ls -la";
+    const description = "Show recent commits with files and working tree";
+    const tool = {
+      toolCallId: "toolu_01E3ytkqXqGDuEA7aHV7FiQP",
+      kind: "execute" as const,
+      status: "pending" as const,
+      title: command,
+      name: "Bash",
+      content: [
+        { content: { text: description, type: "text" as const }, type: "content" as const },
+      ],
+      rawInput: { command, description },
+    };
+    const options = [
+      { optionId: "allow-once", name: "Yes", kind: "allow_once" as const },
+      {
+        optionId: "allow-with-updates",
+        name: "Yes, and don't ask again for git log * commands",
+        kind: "allow_always" as const,
+      },
+      { optionId: "reject", name: "No", kind: "reject_once" as const },
+    ];
+    const raisedAt = "2026-10-26T23:22:16.126Z";
+    entries.push({
+      type: "event",
+      at: raisedAt,
+      event: {
+        type: "permission_request",
+        requestId: "old-request",
+        attemptId: "old-attempt",
+        binding: "live",
+        toolCallId: tool.toolCallId,
+        title: command,
+        kind: "execute",
+        automatic: false,
+        details: JSON.stringify(tool),
+        options,
+      },
+    });
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const input = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: input,
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      pid: 20,
+      exitCode: null,
+      signalCode: null,
+      kill() {
+        queueMicrotask(() => child.emit("exit", 0, "SIGTERM"));
+        return true;
+      },
+      unref() {},
+    });
+    const published = permissionSignal();
+    const received = permissionSignal<RequestPermissionResponse>();
+    const finish = permissionSignal();
+    const effects: string[] = [];
+    new AgentSideConnection(
+      (client) => ({
+        async initialize() {
+          return {
+            protocolVersion: PROTOCOL_VERSION,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { additionalDirectories: {} },
+            },
+          };
+        },
+        async newSession() {
+          throw new Error("Must restore the existing session");
+        },
+        async authenticate() {
+          throw new Error("Must use the developer's existing login");
+        },
+        async loadSession({ sessionId }) {
+          expect(sessionId).toBe("fake-session");
+          return {
+            modes: {
+              currentModeId: "read-only",
+              availableModes: [{ id: "read-only", name: "Ask" }],
+            },
+          };
+        },
+        async setSessionMode() {
+          return {};
+        },
+        async prompt({ prompt }) {
+          expect(prompt).toEqual([{ type: "text", text: continuationInstruction }]);
+          const answer = await client.requestPermission({
+            sessionId: "fake-session",
+            toolCall: {
+              ...tool,
+              toolCallId: "toolu_01EyJv6wRio7EAEaWvFV1ACE",
+              ...(!matching
+                ? { rawInput: { ...tool.rawInput, command: "changed operation" } }
+                : {}),
+            },
+            options,
+          });
+          if (answer.outcome.outcome === "selected" && answer.outcome.optionId === "allow-once")
+            effects.push("execute");
+          received.resolve(answer);
+          await finish.promise;
+          return { stopReason: "end_turn" as const };
+        },
+        async cancel() {
+          finish.resolve();
+        },
+      }),
+      ndJsonStream(Writable.toWeb(child.stdout), toAcpReadable(input)),
+    );
+    const launch = createAgentLauncher(
+      () => child as unknown as ChildProcessWithoutNullStreams,
+      fakeAgentProfiles.codex,
+    );
+    registered.verifyRecovery = async () => selected;
+    registered.launch = (options) => {
+      let attemptId = "";
+      const running = launch({
+        ...options,
+        preparedAgent: undefined,
+        afterTurnRequests: [],
+        onProcess(attempt) {
+          attemptId = attempt.id;
+          options.onProcess?.(attempt);
+        },
+        onEvent(event) {
+          options.onEvent(event);
+          if (event.type === "permission_request") published.resolve();
+        },
+      });
+      // This in-memory process has no native writers; explicitly certify its fake cleanup.
+      return {
+        ...running,
+        done: running.done.then((result) => {
+          options.onCleanup?.(attemptId);
+          return result;
+        }),
+      };
+    };
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await server.app.request("/api/health");
+      await permissionStep(
+        root,
+        server,
+        "continuation permission published",
+        () => published.promise,
+      );
+      const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+      const items = snapshot.attentionItems.filter((item) => item.kind === "permission");
+      const live = items.find((item) => item.binding === "live");
+      expect(live).toBeDefined();
+      if (!live) throw new Error("Expected live permission");
+      expect(items).toHaveLength(matching ? 1 : 2);
+      if (matching)
+        expect(live).toMatchObject({ raisedAt, id: 'permission:["saved-phase","old-request"]' });
+      const observer = project({ agentRegistry: createAgentRegistry([registered]) });
+      const observerSnapshot: ProjectSnapshot = await (
+        await observer.app.request("/api/project")
+      ).json();
+      expect(
+        observerSnapshot.attentionItems.find(
+          (item) => item.kind === "permission" && item.requestId === live.requestId,
+        ),
+      ).toMatchObject({ binding: "reconnecting" });
+      const observerHistory: { stint: Stint } = await (
+        await observer.app.request("/api/stints/saved-phase")
+      ).json();
+      expect(
+        observerHistory.stint.events.find(
+          (event) => event.type === "permission_request" && event.requestId === live.requestId,
+        ),
+      ).toMatchObject({ binding: "reconnecting" });
+      const post = (
+        target: typeof server,
+        requestId: string,
+        body: unknown,
+        origin = "http://localhost",
+      ) =>
+        target.app.request(`/api/stints/saved-phase/permissions/${requestId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", origin },
+          body: JSON.stringify(body),
+        });
+      const body = { optionId, attemptId: live.attemptId };
+      const beforeRefusals = await readFile(logged.path, "utf8");
+      expect((await post(observer, live.requestId, body)).status).toBe(409);
+      expect((await post(server, live.requestId, { optionId })).status).toBe(409);
+      expect(
+        (await post(server, live.requestId, { optionId, attemptId: "old-attempt" })).status,
+      ).toBe(409);
+      expect(
+        (await post(server, "old-request", { optionId, attemptId: "old-attempt" })).status,
+      ).toBe(409);
+      expect((await post(server, live.requestId, body, "http://foreign.invalid")).status).toBe(403);
+      expect((await post(server, live.requestId, { ...body, optionId: "invalid" })).status).toBe(
+        400,
+      );
+      expect(await readFile(logged.path, "utf8")).toBe(beforeRefusals);
+      expect(effects).toEqual([]);
+      const answer = await permissionStep(
+        root,
+        server,
+        "HTTP delivers current continuation permission",
+        () => post(server, live.requestId, body),
+      );
+      expect(await answer.json()).toMatchObject({ requestId: live.requestId, optionId });
+      expect(answer.status).toBe(200);
+      expect(
+        await permissionStep(
+          root,
+          server,
+          "fake ACP receives selected response",
+          () => received.promise,
+        ),
+      ).toEqual({ outcome: { outcome: "selected", optionId } });
+      expect(effects).toEqual(optionId === "allow-once" ? ["execute"] : []);
+      expect((await post(server, live.requestId, body)).status).toBe(409);
+      expect(indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state).toBe(
+        matching ? "resumed" : "resuming",
+      );
+      finish.resolve();
+      const ended = await permissionStep(
+        root,
+        server,
+        "continuation ends after current answer",
+        () => waitForEnding(root),
+      );
+      expect(ended.events.filter((event) => event.type === "permission")).toEqual([
+        expect.objectContaining({
+          requestId: live.requestId,
+          attemptId: live.attemptId,
+          decision: {
+            outcome: "selected",
+            optionId,
+            kind: optionId === "reject" ? "reject_once" : "allow_once",
+          },
+        }),
+      ]);
+      expect(
+        ended.events.filter(
+          (event) => event.type === "permission_delivery" && event.outcome === "written",
+        ),
+      ).toEqual([
+        {
+          type: "permission_delivery",
+          requestId: live.requestId,
+          attemptId: live.attemptId,
+          outcome: "written",
+        },
+      ]);
+    } finally {
+      finish.resolve();
+    }
+  },
+);
 
 async function permissionStep<T>(
   root: string,

@@ -103,6 +103,9 @@ export function addStintPermissionRoute(app: Hono) {
     return context.json(coreTextWire({ requestId, optionId }));
   });
   return {
+    has(stintId: string, requestId: string, attemptId?: string) {
+      return pending.has(key(stintId, requestId, attemptId));
+    },
     wait(stintId: string, request: PermissionRequest): Promise<PermissionResponse> {
       if (closed || endedStints.has(stintId))
         return Promise.resolve({ outcome: { outcome: "cancelled" } });

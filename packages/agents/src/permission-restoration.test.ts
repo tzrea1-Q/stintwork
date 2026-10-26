@@ -53,6 +53,7 @@ function fixture(
   failWrite = false,
   phase: "work" | "handoff" | "findings" = "work",
   optionMetadata = false,
+  restored = [saved],
 ) {
   const input = new PassThrough();
   const stdin = failWrite
@@ -148,7 +149,7 @@ function fixture(
     cwd: "/tmp",
     prompt: "",
     permissionLevel: "edit-freely",
-    resume: { sessionId: "same", progress: { phase }, permissions: [saved] },
+    resume: { sessionId: "same", progress: { phase }, permissions: restored },
     ...(phase !== "work" ? { afterTurnTimeoutMs: 1000 } : {}),
     onPermission(request) {
       callback = request;
@@ -210,11 +211,25 @@ test.each(["yes", "no"])(
 
 test.each([
   { name: "details", tool: { ...toolCall, rawInput: { path: "/tmp/b" } }, changeOptions: false },
+  { name: "title", tool: { ...toolCall, title: "Different operation" }, changeOptions: false },
+  { name: "kind", tool: { ...toolCall, kind: "execute" as const }, changeOptions: false },
+  { name: "name", tool: { ...toolCall, name: "Other tool" }, changeOptions: false },
+  { name: "status", tool: { ...toolCall, status: "in_progress" as const }, changeOptions: false },
+  {
+    name: "content",
+    tool: {
+      ...toolCall,
+      content: [
+        { type: "content" as const, content: { type: "text" as const, text: "Different details" } },
+      ],
+    },
+    changeOptions: false,
+  },
   { name: "options", tool: toolCall, changeOptions: true },
 ])(
   "changed $name requires fresh manual consent and retires the old request when the turn resolves",
   async ({ tool, changeOptions }) => {
-    const f = fixture("work", tool, changeOptions);
+    const f = fixture("work", { ...tool, toolCallId: "new-turn" }, changeOptions);
     await f.published.promise;
     const request = f.events.find((event) => event.type === "permission_request");
     expect(request).toMatchObject({ automatic: false, binding: "live" });
@@ -314,4 +329,48 @@ test("option _meta does not turn an identical reissue into fresh consent or lose
     expect.objectContaining({ type: "permission_delivery", requestId: "old", outcome: "retired" }),
   );
   expect(f.effects).toEqual([]);
+});
+
+test("a continuation's new provider toolCallId preserves the pending logical item and original age", async () => {
+  const f = fixture("work", { ...toolCall, toolCallId: "new-model-turn" });
+  await f.published.promise;
+  expect(f.events).toContainEqual(
+    expect.objectContaining({
+      type: "permission_request",
+      logicalRequestId: "old",
+      raisedAt: saved.raisedAt,
+      toolCallId: expect.stringMatching(/:new-model-turn$/),
+    }),
+  );
+  f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
+  await f.received.promise;
+  f.finish.resolve();
+  await f.stint.done;
+  expect(f.effects).toEqual([]);
+});
+
+test("identical restored requests bind only the first outstanding item in saved order", async () => {
+  const second = { ...saved, requestId: "second", raisedAt: "2026-01-01T00:02:00Z" };
+  const f = fixture("work", { ...toolCall, toolCallId: "new" }, false, false, "work", false, [
+    saved,
+    second,
+  ]);
+  await f.published.promise;
+  expect(f.events.filter((event) => event.type === "permission_request")).toEqual([
+    expect.objectContaining({ logicalRequestId: "old", raisedAt: saved.raisedAt }),
+  ]);
+  f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
+  await f.received.promise;
+  f.finish.resolve();
+  await f.stint.done;
+  expect(
+    f.events.filter((event) => event.type === "permission_delivery" && event.outcome === "retired"),
+  ).toEqual([
+    {
+      type: "permission_delivery",
+      requestId: "second",
+      attemptId: "old-attempt",
+      outcome: "retired",
+    },
+  ]);
 });

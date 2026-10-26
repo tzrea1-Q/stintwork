@@ -1525,6 +1525,10 @@ export function addStintRoutes(
       );
       permissions.clear();
     },
-    { isActive: (slug: string) => active.has(slug) || workflowWrites.has(slug), recover },
+    {
+      isActive: (slug: string) => active.has(slug) || workflowWrites.has(slug),
+      hasPermissionBinding: permissions.has,
+      recover,
+    },
   );
 }

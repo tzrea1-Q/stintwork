@@ -59,6 +59,7 @@ export function createProjectServer(
     () => refresh(),
   );
   const readReviewEvidence = createReviewEvidenceReader(root, checks);
+  let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
@@ -81,6 +82,13 @@ export function createProjectServer(
       ...(branch ? { branch } : {}),
     });
     readReviewEvidence(project, snapshot);
+    for (const item of snapshot.attentionItems)
+      if (
+        item.kind === "permission" &&
+        item.binding === "live" &&
+        !hasPermissionBinding(item.stintId, item.requestId, item.attemptId)
+      )
+        item.binding = "reconnecting";
     snapshot.warnings.push(...project.warnings);
     if (branchWarning) snapshot.warnings.push(branchWarning);
     snapshot.warnings.push(...recoveryWarnings);
@@ -173,7 +181,7 @@ export function createProjectServer(
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
-  addStintHistoryRoute(app, files);
+  addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles);
   addRoadmapRoute(app, root, readProjectFiles, refresh);
@@ -195,6 +203,7 @@ export function createProjectServer(
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
   );
+  hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {

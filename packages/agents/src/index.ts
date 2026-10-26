@@ -351,12 +351,17 @@ export function createAgentLauncher(
               } catch {
                 /* Unparseable details cannot establish a match. */
               }
+              if (!details || typeof details !== "object" || Array.isArray(details)) continue;
               const sorted = (options: typeof saved.options) =>
                 options
                   .map(({ optionId, name, kind }) => ({ optionId, name, kind }))
                   .sort((a, b) => a.optionId.localeCompare(b.optionId));
               if (
-                isDeepStrictEqual(details, request.toolCall) &&
+                // A continuation can reissue the same operation with a new provider ID.
+                isDeepStrictEqual(
+                  { ...details, toolCallId: undefined },
+                  { ...request.toolCall, toolCallId: undefined },
+                ) &&
                 isDeepStrictEqual(sorted(saved.options), sorted(request.options))
               ) {
                 previous = saved;
