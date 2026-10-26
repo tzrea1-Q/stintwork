@@ -1,6 +1,6 @@
 # 03 — Resume a crashed stint in a new process
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -100,3 +100,5 @@ pnpm --config.verify-deps-before-run=false vitest run \
 ```
 
 The real-agent acceptance matrix above remains pending with the coordinator; this correction adds no provider-network or real-agent pass claim.
+
+**Coordinator, 2026-10-26:** Verified with sockets: format, lint, typecheck, build, 2384 unit tests (including the four killed-server recovery cases for Claude/Codex x Installed/Bundled with a fake loadSession agent), smoke:package and 314 browser tests; after the review fix, 511 server tests. First Codex review found recovered finalization defaulting to finished for a max_tokens stop; fixed by sharing the normal completion rules. Second review clean. Real-agent crash recovery is checked after ticket 05 (descendant cleanup) and recorded in ticket 08/09. Resolved.
