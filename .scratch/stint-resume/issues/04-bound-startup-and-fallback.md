@@ -132,3 +132,26 @@ Whole-server socket-dependent failures (32 runnable cases; all paths under `pack
 Native-watcher failures (five, `work-item-files.test.ts`): `the watcher reindexes worktree files and main-only work items without an HTTP listener`; `the watcher discovers a newly registered worktree and falls back to main when it is removed`; both `main file watching discovers new work without an HTTP listener (scratch exists: true/false)` cases; `main file watching includes roadmap, workflow and setup edits without an HTTP listener`.
 
 Coordinator: rerun the unfiltered whole-server command above on the socket-enabled host with native file watching. No build or package change is introduced by this follow-up; the coordinator's prior build/smoke/browser evidence is not rerun or newly claimed here.
+
+**Codex, 2026-10-26 — deterministic live-permission timing follow-up:** On `a61e2f5`, the reported test's real 100 ms setup budget included Git subprocess work before the fake agent could raise permission. A busy host could reach fallback first, leaving the attention poll permanently false. The focused baseline passed once here; the coordinator's repeated run supplies the intermittent failure evidence.
+
+The test now signals explicitly after the fake agent registers and publishes its permission request. It freezes `Date` and timeout scheduling before recovery starts, waits for that signal, then advances 60,001 virtual ms while the human answer is pending. It checks both `running` and `resuming`, delivers the answer through the HTTP permission route, drains readiness microtasks and verifies `resumed`. Another 60,001 virtual ms must leave work running. An explicit fake-agent rejection must then end as normal `failed`, retain `resumed` and have no fallback reason. Both 250 ms sleeps and the attention/readiness polls are removed; production code and the shared fake ACP fixture are unchanged. Fake clocks are restored in `finally`.
+
+Only the final observation poll uses wall time: checkpointing still invokes real Git subprocesses. Its explicit 10-second allowance lets a loaded host finish that I/O; it neither controls nor extends the setup or work deadlines under test.
+
+Validation for this follow-up:
+
+- The revised focused test passed on its own.
+- Ran `stint-history.test.ts` in ten sequential, separate Vitest invocations using the command below. **All ten passed: 51 passed / 6 skipped each (510 passes total).** The six TCP cases were excluded because this sandbox cannot bind sockets; their existing case list remains above. Logs: `/tmp/m10-04-history-repeat/run-01.log` through `run-10.log`.
+- `pnpm --config.verify-deps-before-run=false format:check`, `lint` and `typecheck`: all passed. Lint retains only the existing informational `biome.json` deprecation.
+- `git diff --check`: passed. Only `packages/server/src/stint-history.test.ts` and this ticket's Comments changed. No commit; all `Status:` lines, acceptance criteria and tickets 05–08 remain unchanged.
+
+```sh
+for run in 1 2 3 4 5 6 7 8 9 10; do
+  pnpm --config.verify-deps-before-run=false vitest run \
+    packages/server/src/stint-history.test.ts --configLoader native \
+    --testNamePattern='^(?![\s\S]*TCP: true)' || exit 1
+done
+```
+
+Coordinator: run this file without `--testNamePattern` on the socket-enabled host. The full workspace suite is not newly claimed by this follow-up.

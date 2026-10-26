@@ -1209,6 +1209,10 @@ test("fallback checkpoint errors stay explicit and preserve the files without in
 test("live human waits pause setup, work has no recovery deadline, and later work failure ends normally", async () => {
   const { root, project, registered, selected } = await savedRecovery("handoff");
   registered.verifyRecovery = async () => selected;
+  let permissionRaised: () => void = () => {};
+  const waitingForPermission = new Promise<void>((resolve) => {
+    permissionRaised = resolve;
+  });
   let failWork: (error: Error) => void = () => {};
   registered.launch = (options) => {
     let ready: () => void = () => {};
@@ -1243,44 +1247,52 @@ test("live human waits pause setup, work has no recovery deadline, and later wor
       details: "{}",
       options: request.options,
     });
+    permissionRaised();
     return { ready: readiness, done, cancel: async () => failWork(new Error("Cancelled")) };
   };
-  const server = project({
-    agentRegistry: createAgentRegistry([registered]),
-    recoverySetupTimeoutMs: 100,
-  });
-  await server.app.request("/api/health");
-  await expect
-    .poll(async () =>
-      (await (await server.app.request("/api/project")).json()).attentionItems.some(
-        (item: { kind: string }) => item.kind === "permission",
-      ),
-    )
-    .toBe(true);
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  expect(indexStints(createNodeRepoFiles(root)).stints[0].status).toBe("running");
-  expect(
-    (
-      await server.app.request("/api/stints/saved-phase/permissions/live", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ optionId: "allow" }),
-      })
-    ).status,
-  ).toBe(200);
-  await expect
-    .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
-    .toBe("resumed");
-  await new Promise((resolve) => setTimeout(resolve, 250));
-  expect(indexStints(createNodeRepoFiles(root)).stints[0].status).toBe("running");
-  failWork(new Error("Work failed after setup"));
-  const stint = await waitForEnding(root);
-  expect(stint).toMatchObject({
-    status: "failed",
-    error: "Work failed after setup",
-    recovery: { state: "resumed" },
-  });
-  expect(stint.recovery?.reason).toBeUndefined();
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  try {
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    await server.app.request("/api/health");
+    await waitingForPermission;
+    const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+    expect(snapshot.attentionItems.some((item) => item.kind === "permission")).toBe(true);
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      status: "running",
+      recovery: { state: "resuming" },
+    });
+    expect(
+      (
+        await server.app.request("/api/stints/saved-phase/permissions/live", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ optionId: "allow" }),
+        })
+      ).status,
+    ).toBe(200);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state).toBe("resumed");
+    await vi.advanceTimersByTimeAsync(60_001);
+    expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      status: "running",
+      recovery: { state: "resumed" },
+    });
+    failWork(new Error("Work failed after setup"));
+    // Only checkpoint Git I/O needs wall time; allow a busy host to finish its subprocesses.
+    await expect
+      .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].status, { timeout: 10_000 })
+      .toBe("failed");
+    const stint = indexStints(createNodeRepoFiles(root)).stints[0];
+    expect(stint).toMatchObject({
+      status: "failed",
+      error: "Work failed after setup",
+      recovery: { state: "resumed" },
+    });
+    expect(stint.recovery?.reason).toBeUndefined();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("multiple unfinished logs block their work item before any asynchronous writer starts", async () => {
