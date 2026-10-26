@@ -58,7 +58,9 @@ Status: shipped
 
 ## M10 · Stints survive restarts
 Id: m10
-Status: planned
+Status: active
+
+- stint-resume
 
 ## M11 · GitHub Issues as a tracker
 Id: m11

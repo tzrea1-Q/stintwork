@@ -154,11 +154,11 @@ Open the board without downloading bundled native agent binaries the developer m
 
 ### M10 · Stints survive restarts · M
 
-An active stint resumes after a server restart or crash.
+An active stint resumes after a server restart or crash. Spec: `.scratch/stint-resume/spec.md`.
 
-- Resume through ACP `loadSession` in a new agent process. The 2026-10-09 spike showed resume passes for all three agents.
+- Automatically resume Claude Code and Codex through ACP `loadSession` in a new agent process, using the recorded source/executable and verified warm cache without startup downloads. The 2026-10-17 first-run probes passed for both Installed and Bundled sources; the 2026-10-09 spike also passed for Grok Build.
 - A permission request that was waiting reappears in Needs you.
-- If resume fails, today's behaviour applies: stop at a checkpoint, then start a new stint from the recorded state.
+- If resume fails, today's behaviour applies: stop at a checkpoint, then let the developer start a new stint from the recorded state. Experimental Grok Build uses this fallback until current end-to-end verification in M12.
 
 **Exit test:** kill the server partway through a real Codex stint and a real Claude Code stint. After restart both reach a handoff without a new brief.
 
@@ -186,7 +186,7 @@ Verify Grok Build and add Gemini CLI over ACP.
 
 Publish the release after its milestones pass.
 
-- Write release notes.
+- Write release notes, including the Project setup fix (never replacing an existing tracker by default) and Fast first run; the maintainer held the 0.1.2 patch for v0.2.
 - Run the ACP probe as a contract test against every agent.
 - Publish with the maintainer's confirmation.
 - The maintainer makes `tzrea1-Q/stintwork` public. Carry out go-public 03's public-repo checks.
