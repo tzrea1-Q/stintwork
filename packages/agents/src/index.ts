@@ -404,6 +404,7 @@ export function createAgentLauncher(
             },
             clientInfo: { name: "stintwork", version: "0.0.0" },
           });
+          if (cancelled || settled) throw new CoreTextError({ code: "agent.stintCancelled" });
           if (
             additionalDirectories.length &&
             initialized.agentCapabilities?.sessionCapabilities?.additionalDirectories == null
@@ -421,6 +422,7 @@ export function createAgentLauncher(
           const opened = resume
             ? await acp.loadSession({ ...directories, sessionId: resume.sessionId })
             : await acp.newSession(directories);
+          if (cancelled || settled) throw new CoreTextError({ code: "agent.stintCancelled" });
           acpId = resume ? resume.sessionId : (opened as { sessionId: string }).sessionId;
           // Synchronous persistence is part of opening the session, before even mode setup.
           onSession?.(acpId);
@@ -436,6 +438,8 @@ export function createAgentLauncher(
           }
         })();
         const timeout = new Promise<never>((_resolve, reject) => {
+          // Recovery's server budget includes warm verification and pauses on live permission waits.
+          if (resume) return;
           timer = setTimeout(
             () =>
               reject(

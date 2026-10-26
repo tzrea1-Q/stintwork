@@ -7,6 +7,7 @@ import {
   foldStintLog,
   isStintEvent,
   isStintLogEntry,
+  indexStints,
   isCheckpointWarnings,
   isRiskyPaths,
   summarizeStint,
@@ -745,4 +746,47 @@ test("invalid recovery metadata is warned and skipped while legacy history stays
   expect(result.warnings).toContainEqual(
     expect.objectContaining({ message: "Invalid stint log entry; skipped" }),
   );
+});
+
+test("recovery setup/outcome state validates and reaches summaries without reopening terminal history", () => {
+  const entries = (["resuming", "resumed", "fallback"] as const).map((state) => ({
+    type: "recovery" as const,
+    version: 1 as const,
+    at: "2026-10-26T12:00:00Z",
+    kind: "resume" as const,
+    state,
+    ...(state === "fallback" ? { reason: "Session not found" } : {}),
+  }));
+  for (const entry of entries) expect(isStintLogEntry(entry)).toBe(true);
+  expect(isStintLogEntry({ ...entries[0], state: "retrying" })).toBe(false);
+  expect(isStintLogEntry({ ...entries[2], reason: "" })).toBe(false);
+  const stint = foldStintLog([started, ...entries]);
+  expect(stint?.recovery).toEqual({ version: 1, state: "fallback", reason: "Session not found" });
+  expect(stint && summarizeStint(stint).recovery).toEqual(stint?.recovery);
+  const ended = {
+    type: "ended" as const,
+    at: entries[0].at,
+    status: "interrupted" as const,
+    handoff: null,
+  };
+  expect(foldStintLog([started, ...entries, ended, entries[0]])).toEqual(
+    foldStintLog([started, ...entries, ended]),
+  );
+});
+
+test("logs without a usable start remain warnings rather than invented stints", () => {
+  const path = ".stintwork/local/stints/missing-start.jsonl";
+  const result = indexStints(
+    createMemoryRepoFiles({
+      [path]: JSON.stringify({
+        type: "event",
+        at: "now",
+        event: { type: "message", id: "1", text: "Readable orphan output" },
+      }),
+    }),
+  );
+  expect(result).toEqual({
+    stints: [],
+    warnings: [{ path, message: "Stint log has no usable start; skipped" }],
+  });
 });

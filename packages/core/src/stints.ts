@@ -55,13 +55,16 @@ export type StintRecovery = {
   sessionId?: string;
   progress?: StintProgress;
   stopRequestedAt?: string;
+  state?: "resuming" | "resumed" | "fallback";
+  reason?: string;
 };
 export type StintRecoveryData =
   | { kind: "launch"; launch: StintLaunch }
   | { kind: "attempt"; attempt: StintProcessAttempt }
   | { kind: "session"; attemptId: string; sessionId: string }
   | { kind: "phase"; attemptId: string; progress: StintProgress }
-  | { kind: "stop_requested" };
+  | { kind: "stop_requested" }
+  | { kind: "resume"; state: "resuming" | "resumed" | "fallback"; reason?: string };
 export type StintRecoveryEntry = {
   type: "recovery";
   version: 1;
@@ -302,6 +305,10 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
   if (stint?.status !== "running") return stint;
   if (entry.type === "recovery") {
     const recovery: StintRecovery = { ...stint.recovery, version: 1 };
+    if (entry.kind === "resume") {
+      recovery.state = entry.state;
+      recovery.reason = entry.reason;
+    }
     if (entry.kind === "launch") recovery.launch = entry.launch;
     if (entry.kind === "attempt") recovery.attempt = entry.attempt;
     if (entry.kind === "session") recovery.sessionId = entry.sessionId;
@@ -502,6 +509,12 @@ function isStintRecoveryEntry(entry: Record<string, unknown>): boolean {
   const common = ["type", "version", "at", "kind"];
   if (entry.version !== 1 || !date(entry.at)) return false;
   if (entry.kind === "stop_requested") return keys(entry, common);
+  if (entry.kind === "resume")
+    return (
+      keys(entry, [...common, "state", "reason"]) &&
+      ["resuming", "resumed", "fallback"].includes(String(entry.state)) &&
+      (entry.reason === undefined || text(entry.reason))
+    );
   if (entry.kind === "session")
     return (
       keys(entry, [...common, "attemptId", "sessionId"]) &&
@@ -618,6 +631,7 @@ export function indexStints(files: RepoFiles): { stints: Stint[]; warnings: Warn
         }
         const stint = foldStintLog(entries);
         if (stint) stints.push(stint);
+        else warnings.push({ path, message: "Stint log has no usable start; skipped" });
       } catch (error) {
         warnings.push({ path, message: `Cannot read stint log: ${String(error)}` });
       }

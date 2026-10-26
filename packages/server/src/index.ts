@@ -132,8 +132,17 @@ export function createProjectServer(
   function initialize() {
     initialization ??= Promise.all([
       Promise.resolve().then(() => checks.recover()),
-      recoverInterruptedStints(root, files, (stint, entries, valid) =>
-        stopStints.recover(stint, entries, (warning) => recoveryWarnings.push(warning), valid),
+      recoverInterruptedStints(
+        files,
+        (stint, entries, valid, path) =>
+          stopStints.recover(
+            stint,
+            entries,
+            (warning) => recoveryWarnings.push(warning),
+            valid,
+            path,
+          ),
+        (warning) => recoveryWarnings.push(warning),
       ),
       refreshAgentRegistry(agentRegistry),
     ]).then(() => refresh());

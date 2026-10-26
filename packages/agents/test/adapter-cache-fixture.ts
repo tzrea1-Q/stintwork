@@ -44,12 +44,28 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
     process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:{code:-32601,message:'Method unsupported'}})+'\\n');
     continue;
   }
+  const fault = process.env.TEST_RESUME_FAILURE;
+  const target = fault && fault.split(':')[0];
+  const action = fault && fault.split(':')[1];
+  if (request.method === target) {
+    if (action === 'hang') { setInterval(()=>{},1000); continue; }
+    if (action === 'exit') process.exit(17);
+    if (action === 'transport') { process.stdout.end(); continue; }
+    if (['auth','missing','provider','network','reject'].includes(action)) {
+      const message = {auth:'Authentication required',missing:'Session not found',provider:'Provider unavailable',network:'ENETUNREACH',reject:'Mode rejected'}[action];
+      process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,error:{code:action === 'auth' ? -32000 : -32001,message}})+'\\n');
+      continue;
+    }
+  }
   let result = {};
   if (request.method === 'initialize') result = { protocolVersion:1,agentCapabilities:{loadSession:true,sessionCapabilities:{additionalDirectories:{}}},authMethods:[] };
+  if (request.method === 'initialize' && fault === 'no-load') result.agentCapabilities.loadSession = false;
+  if (request.method === 'initialize' && fault === 'no-directories') delete result.agentCapabilities.sessionCapabilities.additionalDirectories;
   if (request.method === 'session/new' || request.method === 'session/load') {
     cwd = request.params.cwd;
     result = { sessionId:'fake-session', modes:{currentModeId:'agent',availableModes:['agent','workspace-write','read-only','default','acceptEdits'].map(id=>({id,name:id}))} };
   }
+  if (request.method === 'session/load' && fault === 'no-mode') result.modes.availableModes = [];
   if (request.method === 'session/load') process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'session/update',params:{sessionId:request.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text:'REPLAY MUST NOT APPEND'}}}})+'\\n');
   if (request.method === 'session/prompt') {
     fs.writeFileSync(cwd+'/selected.json',JSON.stringify({claude:process.env.CLAUDE_CODE_EXECUTABLE,codex:process.env.CODEX_PATH}));

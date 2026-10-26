@@ -2,7 +2,7 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import type { Brief, StintLogEntry } from "@stintwork/core";
+import type { Brief, ProjectSnapshot, StintLogEntry } from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
 import { createProjectServer } from "./index.js";
 
@@ -90,7 +90,7 @@ test("Review preparation failures identify the operation without translating the
   });
 });
 
-test("recovery failures return typed metadata alongside the unchanged operational diagnostic", async () => {
+test("recovery storage failures keep the API usable with a diagnostic warning and typed preview refusal", async () => {
   const { root, project } = await fixture();
   await write(
     root,
@@ -99,14 +99,28 @@ test("recovery failures return typed metadata alongside the unchanged operationa
   );
   await mkdir(join(root, ".stintwork/local/.gitignore"));
   const response = await project.app.request(endpoint);
-  expect(response.status).toBe(503);
+  expect(response.status).toBe(409);
   expect(await response.json()).toEqual({
-    reason: "Stint recovery failed: Error: The local .gitignore must be a regular file.",
-    reasonMessage: {
-      code: "server.recoveryFailed",
-      params: { detail: "Error: The local .gitignore must be a regular file." },
-    },
+    reason: "A stint is already active for this work item.",
+    reasonMessage: { code: "stint.alreadyActive" },
   });
+  await expect
+    .poll(async () => {
+      const response = await project.app.request("/api/project");
+      expect(response.status).toBe(200);
+      const snapshot: ProjectSnapshot = await response.json();
+      return snapshot.warnings;
+    })
+    .toContainEqual({
+      path: ".stintwork/local/stints/diagnostic.jsonl",
+      message: expect.stringContaining(
+        "Could not recover stint: Error: The local .gitignore must be a regular file.",
+      ),
+    });
+  expect((await project.app.request("/api/health")).status).toBe(200);
+  const history = await project.app.request("/api/stints/diagnostic");
+  expect(history.status).toBe(200);
+  expect((await history.json()).stint.status).toBe("running");
 });
 
 async function write(root: string, path: string, text: string) {

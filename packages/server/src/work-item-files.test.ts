@@ -188,7 +188,7 @@ test("server restart uses existing worktrees and warns about main edits against 
   });
 });
 
-test("startup recovery checkpoints worktree files before indexing and compiling the next brief", async () => {
+test("startup recovery keeps worktree files authoritative and checkpoints before compiling the next brief", async () => {
   const { root, project, worktree } = await fixture([], true);
   if (!worktree) throw new Error("Expected a worktree");
   const started: StintLogEntry = {
@@ -214,7 +214,21 @@ test("startup recovery checkpoints worktree files before indexing and compiling 
     `${JSON.stringify(started)}\n`,
   );
   await write(worktree.path, specPath, "# Recovered work");
-  await project.start();
+  let recoveredBrief: Brief | undefined;
+  await expect
+    .poll(async () => {
+      const response = await project.app.request("/api/work-items/first/tickets/1/brief-preview");
+      if (response.status === 200) recoveredBrief = await response.json();
+      else {
+        expect(response.status).toBe(409);
+        expect(await response.json()).toEqual({
+          reason: "A stint is already active for this work item.",
+          reasonMessage: { code: "stint.alreadyActive" },
+        });
+      }
+      return response.status;
+    })
+    .toBe(200);
   const value = await snapshot(project);
   const item = value.workItems.find((candidate) => candidate.slug === "first");
   expect(item).toMatchObject({
@@ -232,6 +246,8 @@ test("startup recovery checkpoints worktree files before indexing and compiling 
   expect(response.status).toBe(200);
   const { stint }: { stint: Stint } = await response.json();
   expect(stint.status).toBe("interrupted");
+  expect(recoveredBrief?.checkpointCommit).toBe(stint.checkpointCommit);
+  expect(recoveredBrief?.changedPaths).toEqual([]);
   expect(
     execFileSync("git", ["show", `${stint.checkpointCommit}:${specPath}`], {
       cwd: worktree.path,

@@ -414,6 +414,7 @@ test("interrupted stint recovery uses the same checkpoint guard and persists its
   await writeFile(join(stint.worktree.path, ".env"), "Private\n");
   await writeFile(join(stint.worktree.path, "ordinary.txt"), "Keep\n");
   tracked.project = createProjectServer(root, join(root, "web"));
+  await ended(tracked.project, stint.id, "interrupted");
   const snapshot: ProjectSnapshot = await (
     await tracked.project.app.request("/api/project")
   ).json();
@@ -426,6 +427,12 @@ test("interrupted stint recovery uses the same checkpoint guard and persists its
   );
   expect(git(root, "status", "--porcelain", "--untracked-files=all")).toBe("");
   expect(await readFile(join(root, ".stintwork/local/.gitignore"), "utf8")).toBe("*\n");
+  await tracked.project.stop();
+  tracked.project = createProjectServer(root, join(root, "web"));
+  expect(await ended(tracked.project, stint.id, "interrupted")).toMatchObject({
+    checkpointCommit: snapshot.workItems[0].stints[0].checkpointCommit,
+    checkpointWarnings: snapshot.workItems[0].stints[0].checkpointWarnings,
+  });
 });
 
 test("interrupted recovery reports the agent's earlier commits as well as checkpoint exclusions", async () => {
@@ -442,6 +449,7 @@ test("interrupted recovery reports the agent's earlier commits as well as checkp
   await mkdir(join(stint.worktree.path, "dist"));
   await writeFile(join(stint.worktree.path, "dist/bundle.js"), "Pending output\n");
   tracked.project = createProjectServer(root, join(root, "web"));
+  await ended(tracked.project, stint.id, "interrupted");
   const snapshot: ProjectSnapshot = await (
     await tracked.project.app.request("/api/project")
   ).json();
