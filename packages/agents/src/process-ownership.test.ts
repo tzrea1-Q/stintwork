@@ -148,3 +148,92 @@ test("a detached parent reused during cleanup never authorizes signalling its un
   );
   expect(fake.signal.mock.calls.some(([pid]) => pid === 22)).toBe(false);
 });
+
+test.each(["already observed", "delivered after transport closure"])(
+  "an owned adapter exit %s permits cleanup when native inspection finds no remaining writer",
+  async (timing) => {
+    const fake = processes([{ pid: 30, group: 30, identity: "editor", command: "unrelated" }]);
+    // kill(0) can still see the exited leader/group while ps omits its zombie row.
+    fake.control.exists = () => true;
+    let observeExit: () => void = () => {};
+    const exited = new Promise<void>((resolve) => {
+      observeExit = resolve;
+    });
+    if (timing === "already observed") observeExit();
+    else queueMicrotask(observeExit);
+    await expect(stopStintProcesses(attempt, true, fake.control, exited)).resolves.toBeUndefined();
+    expect(fake.signal).not.toHaveBeenCalled();
+    expect([...fake.table.keys()]).toEqual([30]);
+  },
+);
+
+test("observing this server's adapter exit does not release a surviving orphan tool", async () => {
+  const fake = processes([{ pid: 21, group: 20, identity: "surviving-tool", command: "tool" }]);
+  await expect(stopStintProcesses(attempt, true, fake.control, Promise.resolve())).rejects.toThrow(
+    /Stop the old processes/,
+  );
+  expect(fake.signal).not.toHaveBeenCalled();
+});
+
+test("an observed exit cannot forget a detached writer seen before its parent exited", async () => {
+  const fake = processes([
+    adapter,
+    { pid: 21, parent: 20, group: 21, identity: "detached-tool", command: "tool" },
+  ]);
+  let observeExit: () => void = () => {};
+  const exited = new Promise<void>((resolve) => {
+    observeExit = resolve;
+  });
+  let reads = 0;
+  const read = fake.control.read;
+  fake.control.read = () => {
+    if (++reads === 2) {
+      fake.table.delete(20);
+      fake.table.set(21, {
+        pid: 21,
+        parent: 1,
+        group: 21,
+        identity: "detached-tool",
+        command: "tool",
+      });
+      observeExit();
+    }
+    return read();
+  };
+  await expect(stopStintProcesses(attempt, true, fake.control, exited)).rejects.toThrow(
+    /Stop the old processes/,
+  );
+  expect(fake.signal).not.toHaveBeenCalled();
+});
+
+test("a missing leader without a delivered local exit stays blocked within the cleanup budget", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  try {
+    const fake = processes([]);
+    fake.control.exists = () => true;
+    const result = stopStintProcesses(
+      attempt,
+      true,
+      fake.control,
+      new Promise<void>(() => {}),
+    ).catch((error) => error);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toBeInstanceOf(Error);
+    expect(fake.signal).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("observing a local exit cannot replace unavailable native writer inspection", async () => {
+  const fake = processes([]);
+  fake.control.exists = () => true;
+  fake.control.read = () => {
+    throw new Error("Native inspection unavailable");
+  };
+  await expect(stopStintProcesses(attempt, true, fake.control, Promise.resolve())).rejects.toThrow(
+    /Stop the old processes/,
+  );
+  expect(fake.signal).not.toHaveBeenCalled();
+});

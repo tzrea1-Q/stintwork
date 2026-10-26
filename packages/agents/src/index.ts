@@ -585,7 +585,7 @@ export function createAgentLauncher(
           else child.once("exit", () => resolveExit());
         });
         if (processAttempt?.identity && processAttempt.processGroup)
-          await stopStintProcesses(processAttempt, true);
+          await stopStintProcesses(processAttempt, true, undefined, exited);
         child.kill("SIGTERM");
         const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
         killTimer.unref();
@@ -595,7 +595,7 @@ export function createAgentLauncher(
         await exited;
         await Promise.allSettled(writes);
         if (processAttempt?.processGroup && !processAttempt.identity)
-          await stopStintProcesses(processAttempt, true);
+          await stopStintProcesses(processAttempt, true, undefined, exited);
       }
     })();
     void done.then(

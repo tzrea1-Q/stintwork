@@ -1851,3 +1851,62 @@ test("malformed ownership metadata cannot reclaim a live server's reservation", 
     await server.stop();
   }
 });
+
+test("an observed replacement initialize exit reaches fallback even while native PID probes still see its zombie", async () => {
+  const { root, project, registered, env, logged, calls } = await savedRecovery("handoff");
+  env.TEST_RESUME_FAILURE = "initialize:exit";
+  let replacementPid = 0;
+  const exists = systemProcesses.exists;
+  const read = vi
+    .spyOn(systemProcesses, "read")
+    .mockReturnValue([
+      { pid: process.pid, group: process.pid, identity: "server-start", command: "server" },
+    ]);
+  const probe = vi
+    .spyOn(systemProcesses, "exists")
+    .mockImplementation((pid) =>
+      replacementPid && Math.abs(pid) === replacementPid ? true : exists(pid),
+    );
+  const launch = registered.launch;
+  registered.launch = vi.fn((options) =>
+    launch({
+      ...options,
+      onProcess(attempt) {
+        // Reproduce native identity recording without requiring this sandbox's blocked ps.
+        attempt.identity = "replacement-start";
+        attempt.processGroup = true;
+        replacementPid = attempt.pid;
+        options.onProcess?.(attempt);
+      },
+    }),
+  );
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  try {
+    await writeFile(join(logged.worktree.path, "partial.txt"), "Preserved before initialize exit");
+    await server.app.request("/api/health");
+    const stint = await waitForEnding(root);
+    expect(stint).toMatchObject({
+      status: "interrupted",
+      checkpointCommit: expect.any(String),
+      recovery: { state: "fallback" },
+    });
+    expect(stint.recovery?.reason).toMatch(/exited before|ACP transport closed/);
+    expect(
+      execFileSync("git", ["show", `${stint.checkpointCommit}:partial.txt`], {
+        cwd: root,
+        encoding: "utf8",
+      }),
+    ).toBe("Preserved before initialize exit");
+    expect(
+      (await readFile(logged.path, "utf8"))
+        .split("\n")
+        .filter((line) => line.includes('"type":"ended"')),
+    ).toHaveLength(1);
+    expect((await calls()).map((call) => call.method)).toEqual(["initialize"]);
+    expect(registered.launch).toHaveBeenCalledOnce();
+  } finally {
+    read.mockRestore();
+    probe.mockRestore();
+    await server.stop();
+  }
+});

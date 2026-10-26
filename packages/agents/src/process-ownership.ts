@@ -76,6 +76,7 @@ export async function stopStintProcesses(
   attempt: StintProcessAttempt,
   ownerReleased = false,
   processes = systemProcesses,
+  observedExit?: Promise<void>,
 ): Promise<void> {
   const blocked = () =>
     new ProcessOwnershipError(
@@ -112,6 +113,7 @@ export async function stopStintProcesses(
       !(leader.command === marker || leader.command.split(/\s+/).includes(`--title=${marker}`))
     )
       throw blocked();
+    rememberOwned(rows);
     return rows;
   };
   const deadline = Date.now() + 1000;
@@ -122,6 +124,22 @@ export async function stopStintProcesses(
     left.parent === right.parent &&
     left.group === right.group &&
     left.command === right.command;
+  function rememberOwned(rows: ProcessIdentity[]) {
+    for (const row of rows) if (row.group === attempt.pid) owned.set(row.pid, row);
+    // ponytail: small local process trees use repeated scans; index parent IDs if large trees make this budget expire.
+    let added = true;
+    while (added) {
+      added = false;
+      for (const row of rows)
+        if (row.parent && owned.has(row.parent) && !owned.has(row.pid)) {
+          const parent = rows.find((item) => item.pid === row.parent);
+          const recorded = owned.get(row.parent);
+          if (!parent || !recorded || !same(parent, recorded)) throw blocked();
+          owned.set(row.pid, row);
+          added = true;
+        }
+    }
+  }
   function verifyDescendant(row: ProcessIdentity) {
     const currentRows = verified();
     const current = currentRows.find((item) => item.pid === row.pid);
@@ -144,68 +162,89 @@ export async function stopStintProcesses(
       if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw blocked();
     }
   };
-  verified();
-  verified();
-  signal(group, "SIGSTOP");
-  // Freeze writers before walking their ancestry: a tool may have created its own process group.
-  // Keep parents alive until every observed descendant is stopped, so ancestry cannot be lost.
-  for (;;) {
-    const rows = verified();
-    for (const row of rows) if (row.group === attempt.pid) owned.set(row.pid, row);
-    // ponytail: small local process trees use repeated scans; index parent IDs if large trees make this budget expire.
-    let added = true;
-    while (added) {
-      added = false;
-      for (const row of rows)
-        if (row.parent && owned.has(row.parent) && !owned.has(row.pid)) {
-          const parent = rows.find((item) => item.pid === row.parent);
-          const recorded = owned.get(row.parent);
-          if (!parent || !recorded || !same(parent, recorded)) throw blocked();
-          owned.set(row.pid, row);
-          added = true;
-        }
-    }
-    let signalled = false;
-    for (const row of owned.values()) {
-      if (row.group === attempt.pid || frozen.has(row.pid)) continue;
-      verifyDescendant(row);
-      signal(row.pid, "SIGSTOP");
-      frozen.add(row.pid);
-      signalled = true;
-    }
-    if (signalled) continue;
-    if (
-      [...owned.values()].every(
-        (row) =>
-          !rows.find((item) => item.pid === row.pid)?.state ||
-          rows.find((item) => item.pid === row.pid)?.state?.includes("T"),
+  try {
+    verified();
+    verified();
+    signal(group, "SIGSTOP");
+    // Freeze writers before walking their ancestry: a tool may have created its own process group.
+    // Keep parents alive until every observed descendant is stopped, so ancestry cannot be lost.
+    for (;;) {
+      const rows = verified();
+      let signalled = false;
+      for (const row of owned.values()) {
+        if (row.group === attempt.pid || frozen.has(row.pid)) continue;
+        verifyDescendant(row);
+        signal(row.pid, "SIGSTOP");
+        frozen.add(row.pid);
+        signalled = true;
+      }
+      if (signalled) continue;
+      if (
+        [...owned.values()].every(
+          (row) =>
+            !rows.find((item) => item.pid === row.pid)?.state ||
+            rows.find((item) => item.pid === row.pid)?.state?.includes("T"),
+        )
       )
-    )
-      break;
-    if (Date.now() >= deadline) throw blocked();
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-  for (const row of [...owned.values()].reverse()) {
-    if (row.group === attempt.pid) continue;
-    verifyDescendant(row);
-    signal(row.pid, "SIGKILL");
-  }
-  verified();
-  signal(group, "SIGKILL");
-  for (;;) {
+        break;
+      if (Date.now() >= deadline) throw blocked();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    for (const row of [...owned.values()].reverse()) {
+      if (row.group === attempt.pid) continue;
+      verifyDescendant(row);
+      signal(row.pid, "SIGKILL");
+    }
+    verified();
+    signal(group, "SIGKILL");
+    for (;;) {
+      let rows: ProcessIdentity[];
+      try {
+        rows = processes.read();
+      } catch {
+        throw blocked();
+      }
+      if (
+        !rows.some(
+          (row) =>
+            row.group === attempt.pid ||
+            row.parent === attempt.pid ||
+            owned.get(row.pid)?.identity === row.identity,
+        )
+      )
+        return;
+      if (Date.now() >= deadline) throw blocked();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  } catch (error) {
+    if (!ownerReleased || !observedExit || !(error instanceof ProcessOwnershipError)) throw error;
+    // ACP may close before Node delivers this server's ChildProcess exit event.
+    // Only that live handle's exit is proof; a missing foreign leader remains blocked.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        observedExit,
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(error), Math.max(0, deadline - Date.now()));
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
     let rows: ProcessIdentity[];
     try {
       rows = processes.read();
     } catch {
-      throw blocked();
+      throw error;
     }
     if (
-      !rows.some(
-        (row) => row.group === attempt.pid || owned.get(row.pid)?.identity === row.identity,
+      rows.some(
+        (row) =>
+          row.group === attempt.pid ||
+          row.parent === attempt.pid ||
+          owned.get(row.pid)?.identity === row.identity,
       )
     )
-      return;
-    if (Date.now() >= deadline) throw blocked();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+      throw error;
   }
 }
