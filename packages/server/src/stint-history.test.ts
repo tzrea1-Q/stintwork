@@ -20,6 +20,7 @@ import {
   sourceNodeArgs,
 } from "@stintwork/agents/testing";
 import {
+  gateReadiness,
   indexStints,
   summarizeStint,
   type ProjectSnapshot,
@@ -728,6 +729,42 @@ test.each(["handoff", "findings", "finalization"] as const)(
       expect((await calls()).find((call) => call.method === "session/set_mode").params.modeId).toBe(
         "read-only",
       );
+  },
+);
+
+test.each(["max_tokens", undefined])(
+  "saved finalization without a status fails for stop reason %s and blocks the gate",
+  async (stopReason) => {
+    const { project, root, registered, logged, entries, calls } =
+      await savedRecovery("finalization");
+    const phase = entries.find((entry) => entry.type === "recovery" && entry.kind === "phase");
+    if (phase?.type !== "recovery" || phase.kind !== "phase") throw new Error("Expected phase");
+    phase.progress.stopReason = stopReason;
+    expect(phase.progress.status).toBeUndefined();
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    await server.app.request("/api/health");
+    await expect
+      .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].status)
+      .not.toBe("running");
+    const recovered = indexStints(createNodeRepoFiles(root)).stints[0];
+    expect(recovered.status).toBe("failed");
+    expect(recovered.error).toBe(
+      `Agent ended the stint with stop reason: ${stopReason ?? "unknown"}.`,
+    );
+    expect(recovered.errorMessage).toEqual({
+      code: "stint.stopReason",
+      params: { reason: stopReason ?? "unknown" },
+    });
+    expect(recovered.checkpointCommit).toBeTruthy();
+    expect(recovered.handoff?.stoppedAt).toBe("Saved handoff");
+    expect(recovered.findings?.findings).toEqual([]);
+    expect(await calls()).toEqual([]);
+    const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+    expect(gateReadiness(snapshot.workItems[0], snapshot.workflows)).toMatchObject({
+      ready: false,
+      reason: { code: "gate.stintUnfinished" },
+    });
   },
 );
 

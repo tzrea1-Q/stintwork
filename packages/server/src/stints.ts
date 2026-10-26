@@ -261,6 +261,22 @@ export function addStintRoutes(
           : {}),
       };
     }
+    function completionOutcome(stopReason = "unknown"): {
+      status: Exclude<Stint["status"], "running">;
+      error?: CoreText;
+    } {
+      const stopped = state.stopRequested || !!recovery?.stopRequestedAt;
+      const successful = stopReason === "end_turn" || stopReason === "cancelled";
+      return {
+        status: recovery?.stopRequestedAt
+          ? "stopped"
+          : (savedProgress.status ??
+            (closing ? "interrupted" : stopped ? "stopped" : successful ? "finished" : "failed")),
+        ...(!stopped && !successful
+          ? { error: coreText({ code: "stint.stopReason", params: { reason: stopReason } }) }
+          : {}),
+      };
+    }
     async function end(
       status: "finished" | "stopped" | "failed" | "interrupted",
       details: {
@@ -375,15 +391,14 @@ export function addStintRoutes(
       if (recovery) {
         verifyStintWorktree(root, started.stint);
         if (recovery.stopRequestedAt || recovery.progress?.phase === "finalization") {
-          await end(
-            recovery.stopRequestedAt ? "stopped" : (recovery.progress?.status ?? "finished"),
-            {
-              stopReason: savedProgress.stopReason,
-              ...(savedProgress.error
-                ? { error: { text: savedProgress.error, ...savedProgress.errorMessage } }
-                : {}),
-            },
-          );
+          const { status, ...details } = completionOutcome(savedProgress.stopReason);
+          await end(status, {
+            stopReason: savedProgress.stopReason,
+            ...details,
+            ...(savedProgress.error
+              ? { error: { text: savedProgress.error, ...savedProgress.errorMessage } }
+              : {}),
+          });
           return;
         }
         if (!recovery.launch || !agent.verifyRecovery)
@@ -479,35 +494,20 @@ export function addStintRoutes(
       });
       state.completion = state.handle.done
         .then(
-          ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) =>
-            end(
-              savedProgress.status ??
-                (closing
-                  ? "interrupted"
-                  : state.stopRequested
-                    ? "stopped"
-                    : stopReason === "end_turn" || stopReason === "cancelled"
-                      ? "finished"
-                      : "failed"),
-              {
-                stopReason,
-                ...collectedOutput({
-                  handoff: handoff ?? null,
-                  findings: evidence ? (findings ?? null) : undefined,
-                  findingsError,
-                  findingsRawReply,
-                }),
-                ...(handoffError ? { handoffError: { text: handoffError } } : {}),
-                ...(!state.stopRequested && stopReason !== "end_turn" && stopReason !== "cancelled"
-                  ? {
-                      error: coreText({
-                        code: "stint.stopReason",
-                        params: { reason: stopReason },
-                      }),
-                    }
-                  : {}),
-              },
-            ),
+          ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) => {
+            const { status, ...details } = completionOutcome(stopReason);
+            return end(status, {
+              stopReason,
+              ...collectedOutput({
+                handoff: handoff ?? null,
+                findings: evidence ? (findings ?? null) : undefined,
+                findingsError,
+                findingsRawReply,
+              }),
+              ...(handoffError ? { handoffError: { text: handoffError } } : {}),
+              ...details,
+            });
+          },
           (error: unknown) => {
             if (error instanceof AgentAuthenticationError && agent.detectAvailability)
               agent.availability = {

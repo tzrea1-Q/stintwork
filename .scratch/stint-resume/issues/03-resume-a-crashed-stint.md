@@ -81,3 +81,22 @@ Real-agent checks to run with the maintainer's existing logins in disposable Git
 5. After 04–08 land, the coordinator must also run graceful restart, waiting Ask permission allow/reject (no denied side effect), Stop during recovery, two successive restarts, WebSocket reconnect/browser presentation and forced failed-resume checkpoint/new-stint checks. Those are later tickets' real-agent acceptance, not passes claimed here.
 
 This sandbox cannot bind sockets or reach provider/registry network. No socket, real authenticated agent, browser, server-only descendant cleanup, cross-platform or M10 exit pass is claimed.
+
+**Codex, 2026-10-26 — P2 finalization outcome correction:** On committed ticket 03 (`1b9b6eb`), recovery previously defaulted a saved finalization phase without a saved status to `finished`. Normal completion and recovered finalization now share `completionOutcome`: unsuccessful stop reasons produce `failed` plus the authored `stint.stopReason` diagnostic; an absent reason is treated as `unknown`, never as success. Saved outcomes/errors and explicit Stop intent remain authoritative. Recovery still finishes checkpointing without launching an agent.
+
+Changed `packages/server/src/stints.ts`, added two regression cases in `packages/server/src/stint-history.test.ts`, and appended this comment. Both cases (`max_tokens` and absent stop reason) failed before the fix with `finished`, then passed. They verify the persisted diagnostic/code, checkpoint, saved handoff/findings, no agent launch, and `gateReadiness` rejecting the stage as unfinished. No commit or `Status:` changes.
+
+Checks actually run for this correction:
+
+- `pnpm --config.verify-deps-before-run=false format:check`: passed, 382 files.
+- `pnpm --config.verify-deps-before-run=false lint`: passed, existing informational Biome configuration deprecation only.
+- `pnpm --config.verify-deps-before-run=false typecheck`: passed across the workspace.
+- Focused new regressions with `--configLoader native`: both passed after reproducing the defect before the fix.
+- The unfiltered server command below: 61 passed, 9 socket-dependent failures in this sandbox. Those are the five history `TCP: true` cases (legacy fallback plus Claude/Codex × Installed/Bundled crash recovery), the three socket-based `stints.test.ts` cases (HTTP start/WebSocket ordering, rich events/permissions, HTTP preparation disconnect), and Stop/WebSocket. Direct listeners reported `listen EPERM: operation not permitted 127.0.0.1`; the four TCP resume child servers exited before reporting ready. All corresponding socket-free recovery cases and normal completion/Stop/failure checks passed. These failures do not supersede the coordinator's prior socket-enabled suite pass; rerun this command with sockets for the correction:
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run \
+  packages/server/src/{stints,stint-history,stop-and-failure}.test.ts --configLoader native
+```
+
+The real-agent acceptance matrix above remains pending with the coordinator; this correction adds no provider-network or real-agent pass claim.
