@@ -22,6 +22,8 @@ import {
   type StintRecoveryData,
   type StintProcessAttempt,
   type StintProgress,
+  type Stint,
+  type Warning,
 } from "@stintwork/core";
 
 import { execFileSync } from "node:child_process";
@@ -41,6 +43,7 @@ import {
   type PreparedAgent,
   type AgentPreparationOptions,
   type AgentStintResult,
+  type RegisteredAgent,
   adapterHost,
 } from "@stintwork/agents";
 
@@ -58,7 +61,7 @@ import { prepareStintBrief } from "./brief-preview.js";
 
 import { addStintPermissionRoute } from "./stint-permissions.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
-import { activeStintIds, appendStintLog } from "./stint-history.js";
+import { activeStintIds, appendStintLog, verifyStintWorktree } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 import { addGateRoutes } from "./gates.js";
@@ -162,6 +165,411 @@ export function addStintRoutes(
     readReviewEvidence,
   );
   let closing = false;
+  async function runStint(
+    started: Extract<StintLogEntry, { type: "started" }>,
+    state: ActiveStint,
+    agent: RegisteredAgent,
+    evidence: boolean,
+    sequence: number,
+    {
+      preparedAgent,
+      selected,
+      beforeLaunch,
+      send = () => {},
+      recovery,
+    }: {
+      preparedAgent?: PreparedAgent;
+      selected?: AgentSelection | PreparedAgent;
+      beforeLaunch?: (append: (entry: StintLogEntry) => void) => Promise<void>;
+      send?: (message: unknown) => void;
+      recovery?: Stint["recovery"];
+    } = {},
+  ) {
+    const { id, worktree, brief, baseCommit, agent: agentId, workItem, ticket } = started.stint;
+    const path = join(root, ".stintwork/local/stints", `${id}.jsonl`);
+    function append(entry: StintLogEntry) {
+      if (entry.type === "recovery" && !isStintLogEntry(entry))
+        throw new Error("Invalid stint recovery entry; work cannot continue.");
+      appendStintLog(path, entry);
+      broadcast({
+        type: "stint",
+        stintId: id,
+        workItem,
+        sequence: ++sequence,
+        entry,
+      });
+    }
+    function recordRecovery(data: StintRecoveryData) {
+      append({ type: "recovery", version: 1, at: new Date().toISOString(), ...data });
+    }
+    state.recordStop = () => recordRecovery({ kind: "stop_requested" });
+    if (state.stopRequested) state.recordStop();
+    if (selected && !recovery) {
+      const event = selected;
+      const messages = [
+        coreText({
+          code: event.source === "installed" ? "agent.source.installed" : "agent.source.bundled",
+        }),
+        coreText({ code: `agent.reason.${event.reason}` }),
+        coreText({
+          code: "agent.executableDetails",
+          params: {
+            path: event.executable?.path ?? "",
+            version: event.executable?.version ?? "",
+            adapter: event.adapterVersion ?? "",
+          },
+        }),
+      ];
+      for (const [index, text] of messages.entries())
+        append({
+          type: "event",
+          at: new Date().toISOString(),
+          event: {
+            type: "message",
+            id: `agent-preparation-${sequence}-${index}`,
+            ...coreTextFields("text", text),
+          },
+        });
+    }
+    function collectedOutput({
+      handoff,
+      findings,
+      findingsError,
+      findingsRawReply,
+    }: Partial<AgentStintResult>) {
+      return {
+        ...(handoff === undefined
+          ? {}
+          : { handoff: handoff ? { ...handoff, stint: id, agent: agentId } : null }),
+        ...(evidence && (findings !== undefined || findingsError !== undefined)
+          ? {
+              findings: {
+                commit: baseCommit,
+                findings:
+                  findings?.map((finding, index) => ({
+                    ...finding,
+                    id: `${id}:${index + 1}`,
+                  })) ?? null,
+                ...(findings == null
+                  ? {
+                      error: findingsError ?? coreText({ code: "stint.findingsIncomplete" }).text,
+                    }
+                  : {}),
+                ...(findingsRawReply === undefined ? {} : { rawReply: findingsRawReply }),
+              },
+            }
+          : {}),
+      };
+    }
+    async function end(
+      status: "finished" | "stopped" | "failed" | "interrupted",
+      details: {
+        stopReason?: string;
+        error?: CoreText;
+        handoff?: BriefHandoff | null;
+        handoffError?: CoreText;
+        findings?: ReviewFindings;
+      } = {},
+    ) {
+      state.ending = true;
+      details.handoff ??= savedProgress.handoff;
+      details.handoffError ??= savedProgress.handoffError
+        ? { text: savedProgress.handoffError }
+        : undefined;
+      details.findings ??= savedProgress.findings;
+      // This boundary also covers setup/transport failure without a completed work turn.
+      try {
+        if (attempt)
+          recordRecovery({
+            kind: "phase",
+            attemptId: attempt.id,
+            progress: {
+              phase: "finalization",
+              status,
+              ...(details.error ? coreTextFields("error", details.error) : {}),
+              ...(details.stopReason && details.stopReason !== savedProgress.stopReason
+                ? { stopReason: details.stopReason }
+                : {}),
+            },
+          });
+      } catch (error) {
+        // Recovery metadata must never prevent ADR 0004's genuine-ending checkpoint.
+        status = "failed";
+        details.error = {
+          text: [details.error?.text, `Could not record finalization: ${errorText(error).text}`]
+            .filter(Boolean)
+            .join("\n"),
+        };
+        console.error("Could not record stint finalization; checkpointing changes:", id, error);
+      }
+      permissions.clear(id);
+      let checkpointCommit: string | undefined;
+      let checkpointWarnings: CheckpointWarning[] = [];
+      let verifiedWorktree = !recovery;
+      try {
+        if (recovery) verifyStintWorktree(root, started.stint);
+        verifiedWorktree = true;
+        checkpointCommit = await createCheckpoint(
+          worktree.path,
+          {
+            id,
+            workItem,
+            ticket,
+            status,
+          },
+          (warnings) => {
+            checkpointWarnings = warnings;
+          },
+        );
+      } catch (error) {
+        status = "failed";
+        details.error = {
+          text: [
+            details.error?.text,
+            `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+      try {
+        if (verifiedWorktree)
+          checkpointWarnings.push(...committedRiskyPaths(worktree.path, baseCommit));
+      } catch (error) {
+        status = "failed";
+        details.error = {
+          text: [details.error?.text, `Cannot inspect stint commits: ${String(error)}`]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+      activeStintIds.delete(id);
+      if (evidence && !details.findings)
+        details.findings = {
+          commit: baseCommit,
+          findings: null,
+          error: coreText({ code: "stint.reviewEndedEarly" }).text,
+        };
+      const { error, handoffError, ...rest } = details;
+      try {
+        append({
+          type: "ended",
+          at: new Date().toISOString(),
+          status,
+          handoff: null,
+          ...rest,
+          ...(error ? coreTextFields("error", error) : {}),
+          ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
+          ...(checkpointCommit ? { checkpointCommit } : {}),
+          ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
+        });
+      } finally {
+        active.delete(workItem);
+        refresh();
+      }
+    }
+    let attempt: StintProcessAttempt | undefined = recovery?.attempt;
+    let resumeEstablished = false;
+    let savedProgress: StintProgress = recovery?.progress ?? { phase: "work" };
+    try {
+      if (recovery) {
+        verifyStintWorktree(root, started.stint);
+        if (recovery.stopRequestedAt || recovery.progress?.phase === "finalization") {
+          await end(
+            recovery.stopRequestedAt ? "stopped" : (recovery.progress?.status ?? "finished"),
+            {
+              stopReason: savedProgress.stopReason,
+              ...(savedProgress.error
+                ? { error: { text: savedProgress.error, ...savedProgress.errorMessage } }
+                : {}),
+            },
+          );
+          return;
+        }
+        if (!recovery.launch || !agent.verifyRecovery)
+          throw new Error("No recorded agent verifier.");
+        preparedAgent = await agent.verifyRecovery(recovery.launch, worktree.path);
+      }
+      if (state.stopRequested && recovery) {
+        await end("stopped");
+        return;
+      }
+      if (closing) throw new CoreTextError({ code: "server.stopping" });
+      await beforeLaunch?.(append);
+      const additionalDirectories = agent.capabilities.additionalDirectories
+        ? await worktreeGitDirectories(worktree.path)
+        : undefined;
+      state.setupCancellation?.signal.throwIfAborted();
+      const executable = preparedAgent?.executable ?? selected?.executable;
+      if (
+        executable?.identity &&
+        executable.identity !== readExecutableIdentity(executable.path)?.identity
+      )
+        throw new CoreTextError({ code: "agent.cliChanged" });
+      if (preparedAgent && !recovery)
+        recordRecovery({
+          kind: "launch",
+          launch: {
+            agent: preparedAgent.agent,
+            source: preparedAgent.source,
+            reason: preparedAgent.reason,
+            executable: { ...preparedAgent.executable },
+            adapterEntry: preparedAgent.adapterEntry,
+            adapterVersion: preparedAgent.adapterVersion,
+            cacheKey: preparedAgent.cacheKey,
+            lockDigest: preparedAgent.lockDigest,
+            host: adapterHost(),
+            permissionLevel: brief.permissionLevel ?? "edit-freely",
+          },
+        });
+      if (recovery) verifyStintWorktree(root, started.stint);
+      state.handle = (recovery ? agent.launch : (options.launchAgent ?? agent.launch))({
+        agent: agent.id,
+        cwd: worktree.path,
+        ...(preparedAgent
+          ? { preparedAgent }
+          : selected?.executable
+            ? { nativeExecutable: selected.executable.path }
+            : {}),
+        ...(additionalDirectories ? { additionalDirectories } : {}),
+        prompt: recovery ? "" : brief.prompt,
+        ...(recovery?.sessionId
+          ? { resume: { sessionId: recovery.sessionId, progress: savedProgress } }
+          : {}),
+        permissionLevel: recovery?.launch?.permissionLevel ?? brief.permissionLevel,
+        handoffTimeoutMs,
+        onProcess: (processAttempt) => {
+          recordRecovery({ kind: "attempt", attempt: processAttempt });
+          attempt = processAttempt;
+        },
+        onSession: (sessionId) => {
+          if (!attempt) throw new Error("Agent session has no recorded process attempt.");
+          recordRecovery({ kind: "session", attemptId: attempt.id, sessionId });
+        },
+        onPhase: (phase, result) => {
+          if (!attempt) throw new Error("Agent phase has no recorded process attempt.");
+          const output = collectedOutput(result);
+          const progress = {
+            phase,
+            ...(result.stopReason && savedProgress.stopReason === undefined
+              ? { stopReason: result.stopReason }
+              : {}),
+            ...(output.handoff !== undefined && savedProgress.handoff === undefined
+              ? { handoff: output.handoff }
+              : {}),
+            ...(output.findings !== undefined && savedProgress.findings === undefined
+              ? { findings: output.findings }
+              : {}),
+            ...(result.handoffError && savedProgress.handoffError === undefined
+              ? { handoffError: result.handoffError }
+              : {}),
+          };
+          recordRecovery({ kind: "phase", attemptId: attempt.id, progress });
+          savedProgress = { ...savedProgress, ...progress };
+        },
+        ...(evidence ? { afterTurnRequests: [handoffRequest, findingsRequest] } : {}),
+        onEvent: (event) => {
+          append({ type: "event", at: new Date().toISOString(), event });
+          if (event.type === "permission_request" || event.type === "permission") refresh();
+        },
+        onPermission: (request) =>
+          closing
+            ? Promise.resolve({ outcome: { outcome: "cancelled" as const } })
+            : permissions.wait(id, request),
+      });
+      state.completion = state.handle.done
+        .then(
+          ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) =>
+            end(
+              savedProgress.status ??
+                (closing
+                  ? "interrupted"
+                  : state.stopRequested
+                    ? "stopped"
+                    : stopReason === "end_turn" || stopReason === "cancelled"
+                      ? "finished"
+                      : "failed"),
+              {
+                stopReason,
+                ...collectedOutput({
+                  handoff: handoff ?? null,
+                  findings: evidence ? (findings ?? null) : undefined,
+                  findingsError,
+                  findingsRawReply,
+                }),
+                ...(handoffError ? { handoffError: { text: handoffError } } : {}),
+                ...(!state.stopRequested && stopReason !== "end_turn" && stopReason !== "cancelled"
+                  ? {
+                      error: coreText({
+                        code: "stint.stopReason",
+                        params: { reason: stopReason },
+                      }),
+                    }
+                  : {}),
+              },
+            ),
+          (error: unknown) => {
+            if (error instanceof AgentAuthenticationError && agent.detectAvailability)
+              agent.availability = {
+                available: false,
+                kind: "login-required",
+                canStart: true,
+                selection: agent.availability?.selection,
+                installedIdentity: agent.availability?.installedIdentity,
+                reason: error.coreText,
+                checkedAt: new Date().toISOString(),
+              };
+            return end(closing || (recovery && !resumeEstablished) ? "interrupted" : "failed", {
+              error: errorText(error),
+            });
+          },
+        )
+        .catch((error: unknown) => {
+          console.error("Could not record the end of a stint:", error);
+        });
+      await state.handle.ready;
+      resumeEstablished = true;
+      if (agent.detectAvailability) {
+        agent.availability = {
+          ...agent.availability,
+          available: true,
+          canStart: true,
+          kind: undefined,
+          reason: undefined,
+          checkedAt: new Date().toISOString(),
+        };
+        send({ type: "availability", agent: agent.id, availability: agent.availability });
+        refresh();
+      }
+    } catch (error) {
+      const reason =
+        state.stopRequested && !state.handle
+          ? coreText({ code: "agent.preparationCancelled" })
+          : errorText(error);
+      if (state.completion) await state.completion;
+      else
+        await end(
+          closing || recovery ? "interrupted" : state.stopRequested ? "stopped" : "failed",
+          state.stopRequested
+            ? {}
+            : {
+                error: reason,
+              },
+        );
+      if (agent.detectAvailability && agent.availability?.kind !== "login-required")
+        agent.availability = {
+          ...agent.availability,
+          available: false,
+          canStart: true,
+          kind: state.stopRequested ? "not-prepared" : "preparation-failed",
+          reason,
+        };
+      send({ type: "availability", agent: agent.id, availability: agent.availability });
+      refresh();
+      return reason;
+    }
+  }
+
   app.post("/api/stints/:stintId/confirm-agent", (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
@@ -494,7 +902,7 @@ export function addStintRoutes(
         };
         writeFileSync(path, `${JSON.stringify(coreTextWire(started))}\n`, { flag: "wx" });
         activeStintIds.add(id);
-        let sequence = 1;
+        const sequence = 1;
         broadcast(
           coreTextWire({
             type: "stint",
@@ -505,384 +913,35 @@ export function addStintRoutes(
           }) as StintLiveMessage,
         );
         refresh();
-        function append(entry: StintLogEntry) {
-          if (entry.type === "recovery" && !isStintLogEntry(entry))
-            throw new Error("Invalid stint recovery entry; work cannot continue.");
-          appendStintLog(path, entry);
-          broadcast({
-            type: "stint",
-            stintId: id,
-            workItem: workItem.slug,
-            sequence: ++sequence,
-            entry,
-          });
-        }
-        function recordRecovery(data: StintRecoveryData) {
-          append({ type: "recovery", version: 1, at: new Date().toISOString(), ...data });
-        }
-        state.recordStop = () => recordRecovery({ kind: "stop_requested" });
-        if (state.stopRequested) state.recordStop();
-        if (selected) {
-          const event = selected;
-          const messages = [
-            coreText({
-              code:
-                event.source === "installed" ? "agent.source.installed" : "agent.source.bundled",
-            }),
-            coreText({ code: `agent.reason.${event.reason}` }),
-            coreText({
-              code: "agent.executableDetails",
-              params: {
-                path: event.executable?.path ?? "",
-                version: event.executable?.version ?? "",
-                adapter: event.adapterVersion ?? "",
-              },
-            }),
-          ];
-          for (const [index, text] of messages.entries())
-            append({
-              type: "event",
-              at: new Date().toISOString(),
-              event: {
-                type: "message",
-                id: `agent-preparation-${sequence}-${index}`,
-                ...coreTextFields("text", text),
-              },
-            });
-        }
-        function collectedOutput({
-          handoff,
-          findings,
-          findingsError,
-          findingsRawReply,
-        }: Partial<AgentStintResult>) {
-          return {
-            ...(handoff === undefined
-              ? {}
-              : { handoff: handoff ? { ...handoff, stint: id, agent: agentId } : null }),
-            ...(stage.gate === "evidence" && (findings !== undefined || findingsError !== undefined)
-              ? {
-                  findings: {
-                    commit: baseCommit,
-                    findings:
-                      findings?.map((finding, index) => ({
-                        ...finding,
-                        id: `${id}:${index + 1}`,
-                      })) ?? null,
-                    ...(findings == null
-                      ? {
-                          error:
-                            findingsError ?? coreText({ code: "stint.findingsIncomplete" }).text,
-                        }
-                      : {}),
-                    ...(findingsRawReply === undefined ? {} : { rawReply: findingsRawReply }),
-                  },
-                }
-              : {}),
-          };
-        }
-        async function end(
-          status: "finished" | "stopped" | "failed" | "interrupted",
-          details: {
-            stopReason?: string;
-            error?: CoreText;
-            handoff?: BriefHandoff | null;
-            handoffError?: CoreText;
-            findings?: ReviewFindings;
-          } = {},
-        ) {
-          state.ending = true;
-          details.handoff ??= savedProgress.handoff;
-          details.handoffError ??= savedProgress.handoffError
-            ? { text: savedProgress.handoffError }
-            : undefined;
-          details.findings ??= savedProgress.findings;
-          // This boundary also covers setup/transport failure without a completed work turn.
-          try {
-            if (attempt)
-              recordRecovery({
-                kind: "phase",
-                attemptId: attempt.id,
-                progress: {
-                  phase: "finalization",
-                  status,
-                  ...(details.error ? coreTextFields("error", details.error) : {}),
-                  ...(details.stopReason && details.stopReason !== savedProgress.stopReason
-                    ? { stopReason: details.stopReason }
-                    : {}),
+        const reason = await runStint(started, state, agent, stage.gate === "evidence", sequence, {
+          preparedAgent,
+          selected,
+          beforeLaunch: async (append) => {
+            let setupMessage = 0;
+            const progress = (text: CoreText) =>
+              append({
+                type: "event",
+                at: new Date().toISOString(),
+                event: {
+                  type: "message",
+                  id: `setup-${++setupMessage}`,
+                  ...coreTextFields("text", text),
                 },
               });
-          } catch (error) {
-            // Recovery metadata must never prevent ADR 0004's genuine-ending checkpoint.
-            status = "failed";
-            details.error = {
-              text: [details.error?.text, `Could not record finalization: ${errorText(error).text}`]
-                .filter(Boolean)
-                .join("\n"),
-            };
-            console.error("Could not record stint finalization; checkpointing changes:", id, error);
-          }
-          permissions.clear(id);
-          let checkpointCommit: string | undefined;
-          let checkpointWarnings: CheckpointWarning[] = [];
-          try {
-            checkpointCommit = await createCheckpoint(
+            for (const text of setupMessages) progress(text);
+            if (setupFailed) throw setupError;
+            const previous = workItem.stints[0];
+            await installWorktreeDependencies(
               worktree.path,
-              {
-                id,
-                workItem: workItem.slug,
-                ticket: ticket?.number ?? null,
-                status,
-              },
-              (warnings) => {
-                checkpointWarnings = warnings;
-              },
+              progress,
+              !!previous && ["failed", "interrupted", "stopped"].includes(previous.status),
+              state.setupCancellation?.signal,
             );
-          } catch (error) {
-            status = "failed";
-            details.error = {
-              text: [
-                details.error?.text,
-                `Checkpoint failed: ${error instanceof Error ? error.message : String(error)}`,
-              ]
-                .filter(Boolean)
-                .join("\n"),
-            };
-          }
-          try {
-            checkpointWarnings.push(...committedRiskyPaths(worktree.path, baseCommit));
-          } catch (error) {
-            status = "failed";
-            details.error = {
-              text: [details.error?.text, `Cannot inspect stint commits: ${String(error)}`]
-                .filter(Boolean)
-                .join("\n"),
-            };
-          }
-          activeStintIds.delete(id);
-          if (stage.gate === "evidence" && !details.findings)
-            details.findings = {
-              commit: baseCommit,
-              findings: null,
-              error: coreText({ code: "stint.reviewEndedEarly" }).text,
-            };
-          const { error, handoffError, ...rest } = details;
-          try {
-            append({
-              type: "ended",
-              at: new Date().toISOString(),
-              status,
-              handoff: null,
-              ...rest,
-              ...(error ? coreTextFields("error", error) : {}),
-              ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
-              ...(checkpointCommit ? { checkpointCommit } : {}),
-              ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
-            });
-          } finally {
-            active.delete(workItem.slug);
-            refresh();
-          }
-        }
-        let attempt: StintProcessAttempt | undefined;
-        let savedProgress: StintProgress = { phase: "work" };
-        try {
-          let setupMessage = 0;
-          const progress = (text: CoreText) =>
-            append({
-              type: "event",
-              at: new Date().toISOString(),
-              event: {
-                type: "message",
-                id: `setup-${++setupMessage}`,
-                ...coreTextFields("text", text),
-              },
-            });
-          for (const text of setupMessages) progress(text);
-          if (setupFailed) throw setupError;
-          const previous = workItem.stints[0];
-          await installWorktreeDependencies(
-            worktree.path,
-            progress,
-            !!previous && ["failed", "interrupted", "stopped"].includes(previous.status),
-            state.setupCancellation?.signal,
-          );
-          if (closing) throw new CoreTextError({ code: "server.stopping" });
-          const additionalDirectories = agent.capabilities.additionalDirectories
-            ? await worktreeGitDirectories(worktree.path)
-            : undefined;
-          state.setupCancellation?.signal.throwIfAborted();
-          if (
-            selected?.executable?.identity &&
-            selected.executable.identity !==
-              readExecutableIdentity(selected.executable.path)?.identity
-          )
-            throw new CoreTextError({ code: "agent.cliChanged" });
-          if (preparedAgent)
-            recordRecovery({
-              kind: "launch",
-              launch: {
-                agent: preparedAgent.agent,
-                source: preparedAgent.source,
-                reason: preparedAgent.reason,
-                executable: { ...preparedAgent.executable },
-                adapterEntry: preparedAgent.adapterEntry,
-                adapterVersion: preparedAgent.adapterVersion,
-                cacheKey: preparedAgent.cacheKey,
-                lockDigest: preparedAgent.lockDigest,
-                host: adapterHost(),
-                permissionLevel: brief.permissionLevel ?? "edit-freely",
-              },
-            });
-          state.handle = (options.launchAgent ?? agent.launch)({
-            agent: agent.id,
-            cwd: worktree.path,
-            ...(preparedAgent
-              ? { preparedAgent }
-              : selected?.executable
-                ? { nativeExecutable: selected.executable.path }
-                : {}),
-            ...(additionalDirectories ? { additionalDirectories } : {}),
-            prompt: brief.prompt,
-            permissionLevel: brief.permissionLevel,
-            handoffTimeoutMs,
-            onProcess: (processAttempt) => {
-              recordRecovery({ kind: "attempt", attempt: processAttempt });
-              attempt = processAttempt;
-            },
-            onSession: (sessionId) => {
-              if (!attempt) throw new Error("Agent session has no recorded process attempt.");
-              recordRecovery({ kind: "session", attemptId: attempt.id, sessionId });
-            },
-            onPhase: (phase, result) => {
-              if (!attempt) throw new Error("Agent phase has no recorded process attempt.");
-              const output = collectedOutput(result);
-              const progress = {
-                phase,
-                ...(result.stopReason && savedProgress.stopReason === undefined
-                  ? { stopReason: result.stopReason }
-                  : {}),
-                ...(output.handoff !== undefined && savedProgress.handoff === undefined
-                  ? { handoff: output.handoff }
-                  : {}),
-                ...(output.findings !== undefined && savedProgress.findings === undefined
-                  ? { findings: output.findings }
-                  : {}),
-                ...(result.handoffError && savedProgress.handoffError === undefined
-                  ? { handoffError: result.handoffError }
-                  : {}),
-              };
-              recordRecovery({ kind: "phase", attemptId: attempt.id, progress });
-              savedProgress = { ...savedProgress, ...progress };
-            },
-            ...(stage.gate === "evidence"
-              ? { afterTurnRequests: [handoffRequest, findingsRequest] }
-              : {}),
-            onEvent: (event) => {
-              append({ type: "event", at: new Date().toISOString(), event });
-              if (event.type === "permission_request" || event.type === "permission") refresh();
-            },
-            onPermission: (request) =>
-              closing
-                ? Promise.resolve({ outcome: { outcome: "cancelled" as const } })
-                : permissions.wait(id, request),
-          });
-          state.completion = state.handle.done
-            .then(
-              ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) =>
-                end(
-                  closing
-                    ? "interrupted"
-                    : state.stopRequested
-                      ? "stopped"
-                      : stopReason === "end_turn" || stopReason === "cancelled"
-                        ? "finished"
-                        : "failed",
-                  {
-                    stopReason,
-                    ...collectedOutput({
-                      handoff: handoff ?? null,
-                      findings: stage.gate === "evidence" ? (findings ?? null) : undefined,
-                      findingsError,
-                      findingsRawReply,
-                    }),
-                    ...(handoffError ? { handoffError: { text: handoffError } } : {}),
-                    ...(!state.stopRequested &&
-                    stopReason !== "end_turn" &&
-                    stopReason !== "cancelled"
-                      ? {
-                          error: coreText({
-                            code: "stint.stopReason",
-                            params: { reason: stopReason },
-                          }),
-                        }
-                      : {}),
-                  },
-                ),
-              (error: unknown) => {
-                if (error instanceof AgentAuthenticationError && agent.detectAvailability)
-                  agent.availability = {
-                    available: false,
-                    kind: "login-required",
-                    canStart: true,
-                    selection: agent.availability?.selection,
-                    installedIdentity: agent.availability?.installedIdentity,
-                    reason: error.coreText,
-                    checkedAt: new Date().toISOString(),
-                  };
-                return end(closing ? "interrupted" : "failed", {
-                  error: errorText(error),
-                });
-              },
-            )
-            .catch((error: unknown) => {
-              console.error("Could not record the end of a stint:", error);
-            });
-          await state.handle.ready;
-          if (agent.detectAvailability) {
-            agent.availability = {
-              ...agent.availability,
-              available: true,
-              canStart: true,
-              kind: undefined,
-              reason: undefined,
-              checkedAt: new Date().toISOString(),
-            };
-            send({ type: "availability", agent: agent.id, availability: agent.availability });
-            refresh();
-          }
-        } catch (error) {
-          const reason =
-            state.stopRequested && !state.handle
-              ? coreText({ code: "agent.preparationCancelled" })
-              : errorText(error);
-          if (state.completion) await state.completion;
-          else
-            await end(
-              closing ? "interrupted" : state.stopRequested ? "stopped" : "failed",
-              state.stopRequested
-                ? {}
-                : {
-                    error: reason,
-                  },
-            );
-          if (agent.detectAvailability && agent.availability?.kind !== "login-required")
-            agent.availability = {
-              ...agent.availability,
-              available: false,
-              canStart: true,
-              kind: state.stopRequested ? "not-prepared" : "preparation-failed",
-              reason,
-            };
-          send({ type: "availability", agent: agent.id, availability: agent.availability });
-          refresh();
-          return context.json(
-            coreTextWire({
-              reason,
-            }),
-            503,
-          );
-        }
+            if (closing) throw new CoreTextError({ code: "server.stopping" });
+          },
+          send,
+        });
+        if (reason) return context.json(coreTextWire({ reason }), 503);
         return context.json(coreTextWire({ stint: foldStintLog([started]) }), 201);
       } catch (error) {
         active.delete(workItem.slug);
@@ -914,6 +973,106 @@ export function addStintRoutes(
       );
     });
   });
+  function recover(
+    stint: Stint,
+    entries: StintLogEntry[],
+    warn: (warning: Warning) => void,
+    valid = true,
+  ) {
+    const recovery = stint.recovery;
+    // Until permission rebinding lands, only the permission-free success path is eligible.
+    const pendingPermission = stint.events.some(
+      (event) =>
+        event.type === "permission_request" &&
+        !stint.events.some(
+          (answer) => answer.type === "permission" && answer.requestId === event.requestId,
+        ),
+    );
+    const agent = registry.get(stint.agent);
+    if (active.has(stint.workItem)) return true;
+    if (activeStintIds.has(stint.id)) {
+      active.set(stint.workItem, { id: stint.id });
+      warn({
+        path: `.stintwork/local/stints/${stint.id}.jsonl`,
+        message:
+          "Cannot recover a stint owned by another live server. Stop that server before restarting recovery.",
+      });
+      return true;
+    }
+    if (recovery?.attempt) {
+      // Conservatively block live or unverifiable old writers. Ticket 05 adds verified cleanup.
+      for (const pid of [recovery.attempt.owner.pid, recovery.attempt.pid]) {
+        try {
+          process.kill(pid, 0);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ESRCH") continue;
+        }
+        active.set(stint.workItem, { id: stint.id });
+        warn({
+          path: `.stintwork/local/stints/${stint.id}.jsonl`,
+          message: `Cannot recover stint while its previous owner or adapter (${pid}) is live or unverifiable. Stop the old processes and restart Stintwork.`,
+        });
+        return true;
+      }
+    }
+    const session = [...entries]
+      .reverse()
+      .find((entry) => entry.type === "recovery" && entry.kind === "session");
+    if (
+      !valid ||
+      !recovery?.launch ||
+      !recovery.sessionId ||
+      !recovery.attempt ||
+      !recovery.progress ||
+      recovery.launch.agent !== stint.agent ||
+      !agent?.verifyRecovery ||
+      pendingPermission ||
+      session?.type !== "recovery" ||
+      session.kind !== "session" ||
+      session.attemptId !== recovery.attempt.id
+    )
+      return false;
+    const state: ActiveStint = { id: stint.id };
+    active.set(stint.workItem, state);
+    activeStintIds.add(stint.id);
+    const project = indexProject(readProjectFiles().files, { name: "" });
+    const workItem = project.workItems.find((item) => item.slug === stint.workItem);
+    const stage =
+      workItem &&
+      project.workflows[workItem.workflow]?.stages.find((stage) => stage.id === stint.stage);
+    try {
+      if (
+        !workItem ||
+        workItem.merged ||
+        workItem.stage !== stint.stage ||
+        !stage ||
+        workItem.stints[0]?.id !== stint.id ||
+        (stint.ticket !== null &&
+          !workItem.tickets.some((ticket) => ticket.number === stint.ticket))
+      )
+        throw new Error("The recorded work item/stage is no longer current.");
+      verifyStintWorktree(root, stint);
+    } catch {
+      active.delete(stint.workItem);
+      activeStintIds.delete(stint.id);
+      return false;
+    }
+    const started = entries.find((entry) => entry.type === "started");
+    if (!started) return false;
+    state.preparation = runStint(started, state, agent, stage.gate === "evidence", entries.length, {
+      recovery,
+    })
+      .then(() => {})
+      .catch((error: unknown) => {
+        console.error("Could not recover stint:", stint.id, error);
+        warn({
+          path: `.stintwork/local/stints/${stint.id}.jsonl`,
+          message: `Could not recover stint: ${String(error)}`,
+        });
+        refresh();
+      });
+    return true;
+  }
   return Object.assign(
     async () => {
       closing = true;
@@ -924,9 +1083,10 @@ export function addStintRoutes(
           await state.preparation;
           await state.handle?.cancel();
           await state.completion;
+          if (state.id && state.handle) activeStintIds.delete(state.id);
         }),
       );
     },
-    { isActive: (slug: string) => active.has(slug) || workflowWrites.has(slug) },
+    { isActive: (slug: string) => active.has(slug) || workflowWrites.has(slug), recover },
   );
 }

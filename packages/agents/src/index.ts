@@ -11,6 +11,7 @@ import {
   type ReviewFinding,
   type StintPhase,
   type StintProcessAttempt,
+  type StintProgress,
 } from "@stintwork/core";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -61,6 +62,7 @@ export {
   type AgentPreparationEvent,
   type AgentSourceReason,
 } from "./adapter-cache.js";
+export { verifyRecordedAgent } from "./adapter-cache.js";
 export { prepareAgentForStint } from "./prepare-agent.js";
 export { selectAgentSource } from "./executable.js";
 export { adapterPins, adapterHost } from "./adapter-profiles.js";
@@ -74,6 +76,7 @@ export type AgentStintOptions = {
   cwd: string;
   additionalDirectories?: string[];
   prompt: string;
+  resume?: { sessionId: string; progress: StintProgress };
   onEvent: (event: StintLogEvent) => void;
   onProcess?: (attempt: StintProcessAttempt) => void;
   onSession?: (sessionId: string) => void;
@@ -107,6 +110,9 @@ export type AdapterLauncher = (
   nativeExecutable?: string,
 ) => ChildProcessWithoutNullStreams;
 
+export const continuationInstruction =
+  "Continue the interrupted turn in this session from the current worktree. Read current project files where needed; they remain authoritative. Do not restart the stage skill or repeat completed work.";
+
 const agentReadyTimeoutMs = 60_000;
 
 export function createAgentLauncher(
@@ -122,7 +128,8 @@ export function createAgentLauncher(
     cwd,
     additionalDirectories = [],
     prompt,
-    onEvent,
+    resume,
+    onEvent: emitEvent,
     onProcess,
     onSession,
     onPhase,
@@ -140,6 +147,16 @@ export function createAgentLauncher(
       rejectReady = reject;
     });
     void ready.catch(() => {});
+    const attemptId = randomUUID();
+    const onEvent = (event: StintLogEvent) => {
+      if (!resume) return emitEvent(event);
+      emitEvent({
+        ...event,
+        ...("id" in event ? { id: `${attemptId}:${event.id}` } : {}),
+        ...("toolCallId" in event ? { toolCallId: `${attemptId}:${event.toolCallId}` } : {}),
+      });
+    };
+    let loading = !!resume;
     let child: ChildProcessWithoutNullStreams | undefined;
     let connection: import("@agentclientprotocol/sdk").ClientSideConnection | undefined;
     let acpId: string | undefined;
@@ -197,7 +214,6 @@ export function createAgentLauncher(
       if (cancelled) return { stopReason: "cancelled" };
       if (preparedAgent && preparedAgent.agent !== agent)
         throw new Error("Prepared agent does not match the requested stint.");
-      const attemptId = randomUUID();
       const marker = preparedAgent ? `stintwork-${attemptId}` : null;
       child = preparedAgent
         ? spawn(process.execPath, [`--title=${marker}`, preparedAgent.adapterEntry], {
@@ -233,7 +249,7 @@ export function createAgentLauncher(
       const acp = new ClientSideConnection(
         () => ({
           async sessionUpdate({ update }) {
-            if (settled) return;
+            if (settled || loading) return;
             try {
               const kind = update.sessionUpdate;
               if (
@@ -395,12 +411,17 @@ export function createAgentLauncher(
             throw new Error(
               `${profile.displayName} does not support additional writable directories. ${profile.installationHint}`,
             );
-          const opened = await acp.newSession({
+          if (resume && !initialized.agentCapabilities?.loadSession)
+            throw new Error(`${profile.displayName} does not support loadSession.`);
+          const directories = {
             cwd,
             mcpServers: [],
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
-          });
-          acpId = opened.sessionId;
+          };
+          const opened = resume
+            ? await acp.loadSession({ ...directories, sessionId: resume.sessionId })
+            : await acp.newSession(directories);
+          acpId = resume ? resume.sessionId : (opened as { sessionId: string }).sessionId;
           // Synchronous persistence is part of opening the session, before even mode setup.
           onSession?.(acpId);
           if (policy.mode !== null) {
@@ -427,15 +448,33 @@ export function createAgentLauncher(
         });
         await Promise.race([initialize, failure, timeout]);
         clearTimeout(timer);
+        loading = false;
         if (cancelled) return { stopReason: "cancelled" };
         resolveReady();
         if (checkAvailability) return { stopReason: "end_turn" };
-        onPhase?.("work", {});
-        workTurn = acp.prompt({
-          sessionId: acpId as string,
-          prompt: [{ type: "text", text: prompt }],
-        });
-        const result = await Promise.race([workTurn, failure]);
+        const saved = resume?.progress;
+        const completed: Partial<AgentStintResult> = saved
+          ? {
+              ...(saved.handoff !== undefined ? { handoff: saved.handoff } : {}),
+              ...(saved.handoffError ? { handoffError: saved.handoffError } : {}),
+              ...(saved.findings
+                ? {
+                    findings: saved.findings.findings,
+                    findingsError: saved.findings.error,
+                    findingsRawReply: saved.findings.rawReply,
+                  }
+                : {}),
+            }
+          : {};
+        let result = { stopReason: saved?.stopReason ?? "end_turn", ...completed };
+        if (!saved || saved.phase === "work") {
+          onPhase?.("work", {});
+          workTurn = acp.prompt({
+            sessionId: acpId as string,
+            prompt: [{ type: "text", text: resume ? continuationInstruction : prompt }],
+          });
+          result = { ...result, ...(await Promise.race([workTurn, failure])) };
+        }
         if (afterTurnTimeoutMs === undefined) {
           onPhase?.("finalization", result);
           return result;
@@ -443,38 +482,43 @@ export function createAgentLauncher(
         permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
           cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
         });
-        const afterTurnResults = await collectAfterTurnRequests(afterTurnRequests, {
-          timeoutMs: afterTurnTimeoutMs,
-          failure,
-          retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
-          onRequest(request, results) {
-            if (request.resultField === "handoff" || request.resultField === "findings")
-              onPhase?.(request.resultField, { ...result, ...results });
+        const afterTurnResults = await collectAfterTurnRequests(
+          afterTurnRequests.filter(
+            (request) => !(request.resultField in completed) && !(request.errorField in completed),
+          ),
+          {
+            timeoutMs: afterTurnTimeoutMs,
+            failure,
+            retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
+            onRequest(request, results) {
+              if (request.resultField === "handoff" || request.resultField === "findings")
+                onPhase?.(request.resultField, { ...result, ...results });
+            },
+            onResult(request, results) {
+              if (request.resultField === "handoff" || request.resultField === "findings")
+                onPhase?.(request.resultField, { ...result, ...results });
+            },
+            async prompt(text) {
+              chunk = undefined;
+              afterTurnMessages = [];
+              await acp.prompt({
+                sessionId: acpId as string,
+                prompt: [{ type: "text", text }],
+              });
+              return joinAfterTurnMessages(afterTurnMessages);
+            },
+            async cancel() {
+              cancelPermission();
+              await Promise.race([
+                acp.cancel({ sessionId: acpId as string }).catch(() => {}),
+                new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
+              ]);
+              permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
+                cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
+              });
+            },
           },
-          onResult(request, results) {
-            if (request.resultField === "handoff" || request.resultField === "findings")
-              onPhase?.(request.resultField, { ...result, ...results });
-          },
-          async prompt(text) {
-            chunk = undefined;
-            afterTurnMessages = [];
-            await acp.prompt({
-              sessionId: acpId as string,
-              prompt: [{ type: "text", text }],
-            });
-            return joinAfterTurnMessages(afterTurnMessages);
-          },
-          async cancel() {
-            cancelPermission();
-            await Promise.race([
-              acp.cancel({ sessionId: acpId as string }).catch(() => {}),
-              new Promise<void>((resolveCancel) => setTimeout(resolveCancel, 100)),
-            ]);
-            permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
-              cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
-            });
-          },
-        });
+        );
         onPhase?.("finalization", { ...result, ...afterTurnResults });
         return { ...result, ...afterTurnResults };
       } catch (error) {

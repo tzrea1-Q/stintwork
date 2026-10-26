@@ -6,6 +6,8 @@ import {
   type CheckpointWarning,
   type RepoFiles,
   type StintLogEntry,
+  type Stint,
+  isStintLogEntry,
 } from "@stintwork/core";
 
 import { execFileSync } from "node:child_process";
@@ -35,42 +37,71 @@ export function appendStintLog(path: string, entry: StintLogEntry) {
   }
 }
 
-export function recoverInterruptedStints(root: string, files: RepoFiles): Promise<void> {
+export function verifyStintWorktree(
+  root: string,
+  stint: Pick<Stint, "worktree" | "workItem" | "baseCommit">,
+) {
+  const projectPath = realpathSync(root);
+  const worktreePath = realpathSync(stint.worktree.path);
+  const records = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
+    cwd: projectPath,
+    encoding: "utf8",
+  }).split("\0\0");
+  if (
+    worktreePath === projectPath ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(stint.workItem) ||
+    stint.worktree.branch !== `stintwork/${stint.workItem}` ||
+    !records.some((record) => {
+      const fields = record.split("\0");
+      return (
+        fields.includes(`worktree ${worktreePath}`) &&
+        fields.includes(`branch refs/heads/${stint.worktree.branch}`)
+      );
+    })
+  )
+    throw new Error("The logged worktree is not on this project's work item branch.");
+  execFileSync("git", ["merge-base", "--is-ancestor", stint.baseCommit, "HEAD"], {
+    cwd: worktreePath,
+  });
+  return worktreePath;
+}
+
+export function recoverInterruptedStints(
+  root: string,
+  files: RepoFiles,
+  adopt?: (stint: Stint, entries: StintLogEntry[], valid: boolean) => boolean,
+): Promise<void> {
   const projectPath = realpathSync(root);
   const pending = recovering.get(projectPath);
-  if (pending) return pending;
+  if (pending)
+    return adopt ? pending.then(() => recoverInterruptedStints(root, files, adopt)) : pending;
   const recovery = (async () => {
     for (const path of files
       .list(".stintwork/local/stints/")
       .filter((path) => path.endsWith(".jsonl"))) {
       const text = files.read(path);
       if (text === undefined) continue;
-      const { stints } = indexStints({ list: () => [path], read: () => text });
+      const { stints, warnings } = indexStints({ list: () => [path], read: () => text });
       const stint = stints[0];
-      if (stint?.status !== "running" || activeStintIds.has(stint.id)) continue;
+      if (stint?.status !== "running" || (!adopt && activeStintIds.has(stint.id))) continue;
+      const entries = text
+        .split("\n")
+        .filter(Boolean)
+        .flatMap((line) => {
+          try {
+            const entry: unknown = JSON.parse(line);
+            return isStintLogEntry(entry) ? [entry] : [];
+          } catch {
+            return [];
+          }
+        });
+      if (adopt?.(stint, entries, warnings.length === 0)) continue;
       let checkpointCommit: string | undefined;
       let checkpointWarnings: CheckpointWarning[] = [];
       let error: string | undefined;
       let verifiedWorktree: string | undefined;
       try {
-        const worktreePath = realpathSync(stint.worktree.path);
-        const records = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
-          cwd: projectPath,
-          encoding: "utf8",
-        }).split("\0\0");
-        if (
-          worktreePath === projectPath ||
-          !/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(stint.workItem) ||
-          stint.worktree.branch !== `stintwork/${stint.workItem}` ||
-          !records.some((record) => {
-            const fields = record.split("\0");
-            return (
-              fields.includes(`worktree ${worktreePath}`) &&
-              fields.includes(`branch refs/heads/${stint.worktree.branch}`)
-            );
-          })
-        )
-          throw new Error("The logged worktree is not on this project's work item branch.");
+        const worktreePath = verifyStintWorktree(root, stint);
         verifiedWorktree = worktreePath;
         ensureLocalIgnore(worktreePath);
         checkpointCommit = await createCheckpoint(

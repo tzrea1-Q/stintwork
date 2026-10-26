@@ -32,6 +32,8 @@ test("the production registry offers Codex, Claude Code and Grok without private
   ]);
   for (const profile of descriptions) {
     expect(profile).not.toHaveProperty("launch");
+    expect(profile).not.toHaveProperty("prepare");
+    expect(profile).not.toHaveProperty("verifyRecovery");
     expect(profile).not.toHaveProperty("detectAvailability");
   }
   expect(descriptions[0].capabilities.defaultMode).toBe("workspace-write");
