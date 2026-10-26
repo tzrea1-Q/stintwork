@@ -33,7 +33,7 @@ import { codexProfile } from "./profiles.js";
 import { AgentAuthenticationError } from "./authentication.js";
 import { adapterEntry } from "./adapter-entry.js";
 import { preparedAgentEnvironment, type PreparedAgent } from "./adapter-cache.js";
-import { processIdentity, stopStintProcesses } from "./process-ownership.js";
+import { processIdentity, stopStintProcesses, ProcessOwnershipError } from "./process-ownership.js";
 export {
   stopStintProcesses,
   ProcessOwnershipError,
@@ -86,6 +86,8 @@ export type AgentStintOptions = {
   resume?: { sessionId: string; progress: StintProgress };
   onEvent: (event: StintLogEvent) => void;
   onProcess?: (attempt: StintProcessAttempt) => void;
+  // Called only after verified process-tree cleanup; persistence failure must block the ending.
+  onCleanup?: (attemptId: string) => void;
   onSession?: (sessionId: string) => void;
   onPhase?: (phase: StintPhase, result: Partial<AgentStintResult>) => void;
   onPermission?: (
@@ -127,7 +129,9 @@ export function createAgentLauncher(
   launchAdapter: AdapterLauncher,
   profile: AgentProfile = codexProfile,
   defaultEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): AgentLauncher {
+  const processGroups = platform === "linux" || platform === "darwin";
   return ({
     preparedAgent,
     nativeExecutable,
@@ -139,6 +143,7 @@ export function createAgentLauncher(
     resume,
     onEvent: emitEvent,
     onProcess,
+    onCleanup,
     onSession,
     onPhase,
     onPermission,
@@ -230,7 +235,7 @@ export function createAgentLauncher(
         ? spawn(process.execPath, [`--title=${marker}`, preparedAgent.adapterEntry], {
             cwd,
             stdio: "pipe",
-            detached: process.platform !== "win32",
+            detached: processGroups,
             env: preparedAgentEnvironment(preparedAgent, env),
           })
         : launchAdapter(cwd, env, nativeExecutable);
@@ -415,7 +420,7 @@ export function createAgentLauncher(
             pid: child.pid,
             marker,
             ...(identity ? { identity } : {}),
-            ...(preparedAgent && process.platform !== "win32" ? { processGroup: true } : {}),
+            ...(preparedAgent && processGroups ? { processGroup: true } : {}),
           };
           onProcess?.(processAttempt);
         }
@@ -610,6 +615,15 @@ export function createAgentLauncher(
             undefined,
             writersMayHaveStarted ? undefined : exited,
           );
+        if (processAttempt) {
+          if (processAttempt.processGroup) onCleanup?.(processAttempt.id);
+          else if (preparedAgent || suspended) {
+            // biome-ignore lint/correctness/noUnsafeFinally: Cleanup uncertainty must override success/cancellation to prevent an unsafe checkpoint.
+            throw new ProcessOwnershipError(
+              `Verified process-tree cleanup is unavailable for this attempt on ${platform}. Only Linux and macOS with recorded process-group ownership are supported. The adapter exited, but its tools may still be writing. Verify and stop the old tools before restarting Stintwork. No checkpoint or completed suspension was recorded.`,
+            );
+          }
+        }
       }
     })();
     void done.then(

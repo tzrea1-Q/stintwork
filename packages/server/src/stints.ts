@@ -422,6 +422,7 @@ export function addStintRoutes(
       }
     }
     let attempt: StintProcessAttempt | undefined = recovery?.attempt;
+    let cleanedAttemptId: string | undefined;
     let resumeEstablished = false;
     let fallback = recovery?.state === "fallback";
     let setupError: unknown;
@@ -445,7 +446,15 @@ export function addStintRoutes(
       state.setupCancellation?.abort();
       const cleanup = state.handle?.suspend?.() ?? state.handle?.cancel() ?? Promise.resolve();
       return cleanup
-        .then(() => recordRecovery({ kind: "resume", state: "suspended" }))
+        .then(() => {
+          // No new handle means startup's existing cleanup proof remains authoritative.
+          if (!state.handle) return;
+          if (!attempt || cleanedAttemptId !== attempt.id)
+            throw new ProcessOwnershipError(
+              "Verified process-tree cleanup is unavailable: the launcher provided no durable cleanup proof. Verify and stop old tools before restarting Stintwork. No checkpoint or completed suspension was recorded.",
+            );
+          recordRecovery({ kind: "resume", state: "suspended" });
+        })
         .catch(blockOwnership);
     };
     let setupTimer: ReturnType<typeof setTimeout> | undefined;
@@ -603,6 +612,18 @@ export function addStintRoutes(
           if (state.ending || state.suspending) return;
           recordRecovery({ kind: "attempt", attempt: processAttempt });
           attempt = processAttempt;
+        },
+        onCleanup: (attemptId) => {
+          if (state.ending) return;
+          try {
+            if (attemptId !== attempt?.id) throw new Error("Cleanup names a different attempt.");
+            recordRecovery({ kind: "cleanup", attemptId });
+            cleanedAttemptId = attemptId;
+          } catch (error) {
+            throw new ProcessOwnershipError(
+              `Cannot persist verified process cleanup: ${errorText(error).text}. Repair the stint log and restart Stintwork. No checkpoint was started.`,
+            );
+          }
         },
         onSession: (openedSessionId) => {
           if (state.ending || state.suspending || state.stopRequested) return;
@@ -1257,6 +1278,8 @@ export function addStintRoutes(
     let sessionAttemptId: string | undefined;
     const attempts = new Set<string>();
     let cleanedThrough = -1;
+    let attemptIndex = -1;
+    const cleanedAttempts = new Set<number>();
     let launches = 0;
     let starts = 0;
     let previousPhase = -1;
@@ -1268,6 +1291,11 @@ export function addStintRoutes(
         if (attempts.has(entry.attempt.id)) reason = "Ambiguous recovery attempt history.";
         attempts.add(entry.attempt.id);
         attemptId = entry.attempt.id;
+        attemptIndex = index;
+      }
+      if (entry.kind === "cleanup") {
+        if (entry.attemptId === attemptId) cleanedAttempts.add(attemptIndex);
+        else reason = "Ambiguous recovery cleanup history.";
       }
       if (entry.kind === "resume" && entry.state === "suspended") cleanedThrough = index;
       if (entry.kind === "session") {
@@ -1326,9 +1354,13 @@ export function addStintRoutes(
         try {
           // Completed suspension proves cleanup of every preceding attempt, even if later
           // startup or invalid session metadata prevents resume. Later attempts need their own proof.
-          const uncleanedAttempts = entries
-            .slice(cleanedThrough + 1)
-            .filter((entry) => entry.type === "recovery" && entry.kind === "attempt");
+          const uncleanedAttempts = entries.filter(
+            (entry, index): entry is Extract<StintLogEntry, { kind: "attempt" }> =>
+              index > cleanedThrough &&
+              !cleanedAttempts.has(index) &&
+              entry.type === "recovery" &&
+              entry.kind === "attempt",
+          );
           for (const entry of uncleanedAttempts) await stopStintProcesses(entry.attempt);
           // Make startup cleanup durable too, before another attempt can start or the server can crash.
           if (uncleanedAttempts.length)

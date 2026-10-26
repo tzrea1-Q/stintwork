@@ -834,3 +834,38 @@ test("suspension and native attempt identities survive log validation while malf
   expect(terminal).toMatchObject({ status: "finished" });
   expect(terminal?.recovery).toBeUndefined();
 });
+
+test("attempt cleanup proof validates without changing recovery state or saved finalization", () => {
+  const cleanup = {
+    type: "recovery",
+    version: 1,
+    at: "2026-10-26T12:00:00Z",
+    kind: "cleanup",
+    attemptId: "owned",
+  };
+  expect(isStintLogEntry(cleanup)).toBe(true);
+  for (const attemptId of ["", " ", null, 42, "bad\0id"])
+    expect(isStintLogEntry({ ...cleanup, attemptId })).toBe(false);
+  expect(isStintLogEntry({ ...cleanup, pid: 42 })).toBe(false);
+  if (!isStintLogEntry(cleanup)) throw new Error("Expected cleanup entry");
+  const entries: StintLogEntry[] = [
+    started,
+    {
+      type: "recovery",
+      version: 1,
+      at: cleanup.at,
+      kind: "resume",
+      state: "fallback",
+      reason: "Load failed",
+    },
+    {
+      type: "recovery",
+      version: 1,
+      at: cleanup.at,
+      kind: "phase",
+      attemptId: "owned",
+      progress: { phase: "finalization", status: "interrupted" },
+    },
+  ];
+  expect(foldStintLog([...entries, cleanup])).toEqual(foldStintLog(entries));
+});

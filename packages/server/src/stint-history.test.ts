@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { adapterCacheFixture } from "../../agents/test/adapter-cache-fixture.js";
 import { verifyRecordedAgent } from "../../agents/src/adapter-cache.js";
 import {
   createAgentRegistry,
+  createAgentLauncher,
   createClaudeCodeAgent,
   createCodexAgent,
   prepareAgent,
@@ -34,6 +35,7 @@ import {
   isStintLogEntry,
 } from "@stintwork/core";
 import { ensureWorktree } from "@stintwork/git";
+import * as git from "@stintwork/git";
 import { WebSocket } from "ws";
 import { afterEach, expect, test, vi } from "vitest";
 import { createProjectServer, createNodeRepoFiles } from "./index.js";
@@ -1684,7 +1686,7 @@ test("unverifiable replacement cleanup blocks checkpoint and further Stop withou
   ).toBe(409);
 });
 
-test("shutdown detaches a live permission without a developer rejection, handoff or checkpoint", async () => {
+test("shutdown detaches an unverified live permission without a developer rejection or unsafe checkpoint", async () => {
   const { root, project, registered, selected } = await warmRecovery("codex", "installed");
   let raised!: () => void;
   const waiting = new Promise<void>((resolve) => {
@@ -1728,7 +1730,7 @@ test("shutdown detaches a live permission without a developer rejection, handoff
     status: "running",
     endedAt: null,
     checkpointCommit: null,
-    recovery: { state: "suspended", progress: { phase: "work" } },
+    recovery: { state: "suspending", progress: { phase: "work" } },
   });
   expect(suspended.events.filter((event) => event.type === "permission")).toEqual([]);
   expect(
@@ -2180,5 +2182,303 @@ test("cleanup during recovery stays proven through successive crashes and reused
     read.mockRestore();
     exists.mockRestore();
     signal.mockRestore();
+  }
+});
+
+test.each(["finish", "Stop", "failure", "fallback"] as const)(
+  "a crash during %s checkpoint reuses durable cleanup proof and only finalizes",
+  async (outcome) => {
+    const { root, project, registered, selected, logged } = await savedRecovery("work");
+    registered.verifyRecovery = async () => selected;
+    const read = vi
+      .spyOn(systemProcesses, "read")
+      .mockReturnValue([
+        { pid: process.pid, group: process.pid, identity: "server-start", command: "server" },
+      ]);
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("An already cleaned attempt must never be signalled");
+    });
+    let launched!: () => void;
+    const launching = new Promise<void>((resolve) => {
+      launched = resolve;
+    });
+    let complete!: () => void;
+    let fail!: () => void;
+    registered.launch = vi.fn((options) => {
+      const attempt: StintProcessAttempt = {
+        id: "ending-attempt",
+        pid: 123456789,
+        marker: "stintwork-ending-attempt",
+        identity: "adapter-start",
+        processGroup: true,
+        owner: { pid: process.pid, startedAt: "2026-10-26T12:00:00Z", identity: "server-start" },
+      };
+      options.onProcess?.(attempt);
+      options.onSession?.("fake-session");
+      let finish!: (result: { stopReason: string }) => void;
+      let rejectDone!: (error: Error) => void;
+      let rejectReady!: (error: Error) => void;
+      const ready =
+        outcome === "fallback"
+          ? new Promise<void>((_resolve, reject) => {
+              rejectReady = reject;
+            })
+          : Promise.resolve();
+      const done = new Promise<{ stopReason: string }>((resolve, reject) => {
+        finish = resolve;
+        rejectDone = reject;
+      });
+      // This fake explicitly proves owned process-tree cleanup, before settling done in either direction.
+      complete = () => {
+        options.onCleanup?.(attempt.id);
+        finish({ stopReason: "end_turn" });
+      };
+      fail = () => {
+        options.onCleanup?.(attempt.id);
+        const error = new Error("Controlled agent failure");
+        rejectDone(error);
+        rejectReady?.(error);
+      };
+      launched();
+      return { ready, done, cancel: async () => complete() };
+    });
+    let atCheckpoint!: () => void;
+    const checkpointing = new Promise<void>((resolve) => {
+      atCheckpoint = resolve;
+    });
+    let continueCheckpoint!: () => void;
+    const held = new Promise<void>((resolve) => {
+      continueCheckpoint = resolve;
+    });
+    let crashLog = "";
+    const realCheckpoint = git.createCheckpoint;
+    const checkpoint = vi.spyOn(git, "createCheckpoint").mockImplementationOnce(async (...args) => {
+      crashLog = await readFile(logged.path, "utf8");
+      atCheckpoint();
+      await held;
+      return realCheckpoint(...args);
+    });
+    const first = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await first.app.request("/api/health");
+      await launching;
+      if (outcome !== "fallback")
+        await expect
+          .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
+          .toBe("resumed");
+      if (outcome === "Stop")
+        expect(
+          (await first.app.request("/api/stints/saved-phase/stop", { method: "POST" })).status,
+        ).toBe(202);
+      else if (outcome === "finish") complete();
+      else fail();
+      await checkpointing;
+      expect(crashLog).not.toContain('"type":"ended"');
+      continueCheckpoint();
+      await waitForEnding(root);
+      await first.stop();
+      // Restore exactly the durable prefix captured between done and checkpoint/ended.
+      await writeFile(logged.path, crashLog);
+      registered.verifyRecovery = vi.fn(() => {
+        throw new Error("Finalization must not verify or load");
+      });
+      registered.launch = vi.fn(() => {
+        throw new Error("Finalization must not start a writer");
+      });
+      const restarted = project({ agentRegistry: createAgentRegistry([registered]) });
+      await restarted.app.request("/api/health");
+      await expect
+        .poll(async () => {
+          const snapshot: ProjectSnapshot = await (
+            await restarted.app.request("/api/project")
+          ).json();
+          return (
+            indexStints(createNodeRepoFiles(root)).stints[0].status !== "running" ||
+            snapshot.warnings.some((warning) => warning.message.includes("adapter/tool ownership"))
+          );
+        })
+        .toBe(true);
+      expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+        status: { finish: "finished", Stop: "stopped", failure: "failed", fallback: "interrupted" }[
+          outcome
+        ],
+        checkpointCommit: expect.any(String),
+      });
+      expect(crashLog).toContain('"kind":"cleanup","attemptId":"ending-attempt"');
+      expect(registered.launch).not.toHaveBeenCalled();
+      expect(registered.verifyRecovery).not.toHaveBeenCalled();
+      expect(signal).not.toHaveBeenCalled();
+      expect(
+        (await readFile(logged.path, "utf8"))
+          .split("\n")
+          .filter((line) => line.includes('"type":"ended"')),
+      ).toHaveLength(1);
+    } finally {
+      continueCheckpoint();
+      checkpoint.mockRestore();
+      await first.stop();
+      read.mockRestore();
+      signal.mockRestore();
+    }
+  },
+);
+
+test.each(["win32", "uncertified-launcher"] as const)(
+  "shutdown with injected %s cleanup cannot certify suspension or checkpoint beside a tool",
+  async (capability) => {
+    const { root, project, registered, selected, logged, env } = await savedRecovery("work");
+    env.TEST_RECOVERY = "crash";
+    registered.verifyRecovery = async () => selected;
+    let working!: () => void;
+    const work = new Promise<void>((resolve) => {
+      working = resolve;
+    });
+    const launch = createAgentLauncher(
+      () => {
+        throw new Error("Prepared launch expected");
+      },
+      fakeAgentProfiles.codex,
+      env,
+      "win32",
+    );
+    registered.launch = (options) =>
+      launch({
+        ...options,
+        onEvent(event) {
+          options.onEvent(event);
+          if ("text" in event && event.text === "Before crash") working();
+        },
+      });
+    if (capability === "uncertified-launcher")
+      registered.launch = (options) => {
+        options.onProcess?.({
+          id: "uncertified",
+          pid: 123456789,
+          marker: "stintwork-uncertified",
+          owner: { pid: process.pid, startedAt: "2026-10-26T12:00:00Z" },
+        });
+        options.onSession?.("fake-session");
+        let finish!: (result: { stopReason: string }) => void;
+        const done = new Promise<{ stopReason: string }>((resolve) => {
+          finish = resolve;
+        });
+        queueMicrotask(working);
+        return {
+          ready: Promise.resolve(),
+          done,
+          cancel: async () => finish({ stopReason: "cancelled" }),
+          suspend: async () => finish({ stopReason: "cancelled" }),
+        };
+      };
+    const read = vi.spyOn(systemProcesses, "read").mockReturnValue([
+      { pid: process.pid, group: process.pid, identity: "server-start", command: "server" },
+      { pid: 123456790, parent: 1, group: 123456790, identity: "tool-start", command: "tool" },
+    ]);
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("Unverified tool must never be signalled");
+    });
+    const checkpoint = vi.spyOn(git, "createCheckpoint");
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await server.app.request("/api/health");
+      await work;
+      const head = execFileSync("git", ["rev-parse", "HEAD"], {
+        cwd: logged.worktree.path,
+        encoding: "utf8",
+      });
+      const before = await readFile(logged.path, "utf8");
+      await server.stop();
+      const after = await readFile(logged.path, "utf8");
+      expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+        status: "running",
+        checkpointCommit: null,
+        recovery: { state: "suspending" },
+      });
+      expect(after.slice(before.length)).not.toMatch(
+        /"kind":"cleanup"|"state":"suspended"|"type":"ended"/,
+      );
+      const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+      expect(
+        snapshot.warnings.some((warning) =>
+          warning.message.includes("Verified process-tree cleanup is unavailable"),
+        ),
+      ).toBe(true);
+      expect(
+        execFileSync("git", ["rev-parse", "HEAD"], { cwd: logged.worktree.path, encoding: "utf8" }),
+      ).toBe(head);
+      expect(checkpoint).not.toHaveBeenCalled();
+      expect(signal).not.toHaveBeenCalled();
+    } finally {
+      await server.stop();
+      checkpoint.mockRestore();
+      read.mockRestore();
+      signal.mockRestore();
+    }
+  },
+);
+
+test("a cleanup-proof write failure blocks checkpoint even though the fake adapter is gone", async () => {
+  const { root, project, registered, selected, logged } = await savedRecovery("work");
+  registered.verifyRecovery = async () => selected;
+  let launched!: () => void;
+  const launching = new Promise<void>((resolve) => {
+    launched = resolve;
+  });
+  let finish!: () => void;
+  registered.launch = (options) => {
+    options.onProcess?.({
+      id: "cleaned",
+      pid: 123456789,
+      marker: "stintwork-cleaned",
+      identity: "adapter-start",
+      processGroup: true,
+      owner: { pid: process.pid, startedAt: "2026-10-26T12:00:00Z" },
+    });
+    const done = new Promise<{ stopReason: string }>((resolve, reject) => {
+      finish = () => {
+        try {
+          options.onCleanup?.("cleaned");
+          resolve({ stopReason: "end_turn" });
+        } catch (error) {
+          reject(error);
+        }
+      };
+    });
+    launched();
+    return { ready: Promise.resolve(), done, cancel: async () => {} };
+  };
+  const checkpoint = vi.spyOn(git, "createCheckpoint");
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  try {
+    await server.app.request("/api/health");
+    await launching;
+    await expect
+      .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
+      .toBe("resumed");
+    await rename(logged.path, `${logged.path}.saved`);
+    await mkdir(logged.path);
+    try {
+      finish();
+    } finally {
+      await rm(logged.path, { recursive: true });
+      await rename(`${logged.path}.saved`, logged.path);
+    }
+    await expect
+      .poll(async () => {
+        const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+        return snapshot.warnings.some((warning) =>
+          warning.message.includes("Cannot persist verified process cleanup"),
+        );
+      })
+      .toBe(true);
+    expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      status: "running",
+      checkpointCommit: null,
+    });
+    expect(checkpoint).not.toHaveBeenCalled();
+    expect(await readFile(logged.path, "utf8")).not.toContain('"kind":"cleanup"');
+  } finally {
+    await server.stop();
+    checkpoint.mockRestore();
   }
 });

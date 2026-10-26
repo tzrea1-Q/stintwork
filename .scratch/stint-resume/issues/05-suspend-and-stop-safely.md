@@ -116,3 +116,18 @@ pnpm --config.verify-deps-before-run=false vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines and acceptance checkboxes unchanged.
+
+**Codex, 2026-10-26 — ending cleanup proof and unsupported hosts:** Verified both P1 findings with failing regressions. An attempt-specific `kind: "cleanup"` record is persisted after verified tree cleanup, child exit and pending writes, before `done` settles and checkpointing starts. Recovery applies it only to the preceding matching attempt without changing fallback/lifecycle state. Finish, Stop, failure and fallback tests restore the durable checkpoint-entry log and prove restart only finalizes. Proof-write failure blocks checkpointing.
+
+Linux/macOS are supported. Injected Windows/missing-group attempts reject cleanup; the server also rejects completed suspension from an uncertified custom launcher. Chosen policy: block with guidance and preserve the reservation, without checkpoint/ending/completed suspension. Killing our adapter cannot prove detached tools stopped, so checkpointing could race their writes. Permission detachment still produces no rejection or handoff. Unprepared suspension fixtures now expect ownership errors.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and the append-only/Status guard passed. Core/agents/Git/CLI/web: **117 files, 1,912 passed / 10 native-or-TCP cases excluded**. Nine affected server files: **164 passed / 46 excluded**. Final isolated launcher checks: **39 passed**. The initial non-server run's two old suspension expectations were corrected, then the complete non-server rerun passed. New capability/process tests use fake tables and explicit signals, not racing real timers.
+
+Coordinator: run these commands unfiltered on the native/socket host, including all 13 failed-recovery variants. **All eight server-only SIGKILL cases must execute, not skip.** No native-`ps`, Windows-host or socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run packages/agents/src/{adapter-cache,index,readiness,process-ownership}.test.ts packages/core/src/stints.test.ts packages/server/src/{stints,stint-history,stop-and-failure,checkpoint-handoff,stint-permissions,work-item-files}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+No commit; all `Status:` lines and acceptance checkboxes unchanged.

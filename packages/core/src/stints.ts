@@ -65,6 +65,7 @@ export type StintRecoveryData =
   | { kind: "attempt"; attempt: StintProcessAttempt }
   | { kind: "session"; attemptId: string; sessionId: string }
   | { kind: "phase"; attemptId: string; progress: StintProgress }
+  | { kind: "cleanup"; attemptId: string }
   | { kind: "stop_requested" }
   | {
       kind: "resume";
@@ -523,6 +524,8 @@ function isStintRecoveryEntry(entry: Record<string, unknown>): boolean {
       ) &&
       (entry.reason === undefined || text(entry.reason))
     );
+  if (entry.kind === "cleanup")
+    return keys(entry, [...common, "attemptId"]) && text(entry.attemptId);
   if (entry.kind === "session")
     return (
       keys(entry, [...common, "attemptId", "sessionId"]) &&

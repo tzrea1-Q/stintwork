@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StintLogEvent } from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
-import { createAgentLauncher } from "./index.js";
+import { createAgentLauncher, ProcessOwnershipError } from "./index.js";
 import { createFakeAgentLauncher } from "./testing.js";
 
 const fixtures: string[] = [];
@@ -284,7 +284,7 @@ test("unsupported agents fail before launching a child", async () => {
 });
 
 test.each([false, true])(
-  "suspending active work detaches permission without recording a rejection or requesting handoff (permission: %s)",
+  "unverified suspension detaches permission but refuses cleanup proof without a rejection or handoff (permission: %s)",
   async (permission) => {
     let entered!: () => void;
     const waiting = new Promise<void>((resolve) => {
@@ -319,8 +319,8 @@ test.each([false, true])(
     });
     await waiting;
     if (!stint.suspend) throw new Error("Expected suspension support");
-    await stint.suspend();
-    expect(await stint.done).toEqual({ stopReason: "cancelled" });
+    await expect(stint.suspend()).rejects.toThrow(ProcessOwnershipError);
+    await expect(stint.done).rejects.toThrow(ProcessOwnershipError);
     expect(phases).toEqual(["work"]);
     expect(events.filter((event) => event.type === "permission")).toEqual([]);
     expect(events.some((event) => "text" in event && event.text.includes("Handoff"))).toBe(false);
