@@ -285,7 +285,17 @@ export function addStintRoutes(
     const state: ActiveStint = { id: randomUUID(), setupCancellation: new AbortController() };
     const streaming = context.req.header("accept") === "application/x-ndjson";
     const cancelSetup = () => {
-      state.recordStop?.();
+      try {
+        state.recordStop?.();
+      } catch (error) {
+        // A disconnected client cannot receive an error; keep running without durable intent.
+        console.error(
+          "Could not record Stop intent; disconnected stint left running:",
+          state.id,
+          error,
+        );
+        return;
+      }
       state.stopRequested = true;
       state.setupCancellation?.abort();
       void state.handle?.cancel();
@@ -588,19 +598,30 @@ export function addStintRoutes(
             : undefined;
           details.findings ??= savedProgress.findings;
           // This boundary also covers setup/transport failure without a completed work turn.
-          if (attempt)
-            recordRecovery({
-              kind: "phase",
-              attemptId: attempt.id,
-              progress: {
-                phase: "finalization",
-                status,
-                ...(details.error ? coreTextFields("error", details.error) : {}),
-                ...(details.stopReason && details.stopReason !== savedProgress.stopReason
-                  ? { stopReason: details.stopReason }
-                  : {}),
-              },
-            });
+          try {
+            if (attempt)
+              recordRecovery({
+                kind: "phase",
+                attemptId: attempt.id,
+                progress: {
+                  phase: "finalization",
+                  status,
+                  ...(details.error ? coreTextFields("error", details.error) : {}),
+                  ...(details.stopReason && details.stopReason !== savedProgress.stopReason
+                    ? { stopReason: details.stopReason }
+                    : {}),
+                },
+              });
+          } catch (error) {
+            // Recovery metadata must never prevent ADR 0004's genuine-ending checkpoint.
+            status = "failed";
+            details.error = {
+              text: [details.error?.text, `Could not record finalization: ${errorText(error).text}`]
+                .filter(Boolean)
+                .join("\n"),
+            };
+            console.error("Could not record stint finalization; checkpointing changes:", id, error);
+          }
           permissions.clear(id);
           let checkpointCommit: string | undefined;
           let checkpointWarnings: CheckpointWarning[] = [];
@@ -646,19 +667,22 @@ export function addStintRoutes(
               error: coreText({ code: "stint.reviewEndedEarly" }).text,
             };
           const { error, handoffError, ...rest } = details;
-          append({
-            type: "ended",
-            at: new Date().toISOString(),
-            status,
-            handoff: null,
-            ...rest,
-            ...(error ? coreTextFields("error", error) : {}),
-            ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
-            ...(checkpointCommit ? { checkpointCommit } : {}),
-            ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
-          });
-          active.delete(workItem.slug);
-          refresh();
+          try {
+            append({
+              type: "ended",
+              at: new Date().toISOString(),
+              status,
+              handoff: null,
+              ...rest,
+              ...(error ? coreTextFields("error", error) : {}),
+              ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
+              ...(checkpointCommit ? { checkpointCommit } : {}),
+              ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
+            });
+          } finally {
+            active.delete(workItem.slug);
+            refresh();
+          }
         }
         let attempt: StintProcessAttempt | undefined;
         let savedProgress: StintProgress = { phase: "work" };

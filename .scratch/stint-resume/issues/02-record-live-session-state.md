@@ -69,3 +69,19 @@ Coordinator: run that same command **without `--testNamePattern`** on a socket-e
 8. `stop-and-failure.test.ts`: “Stop mid-turn ends stopped within two seconds with a handoff and checkpoint (WebSocket)”.
 
 This sandbox cannot bind sockets or reach the network. No real authenticated agent/provider, registry, browser, automatic recovery, server-only orphan cleanup or M10 exit pass is claimed. The local source-loading subprocess tests use `sourceNodeArgs` or `--conditions=development`, so they do not require workspace `dist` output in CI.
+
+**Codex, 2026-10-26 — independent-review fixes:** Fixed P1/P2 in this checkout at `38b3d80`; no commit or `Status:` changes.
+
+- A disconnect callback now catches a failed Stop-intent append, reports it to the server log and leaves the stint running. It does not set `stopRequested`, abort preparation, clear permissions or cancel the agent without durable intent. After storage is repaired, an explicit Stop can persist its intent and end normally.
+- Genuine-ending finalization metadata is attempted before checkpointing, but its failure now records a failure diagnostic and continues through permission cleanup, the ADR 0004 checkpoint and risky-file inspection. Terminal-log append failure also releases the dead attempt's in-memory reservation in `finally`. If storage still prevents writing `ended`, the checkpoint remains on the work-item branch and the error is reported; durable history remains unfinished until the existing restart recovery can record its ending. No fabricated terminal entry or automatic retry was added.
+- Three regressions went red before the fix: a real child process died with uncaught `EISDIR` on request abort, and metadata-only / whole-log persistent failures both left HEAD unchanged. All three now pass. They verify process survival, no cancellation without intent, subsequent explicit Stop, real checkpoint contents, permission cancellation and removal of the dead attempt from active ownership. The child loads workspace sources through `sourceNodeArgs`, with no `dist` requirement.
+
+Validation: `pnpm --config.verify-deps-before-run=false format:check` passed (381 files); `lint` passed (333 licence headers, 382 Biome files; existing informational deprecation only); `typecheck` passed across the workspace; `git diff --check` passed. The following unfiltered run passed all 969 core tests and 83 server tests; eight socket cases failed solely with this sandbox's `listen EPERM` limitation. The coordinator should rerun it without exclusions on a socket-enabled machine:
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run packages/core \
+  packages/server/src/{stints,stint-history,review-findings,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts \
+  --configLoader native
+```
+
+The same six server files, with the previously listed eight socket cases excluded using `--testNamePattern='^(?![\s\S]*(?:HTTP start|rich events and pending permission|HTTP preparation disconnect|TCP: true|WebSocket|Needs-you snapshots reach both tabs))'`, passed: 6 files, 83 tests, 8 excluded. No new real-agent, browser, package-smoke or socket pass is claimed by this follow-up.

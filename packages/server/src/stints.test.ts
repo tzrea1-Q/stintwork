@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync } from "nod
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createFakeAgentLauncher } from "@stintwork/agents/testing";
+import { createFakeAgentLauncher, sourceNodeArgs } from "@stintwork/agents/testing";
 import {
   createAgentRegistry,
   createClaudeCodeAgent,
@@ -13,6 +13,7 @@ import {
   readExecutableIdentity,
   adapterPins,
   type AgentLauncher,
+  type AgentStintOptions,
   type AgentPreparationOptions,
   type PreparedAgent,
 } from "@stintwork/agents";
@@ -30,6 +31,7 @@ import { WebSocket } from "ws";
 import { codexProfile } from "../../agents/src/profiles.js";
 import type { StintServerOptions } from "./stints.js";
 import { createProjectServer } from "./index.js";
+import * as stintHistory from "./stint-history.js";
 
 const fixtures: {
   parent: string;
@@ -1316,5 +1318,181 @@ test.each([false, true])(
       .map((line) => JSON.parse(line));
     expect(entries.filter((entry) => entry.kind === "stop_requested")).toHaveLength(1);
     expect(entries.filter((entry) => entry.type === "ended")).toHaveLength(1);
+  },
+);
+
+test("disconnecting a pending start with an unwritable log leaves the server and stint running", async () => {
+  const { root } = await fixture();
+  const output = execFileSync(
+    process.execPath,
+    sourceNodeArgs(
+      "--input-type=module",
+      "--eval",
+      `
+      import assert from 'node:assert/strict';
+      import { mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync } from 'node:fs';
+      import { join } from 'node:path';
+      import { setImmediate } from 'node:timers/promises';
+      import { createProjectServer } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
+      const root = ${JSON.stringify(root)};
+      let ready, complete, launched;
+      let cancellations = 0;
+      const launching = new Promise(resolve => { launched = resolve; });
+      const reports = [];
+      console.error = (...args) => reports.push(args);
+      const project = createProjectServer(root, join(root, 'web'), {
+        launchAgent() {
+          const handle = {
+            ready: new Promise(resolve => { ready = resolve; }),
+            done: new Promise(resolve => { complete = resolve; }),
+            async cancel() { cancellations++; complete({ stopReason: 'cancelled' }); },
+          };
+          launched();
+          return handle;
+        },
+      });
+      const request = new AbortController();
+      const starting = project.app.request('/api/stints', {
+        method: 'POST', signal: request.signal,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workItem: 'first', ticket: 1, agent: 'codex' }),
+      });
+      await launching;
+      const directory = join(root, '.stintwork/local/stints');
+      const path = join(directory, readdirSync(directory)[0]);
+      const original = readFileSync(path, 'utf8');
+      renameSync(path, path + '.saved');
+      mkdirSync(path);
+      try {
+        request.abort();
+        await setImmediate(); // Node rethrows AbortSignal listener errors on the next tick.
+        assert.equal(cancellations, 0, 'No cancellation without durable Stop intent');
+        assert.ok(reports.some(args => String(args[0]).includes('Stop intent')));
+        assert.equal((await project.app.request('/api/health')).status, 200);
+      } finally {
+        rmdirSync(path);
+        renameSync(path + '.saved', path);
+      }
+      assert.equal(readFileSync(path, 'utf8'), original);
+      ready();
+      const response = await starting;
+      assert.equal(response.status, 201);
+      const { stint } = await response.json();
+      assert.equal((await project.app.request('/api/stints/' + stint.id + '/stop', { method: 'POST' })).status, 202);
+      const deadline = Date.now() + 2000;
+      while ((await (await project.app.request('/api/stints/' + stint.id)).json()).stint.status === 'running') {
+        assert.ok(Date.now() < deadline, 'Stop must finish');
+        await setImmediate();
+      }
+      await project.stop();
+      const entries = readFileSync(path, 'utf8').trim().split('\\n').map(line => JSON.parse(line));
+      assert.equal(entries.filter(entry => entry.kind === 'stop_requested').length, 1);
+      assert.equal(entries.filter(entry => entry.type === 'ended').length, 1);
+      assert.equal(entries.at(-1).status, 'stopped');
+      assert.equal(cancellations, 1);
+      process.stdout.write('survived');
+    `,
+    ),
+    { encoding: "utf8", timeout: 10_000 },
+  );
+  expect(output).toBe("survived");
+});
+
+test.each(["metadata", "entire log"])(
+  "genuine endings checkpoint and clear permissions despite persistent %s write failure",
+  async (failure) => {
+    let callbacks: AgentStintOptions | undefined;
+    let fail: (error: unknown) => void = () => {};
+    const cancel = vi.fn(async () => {});
+    const { root, project } = await fixture((options) => {
+      callbacks = options;
+      options.onProcess?.({
+        id: "ending-attempt",
+        owner: { pid: process.pid, startedAt: new Date().toISOString() },
+        pid: process.pid,
+        marker: null,
+      });
+      options.onSession?.("ending-session");
+      options.onPhase?.("work", {});
+      return {
+        ready: Promise.resolve(),
+        done: new Promise((_resolve, reject) => {
+          fail = reject;
+        }),
+        cancel,
+      };
+    });
+    const response = await start(project);
+    expect(response.status).toBe(201);
+    const { stint }: { stint: Stint } = await response.json();
+    if (!callbacks?.onPermission) throw new Error("Expected live permission handler");
+    const permission = callbacks.onPermission({
+      sessionId: "ending-session",
+      requestId: "pending-at-end",
+      toolCall: { toolCallId: "pending-tool" },
+      options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+      forwarded: new Promise<void>(() => {}),
+    });
+    await writeFile(join(stint.worktree.path, "partial.txt"), "Must be checkpointed");
+    const path = join(root, `.stintwork/local/stints/${stint.id}.jsonl`);
+    const append = stintHistory.appendStintLog;
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const writes = vi.spyOn(stintHistory, "appendStintLog").mockImplementation((target, entry) => {
+      if (target === path && failure === "metadata" && entry.type === "recovery")
+        throw new Error("Recovery metadata write failed");
+      append(target, entry);
+    });
+    if (failure === "entire log") {
+      renameSync(path, `${path}.saved`);
+      mkdirSync(path);
+    }
+    try {
+      try {
+        callbacks.onPhase?.("handoff", { stopReason: "end_turn" });
+      } catch (error) {
+        fail(error);
+      }
+      await expect
+        .poll(
+          () =>
+            execFileSync("git", ["rev-parse", "HEAD"], {
+              cwd: stint.worktree.path,
+              encoding: "utf8",
+            }).trim(),
+          { timeout: 2000 },
+        )
+        .not.toBe(stint.baseCommit);
+      expect(
+        execFileSync("git", ["show", "HEAD:partial.txt"], {
+          cwd: stint.worktree.path,
+          encoding: "utf8",
+        }),
+      ).toBe("Must be checkpointed");
+      await expect(permission).resolves.toEqual({ outcome: { outcome: "cancelled" } });
+      await expect.poll(() => stintHistory.activeStintIds.has(stint.id)).toBe(false);
+      await project.stop();
+      expect(cancel).not.toHaveBeenCalled(); // A dead attempt must not remain in the active map.
+      expect(stintHistory.activeStintIds.has(stint.id)).toBe(false);
+      expect(report).toHaveBeenCalled();
+      if (failure === "metadata") {
+        const log = readFileSync(path, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line));
+        expect(log.filter((entry) => entry.type === "ended")).toHaveLength(1);
+        expect(log.at(-1)).toMatchObject({
+          status: "failed",
+          checkpointCommit: expect.any(String),
+        });
+        expect(log.at(-1).error).toContain("Recovery metadata write failed");
+      }
+    } finally {
+      if (failure === "entire log") {
+        rmdirSync(path);
+        renameSync(`${path}.saved`, path);
+      }
+      writes.mockRestore();
+      report.mockRestore();
+    }
   },
 );
