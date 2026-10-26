@@ -52,6 +52,7 @@ function fixture(
   changeOptions = false,
   failWrite = false,
   phase: "work" | "handoff" | "findings" = "work",
+  optionMetadata = false,
 ) {
   const input = new PassThrough();
   const stdin = failWrite
@@ -93,7 +94,10 @@ function fixture(
           toolCall: request,
           options: changeOptions
             ? options.map((option) => ({ ...option, name: `${option.name} now` }))
-            : options,
+            : options.map((option) => ({
+                ...option,
+                ...(optionMetadata ? { _meta: { adapter: "live-only" } } : {}),
+              })),
         });
         if (response.outcome.outcome === "selected" && response.outcome.optionId === "yes")
           effects.push("edit");
@@ -293,5 +297,21 @@ test("load can return while its live callback waits; no continuation prompt over
   await f.prompted.promise;
   f.finish.resolve();
   await f.stint.done;
+  expect(f.effects).toEqual([]);
+});
+
+test("option _meta does not turn an identical reissue into fresh consent or lose its original age", async () => {
+  const f = fixture("work", toolCall, false, false, "work", true);
+  await f.published.promise;
+  const request = f.events.find((event) => event.type === "permission_request");
+  expect(request).toMatchObject({ logicalRequestId: "old", raisedAt: saved.raisedAt, options });
+  f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
+  await f.callback().forwarded;
+  await f.received.promise;
+  f.finish.resolve();
+  await f.stint.done;
+  expect(f.events).not.toContainEqual(
+    expect.objectContaining({ type: "permission_delivery", requestId: "old", outcome: "retired" }),
+  );
   expect(f.effects).toEqual([]);
 });

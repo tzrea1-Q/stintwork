@@ -352,7 +352,9 @@ export function createAgentLauncher(
                 /* Unparseable details cannot establish a match. */
               }
               const sorted = (options: typeof saved.options) =>
-                [...options].sort((a, b) => a.optionId.localeCompare(b.optionId));
+                options
+                  .map(({ optionId, name, kind }) => ({ optionId, name, kind }))
+                  .sort((a, b) => a.optionId.localeCompare(b.optionId));
               if (
                 isDeepStrictEqual(details, request.toolCall) &&
                 isDeepStrictEqual(sorted(saved.options), sorted(request.options))

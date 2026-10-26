@@ -562,6 +562,155 @@ test.each(["resolved", "rejected", "stalled"] as const)(
   },
 );
 
+test("a subscriber connected before EOF cleanup sees two valid frames before the fixture's late log count", async () => {
+  const { root, project, registered, selected, logged, entries } = await savedRecovery("handoff");
+  const uid = process.getuid?.() as number;
+  const attempt = entries.find((entry) => entry.type === "recovery" && entry.kind === "attempt");
+  if (attempt?.type !== "recovery" || attempt.kind !== "attempt")
+    throw new Error("Expected attempt");
+  Object.assign(attempt.attempt, { pid: 20, identity: `${uid}:old-adapter`, processGroup: true });
+  Object.assign(attempt.attempt.owner, { pid: 10, identity: `${uid}:old-owner` });
+  const before = entries.filter((entry) => !(entry.type === "recovery" && entry.kind === "resume"));
+  await writeFile(logged.path, `${before.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+  const inspecting = permissionSignal();
+  const resumeInspection = permissionSignal();
+  const verifying = permissionSignal();
+  const resumeVerification = permissionSignal();
+  const launched = permissionSignal();
+  const finish = permissionSignal<AgentStintResult>();
+  let transient = true;
+  let now = 0;
+  const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => [
+    { pid: process.pid, uid, group: process.pid, identity: `${uid}:server`, command: "server" },
+    ...(transient
+      ? [
+          {
+            pid: 21,
+            uid,
+            group: 21,
+            identity: `${uid}:transient`,
+            command: "transient unrelated job",
+          },
+        ]
+      : []),
+  ]);
+  const exists = vi
+    .spyOn(systemProcesses, "exists")
+    .mockImplementation((pid) => pid === process.pid || (pid === 21 && transient));
+  const cwd = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(new Map());
+  const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+    throw new Error("No signal is authorized");
+  });
+  const on = vi.spyOn(WebSocketServer.prototype, "on");
+  registered.verifyRecovery = async () => {
+    verifying.resolve();
+    await resumeVerification.promise;
+    return selected;
+  };
+  registered.launch = () => {
+    launched.resolve();
+    return {
+      ready: Promise.resolve(),
+      done: finish.promise,
+      cancel: async () => {
+        finish.resolve({ stopReason: "cancelled" });
+      },
+    };
+  };
+  const server = project({
+    agentRegistry: createAgentRegistry([registered]),
+    recoveryProcessScan: {
+      now: () => now,
+      wait: async (milliseconds) => {
+        inspecting.resolve();
+        await resumeInspection.promise;
+        transient = false;
+        now += milliseconds;
+      },
+    },
+  });
+  const websocket = on.mock.contexts.find(
+    (_, index) => on.mock.calls[index][0] === "connection",
+  ) as WebSocketServer;
+  const frames: StintLiveMessage[] = [];
+  const client = {
+    readyState: WebSocket.OPEN,
+    on: vi.fn(),
+    terminate: vi.fn(),
+    send(bytes: string) {
+      const message = JSON.parse(bytes);
+      if (message.type === "stint") frames.push(message);
+    },
+  } as unknown as WebSocket;
+  try {
+    await server.app.request("/api/health");
+    await permissionStep(
+      root,
+      server,
+      "old-writer inspection held before subscription",
+      () => inspecting.promise,
+    );
+    const subscriptionEntries = (await readFile(logged.path, "utf8")).trim().split("\n").length;
+    websocket.clients.add(client);
+    websocket.emit("connection", client);
+    resumeInspection.resolve();
+    await permissionStep(
+      root,
+      server,
+      "verification held after cleanup frames",
+      () => verifying.promise,
+    );
+    const previousEntries = (await readFile(logged.path, "utf8")).trim().split("\n").length;
+    expect(previousEntries).toBe(subscriptionEntries + 2);
+    expect(frames).toMatchObject([
+      {
+        sequence: subscriptionEntries + 1,
+        entry: { type: "recovery", kind: "resume", state: "suspended" },
+      },
+      {
+        sequence: subscriptionEntries + 2,
+        entry: { type: "recovery", kind: "resume", state: "resuming" },
+      },
+    ]);
+    const duringSetup = (await readFile(logged.path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(frames.map((frame) => frame.entry)).toEqual(duringSetup.slice(subscriptionEntries));
+    resumeVerification.resolve();
+    await permissionStep(
+      root,
+      server,
+      "replacement launched after verification release",
+      () => launched.promise,
+    );
+    finish.resolve({ stopReason: "end_turn" });
+    await permissionStep(root, server, "replacement ending and checkpoint", () =>
+      waitForEnding(root),
+    );
+    const ended = (await readFile(logged.path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(frames.map((frame) => frame.sequence)).toEqual(
+      frames.map((_, index) => subscriptionEntries + index + 1),
+    );
+    expect(frames.map((frame) => frame.entry)).toEqual(ended.slice(subscriptionEntries));
+    expect(new Set(frames.map((frame) => frame.sequence)).size).toBe(frames.length);
+  } finally {
+    websocket.clients.delete(client);
+    resumeInspection.resolve();
+    resumeVerification.resolve();
+    finish.resolve({ stopReason: "end_turn" });
+    await server.stop();
+    on.mockRestore();
+    signal.mockRestore();
+    cwd.mockRestore();
+    exists.mockRestore();
+    read.mockRestore();
+  }
+});
+
 test.skipIf(!nativeProcessInspection).each(
   (["claude", "codex"] as const).flatMap((agent) =>
     (["installed", "bundled"] as const).flatMap((source) =>
@@ -748,6 +897,13 @@ test.skipIf(!nativeProcessInspection).each(
         url = `http://127.0.0.1:${address.port}`;
       }
       const frames: StintLiveMessage[] = [];
+      // Hold verification before subscribing: cleanup/resuming entries must already be in
+      // snapshot/history, otherwise they are live frames included in the later log count too.
+      if (url && lifetime !== "EOF-with-tool")
+        await crashStep(
+          "recovery verification held before WebSocket subscription",
+          () => verificationEntered,
+        );
       if (url) {
         socket = new WebSocket(`${url.replace("http:", "ws:")}/api/live`);
         socket.on("message", (bytes) => {
