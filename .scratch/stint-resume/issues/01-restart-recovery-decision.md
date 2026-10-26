@@ -1,6 +1,6 @@
 # 01 — Record the restart recovery decision
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: none
 
 ## What to build
@@ -22,3 +22,7 @@ Get coordinator/maintainer approval of the record before implementation tickets 
 ## Comments
 
 **Codex, 2026-10-26:** Filed as the first prerequisite. No new decision record has been written or approved in this filing. Approval is coordinator/maintainer work; docs checks need no real agents, network, sockets or browser.
+
+**Codex, 2026-10-26:** Proposed [ADR 0012](../../../docs/adr/0012-resume-unfinished-stints-after-server-restart.md) after reading all existing records, the spec and first-run ticket 03's final coordinator evidence. It records automatic same-session recovery, suspension versus ending, warm-cache-only exact selection, existing boundaries and checkpoint fallback. No new product term is needed, so the glossary is unchanged. Coordinator/maintainer decision: pending; no approval is claimed, this ticket remains unresolved and implementation tickets must wait for approval.
+
+Docs checks passed: `pnpm --config.verify-deps-before-run=false format:check` (381 files), `pnpm --config.verify-deps-before-run=false lint` (333 licence headers, 382 Biome files; existing informational `biome.json:24` deprecation), and the spec's `pnpm --config.verify-deps-before-run=false vitest run packages/core --configLoader native` (32 files, 967 tests). Separate guards verified the ADR length, ending and local links, append-only ticket changes, unchanged Status lines and existing ADRs, the two-file scope and whitespace. No product code, real-agent/crash evidence or commit.
