@@ -1,6 +1,6 @@
 # 05 — Suspend on shutdown and honor Stop across crashes
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 04
 
 ## What to build
@@ -266,3 +266,23 @@ pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines unchanged.
+
+**Coordinator, 2026-10-26:** Verified on the native socket host (darwin-arm64, maintainer's machine, Node 22).
+
+- **Checks:** format:check, lint, typecheck and build pass. All 2634 unit tests pass, including all 24 server-only SIGKILL cases. The SIGKILL matrix also passed 24/24 across repeated runs: 8 of 8 after the zombie and own-descendant fix, then 4 of 4 after the pre-attempt exclusion. smoke:package and 314 e2e tests pass.
+- **Reviews:** nine Codex reviews. Each finding was fixed with a regression test. The seventh and ninth reviews were clean.
+
+Real installed Claude 2.1.295 stints, run through the built CLI in a scratch repo:
+
+- **Graceful SIGTERM mid-work:** the log shows suspending → cleanup → suspended, with no ending, checkpoint or rejection. The server exited in about 2 s and no adapter was left. On restart: resuming → resumed in the same ACP session, then one `finished` ending with a handoff.
+- **Server-only SIGKILL mid-work:** the real adapter exits by itself on stdin EOF, and the crash test fixtures model this.
+  - Host runs found four defects, all fixed:
+    1. Recovery blocked forever after the adapter exited by itself.
+    2. Unrelated processes with deleted working directories broke the inspection.
+    3. Transient zombie or own `(git)` children blocked recovery.
+    4. A shell opened before the stint, sitting in the worktree, blocked recovery. The scan now also retries for transient processes.
+  - On the final build, two crashed stints recovered by resuming the same session. One finished with a handoff.
+  - The other was then suspended while a permission request was pending. On restart it took the designed checkpoint fallback: "A saved permission request cannot yet be rebound to a live process", one `interrupted` ending, checkpoint `7bea1d8`. Restoring pending permissions is ticket 06.
+- **Leftovers:** no `stintwork-*` adapter was left after any run.
+
+**Known limit:** a deliberately detached writer outside the marker, process group or worktree working directory is not covered (spec step 4). Windows has no verified cleanup and blocks instead of suspending. Real Codex shutdown and crash are left to ticket 09's M10 exit run. Resolved.
