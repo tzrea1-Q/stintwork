@@ -145,3 +145,17 @@ pnpm --config.verify-deps-before-run=false vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines and acceptance checkboxes unchanged.
+
+**Codex, 2026-10-26 — Stop correction and transport cleanup:** Restored explicit Stop's handoff, retry, handoff-permission and Review findings paths; reviewed and reverted the incorrect expectations in all four named test files. Only suspension aborts after-turn collection (correcting the preceding Comment); the spec and explicitly released Review-reply regression now distinguish Stop from suspension.
+
+Native inspection rejection and cleanup-budget expiry both reproduced open local transports before the fix. Cleanup now always destroys stdin/stdout/stderr and, on failure, unreferences the child handle while preserving `ProcessOwnershipError`, withholding cleanup proof/checkpoint and issuing no unverified child signal. Successful cleanup still awaits child exit. The regressions use fake process tables, explicit phase/reply signals and a fake clock.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Agents: **23 files / 278 passed / 9 native-inspection cases excluded**. All seven requested/restored server files: **61 passed / 7 socket cases excluded**, including all five socketless cases from the reported seven failures. Five targeted recovery/shutdown regressions passed, including observed `initialize:exit` fallback, ownership/proof-write blocking and shutdown persistence/resource failures; 78 other history cases were unselected.
+
+Coordinator: run the following unfiltered on the socket/native-`ps` host. This includes the nine prepared-adapter cases, seven socket cases (including both remaining reported failures), all eight server-only SIGKILL cases and all 13 failed-recovery variants. No native/socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stage-stints,claude-code,handoff-notes,superseded-handoffs,stop-and-failure,checkpoint-handoff,stint-permissions,stint-history}.test.ts --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.

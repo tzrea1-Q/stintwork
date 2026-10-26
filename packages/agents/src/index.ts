@@ -527,7 +527,7 @@ export function createAgentLauncher(
             timeoutMs: afterTurnTimeoutMs,
             failure,
             signal: afterTurnCancellation.signal,
-            retryAfterCancel: () => result.stopReason === "cancelled",
+            retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
             onRequest(request, results) {
               if (request.resultField === "handoff" || request.resultField === "findings")
                 onPhase?.(request.resultField, { ...result, ...results });
@@ -595,19 +595,28 @@ export function createAgentLauncher(
           if (!child?.pid || child.exitCode !== null || child.signalCode !== null) resolveExit();
           else child.once("exit", () => resolveExit());
         });
-        if (processAttempt?.identity && processAttempt.processGroup)
-          await stopStintProcesses(
-            processAttempt,
-            true,
-            undefined,
-            writersMayHaveStarted ? undefined : exited,
-          );
-        child.kill("SIGTERM");
-        const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
-        killTimer.unref();
-        child.once("exit", () => clearTimeout(killTimer));
-        child.stdin.destroy();
-        child.stdout.destroy();
+        try {
+          if (processAttempt?.identity && processAttempt.processGroup)
+            await stopStintProcesses(
+              processAttempt,
+              true,
+              undefined,
+              writersMayHaveStarted ? undefined : exited,
+            );
+          child.kill("SIGTERM");
+          const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
+          killTimer.unref();
+          child.once("exit", () => clearTimeout(killTimer));
+        } catch (error) {
+          // Ownership failure still blocks checkpointing, but must not keep the CLI alive.
+          child.unref();
+          // biome-ignore lint/correctness/noUnsafeFinally: Preserve cleanup uncertainty instead of allowing a successful ending or checkpoint.
+          throw error;
+        } finally {
+          child.stdin.destroy();
+          child.stdout.destroy();
+          child.stderr.destroy();
+        }
         await exited;
         await Promise.allSettled(writes);
         if (processAttempt?.processGroup && !processAttempt.identity)
@@ -645,7 +654,6 @@ export function createAgentLauncher(
       },
       async cancel() {
         cancelled = true;
-        afterTurnCancellation.abort(new CoreTextError({ code: "agent.stintCancelled" }));
         cancelPermission();
         if (connection && acpId) {
           await Promise.race([

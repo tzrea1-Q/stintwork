@@ -38,13 +38,14 @@ function waitingAgent(
     afterTurnRequests?: readonly AfterTurnRequest[];
   } = {},
 ) {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
   const profile = fakeAgentProfiles[agent];
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),
     pid: options.prepared ? 20 : undefined,
+    unref: vi.fn(),
     exitCode: null as number | null,
     signalCode: null as NodeJS.Signals | null,
     kill: vi.fn(() => {
@@ -317,8 +318,41 @@ test.each(
   },
 );
 
+test.each(["inspection", "budget"] as const)(
+  "%s cleanup failure releases local transports without certifying cleanup or signalling an unverified child",
+  async (fault) => {
+    const cleanup = vi.fn();
+    const waiting = waitingAgent("codex", "loadSession", {
+      prepared,
+      platform: "linux",
+      onCleanup: cleanup,
+    });
+    await waiting.entered;
+    if (fault === "inspection")
+      vi.mocked(systemProcesses.read).mockImplementation(() => {
+        throw new Error("Controlled native inspection failure");
+      });
+    else waiting.signal.mockImplementation(() => {}); // Owned processes survive all signals.
+    const stopping = waiting.stint.suspend?.().catch((error: unknown) => error);
+    if (fault === "budget") await vi.advanceTimersByTimeAsync(1000);
+    const error = await waiting.outcome;
+    expect(error).toBeInstanceOf(ProcessOwnershipError);
+    expect(await stopping).toBe(error);
+    expect(cleanup).not.toHaveBeenCalled();
+    expect(waiting.table.get(21)?.identity).toBe("tool-start");
+    expect(waiting.child.kill).not.toHaveBeenCalled();
+    if (fault === "inspection") expect(waiting.signal).not.toHaveBeenCalled();
+    expect(waiting.child.stdin.destroyed).toBe(true);
+    expect(waiting.child.stdout.destroyed).toBe(true);
+    expect(waiting.child.stderr.destroyed).toBe(true);
+    expect(waiting.child.unref).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+    waiting.release();
+  },
+);
+
 test.each(["suspend", "Stop"] as const)(
-  "%s during Review handoff aborts collection before the findings prompt",
+  "%s during Review handoff controls whether findings are collected",
   async (operation) => {
     const waiting = waitingAgent("codex", "handoff", {
       afterTurnRequests: [handoffRequest, findingsRequest],
@@ -330,12 +364,18 @@ test.each(["suspend", "Stop"] as const)(
       expect.objectContaining({ prompt: [{ type: "text", text: handoffRequest.prompt }] }),
     );
     const stopping = operation === "suspend" ? waiting.stint.suspend?.() : waiting.stint.cancel();
-    // The old handoff reply may arrive after shutdown/Stop has started.
+    // Explicitly release the handoff reply after shutdown/Stop starts.
     waiting.release();
     await stopping;
     await waiting.outcome;
-    expect(waiting.prompt).toHaveBeenCalledTimes(2);
+    const count = operation === "suspend" ? 2 : 3;
+    expect(waiting.prompt).toHaveBeenCalledTimes(count);
+    if (operation === "Stop")
+      expect(waiting.prompt).toHaveBeenNthCalledWith(
+        3,
+        expect.objectContaining({ prompt: [{ type: "text", text: findingsRequest.prompt }] }),
+      );
     await vi.advanceTimersByTimeAsync(1000);
-    expect(waiting.prompt).toHaveBeenCalledTimes(2);
+    expect(waiting.prompt).toHaveBeenCalledTimes(count);
   },
 );

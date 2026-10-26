@@ -441,12 +441,12 @@ test("a broken agent pipe returns an error even when the selected decision was l
   );
 });
 
-test("an agent-cancelled work turn can still forward a permission answer during its handoff", async () => {
+test("a stopped work turn can still forward a permission answer during its handoff", async () => {
   const handoff =
     "## Where I stopped\nStopped work.\n## Unresolved\nNone\n## Suggested next\nReview.\n";
   const { root, project } = await fixture(
     createFakeAgentLauncher(
-      [{ type: "end", stopReason: "cancelled" }],
+      [permission],
       [
         { ...permission, toolCall: { toolCallId: "handoff" }, expectedOptionId: "allow_once" },
         { type: "message", text: handoff },
@@ -454,13 +454,15 @@ test("an agent-cancelled work turn can still forward a permission answer during 
     ),
   );
   const stint = await start(project);
+  await pending(project, stint.id);
+  expect((await post(project.app, `/api/stints/${stint.id}/stop`, {})).status).toBe(202);
   const requestId = await pending(project, stint.id);
   const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
     optionId: "allow_once",
   });
   expect(answer.status).toBe(200);
   expect(await decisions(root, stint.id, requestId)).toHaveLength(1);
-  await expect.poll(async () => (await history(project, stint.id)).status).toBe("finished");
+  await expect.poll(async () => (await history(project, stint.id)).status).toBe("stopped");
   expect((await history(project, stint.id)).handoff).toMatchObject({
     stoppedAt: "Stopped work.",
     unresolved: "None",
