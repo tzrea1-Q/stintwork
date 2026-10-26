@@ -10,4 +10,4 @@ The [2026-10-17 coordinator evidence](../../.scratch/first-run/issues/03-install
 
 Legacy logs and experimental Grok use checkpoint fallback; a new stint requires developer action. Old processes are not reattached or supervised. Confirm previous writers have stopped before replacement or checkpointing; uncertain ownership blocks mutations with a warning. The [spec](../../.scratch/stint-resume/spec.md) defines validation, lifecycle and failure details.
 
-Awaiting the maintainer's approval.
+Approved by the maintainer on 2026-10-26.
