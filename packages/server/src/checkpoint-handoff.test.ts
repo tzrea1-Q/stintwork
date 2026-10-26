@@ -148,7 +148,7 @@ test("a clean fake-agent stint makes no commit and records the existing HEAD for
   expect((await entries(root, stint.id)).at(-1)).toMatchObject({ handoff: null });
 });
 
-test("a stopped stint records a failed handoff reason in its ended entry and summary", async () => {
+test("a stopped stint checkpoints without requesting or inventing a handoff", async () => {
   const { root, project } = await fixture(
     [
       { type: "write", path: "partial.txt", content: "Recoverable edit" },
@@ -169,15 +169,16 @@ test("a stopped stint records a failed handoff reason in its ended entry and sum
   expect(stint).toMatchObject({
     status: "stopped",
     handoff: null,
-    handoffError: expect.stringContaining("Agent was still settling the cancelled patch."),
   });
   expect(stint).not.toHaveProperty("error");
+  expect(stint).not.toHaveProperty("handoffError");
   expect((await entries(root, stint.id)).at(-1)).toMatchObject({
     type: "ended",
     status: "stopped",
-    handoff: null,
-    handoffError: stint.handoffError,
   });
+  expect(
+    ((await entries(root, stint.id)).at(-1) as { handoff?: unknown }).handoff ?? null,
+  ).toBeNull();
   expect(git(started.worktree.path, "show", `${stint.checkpointCommit}:partial.txt`)).toBe(
     "Recoverable edit",
   );

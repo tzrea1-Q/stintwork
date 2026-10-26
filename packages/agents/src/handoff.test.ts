@@ -129,25 +129,23 @@ test("a crashed handoff cannot turn a finished work turn into a failed stint", a
   });
 });
 
-test.each([1, 2])("retries %i failed handoff prompts after a stop", async (handoffFailures) => {
-  const stint = createFakeAgentLauncher(
-    [
-      { type: "message", text: "Working" },
-      { type: "delay", milliseconds: 30_000 },
-    ],
-    [{ type: "message", text }],
-    { handoffFailures },
-  )({
-    agent: "codex",
-    cwd: await fixture(),
-    prompt: "Work",
-    handoffTimeoutMs: 3000,
-    onEvent: (event) => {
-      if ("text" in event && event.text === "Working") void stint.cancel();
-    },
-  });
-  expect(await stint.done).toEqual({ stopReason: "cancelled", handoff });
-});
+test.each([1, 2])(
+  "retries %i failed handoff prompts after an agent-reported cancellation",
+  async (handoffFailures) => {
+    const stint = createFakeAgentLauncher(
+      [{ type: "end", stopReason: "cancelled" }],
+      [{ type: "message", text }],
+      { handoffFailures },
+    )({
+      agent: "codex",
+      cwd: await fixture(),
+      prompt: "Work",
+      handoffTimeoutMs: 3000,
+      onEvent: () => {},
+    });
+    expect(await stint.done).toEqual({ stopReason: "cancelled", handoff });
+  },
+);
 
 test("always-failing handoff prompts record the last failure within the timeout", async () => {
   const stint = createFakeAgentLauncher(
@@ -248,7 +246,7 @@ test("malformed handoffs record a reason without retrying", async () => {
   });
 });
 
-test("an acknowledged cancellation still requests the handoff in the same ACP stint", async () => {
+test("an acknowledged Stop does not request a new handoff", async () => {
   let markWorking: () => void = () => {};
   const working = new Promise<void>((resolve) => {
     markWorking = resolve;
@@ -271,10 +269,10 @@ test("an acknowledged cancellation still requests the handoff in the same ACP st
   });
   await working;
   await stint.cancel();
-  expect(await stint.done).toEqual({ stopReason: "cancelled", handoff });
+  expect(await stint.done).toEqual({ stopReason: "cancelled" });
 });
 
-test("cancelling a work permission does not automatically cancel a handoff permission", async () => {
+test("Stop cancels the work permission without requesting a handoff permission", async () => {
   const events: StintLogEvent[] = [];
   let workPermission: () => void = () => {};
   const waiting = new Promise<void>((resolve) => {
@@ -315,14 +313,9 @@ test("cancelling a work permission does not automatically cancel a handoff permi
   });
   await waiting;
   await stint.cancel();
-  expect(await stint.done).toEqual({ stopReason: "cancelled", handoff });
+  expect(await stint.done).toEqual({ stopReason: "cancelled" });
   expect(events.filter((event) => event.type === "permission")).toMatchObject([
     { toolCallId: "work", automatic: false, decision: { outcome: "cancelled" } },
-    {
-      toolCallId: "handoff",
-      automatic: false,
-      decision: { outcome: "selected", optionId: "allow" },
-    },
   ]);
 });
 

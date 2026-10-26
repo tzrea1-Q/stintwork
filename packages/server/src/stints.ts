@@ -428,7 +428,7 @@ export function addStintRoutes(
     let setupError: unknown;
     let savedProgress: StintProgress = recovery?.progress ?? { phase: "work" };
     let sessionId = recovery?.sessionId;
-    state.suspend = () => {
+    state.suspend = async () => {
       if (
         state.ending ||
         state.recoveryBlocked ||
@@ -441,21 +441,31 @@ export function addStintRoutes(
         state.interrupting = true;
         return;
       }
-      recordRecovery({ kind: "resume", state: "suspending" });
       state.suspending = true;
+      let recorded = false;
+      let persistenceError: unknown;
+      try {
+        recordRecovery({ kind: "resume", state: "suspending" });
+        recorded = true;
+      } catch (error) {
+        persistenceError = error;
+        state.recoveryBlocked = true;
+      }
       state.setupCancellation?.abort();
-      const cleanup = state.handle?.suspend?.() ?? state.handle?.cancel() ?? Promise.resolve();
-      return cleanup
-        .then(() => {
-          // No new handle means startup's existing cleanup proof remains authoritative.
-          if (!state.handle) return;
-          if (!attempt || cleanedAttemptId !== attempt.id)
-            throw new ProcessOwnershipError(
-              "Verified process-tree cleanup is unavailable: the launcher provided no durable cleanup proof. Verify and stop old tools before restarting Stintwork. No checkpoint or completed suspension was recorded.",
-            );
-          recordRecovery({ kind: "resume", state: "suspended" });
-        })
-        .catch(blockOwnership);
+      try {
+        // Storage failure must not skip owned teardown, or permit a later cleanup callback to certify it.
+        await (state.handle?.suspend?.() ?? state.handle?.cancel() ?? Promise.resolve());
+        if (!recorded) throw persistenceError;
+        // No new handle means startup's existing cleanup proof remains authoritative.
+        if (!state.handle) return;
+        if (!attempt || cleanedAttemptId !== attempt.id)
+          throw new ProcessOwnershipError(
+            "Verified process-tree cleanup is unavailable: the launcher provided no durable cleanup proof. Verify and stop old tools before restarting Stintwork. No checkpoint or completed suspension was recorded.",
+          );
+        recordRecovery({ kind: "resume", state: "suspended" });
+      } catch (error) {
+        blockOwnership(error);
+      }
     };
     let setupTimer: ReturnType<typeof setTimeout> | undefined;
     let remainingSetupMs = recoverySetupTimeoutMs;
@@ -614,7 +624,7 @@ export function addStintRoutes(
           attempt = processAttempt;
         },
         onCleanup: (attemptId) => {
-          if (state.ending) return;
+          if (state.ending || state.recoveryBlocked) return;
           try {
             if (attemptId !== attempt?.id) throw new Error("Cleanup names a different attempt.");
             recordRecovery({ kind: "cleanup", attemptId });

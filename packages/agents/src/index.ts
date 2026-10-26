@@ -86,7 +86,7 @@ export type AgentStintOptions = {
   resume?: { sessionId: string; progress: StintProgress };
   onEvent: (event: StintLogEvent) => void;
   onProcess?: (attempt: StintProcessAttempt) => void;
-  // Called only after verified process-tree cleanup; persistence failure must block the ending.
+  // Reports cleanup of the adapter group and traceable descendants; persistence failure must block the ending.
   onCleanup?: (attemptId: string) => void;
   onSession?: (sessionId: string) => void;
   onPhase?: (phase: StintPhase, result: Partial<AgentStintResult>) => void;
@@ -190,6 +190,7 @@ export function createAgentLauncher(
     let chunk: { type: "message_delta" | "thought_delta"; id: string } | undefined;
     let nextMessage = 0;
     const toolKinds = new Map<string, string>();
+    const afterTurnCancellation = new AbortController();
     let afterTurnMessages: string[] | undefined;
     let workTurn: Promise<{ stopReason: string }> | undefined;
     const writes = new Set<Promise<void>>();
@@ -525,7 +526,8 @@ export function createAgentLauncher(
           {
             timeoutMs: afterTurnTimeoutMs,
             failure,
-            retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
+            signal: afterTurnCancellation.signal,
+            retryAfterCancel: () => result.stopReason === "cancelled",
             onRequest(request, results) {
               if (request.resultField === "handoff" || request.resultField === "findings")
                 onPhase?.(request.resultField, { ...result, ...results });
@@ -636,12 +638,14 @@ export function createAgentLauncher(
       async suspend() {
         suspended = true;
         cancelled = true;
+        afterTurnCancellation.abort(new CoreTextError({ code: "agent.stintCancelled" }));
         cancelPermission();
         rejectFailure(new CoreTextError({ code: "agent.stintCancelled" }));
         await done;
       },
       async cancel() {
         cancelled = true;
+        afterTurnCancellation.abort(new CoreTextError({ code: "agent.stintCancelled" }));
         cancelPermission();
         if (connection && acpId) {
           await Promise.race([

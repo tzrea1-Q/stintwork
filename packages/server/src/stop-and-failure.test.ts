@@ -156,7 +156,7 @@ function answer(
 }
 
 test.each(["HTTP", "WebSocket"])(
-  "Stop mid-turn ends stopped within two seconds with a handoff and checkpoint (%s)",
+  "Stop mid-turn checkpoints within two seconds without further handoff work (%s)",
   async (transport) => {
     const { root, project, tracked, base } = await fixture(
       [
@@ -219,18 +219,14 @@ test.each(["HTTP", "WebSocket"])(
     expect(stint).toMatchObject({
       status: "stopped",
       checkpointCommit: expect.any(String),
-      handoff: {
-        stint: started.id,
-        agent: "codex",
-        stoppedAt: "Partial work.",
-        unresolved: "Checks.",
-        nextStep: "Continue.",
-      },
+      handoff: null,
     });
     expect(stint.error).toBeUndefined();
     expect(git(started.worktree.path, "rev-list", "--count", `${base}..HEAD`)).toBe("1");
     expect(git(root, "show", `${stint.checkpointCommit}:partial.txt`)).toBe("Partial work");
-    expect(git(root, "show", `${stint.checkpointCommit}:handoff.txt`)).toBe("Handoff artifact");
+    await expect(readFile(join(started.worktree.path, "handoff.txt"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     expect(
       git(root, "show", "--no-patch", "--format=%B", stint.checkpointCommit as string),
     ).toContain("stopped");
@@ -252,7 +248,7 @@ test.each(["HTTP", "WebSocket"])(
   },
 );
 
-test("Stop settles a pending work permission but still allows a handoff permission", async () => {
+test("Stop settles the work permission without creating a later handoff permission", async () => {
   const { root, project } = await fixture(
     [{ type: "write", path: "partial.txt", content: "Partial" }, permission],
     [
@@ -270,22 +266,16 @@ test("Stop settles a pending work permission but still allows a handoff permissi
     (await project.app.request(`/api/stints/${started.id}/stop`, { method: "POST" })).status,
   ).toBe(202);
   expect((await answer(project, started.id, workRequest.requestId, "allow")).status).toBe(409);
-  let handoffRequestId = "";
-  await expect
-    .poll(async () => {
-      const request = foldStintLog(await entries(root, started.id))?.events.find(
-        (event) => event.type === "permission_request" && event.toolCallId === "handoff",
-      );
-      if (request?.type === "permission_request") handoffRequestId = request.requestId;
-      return handoffRequestId;
-    })
-    .toBeTruthy();
-  expect((await answer(project, started.id, handoffRequestId, "allow")).status).toBe(200);
   expect(await ended(project, started.id)).toMatchObject({
     status: "stopped",
     checkpointCommit: expect.any(String),
-    handoff: { stoppedAt: "Partial work." },
+    handoff: null,
   });
+  expect(
+    foldStintLog(await entries(root, started.id))?.events.filter(
+      (event) => event.type === "permission_request",
+    ),
+  ).toHaveLength(1);
   expect(foldStintLog(await entries(root, started.id))?.events).toContainEqual(
     expect.objectContaining({
       type: "permission",
@@ -295,7 +285,7 @@ test("Stop settles a pending work permission but still allows a handoff permissi
   );
 });
 
-test("Stop rejects foreign origins and unknown stints; repeating an accepted Stop does not cancel the handoff", async () => {
+test("Stop rejects foreign origins and unknown stints; repeating an accepted Stop creates no further handoff", async () => {
   const { root, project } = await fixture(
     [{ type: "message", text: "Working" }, { type: "hang" }],
     [
@@ -322,7 +312,7 @@ test("Stop rejects foreign origins and unknown stints; repeating an accepted Sto
   expect((await project.app.request(path, { method: "POST" })).status).toBe(202);
   expect(await ended(project, started.id)).toMatchObject({
     status: "stopped",
-    handoff: { stoppedAt: "Partial work." },
+    handoff: null,
   });
 });
 

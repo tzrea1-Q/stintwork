@@ -5,7 +5,14 @@ import { EventEmitter } from "node:events";
 import { PassThrough, Writable } from "node:stream";
 import { AgentSideConnection, ndJsonStream, PROTOCOL_VERSION } from "@agentclientprotocol/sdk";
 import { afterEach, expect, test, vi } from "vitest";
-import { createAgentLauncher, ProcessOwnershipError, type PreparedAgent } from "./index.js";
+import {
+  createAgentLauncher,
+  ProcessOwnershipError,
+  type PreparedAgent,
+  type AfterTurnRequest,
+  handoffRequest,
+  findingsRequest,
+} from "./index.js";
 import { systemProcesses } from "./process-ownership.js";
 import { fakeAgentProfiles } from "./testing.js";
 import { toAcpReadable } from "./stdio.js";
@@ -22,12 +29,13 @@ afterEach(() => {
 
 function waitingAgent(
   agent: keyof typeof fakeAgentProfiles,
-  phase: "initialize" | "newSession" | "loadSession" | "setSessionMode" = "initialize",
+  phase: "initialize" | "newSession" | "loadSession" | "setSessionMode" | "handoff" = "initialize",
   options: {
     platform?: NodeJS.Platform;
     prepared?: PreparedAgent;
     onCleanup?: (attemptId: string) => void;
     processGroup?: boolean;
+    afterTurnRequests?: readonly AfterTurnRequest[];
   } = {},
 ) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -55,7 +63,11 @@ function waitingAgent(
   const proceed = new Promise<void>((resolve) => {
     release = resolve;
   });
-  const prompt = vi.fn(async () => ({ stopReason: "end_turn" as const }));
+  let prompts = 0;
+  const prompt = vi.fn(async () => {
+    if (++prompts === 2) await wait("handoff");
+    return { stopReason: "end_turn" as const };
+  });
   async function wait(current: typeof phase) {
     if (current !== phase) return;
     notifyEntered();
@@ -139,6 +151,9 @@ function waitingAgent(
     onEvent: () => {},
     ...(options.prepared ? { preparedAgent: options.prepared } : {}),
     onCleanup: options.onCleanup,
+    ...(options.afterTurnRequests
+      ? { afterTurnRequests: options.afterTurnRequests, afterTurnTimeoutMs: 1000 }
+      : {}),
     onProcess(attempt) {
       if (options.processGroup === false) delete attempt.processGroup;
       const row = table.get(attempt.pid);
@@ -299,5 +314,28 @@ test.each(
     expect(cleanup).toHaveBeenCalledWith(expect.any(String));
     expect(cleanup).toHaveBeenCalledOnce();
     waiting.release();
+  },
+);
+
+test.each(["suspend", "Stop"] as const)(
+  "%s during Review handoff aborts collection before the findings prompt",
+  async (operation) => {
+    const waiting = waitingAgent("codex", "handoff", {
+      afterTurnRequests: [handoffRequest, findingsRequest],
+    });
+    await waiting.entered;
+    expect(waiting.prompt).toHaveBeenCalledTimes(2);
+    expect(waiting.prompt).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ prompt: [{ type: "text", text: handoffRequest.prompt }] }),
+    );
+    const stopping = operation === "suspend" ? waiting.stint.suspend?.() : waiting.stint.cancel();
+    // The old handoff reply may arrive after shutdown/Stop has started.
+    waiting.release();
+    await stopping;
+    await waiting.outcome;
+    expect(waiting.prompt).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(waiting.prompt).toHaveBeenCalledTimes(2);
   },
 );

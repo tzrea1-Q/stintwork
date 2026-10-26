@@ -72,6 +72,7 @@ export function processIdentity(pid: number): string | undefined {
   } // Restricted/unsupported hosts must block orphan cleanup, never guess.
 }
 
+// Covers the recorded group and traceable descendants; deliberate detach/reparent outside recorded ancestry is not discoverable here.
 export async function stopStintProcesses(
   attempt: StintProcessAttempt,
   ownerReleased = false,

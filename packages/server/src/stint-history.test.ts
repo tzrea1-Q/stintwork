@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
+import type { Server } from "node:http";
 import { appendFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -36,7 +37,9 @@ import {
 } from "@stintwork/core";
 import { ensureWorktree } from "@stintwork/git";
 import * as git from "@stintwork/git";
-import { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
+import { FSWatcher } from "chokidar";
+import * as checkModule from "./checks.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { createProjectServer, createNodeRepoFiles } from "./index.js";
 import { recoverInterruptedStints } from "./stint-history.js";
@@ -2480,5 +2483,165 @@ test("a cleanup-proof write failure blocks checkpoint even though the fake adapt
   } finally {
     await server.stop();
     checkpoint.mockRestore();
+  }
+});
+
+test("a failed suspending append still tears down the writer and server resources without certifying or checkpointing", async () => {
+  const { root, project, registered, selected, logged } = await savedRecovery("work");
+  registered.verifyRecovery = async () => selected;
+  let launched!: () => void;
+  const launching = new Promise<void>((resolve) => {
+    launched = resolve;
+  });
+  let teardownStarted!: () => void;
+  const tearingDown = new Promise<void>((resolve) => {
+    teardownStarted = resolve;
+  });
+  let release!: () => void;
+  const cleanupAllowed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let finish!: (result: { stopReason: string }) => void;
+  let alive = true;
+  const suspend = vi.fn(async () => {
+    teardownStarted();
+    await cleanupAllowed;
+    alive = false;
+    cleanupCallback?.();
+    finish({ stopReason: "cancelled" });
+  });
+  let cleanupCallback: (() => void) | undefined;
+  registered.launch = (options) => {
+    options.onProcess?.({
+      id: "writer",
+      pid: 123456789,
+      marker: "stintwork-writer",
+      identity: "writer-start",
+      processGroup: true,
+      owner: { pid: process.pid, startedAt: "2026-10-26T12:00:00Z" },
+    });
+    options.onSession?.("fake-session");
+    cleanupCallback = () => options.onCleanup?.("writer");
+    const done = new Promise<{ stopReason: string }>((resolve) => {
+      finish = resolve;
+    });
+    launched();
+    return { ready: Promise.resolve(), done, suspend, cancel: async () => {} };
+  };
+  const checkpoint = vi.spyOn(git, "createCheckpoint");
+  const watcherClose = vi.spyOn(FSWatcher.prototype, "close");
+  const websocketClose = vi.spyOn(WebSocketServer.prototype, "close");
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  const listener = (await server.start()) as Server;
+  await launching;
+  await expect
+    .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
+    .toBe("resumed");
+  let listening = true;
+  const listeningState = vi.spyOn(listener, "listening", "get").mockImplementation(() => listening);
+  const httpClose = vi.spyOn(listener, "close").mockImplementation((callback) => {
+    listening = false;
+    callback?.();
+    return listener;
+  });
+  let stopping: Promise<unknown> | undefined;
+  let displaced = false;
+  try {
+    await rename(logged.path, `${logged.path}.saved`);
+    displaced = true;
+    await mkdir(logged.path);
+    stopping = server.stop().then(
+      () => "stopped",
+      (error) => error,
+    );
+    const reachedTeardown = await Promise.race([
+      tearingDown.then(() => true),
+      stopping.then(() => false),
+    ]);
+    expect(reachedTeardown).toBe(true);
+    expect(alive).toBe(true);
+    // Repair storage before cleanup finishes: failure of the intent append must still withhold proof.
+    await rm(logged.path, { recursive: true });
+    await rename(`${logged.path}.saved`, logged.path);
+    displaced = false;
+    release();
+    expect(await stopping).toBe("stopped");
+    expect(alive).toBe(false);
+    expect(suspend).toHaveBeenCalledOnce();
+    expect(watcherClose).toHaveBeenCalled();
+    expect(websocketClose).toHaveBeenCalled();
+    expect(httpClose).toHaveBeenCalledOnce();
+    expect(checkpoint).not.toHaveBeenCalled();
+    const text = await readFile(logged.path, "utf8");
+    expect(text).not.toMatch(/"kind":"cleanup"|"type":"ended"/);
+    expect(
+      text
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+        .filter((entry) => entry.state === "suspended"),
+    ).toHaveLength(1); // Original fixture proof only.
+    expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      status: "running",
+      checkpointCommit: null,
+    });
+    await expect(server.stop()).resolves.toBeUndefined();
+  } finally {
+    if (displaced) {
+      await rm(logged.path, { recursive: true });
+      await rename(`${logged.path}.saved`, logged.path);
+    }
+    cleanupCallback = undefined;
+    release();
+    finish({ stopReason: "cancelled" });
+    await stopping;
+    await server.stop().catch(() => {});
+    checkpoint.mockRestore();
+    watcherClose.mockRestore();
+    websocketClose.mockRestore();
+    httpClose.mockRestore();
+    listeningState.mockRestore();
+    // Baseline caches the rejected stop; avoid repeating that intentional failure in fixture teardown.
+    server.stop = async () => {};
+  }
+});
+
+test("a rejected shutdown closes server resources and a later stop retries successfully", async () => {
+  const { project } = await fixture();
+  const original = checkModule.createChecks;
+  const stopChecks = vi
+    .fn()
+    .mockRejectedValueOnce(new Error("Controlled shutdown failure"))
+    .mockResolvedValue(undefined);
+  const checks = vi
+    .spyOn(checkModule, "createChecks")
+    .mockImplementation((...args) => ({ ...original(...args), stop: stopChecks }));
+  const watcherClose = vi.spyOn(FSWatcher.prototype, "close");
+  const websocketClose = vi.spyOn(WebSocketServer.prototype, "close");
+  const server = project();
+  const listener = (await server.start()) as Server;
+  let listening = true;
+  const listeningState = vi.spyOn(listener, "listening", "get").mockImplementation(() => listening);
+  const httpClose = vi.spyOn(listener, "close").mockImplementation((callback) => {
+    listening = false;
+    callback?.();
+    return listener;
+  });
+  try {
+    await expect(server.stop()).rejects.toThrow("Controlled shutdown failure");
+    expect(watcherClose).toHaveBeenCalled();
+    expect(websocketClose).toHaveBeenCalledOnce();
+    expect(httpClose).toHaveBeenCalledOnce();
+    await expect(server.stop()).resolves.toBeUndefined();
+    expect(stopChecks).toHaveBeenCalledTimes(2);
+    await expect(server.start()).rejects.toThrow("Project server is stopped");
+  } finally {
+    await server.stop().catch(() => {});
+    checks.mockRestore();
+    watcherClose.mockRestore();
+    websocketClose.mockRestore();
+    httpClose.mockRestore();
+    listeningState.mockRestore();
+    server.stop = async () => {};
   }
 });

@@ -131,3 +131,17 @@ pnpm --config.verify-deps-before-run=false vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines and acceptance checkboxes unchanged.
+
+**Codex, 2026-10-26 — third review:** Added the spec's **Known limit**: cleanup covers the adapter group and descendants traceable through recorded ancestry at cleanup time; deliberate detach/reparent is outside that guarantee. This bound applies to cleanup/ownership claims in these Comments. Qualified code comments; left ADR 0012 and the process-ownership algorithm unchanged, with no supervisor added.
+
+Both P2s reproduced before fixing. Failed `suspending` persistence now blocks certification/checkpointing but still awaits owned teardown and closes resources, even if storage recovers during cleanup. Unexpected teardown rejection also closes watcher/WebSocket/HTTP resources; failed stop promises can be retried without restarting the server. Review handoff collection now aborts on suspension or explicit Stop, including pending requests/backoff, before any later findings prompt. Updated former Stop-then-handoff expectations; agent-reported cancellation retains handoff retries and permission coverage.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Core/agents/Git/CLI/web: **117 files / 1,914 passed / 10 native-or-TCP cases excluded**. Nine affected server files: **166 passed / 46 excluded**. The two shutdown regressions also passed after the final lifetime-guard change. New tests use explicit teardown/reply signals and fake clocks; no real-timer race drives them. Earlier broad failures were obsolete Stop expectations, corrected and covered by the final passing reruns.
+
+Coordinator: run the unfiltered suite on the socket/native-`ps` host, requiring all **8 server-only SIGKILL** and **13 failed-recovery** cases to execute. The new socketless resource tests mock HTTP listening/close; real socket shutdown remains covered by the host suite. No native/socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+No commit; all `Status:` lines and acceptance checkboxes unchanged.
