@@ -184,14 +184,13 @@ export async function stopStintProcesses(
   // Zombies retain a PID but cannot write, including in injected native snapshots.
   const liveProcesses = () => processes.read().filter((row) => !row.state?.includes("Z"));
   if (!ownerReleased && processes.exists(attempt.owner.pid)) {
-    if (!attempt.owner.identity) throw blocked();
     let owner: ProcessIdentity | undefined;
     try {
       owner = liveProcesses().find((row) => row.pid === attempt.owner.pid);
     } catch {
       throw blocked();
     }
-    if (owner?.identity === attempt.owner.identity)
+    if (owner && (!attempt.owner.identity || owner.identity === attempt.owner.identity))
       throw blocked(`Recorded owner PID ${owner.pid} is still alive.`);
   }
   const group = attempt.processGroup ? -attempt.pid : attempt.pid;
@@ -319,13 +318,13 @@ export async function stopStintProcesses(
     }
   } catch (error) {
     if (!ownerReleased && worktree && error instanceof ProcessOwnershipError) {
+      // Missing launch metadata cannot authorize signals, but native absence can still authorize fallback.
       const uid = process.getuid?.();
       if (
         uid === undefined ||
-        !attempt.processGroup ||
-        attempt.marker !== `stintwork-${attempt.id}` ||
-        !attempt.identity?.startsWith(`${uid}:`) ||
-        !attempt.owner.identity?.startsWith(`${uid}:`)
+        (attempt.marker !== null && attempt.marker !== `stintwork-${attempt.id}`) ||
+        (attempt.identity !== undefined && !attempt.identity.startsWith(`${uid}:`)) ||
+        (attempt.owner.identity !== undefined && !attempt.owner.identity.startsWith(`${uid}:`))
       )
         throw error;
       const roots = [resolve(worktree)];
@@ -383,15 +382,16 @@ export async function stopStintProcesses(
         if (
           rows.some(
             (row) =>
-              (row.pid === attempt.owner.pid && row.identity === attempt.owner.identity) ||
-              (row.pid === attempt.pid && row.identity === attempt.identity),
+              (row.pid === attempt.owner.pid &&
+                (!attempt.owner.identity || row.identity === attempt.owner.identity)) ||
+              (row.pid === attempt.pid && (!attempt.identity || row.identity === attempt.identity)),
           )
         )
           throw blocked("The recorded owner or adapter is still alive.");
         const writers = rows.filter(
           (row) =>
             !local.has(row.pid) &&
-            (row.group === attempt.pid ||
+            ((attempt.processGroup && row.group === attempt.pid) ||
               (row.parent === attempt.pid && !rows.some((parent) => parent.pid === attempt.pid)) ||
               (attempt.marker !== null && row.command.includes(attempt.marker)) ||
               owned.get(row.pid)?.identity === row.identity),

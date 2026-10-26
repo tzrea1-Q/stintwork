@@ -3078,3 +3078,198 @@ test("the crash fixture adapter really exits when its server closes stdin mid-wo
   child.stdin.end(); // The only exit trigger: no native inspection, timer or signal kills this adapter.
   expect(await exited).toEqual([0, null]);
 });
+
+test.each(["grok", "grok-writer", "pre-patch", "legacy-no-attempt"] as const)(
+  "compatible native crash cleanup reaches fallback or names a live writer: %s",
+  async (kind) => {
+    const { root, project } = await fixture();
+    const logged = await log(root, "compatible-native", "2026-10-26T11:08:55.000Z");
+    const started = JSON.parse(logged.text) as Extract<StintLogEntry, { type: "started" }>;
+    started.stint.agent = kind.startsWith("grok") ? "grok" : "codex";
+    const attempt: StintProcessAttempt = {
+      id: "old-attempt",
+      pid: 20,
+      owner: { pid: 10, startedAt: "2026-10-26T11:00:00.000Z" },
+      marker: kind === "pre-patch" ? "stintwork-old-attempt" : null,
+    };
+    const entries: StintLogEntry[] = [started];
+    if (kind !== "legacy-no-attempt")
+      entries.push({ type: "recovery", version: 1, at: started.at, kind: "attempt", attempt });
+    const before = `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
+    await writeFile(logged.path, before);
+    await writeFile(join(logged.worktree.path, "partial.txt"), "Unfinished native work");
+    const uid = process.getuid?.() as number;
+    const rows = [
+      { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
+      ...(kind === "grok-writer"
+        ? [{ pid: 21, group: 21, uid, identity: `${uid}:tool`, command: "live tool" }]
+        : []),
+    ];
+    const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => rows);
+    const exists = vi
+      .spyOn(systemProcesses, "exists")
+      .mockImplementation((pid) => rows.some((row) => row.pid === pid));
+    const directories = vi
+      .spyOn(systemProcesses, "workingDirectories")
+      .mockReturnValue(new Map([[21, logged.worktree.path]]));
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("Unverified native attempts must never authorize a signal");
+    });
+    const checkpoint = vi.spyOn(git, "createCheckpoint");
+    const launch = vi.fn(() => {
+      throw new Error("Grok/legacy recovery must use fallback");
+    });
+    const server = project({
+      agentRegistry: createAgentRegistry([
+        { ...fakeAgentProfiles.grok, launch },
+        { ...fakeAgentProfiles.codex, launch },
+      ]),
+    });
+    try {
+      await server.app.request("/api/health");
+      if (kind === "grok-writer") {
+        await expect
+          .poll(
+            async () => {
+              const snapshot: ProjectSnapshot = await (
+                await server.app.request("/api/project")
+              ).json();
+              return snapshot.warnings.map((warning) => warning.message).join("\n");
+            },
+            { message: "Grok crash must name the surviving native writer" },
+          )
+          .toContain("PID 21 (live tool)");
+        expect(await readFile(logged.path, "utf8")).toBe(before);
+        expect(checkpoint).not.toHaveBeenCalled();
+        expect(
+          (await server.app.request("/api/work-items/first/checks", { method: "POST" })).status,
+        ).toBe(409);
+      } else {
+        const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+        expect(snapshot.warnings.map((warning) => warning.message).join("\n")).not.toContain(
+          "Cannot recover stint",
+        );
+        const ended = await waitForEnding(root);
+        expect(ended).toMatchObject({
+          id: "compatible-native",
+          status: "interrupted",
+          checkpointCommit: expect.any(String),
+          handoff: null,
+        });
+        expect(ended.error).toContain(
+          kind === "grok" ? "Grok Build is experimental" : "Missing recovery metadata",
+        );
+        expect(
+          execFileSync("git", ["show", `${ended.checkpointCommit}:partial.txt`], {
+            cwd: root,
+            encoding: "utf8",
+          }),
+        ).toBe("Unfinished native work");
+        const after = await readFile(logged.path, "utf8");
+        expect(after.startsWith(before)).toBe(true);
+        expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
+        expect(checkpoint).toHaveBeenCalledOnce();
+        if (kind !== "legacy-no-attempt") expect(after).toContain('"state":"suspended"');
+        const finished: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+        expect(finished.workItems[0].activeStint).toBeNull();
+      }
+      expect(directories).toHaveBeenCalledTimes(kind === "legacy-no-attempt" ? 0 : 1);
+      expect(signal).not.toHaveBeenCalled();
+      expect(launch).not.toHaveBeenCalled();
+    } finally {
+      await server.stop();
+      checkpoint.mockRestore();
+      signal.mockRestore();
+      directories.mockRestore();
+      exists.mockRestore();
+      read.mockRestore();
+    }
+  },
+);
+
+test.each(["work", "finalization"] as const)(
+  "a pre-patch session with incomplete ownership finalizes %s after inspection without loading work",
+  async (phase) => {
+    const { root, project, registered, logged, entries } = await savedRecovery(phase);
+    const entry = entries.find((entry) => entry.type === "recovery" && entry.kind === "attempt");
+    if (entry?.type !== "recovery" || entry.kind !== "attempt") throw new Error("Expected attempt");
+    entry.attempt.pid = 20;
+    entry.attempt.owner.pid = 10;
+    delete entry.attempt.identity;
+    delete entry.attempt.processGroup;
+    delete entry.attempt.owner.identity;
+    const before = `${entries
+      .filter((entry) => !(entry.type === "recovery" && entry.kind === "resume"))
+      .map((entry) => JSON.stringify(entry))
+      .join("\n")}\n`;
+    await writeFile(logged.path, before);
+    await writeFile(join(logged.worktree.path, "partial.txt"), "Before ownership metadata");
+    registered.verifyRecovery = vi.fn(async () => {
+      throw new Error("Must not verify/load a legacy attempt");
+    });
+    registered.launch = vi.fn(() => {
+      throw new Error("Must not relaunch a legacy attempt");
+    });
+    const uid = process.getuid?.() as number;
+    const read = vi
+      .spyOn(systemProcesses, "read")
+      .mockReturnValue([
+        { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
+      ]);
+    const exists = vi
+      .spyOn(systemProcesses, "exists")
+      .mockImplementation((pid) => pid === process.pid);
+    const cwd = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(new Map());
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("No signal is owned");
+    });
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await server.app.request("/api/health");
+      const ended = await waitForEnding(root);
+      expect(ended).toMatchObject({
+        status: phase === "work" ? "interrupted" : "finished",
+        checkpointCommit: expect.any(String),
+      });
+      if (phase === "work") expect(ended.error).toMatch(/ownership metadata/);
+      expect(registered.verifyRecovery).not.toHaveBeenCalled();
+      expect(registered.launch).not.toHaveBeenCalled();
+      const after = await readFile(logged.path, "utf8");
+      expect(after.startsWith(before)).toBe(true);
+      expect(after).toContain('"state":"suspended"');
+      expect(
+        execFileSync("git", ["show", `${ended.checkpointCommit}:partial.txt`], {
+          cwd: root,
+          encoding: "utf8",
+        }),
+      ).toBe("Before ownership metadata");
+      expect(cwd).toHaveBeenCalledOnce();
+      expect(signal).not.toHaveBeenCalled();
+      if (phase === "work") {
+        // Replay a crash immediately after durable cleanup, before fallback finalization.
+        const lines = after.trim().split("\n");
+        const proof = lines.findIndex((line) => line.includes('"state":"suspended"'));
+        await server.stop();
+        await writeFile(logged.path, `${lines.slice(0, proof + 1).join("\n")}\n`);
+        const restarted = project({ agentRegistry: createAgentRegistry([registered]) });
+        await restarted.app.request("/api/health");
+        const recovered = await waitForEnding(root);
+        expect(recovered).toMatchObject({
+          status: "interrupted",
+          checkpointCommit: expect.any(String),
+        });
+        expect(recovered.error).toMatch(/ownership metadata/);
+        expect(registered.verifyRecovery).not.toHaveBeenCalled();
+        expect(registered.launch).not.toHaveBeenCalled();
+        expect(cwd).toHaveBeenCalledOnce();
+        await restarted.stop();
+      }
+    } finally {
+      await server.stop();
+      signal.mockRestore();
+      cwd.mockRestore();
+      exists.mockRestore();
+      read.mockRestore();
+    }
+  },
+);

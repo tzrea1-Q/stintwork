@@ -237,3 +237,18 @@ pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — Grok and pre-patch ownership compatibility:** Confirmed and reproduced the prepared-metadata gate blocking vanished native Grok and pre-patch attempts. Compatible recovery now uses the recorded owner/adapter PID and available identities with the existing bounded native writer scan. A live PID with no saved identity blocks; a known mismatched identity can prove reuse. Missing group metadata never implies group ownership. Zombies, verified current-server descendants, cwd/deleted-path checks, available native start-time exclusions, inspection failures and the cleanup budget retain their existing rules. No unverified process is signalled; no adapter timestamp is invented when absent. Logs without attempt records retain legacy fallback.
+
+After successful absence verification, unfinished pre-patch work takes interrupted/checkpoint fallback without verifying/loading an agent. Fallback intent is durable before cleanup proof and remains binding across later markers, including a crash immediately after that proof. Saved genuine finalization still completes its existing ending. Updated the spec's compatibility description; ADR 0012 unchanged.
+
+Added **13 fake-process controls and 6 server cases** covering empty native Grok recovery, a named surviving writer with no checkpoint, pre-patch records/session state, no-attempt legacy logs, saved finalization and the cleanup-proof crash boundary. The reported Grok/pre-patch failures and the session-load/crash-boundary regressions failed before their fixes. Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and append-only/Status/ADR guards passed (existing informational Biome deprecation only). Ownership/inspection: **112 passed**. Available agents: **369 passed / 9 native cases excluded**. Five affected server files: **131 passed / 59 native-or-TCP cases excluded**. No native/socket, real-agent, smoke or e2e pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, including all 24 server-only SIGKILL and 13 failed-recovery cases:
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.

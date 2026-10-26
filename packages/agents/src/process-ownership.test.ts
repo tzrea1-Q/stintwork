@@ -752,3 +752,91 @@ test.each(["reused", "group", "marker", "later-child"] as const)(
     expect(fake.signal).not.toHaveBeenCalled();
   },
 );
+
+test.each([
+  "gone",
+  "zombies",
+  "owner-live",
+  "adapter-live",
+  "owner-reused",
+  "adapter-reused",
+  "writer",
+  "inspection-error",
+  "cwd-error",
+  "budget",
+  "own-child",
+  "unrecorded-group",
+  "pre-attempt",
+] as const)(
+  "an attempt without prepared ownership metadata uses native absence proof without signals: %s",
+  async (state) => {
+    const uid = process.getuid?.() as number;
+    const recorded: StintProcessAttempt = {
+      id: "native-attempt",
+      pid: 20,
+      marker: null,
+      owner: { pid: 10, startedAt: "2026-10-26T11:00:00Z" },
+    };
+    const row = { pid: 21, group: 21, uid, identity: `${uid}:tool`, command: "tool" };
+    const fake = processes([]);
+    if (state === "zombies") {
+      fake.table.set(10, { ...row, pid: 10, state: "Z" });
+      fake.table.set(20, { ...row, pid: 20, state: "Z" });
+    }
+    if (state.startsWith("owner-")) {
+      if (state === "owner-reused") recorded.owner.identity = `${uid}:old-owner`;
+      fake.table.set(10, { ...row, pid: 10, identity: `${uid}:current-owner` });
+    }
+    if (state.startsWith("adapter-")) {
+      if (state === "adapter-reused") recorded.identity = `${uid}:old-adapter`;
+      fake.table.set(20, { ...row, pid: 20, identity: `${uid}:current-adapter` });
+    }
+    if (state === "writer") fake.table.set(row.pid, row);
+    if (state === "unrecorded-group") fake.table.set(row.pid, { ...row, group: 20 });
+    if (state === "own-child") {
+      fake.table.set(process.pid, { ...row, pid: process.pid, identity: `${uid}:current-server` });
+      fake.table.set(row.pid, { ...row, parent: process.pid });
+    }
+    if (state === "pre-attempt") {
+      recorded.identity = `${uid}:Mon Oct 26 11:08:55 2026`;
+      fake.table.set(row.pid, { ...row, identity: `${uid}:Mon Oct 26 11:08:54 2026` });
+    }
+    if (state === "inspection-error")
+      fake.control.read = () => {
+        throw new Error("ps denied");
+      };
+    const cwd = vi.fn((pids: readonly number[]) => {
+      if (state === "cwd-error") throw new Error("cwd inspection failed");
+      if (state === "budget") vi.advanceTimersByTime(1000);
+      return new Map(
+        pids.map((pid) => [
+          pid,
+          ["writer", "pre-attempt"].includes(state) ? process.cwd() : "/outside",
+        ]),
+      );
+    });
+    fake.control.workingDirectories = cwd;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const result = stopStintProcesses(recorded, false, fake.control, undefined, process.cwd());
+      if (
+        [
+          "owner-live",
+          "adapter-live",
+          "writer",
+          "inspection-error",
+          "cwd-error",
+          "budget",
+        ].includes(state)
+      )
+        await expect(result).rejects.toThrow(/No checkpoint or replacement/);
+      else {
+        await expect(result).resolves.toBeUndefined();
+        expect(cwd).toHaveBeenCalledOnce();
+      }
+      expect(fake.signal).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

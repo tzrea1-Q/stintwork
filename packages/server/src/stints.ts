@@ -1308,6 +1308,8 @@ export function addStintRoutes(
         else reason = "Ambiguous recovery cleanup history.";
       }
       if (entry.kind === "resume" && entry.state === "suspended") cleanedThrough = index;
+      if (entry.kind === "resume" && entry.state === "fallback")
+        reason ??= entry.reason ?? "Recovery previously failed.";
       if (entry.kind === "session") {
         if (entry.attemptId !== attemptId || (sessionId && sessionId !== entry.sessionId))
           reason = "Ambiguous recovery session history.";
@@ -1379,6 +1381,30 @@ export function addStintRoutes(
               undefined,
               stint.worktree.path,
             );
+          // Old attempts can be proven absent without being eligible to resume implementation.
+          // Preserve a saved genuine ending: it only needs its existing finalization.
+          if (
+            recovery.progress?.phase !== "finalization" &&
+            uncleanedAttempts.some(
+              ({ attempt }) =>
+                !attempt.identity ||
+                !attempt.owner.identity ||
+                !attempt.processGroup ||
+                attempt.marker === null,
+            )
+          ) {
+            reason ??=
+              "Missing process ownership metadata in the recorded attempt; restart recovery uses a checkpoint and a new stint.";
+            // Persist fallback intent before cleanup proof can make a later startup skip this branch.
+            appendRecovery({
+              type: "recovery",
+              version: 1,
+              at: new Date().toISOString(),
+              kind: "resume",
+              state: "fallback",
+              reason,
+            });
+          }
           // Make startup cleanup durable too, before another attempt can start or the server can crash.
           if (uncleanedAttempts.length)
             appendRecovery({
