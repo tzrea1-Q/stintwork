@@ -1,12 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { writeFileSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { StintLogEvent } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
 import { collectAfterTurnRequests } from "./after-turn.js";
-import { type AfterTurnRequest, handoffRequest } from "./index.js";
-import { createFakeAgentLauncher, type FakeAgentStep } from "./testing.js";
+import { type AfterTurnRequest, createAgentLauncher, handoffRequest } from "./index.js";
+import {
+  createFakeAgentLauncher,
+  fakeAgentProfiles,
+  sourceNodeArgs,
+  type FakeAgentStep,
+} from "./testing.js";
 
 const handoffText =
   "## Where I stopped\nWritten code.\n## Unresolved\nNone\n## Suggested next\nCheck it.";
@@ -337,4 +345,125 @@ test("an empty request list does not ask for a handoff", async () => {
     onEvent: () => {},
   });
   expect(await stint.done).toEqual({ stopReason: "end_turn" });
+});
+
+test("session and phase persistence precede prompts, and completed output precedes the next request", async () => {
+  const cwd = await fixture();
+  const phases: string[] = [];
+  let sessionId = "";
+  const stint = createFakeAgentLauncher(
+    [
+      { type: "expect-file", path: "session.json", includes: "sessionId" },
+      { type: "expect-file", path: "phase.txt", includes: "work" },
+    ],
+    [],
+    {
+      afterTurnRequests: [
+        [
+          { type: "expect-file", path: "phase.txt", includes: "handoff" },
+          { type: "message", text: handoffText },
+        ],
+        [
+          { type: "expect-file", path: "saved-handoff.json", includes: "Written code." },
+          ...receiptSteps,
+        ],
+      ],
+    },
+  )({
+    agent: "codex",
+    cwd,
+    prompt: "Work",
+    onEvent: () => {},
+    afterTurnTimeoutMs: 2000,
+    afterTurnRequests: [handoffRequest, receiptRequest],
+    onProcess(attempt) {
+      expect(attempt).toMatchObject({
+        id: expect.any(String),
+        pid: expect.any(Number),
+        owner: { pid: process.pid },
+        marker: null,
+      });
+    },
+    onSession(id) {
+      sessionId = id;
+      writeFileSync(join(cwd, "session.json"), JSON.stringify({ sessionId: id }));
+    },
+    onPhase(phase, result) {
+      phases.push(phase);
+      writeFileSync(join(cwd, "phase.txt"), phase);
+      if (result.handoff)
+        writeFileSync(join(cwd, "saved-handoff.json"), JSON.stringify(result.handoff));
+    },
+  });
+  expect(await stint.done).toMatchObject({ handoff, receipt: "Recorded." });
+  expect(sessionId).not.toBe("");
+  expect(phases).toEqual(["work", "handoff", "handoff", "finalization"]);
+});
+
+test.each(["session", "work", "completed handoff"])(
+  "a failed %s persistence stops subsequent prompts",
+  async (boundary) => {
+    const cwd = await fixture();
+    const stint = createFakeAgentLauncher(
+      [{ type: "write", path: "work.txt", content: "Work" }],
+      [],
+      {
+        afterTurnRequests: [
+          [{ type: "message", text: handoffText }],
+          [{ type: "write", path: "later.txt", content: "Must not happen" }],
+        ],
+      },
+    )({
+      agent: "codex",
+      cwd,
+      prompt: "Work",
+      onEvent: () => {},
+      afterTurnTimeoutMs: 2000,
+      afterTurnRequests: [handoffRequest, receiptRequest],
+      onSession() {
+        if (boundary === "session") throw new Error("Metadata write failed");
+      },
+      onPhase(phase, result) {
+        if (
+          (boundary === "work" && phase === "work") ||
+          (boundary === "completed handoff" && result.handoff)
+        )
+          throw new Error("Metadata write failed");
+      },
+    });
+    await expect(stint.done).rejects.toThrow("Metadata write failed");
+    await expect(readFile(join(cwd, "later.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+    if (boundary !== "completed handoff")
+      await expect(readFile(join(cwd, "work.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+  },
+);
+
+test("newSession is persisted even when subsequent mode setup fails", async () => {
+  let sessionId = "";
+  const cwd = await fixture();
+  const launch = createAgentLauncher(
+    (directory) =>
+      spawn(
+        process.execPath,
+        sourceNodeArgs(fileURLToPath(new URL("./fake-agent.ts", import.meta.url))),
+        {
+          cwd: directory,
+          stdio: "pipe",
+          env: { ...process.env, STINTWORK_FAKE_OPTIONS: JSON.stringify({ profile: "grok" }) },
+        },
+      ),
+    fakeAgentProfiles.codex,
+  );
+  const stint = launch({
+    agent: "codex",
+    cwd,
+    prompt: "Work",
+    permissionLevel: "ask",
+    onEvent: () => {},
+    onSession(id) {
+      sessionId = id;
+    },
+  });
+  await expect(stint.done).rejects.toThrow("does not offer the required");
+  expect(sessionId).not.toBe("");
 });

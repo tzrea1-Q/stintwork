@@ -18,11 +18,15 @@ import {
   type PermissionLevel,
   type AgentPreparationProgress,
   type AgentSelection,
+  isStintLogEntry,
+  type StintRecoveryData,
+  type StintProcessAttempt,
+  type StintProgress,
 } from "@stintwork/core";
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type AgentLauncher,
@@ -36,6 +40,8 @@ import {
   readExecutableIdentity,
   type PreparedAgent,
   type AgentPreparationOptions,
+  type AgentStintResult,
+  adapterHost,
 } from "@stintwork/agents";
 
 import {
@@ -52,7 +58,7 @@ import { prepareStintBrief } from "./brief-preview.js";
 
 import { addStintPermissionRoute } from "./stint-permissions.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
-import { activeStintIds } from "./stint-history.js";
+import { activeStintIds, appendStintLog } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
 import { addGateRoutes } from "./gates.js";
@@ -77,6 +83,7 @@ type ActiveStint = {
   stopRequested?: boolean;
   ending?: boolean;
   confirmSource?: () => void;
+  recordStop?: () => void;
 };
 
 function prepareLogs(root: string) {
@@ -182,6 +189,7 @@ export function addStintRoutes(
     if (!state || state.ending)
       return context.json(coreTextWire({ reason: coreText({ code: "stint.notRunning" }) }), 409);
     if (!state.stopRequested) {
+      state.recordStop?.();
       state.stopRequested = true;
       permissions.clear(id, false);
       state.setupCancellation?.abort();
@@ -277,6 +285,17 @@ export function addStintRoutes(
     const state: ActiveStint = { id: randomUUID(), setupCancellation: new AbortController() };
     const streaming = context.req.header("accept") === "application/x-ndjson";
     const cancelSetup = () => {
+      try {
+        state.recordStop?.();
+      } catch (error) {
+        // A disconnected client cannot receive an error; keep running without durable intent.
+        console.error(
+          "Could not record Stop intent; disconnected stint left running:",
+          state.id,
+          error,
+        );
+        return;
+      }
       state.stopRequested = true;
       state.setupCancellation?.abort();
       void state.handle?.cancel();
@@ -392,6 +411,7 @@ export function addStintRoutes(
         if (discoveryFailure) throw new Error(discoveryFailure.message);
         const firstWorktree = !project.worktreePaths.has(workItem.slug);
         const worktree = await ensureWorktree(root, workItem.slug);
+        worktree.path = realpathSync(worktree.path);
         if (closing) throw new CoreTextError({ code: "server.stopping" });
         let inheritedAgents = false;
         if (firstWorktree) {
@@ -486,7 +506,9 @@ export function addStintRoutes(
         );
         refresh();
         function append(entry: StintLogEntry) {
-          appendFileSync(path, `${JSON.stringify(coreTextWire(entry))}\n`);
+          if (entry.type === "recovery" && !isStintLogEntry(entry))
+            throw new Error("Invalid stint recovery entry; work cannot continue.");
+          appendStintLog(path, entry);
           broadcast({
             type: "stint",
             stintId: id,
@@ -495,6 +517,11 @@ export function addStintRoutes(
             entry,
           });
         }
+        function recordRecovery(data: StintRecoveryData) {
+          append({ type: "recovery", version: 1, at: new Date().toISOString(), ...data });
+        }
+        state.recordStop = () => recordRecovery({ kind: "stop_requested" });
+        if (state.stopRequested) state.recordStop();
         if (selected) {
           const event = selected;
           const messages = [
@@ -523,6 +550,37 @@ export function addStintRoutes(
               },
             });
         }
+        function collectedOutput({
+          handoff,
+          findings,
+          findingsError,
+          findingsRawReply,
+        }: Partial<AgentStintResult>) {
+          return {
+            ...(handoff === undefined
+              ? {}
+              : { handoff: handoff ? { ...handoff, stint: id, agent: agentId } : null }),
+            ...(stage.gate === "evidence" && (findings !== undefined || findingsError !== undefined)
+              ? {
+                  findings: {
+                    commit: baseCommit,
+                    findings:
+                      findings?.map((finding, index) => ({
+                        ...finding,
+                        id: `${id}:${index + 1}`,
+                      })) ?? null,
+                    ...(findings == null
+                      ? {
+                          error:
+                            findingsError ?? coreText({ code: "stint.findingsIncomplete" }).text,
+                        }
+                      : {}),
+                    ...(findingsRawReply === undefined ? {} : { rawReply: findingsRawReply }),
+                  },
+                }
+              : {}),
+          };
+        }
         async function end(
           status: "finished" | "stopped" | "failed" | "interrupted",
           details: {
@@ -534,6 +592,36 @@ export function addStintRoutes(
           } = {},
         ) {
           state.ending = true;
+          details.handoff ??= savedProgress.handoff;
+          details.handoffError ??= savedProgress.handoffError
+            ? { text: savedProgress.handoffError }
+            : undefined;
+          details.findings ??= savedProgress.findings;
+          // This boundary also covers setup/transport failure without a completed work turn.
+          try {
+            if (attempt)
+              recordRecovery({
+                kind: "phase",
+                attemptId: attempt.id,
+                progress: {
+                  phase: "finalization",
+                  status,
+                  ...(details.error ? coreTextFields("error", details.error) : {}),
+                  ...(details.stopReason && details.stopReason !== savedProgress.stopReason
+                    ? { stopReason: details.stopReason }
+                    : {}),
+                },
+              });
+          } catch (error) {
+            // Recovery metadata must never prevent ADR 0004's genuine-ending checkpoint.
+            status = "failed";
+            details.error = {
+              text: [details.error?.text, `Could not record finalization: ${errorText(error).text}`]
+                .filter(Boolean)
+                .join("\n"),
+            };
+            console.error("Could not record stint finalization; checkpointing changes:", id, error);
+          }
           permissions.clear(id);
           let checkpointCommit: string | undefined;
           let checkpointWarnings: CheckpointWarning[] = [];
@@ -579,20 +667,25 @@ export function addStintRoutes(
               error: coreText({ code: "stint.reviewEndedEarly" }).text,
             };
           const { error, handoffError, ...rest } = details;
-          append({
-            type: "ended",
-            at: new Date().toISOString(),
-            status,
-            handoff: null,
-            ...rest,
-            ...(error ? coreTextFields("error", error) : {}),
-            ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
-            ...(checkpointCommit ? { checkpointCommit } : {}),
-            ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
-          });
-          active.delete(workItem.slug);
-          refresh();
+          try {
+            append({
+              type: "ended",
+              at: new Date().toISOString(),
+              status,
+              handoff: null,
+              ...rest,
+              ...(error ? coreTextFields("error", error) : {}),
+              ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
+              ...(checkpointCommit ? { checkpointCommit } : {}),
+              ...(checkpointWarnings.length ? { checkpointWarnings } : {}),
+            });
+          } finally {
+            active.delete(workItem.slug);
+            refresh();
+          }
         }
+        let attempt: StintProcessAttempt | undefined;
+        let savedProgress: StintProgress = { phase: "work" };
         try {
           let setupMessage = 0;
           const progress = (text: CoreText) =>
@@ -625,6 +718,22 @@ export function addStintRoutes(
               readExecutableIdentity(selected.executable.path)?.identity
           )
             throw new CoreTextError({ code: "agent.cliChanged" });
+          if (preparedAgent)
+            recordRecovery({
+              kind: "launch",
+              launch: {
+                agent: preparedAgent.agent,
+                source: preparedAgent.source,
+                reason: preparedAgent.reason,
+                executable: { ...preparedAgent.executable },
+                adapterEntry: preparedAgent.adapterEntry,
+                adapterVersion: preparedAgent.adapterVersion,
+                cacheKey: preparedAgent.cacheKey,
+                lockDigest: preparedAgent.lockDigest,
+                host: adapterHost(),
+                permissionLevel: brief.permissionLevel ?? "edit-freely",
+              },
+            });
           state.handle = (options.launchAgent ?? agent.launch)({
             agent: agent.id,
             cwd: worktree.path,
@@ -637,6 +746,35 @@ export function addStintRoutes(
             prompt: brief.prompt,
             permissionLevel: brief.permissionLevel,
             handoffTimeoutMs,
+            onProcess: (processAttempt) => {
+              recordRecovery({ kind: "attempt", attempt: processAttempt });
+              attempt = processAttempt;
+            },
+            onSession: (sessionId) => {
+              if (!attempt) throw new Error("Agent session has no recorded process attempt.");
+              recordRecovery({ kind: "session", attemptId: attempt.id, sessionId });
+            },
+            onPhase: (phase, result) => {
+              if (!attempt) throw new Error("Agent phase has no recorded process attempt.");
+              const output = collectedOutput(result);
+              const progress = {
+                phase,
+                ...(result.stopReason && savedProgress.stopReason === undefined
+                  ? { stopReason: result.stopReason }
+                  : {}),
+                ...(output.handoff !== undefined && savedProgress.handoff === undefined
+                  ? { handoff: output.handoff }
+                  : {}),
+                ...(output.findings !== undefined && savedProgress.findings === undefined
+                  ? { findings: output.findings }
+                  : {}),
+                ...(result.handoffError && savedProgress.handoffError === undefined
+                  ? { handoffError: result.handoffError }
+                  : {}),
+              };
+              recordRecovery({ kind: "phase", attemptId: attempt.id, progress });
+              savedProgress = { ...savedProgress, ...progress };
+            },
             ...(stage.gate === "evidence"
               ? { afterTurnRequests: [handoffRequest, findingsRequest] }
               : {}),
@@ -662,30 +800,13 @@ export function addStintRoutes(
                         : "failed",
                   {
                     stopReason,
-                    handoff: handoff ? { ...handoff, stint: id, agent: agent.id } : null,
+                    ...collectedOutput({
+                      handoff: handoff ?? null,
+                      findings: stage.gate === "evidence" ? (findings ?? null) : undefined,
+                      findingsError,
+                      findingsRawReply,
+                    }),
                     ...(handoffError ? { handoffError: { text: handoffError } } : {}),
-                    ...(stage.gate === "evidence"
-                      ? {
-                          findings: {
-                            commit: baseCommit,
-                            findings:
-                              findings?.map((finding, index) => ({
-                                ...finding,
-                                id: `${id}:${index + 1}`,
-                              })) ?? null,
-                            ...(findings == null
-                              ? {
-                                  error:
-                                    findingsError ??
-                                    coreText({ code: "stint.findingsIncomplete" }).text,
-                                }
-                              : {}),
-                            ...(findingsRawReply === undefined
-                              ? {}
-                              : { rawReply: findingsRawReply }),
-                          },
-                        }
-                      : {}),
                     ...(!state.stopRequested &&
                     stopReason !== "end_turn" &&
                     stopReason !== "cancelled"

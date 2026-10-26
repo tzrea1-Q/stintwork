@@ -2,7 +2,7 @@
 import type { Brief, BriefHandoff } from "./brief.js";
 import { isReviewFindings, type ReviewFindings } from "./findings.js";
 import type { RepoFiles, Warning } from "./work-items.js";
-import { isPermissionLevel } from "./permission-levels.js";
+import { isPermissionLevel, type PermissionLevel } from "./permission-levels.js";
 import { readCoreTextWire, type CoreTextMessage } from "./core-text.js";
 import {
   isRichStintEvent,
@@ -11,6 +11,62 @@ import {
 } from "./rich-stint-events.js";
 
 export type StintStatus = "running" | "finished" | "stopped" | "failed" | "interrupted";
+export type StintLaunch = {
+  agent: "claude" | "codex";
+  source: "installed" | "bundled";
+  reason:
+    | "compatible"
+    | "missing"
+    | "below-tested-range"
+    | "unparseable"
+    | "incompatible"
+    | "handshake failed";
+  executable: { path: string; version: string; identity: string };
+  adapterEntry: string;
+  adapterVersion: string;
+  cacheKey: string;
+  lockDigest: string;
+  host: { os: string; arch: string; libc: string; node: string; abi: string };
+  permissionLevel: PermissionLevel;
+};
+export type StintProcessAttempt = {
+  id: string;
+  owner: { pid: number; startedAt: string };
+  pid: number;
+  // An observable, unique Node process title; null for launchers without this proof.
+  // A PID alone must never authorize signalling a process.
+  marker: string | null;
+};
+export type StintPhase = "work" | "handoff" | "findings" | "finalization";
+export type StintProgress = {
+  phase: StintPhase;
+  status?: Exclude<StintStatus, "running">;
+  error?: string;
+  errorMessage?: CoreTextMessage;
+  stopReason?: string;
+  handoff?: BriefHandoff | null;
+  handoffError?: string;
+  findings?: ReviewFindings;
+};
+export type StintRecovery = {
+  version: 1;
+  launch?: StintLaunch;
+  attempt?: StintProcessAttempt;
+  sessionId?: string;
+  progress?: StintProgress;
+  stopRequestedAt?: string;
+};
+export type StintRecoveryData =
+  | { kind: "launch"; launch: StintLaunch }
+  | { kind: "attempt"; attempt: StintProcessAttempt }
+  | { kind: "session"; attemptId: string; sessionId: string }
+  | { kind: "phase"; attemptId: string; progress: StintProgress }
+  | { kind: "stop_requested" };
+export type StintRecoveryEntry = {
+  type: "recovery";
+  version: 1;
+  at: string;
+} & StintRecoveryData;
 export type CheckpointWarning = {
   path: string;
   reasons: ("likely-secret" | "large-file" | "generated-directory")[];
@@ -111,6 +167,7 @@ export type Stint = {
   handoffError?: string;
   handoffErrorMessage?: CoreTextMessage;
   findings?: ReviewFindings;
+  recovery?: StintRecovery;
   error?: string;
   errorMessage?: CoreTextMessage;
 };
@@ -133,8 +190,10 @@ export type StintSummary = Pick<
   | "handoffErrorMessage"
   | "handoffAnswer"
   | "findings"
+  | "recovery"
 > & { lastHandoffStintId?: string };
 export type StintLogEntry =
+  | StintRecoveryEntry
   | {
       type: "started";
       at: string;
@@ -241,6 +300,27 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
       ? { ...stint, handoffAnswer: { at: entry.at, note: entry.note } }
       : stint;
   if (stint?.status !== "running") return stint;
+  if (entry.type === "recovery") {
+    const recovery: StintRecovery = { ...stint.recovery, version: 1 };
+    if (entry.kind === "launch") recovery.launch = entry.launch;
+    if (entry.kind === "attempt") recovery.attempt = entry.attempt;
+    if (entry.kind === "session") recovery.sessionId = entry.sessionId;
+    if (entry.kind === "phase") recovery.progress = { ...recovery.progress, ...entry.progress };
+    if (entry.kind === "stop_requested") recovery.stopRequestedAt ??= entry.at;
+    return {
+      ...stint,
+      recovery,
+      ...(entry.kind === "phase"
+        ? {
+            ...(entry.progress.handoff === undefined ? {} : { handoff: entry.progress.handoff }),
+            ...(entry.progress.handoffError === undefined
+              ? {}
+              : { handoffError: entry.progress.handoffError }),
+            ...(entry.progress.findings === undefined ? {} : { findings: entry.progress.findings }),
+          }
+        : {}),
+    };
+  }
   if (entry.type === "event")
     return {
       ...stint,
@@ -285,6 +365,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     ...(stint.checkpointWarnings ? { checkpointWarnings: stint.checkpointWarnings } : {}),
     handoff: stint.handoff,
     ...(stint.findings ? { findings: stint.findings } : {}),
+    ...(stint.recovery ? { recovery: stint.recovery } : {}),
     ...(stint.brief.lastHandoff ? { lastHandoffStintId: stint.brief.lastHandoff.stint } : {}),
     ...(stint.handoffAnswer ? { handoffAnswer: stint.handoffAnswer } : {}),
     ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),
@@ -328,6 +409,7 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   if (!value || typeof value !== "object") return false;
   const entry = value as Record<string, unknown>;
   if (typeof entry.at !== "string") return false;
+  if (entry.type === "recovery") return isStintRecoveryEntry(entry);
   if (entry.type === "handoff_answered")
     return (
       !Number.isNaN(Date.parse(entry.at)) &&
@@ -404,6 +486,116 @@ export function isBriefHandoff(value: unknown): value is BriefHandoff {
     ["stint", "agent", "stoppedAt", "unresolved", "nextStep"].every(
       (key) => typeof (value as Record<string, unknown>)[key] === "string",
     )
+  );
+}
+
+function isStintRecoveryEntry(entry: Record<string, unknown>): boolean {
+  const record = (value: unknown): value is Record<string, unknown> =>
+    !!value && typeof value === "object" && !Array.isArray(value);
+  const keys = (value: Record<string, unknown>, allowed: string[]) =>
+    Object.keys(value).every((key) => allowed.includes(key));
+  const text = (value: unknown): value is string =>
+    typeof value === "string" && !!value.trim() && !value.includes("\0");
+  const absolute = (value: unknown) => text(value) && /^(?:\/|[a-z]:[\\/])/i.test(value);
+  const pid = (value: unknown) => Number.isSafeInteger(value) && (value as number) > 0;
+  const date = (value: unknown) => text(value) && !Number.isNaN(Date.parse(value));
+  const common = ["type", "version", "at", "kind"];
+  if (entry.version !== 1 || !date(entry.at)) return false;
+  if (entry.kind === "stop_requested") return keys(entry, common);
+  if (entry.kind === "session")
+    return (
+      keys(entry, [...common, "attemptId", "sessionId"]) &&
+      text(entry.attemptId) &&
+      text(entry.sessionId)
+    );
+  if (entry.kind === "attempt") {
+    const attempt = entry.attempt;
+    return (
+      keys(entry, [...common, "attempt"]) &&
+      record(attempt) &&
+      keys(attempt, ["id", "owner", "pid", "marker"]) &&
+      text(attempt.id) &&
+      pid(attempt.pid) &&
+      (attempt.marker === null || attempt.marker === `stintwork-${attempt.id}`) &&
+      record(attempt.owner) &&
+      keys(attempt.owner, ["pid", "startedAt"]) &&
+      pid(attempt.owner.pid) &&
+      date(attempt.owner.startedAt)
+    );
+  }
+  if (entry.kind === "phase") {
+    const progress = entry.progress;
+    return (
+      keys(entry, [...common, "attemptId", "progress"]) &&
+      text(entry.attemptId) &&
+      record(progress) &&
+      keys(progress, [
+        "phase",
+        "status",
+        "error",
+        "errorMessage",
+        "stopReason",
+        "handoff",
+        "handoffError",
+        "findings",
+      ]) &&
+      ["work", "handoff", "findings", "finalization"].includes(String(progress.phase)) &&
+      (progress.status === undefined ||
+        (progress.phase === "finalization" &&
+          ["finished", "stopped", "failed", "interrupted"].includes(String(progress.status)))) &&
+      (progress.error === undefined || text(progress.error)) &&
+      (progress.errorMessage === undefined ||
+        (record(progress.errorMessage) && text(progress.errorMessage.code))) &&
+      (progress.stopReason === undefined || text(progress.stopReason)) &&
+      (progress.handoff === undefined ||
+        progress.handoff === null ||
+        isBriefHandoff(progress.handoff)) &&
+      (progress.handoffError === undefined || text(progress.handoffError)) &&
+      (progress.findings === undefined || isReviewFindings(progress.findings))
+    );
+  }
+  if (entry.kind !== "launch" || !keys(entry, [...common, "launch"]) || !record(entry.launch))
+    return false;
+  const launch = entry.launch;
+  return (
+    keys(launch, [
+      "agent",
+      "source",
+      "reason",
+      "executable",
+      "adapterEntry",
+      "adapterVersion",
+      "cacheKey",
+      "lockDigest",
+      "host",
+      "permissionLevel",
+    ]) &&
+    ["claude", "codex"].includes(String(launch.agent)) &&
+    ["installed", "bundled"].includes(String(launch.source)) &&
+    [
+      "compatible",
+      "missing",
+      "below-tested-range",
+      "unparseable",
+      "incompatible",
+      "handshake failed",
+    ].includes(String(launch.reason)) &&
+    record(launch.executable) &&
+    keys(launch.executable, ["path", "version", "identity"]) &&
+    absolute(launch.executable.path) &&
+    text(launch.executable.version) &&
+    text(launch.executable.identity) &&
+    absolute(launch.adapterEntry) &&
+    text(launch.adapterVersion) &&
+    [launch.cacheKey, launch.lockDigest].every(
+      (value) => typeof value === "string" && /^[a-f0-9]{64}$/.test(value),
+    ) &&
+    record(launch.host) &&
+    keys(launch.host, ["os", "arch", "libc", "node", "abi"]) &&
+    ["os", "arch", "libc", "node", "abi"].every((key) =>
+      text((launch.host as Record<string, unknown>)[key]),
+    ) &&
+    isPermissionLevel(launch.permissionLevel)
   );
 }
 

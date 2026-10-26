@@ -143,6 +143,22 @@ test.each([
       .split("\n")
       .map((line) => JSON.parse(line));
     expect(log.at(-1).findings).toEqual(stint.findings);
+    const phases = log.filter((entry) => entry.type === "recovery" && entry.kind === "phase");
+    expect(phases.map((entry) => entry.progress.phase)).toEqual([
+      "work",
+      "handoff",
+      "handoff",
+      "findings",
+      "findings",
+      "finalization",
+      "finalization",
+    ]);
+    expect(phases[2].progress.handoff).toEqual(stint.handoff);
+    expect(phases[4].progress.findings).toEqual(stint.findings);
+    expect(phases.at(-1).progress).toMatchObject({
+      status: "finished",
+    });
+    expect(stint.recovery?.progress?.findings).toEqual(stint.findings);
     const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
     expect(snapshot.workItems[0].stints[0].findings).toEqual(stint.findings);
     expect(snapshot.warnings).toEqual([]);

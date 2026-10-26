@@ -581,3 +581,168 @@ test("optional handoff errors survive log indexing and summaries; older logs sti
   if (!legacy) throw new Error("Legacy stint log was not folded.");
   expect(summarizeStint(legacy)).not.toHaveProperty("handoffError");
 });
+
+test("versioned recovery records validate, fold and summarize without changing the original start", () => {
+  const at = "2026-10-26T12:00:00Z";
+  const entries: StintLogEntry[] = [
+    {
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "launch",
+      launch: {
+        agent: "codex",
+        source: "installed",
+        reason: "compatible",
+        executable: { path: "/bin/codex", version: "0.163.0", identity: "file-identity" },
+        adapterEntry: "/cache/adapter.js",
+        adapterVersion: "2.1.1",
+        cacheKey: "a".repeat(64),
+        lockDigest: "b".repeat(64),
+        host: { os: "darwin", arch: "arm64", libc: "none", node: "22", abi: "127" },
+        permissionLevel: "ask",
+      },
+    },
+    {
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "attempt",
+      attempt: {
+        id: "unique-attempt",
+        pid: 42,
+        marker: "stintwork-unique-attempt",
+        owner: { pid: 41, startedAt: at },
+      },
+    },
+    {
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "session",
+      attemptId: "unique-attempt",
+      sessionId: "actual-acp-id",
+    },
+    {
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "phase",
+      attemptId: "unique-attempt",
+      progress: {
+        phase: "findings",
+        stopReason: "end_turn",
+        handoff: {
+          stint: "first",
+          agent: "codex",
+          stoppedAt: "Work saved",
+          unresolved: "None",
+          nextStep: "Review",
+        },
+      },
+    },
+    {
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "phase",
+      attemptId: "unique-attempt",
+      progress: {
+        phase: "finalization",
+        stopReason: "end_turn",
+        findings: { commit: "original-reviewed-commit", findings: [] },
+      },
+    },
+    { type: "recovery", version: 1, at, kind: "stop_requested" },
+  ];
+  const selected = entries[0];
+  if (selected.type !== "recovery" || selected.kind !== "launch")
+    throw new Error("Expected launch fixture");
+  for (const launch of [
+    { ...selected.launch, source: "pending" },
+    { ...selected.launch, reason: "unknown" },
+    { ...selected.launch, executable: { ...selected.launch.executable, path: "relative" } },
+    { ...selected.launch, executable: { ...selected.launch.executable, identity: "" } },
+    { ...selected.launch, executable: { ...selected.launch.executable, env: {} } },
+    { ...selected.launch, host: { ...selected.launch.host, abi: "" } },
+    { ...selected.launch, host: { ...selected.launch.host, credentials: "no" } },
+    { ...selected.launch, lockDigest: "not-a-digest" },
+    { ...selected.launch, permissionLevel: "root" },
+  ])
+    expect(isStintLogEntry({ ...selected, launch })).toBe(false);
+  expect(
+    isStintLogEntry({
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "attempt",
+      attempt: {
+        id: "unique",
+        pid: 42,
+        owner: { pid: 41, startedAt: at },
+        marker: "stintwork-unrelated",
+      },
+    }),
+  ).toBe(false);
+  expect(entries.every(isStintLogEntry)).toBe(true);
+  const stint = foldStintLog([started, ...JSON.parse(JSON.stringify(entries))]);
+  expect(stint).toMatchObject({
+    ...started.stint,
+    status: "running",
+    handoff: { stoppedAt: "Work saved" },
+    findings: { commit: "original-reviewed-commit" },
+    recovery: {
+      version: 1,
+      launch: { source: "installed", permissionLevel: "ask" },
+      sessionId: "actual-acp-id",
+      attempt: { id: "unique-attempt", pid: 42 },
+      stopRequestedAt: at,
+      progress: { phase: "finalization" },
+    },
+  });
+  expect(stint && summarizeStint(stint).recovery).toEqual(stint?.recovery);
+  const terminal = foldStintLog([started, ...entries, { type: "ended", at, status: "finished" }]);
+  expect(applyStintLogEntry(terminal, entries[2])).toBe(terminal);
+  expect(foldStintLog([started])?.recovery).toBeUndefined();
+  expect(foldStintLog([entries[2]])).toBeNull();
+});
+
+test("invalid recovery metadata is warned and skipped while legacy history stays readable", () => {
+  const base = {
+    type: "recovery",
+    version: 1,
+    at: "2026-10-26T12:00:00Z",
+    kind: "session",
+    attemptId: "attempt",
+    sessionId: "session",
+  };
+  for (const entry of [
+    { ...base, version: 2 },
+    { ...base, at: "bad-date" },
+    { ...base, sessionId: "" },
+    { ...base, attemptId: null },
+    { ...base, env: { TOKEN: "must not persist" } },
+    { ...base, kind: "attempt", attempt: { id: "attempt", pid: 42 } },
+    { ...base, kind: "phase", progress: { phase: "unknown" } },
+    { ...base, kind: "launch", launch: { agent: "codex" } },
+  ])
+    expect(isStintLogEntry(entry)).toBe(false);
+  const result = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/board/spec.md": "# Board",
+      ".stintwork/local/stints/first.jsonl": [
+        started,
+        { ...base, version: 999 },
+        { type: "ended", at: base.at, status: "interrupted" },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join("\n"),
+    }),
+    { name: "Board" },
+  );
+  expect(result.workItems[0].stints[0]).toMatchObject({ status: "interrupted" });
+  expect(result.workItems[0].stints[0]).not.toHaveProperty("recovery");
+  expect(result.warnings).toContainEqual(
+    expect.objectContaining({ message: "Invalid stint log entry; skipped" }),
+  );
+});
