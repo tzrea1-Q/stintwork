@@ -1,6 +1,6 @@
 # 02 — Record a live stint's recovery state
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -85,3 +85,5 @@ pnpm --config.verify-deps-before-run=false vitest run packages/core \
 ```
 
 The same six server files, with the previously listed eight socket cases excluded using `--testNamePattern='^(?![\s\S]*(?:HTTP start|rich events and pending permission|HTTP preparation disconnect|TCP: true|WebSocket|Needs-you snapshots reach both tabs))'`, passed: 6 files, 83 tests, 8 excluded. No new real-agent, browser, package-smoke or socket pass is claimed by this follow-up.
+
+**Coordinator, 2026-10-26:** Verified with sockets: format, lint, typecheck, build, 2364 unit tests, smoke:package and 314 browser tests; after the review fixes, 496 server tests. First Codex review found a server crash when Stop intent could not be persisted on disconnect and a skipped checkpoint when the terminal append failed; both fixed with regressions. Second review clean. Resolved.
