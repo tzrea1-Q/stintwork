@@ -1,6 +1,6 @@
 # 07 — M8 exit
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 06, 08, 09, 10
 
 ## What to build
@@ -27,3 +27,5 @@ This exit proves release readiness. M7 stays active for repo preparation; M9 · 
 **Coordinator, 2026-10-16:** The real-project Project setup review found unclear guidance and a pre-selected destructive tracker replacement. Ticket 10 preserves existing trackers by default and redesigns the dialog; M8 exit now waits for 06, 08, 09 and 10.
 
 **Coordinator, 2026-10-17:** The maintainer moved the outside-developer test and fixes after the public release, outside v0.2. M8 now proves release readiness and no longer gates go-public 04. Its exit test and Blocked by line stay unchanged; only the human walk-through remains before M9 · Fast first run.
+
+**Coordinator, 2026-10-26:** The maintainer reported the walk-through passed on 2026-10-26. CI browser suite green on main (8dab478). Pass. M8 set to shipped.

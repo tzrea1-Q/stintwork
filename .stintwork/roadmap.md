@@ -46,13 +46,13 @@ Status: active
 
 ## M8 · UI foundations
 Id: m8
-Status: active
+Status: shipped
 
 - ui-foundations
 
 ## M9 · Fast first run
 Id: m9
-Status: planned
+Status: shipped
 
 - first-run
 

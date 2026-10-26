@@ -1,6 +1,6 @@
 # 09 — M9 exit
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 01, 02, 03, 04, 05, 06, 07, 08
 
 ## What to build
@@ -38,3 +38,5 @@ Set M9 shipped in `.stintwork/roadmap.md` only when the full exit passes. Otherw
 - **Limits:** only darwin-arm64; other platforms unverified.
 
 Pending the maintainer's verdict on whether this passes the exit (in particular whether automated-only offline coverage is enough) before M9 is set shipped.
+
+**Coordinator, 2026-10-26:** The maintainer accepted the exit on 2026-10-26 with the recorded evidence, including automated-only coverage for offline, interrupted and corrupted installs and darwin-arm64 only; other platforms are checked at the v0.2 release. Pass. M9 set to shipped.
