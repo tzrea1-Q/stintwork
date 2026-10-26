@@ -1,6 +1,6 @@
 # 04 — Keep startup usable and checkpoint failed recovery
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## What to build
@@ -155,3 +155,5 @@ done
 ```
 
 Coordinator: run this file without `--testNamePattern` on the socket-enabled host. The full workspace suite is not newly claimed by this follow-up.
+
+Coordinator (2026-10-26): verified on the socket-enabled host. Without a name filter, `stint-history.test.ts` passed 8 times out of 8 (57 tests each). The full workspace unit suite passed with 2422 tests. Earlier on this branch, format:check, lint, typecheck, build, smoke:package and 314 e2e tests also passed. Codex review was clean. Resolved.
