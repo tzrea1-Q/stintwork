@@ -29,6 +29,7 @@ function processes(rows: ProcessIdentity[]) {
       pid < 0 ? [...table.values()].some((row) => row.group === -pid) : table.has(pid),
     read: () => [...table.values()],
     signal,
+    workingDirectories: () => new Map(),
   };
   return { table, signal, control };
 }
@@ -63,7 +64,7 @@ test.each(["owner", "reused", "marker", "missing-proof", "orphan"])(
     if (fault === "missing-proof") delete recorded.identity;
     if (fault === "orphan") fake.table.delete(20);
     await expect(stopStintProcesses(recorded, false, fake.control)).rejects.toThrow(
-      /Stop the old processes/,
+      /No checkpoint or replacement/,
     );
     expect(fake.signal).not.toHaveBeenCalled();
   },
@@ -91,7 +92,7 @@ test("identity is rechecked immediately before signalling, including a PID reuse
     return read();
   };
   await expect(stopStintProcesses(attempt, false, fake.control)).rejects.toThrow(
-    /Stop the old processes/,
+    /No checkpoint or replacement/,
   );
   expect(fake.signal).not.toHaveBeenCalled();
 });
@@ -144,7 +145,7 @@ test("a detached parent reused during cleanup never authorizes signalling its un
     }
   };
   await expect(stopStintProcesses(attempt, false, fake.control)).rejects.toThrow(
-    /Stop the old processes/,
+    /No checkpoint or replacement/,
   );
   expect(fake.signal.mock.calls.some(([pid]) => pid === 22)).toBe(false);
 });
@@ -175,7 +176,7 @@ test.each([
 test("observing this server's adapter exit does not release a surviving orphan tool", async () => {
   const fake = processes([{ pid: 21, group: 20, identity: "surviving-tool", command: "tool" }]);
   await expect(stopStintProcesses(attempt, true, fake.control, Promise.resolve())).rejects.toThrow(
-    /Stop the old processes/,
+    /No checkpoint or replacement/,
   );
   expect(fake.signal).not.toHaveBeenCalled();
 });
@@ -206,7 +207,7 @@ test("an observed exit cannot forget a detached writer seen before its parent ex
     return read();
   };
   await expect(stopStintProcesses(attempt, true, fake.control, exited)).rejects.toThrow(
-    /Stop the old processes/,
+    /No checkpoint or replacement/,
   );
   expect(fake.signal).not.toHaveBeenCalled();
 });
@@ -238,7 +239,7 @@ test("observing a local exit cannot replace unavailable native writer inspection
     throw new Error("Native inspection unavailable");
   };
   await expect(stopStintProcesses(attempt, true, fake.control, Promise.resolve())).rejects.toThrow(
-    /Stop the old processes/,
+    /No checkpoint or replacement/,
   );
   expect(fake.signal).not.toHaveBeenCalled();
 });
@@ -251,10 +252,145 @@ test.each([false, true])(
     ]);
     const read = vi.spyOn(fake.control, "read");
     await expect(stopStintProcesses(attempt, local, fake.control)).rejects.toThrow(
-      /Stop the old processes/,
+      /No checkpoint or replacement/,
     );
     expect(read).toHaveBeenCalled();
     expect(fake.signal).not.toHaveBeenCalled();
     expect(fake.table.has(21)).toBe(true);
   },
 );
+
+test.each(["gone", "reused"] as const)(
+  "startup certifies a %s owner/adapter only after inspecting the worktree for other writers",
+  async (state) => {
+    const fake = processes([
+      { pid: 30, group: 30, identity: "editor", command: "unrelated", uid: process.getuid?.() },
+      ...(state === "reused"
+        ? [
+            {
+              pid: 10,
+              group: 10,
+              identity: "new-owner",
+              command: "editor",
+              uid: process.getuid?.(),
+            },
+            {
+              pid: 20,
+              group: 90,
+              identity: "new-adapter",
+              command: "editor",
+              uid: process.getuid?.(),
+            },
+          ]
+        : []),
+    ]);
+    const directories = vi.fn(
+      (pids: readonly number[]) => new Map(pids.map((pid) => [pid, "/outside"])),
+    );
+    Object.assign(fake.control, { workingDirectories: directories });
+    await expect(
+      stopStintProcesses(
+        {
+          ...attempt,
+          identity: `${process.getuid?.()}:adapter-start`,
+          owner: { ...attempt.owner, identity: `${process.getuid?.()}:owner-start` },
+        },
+        false,
+        fake.control,
+        undefined,
+        process.cwd(),
+      ),
+    ).resolves.toBeUndefined();
+    expect(directories).toHaveBeenCalled();
+    expect(fake.signal).not.toHaveBeenCalled();
+    expect(fake.table.has(30)).toBe(true);
+  },
+);
+
+test.each([
+  "cwd",
+  "marker",
+  "group",
+  "unreadable-cwd",
+  "new-process",
+  "reused-during-scan",
+  "missing-uid",
+  "unknown-uid",
+  "live-owner",
+  "live-adapter",
+  "inspection-error",
+  "scan-budget",
+] as const)(
+  "startup absence proof blocks %s without signalling a possibly unrelated process",
+  async (fault) => {
+    const uid = process.getuid?.() as number;
+    const recorded = {
+      ...attempt,
+      identity: `${uid}:adapter`,
+      owner: { ...attempt.owner, identity: `${uid}:owner` },
+    };
+    const writer: ProcessIdentity = {
+      pid: 21,
+      group: 21,
+      parent: 1,
+      uid,
+      identity: `${uid}:tool`,
+      command: "tool",
+    };
+    const fake = processes([writer]);
+    if (fault === "marker") writer.command = `tool --attempt=${attempt.marker}`;
+    if (fault === "group") writer.group = 20;
+    if (fault === "missing-uid") delete writer.uid;
+    if (fault === "unknown-uid") writer.uid = Number.NaN;
+    if (fault === "live-owner")
+      fake.table.set(10, { ...writer, pid: 10, identity: recorded.owner.identity });
+    if (fault === "live-adapter")
+      fake.table.set(20, { ...writer, pid: 20, identity: recorded.identity });
+    fake.control.workingDirectories = () => {
+      if (fault === "new-process") fake.table.set(22, { ...writer, pid: 22 });
+      if (fault === "reused-during-scan")
+        fake.table.set(21, { ...writer, identity: `${uid}:reused` });
+      if (fault === "inspection-error") throw new Error("permission denied");
+      if (fault === "scan-budget") vi.advanceTimersByTime(1000);
+      return fault === "unreadable-cwd"
+        ? new Map()
+        : new Map([[21, fault === "cwd" ? `${process.cwd()}/subdirectory` : "/outside"]]);
+    };
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      await expect(
+        stopStintProcesses(recorded, false, fake.control, undefined, process.cwd()),
+      ).rejects.toThrow(/No checkpoint or replacement/);
+      expect(fake.signal).not.toHaveBeenCalled();
+      expect(fake.table.has(21)).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test("a stable same-UID process outside the worktree and another UID inside it do not become owned writers", async () => {
+  const uid = process.getuid?.() as number;
+  const fake = processes([
+    { pid: 21, group: 21, uid, identity: `${uid}:editor`, command: "editor" },
+    { pid: 22, group: 22, uid: uid + 1, identity: `${uid + 1}:other-user`, command: "other user" },
+  ]);
+  fake.control.workingDirectories = (pids) => {
+    expect(pids).toEqual([21]);
+    return new Map([[21, `${process.cwd()}-sibling`]]);
+  };
+  await expect(
+    stopStintProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:adapter`,
+        owner: { ...attempt.owner, identity: `${uid}:owner` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+    ),
+  ).resolves.toBeUndefined();
+  expect(fake.signal).not.toHaveBeenCalled();
+});

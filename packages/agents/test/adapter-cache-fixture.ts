@@ -21,6 +21,7 @@ const fakeAdapter = `
 const fs = await import('node:fs');
 const readline = await import('node:readline');
 let cwd;
+if (process.env.TEST_EXIT_ON_EOF) process.stdin.once('end', () => process.exit(0));
 for await (const line of readline.createInterface({ input: process.stdin })) {
   const request = JSON.parse(line);
   if (process.env.TEST_ACP_TRACE) fs.appendFileSync(process.env.TEST_ACP_TRACE, JSON.stringify({pid:process.pid,method:request.method,params:request.params,home:process.env.HOME,token:process.env.TEST_LAUNCH_ENV,claude:process.env.CLAUDE_CODE_EXECUTABLE,codex:process.env.CODEX_PATH})+'\\n');
@@ -78,7 +79,7 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
         if (process.env.TEST_TOOL_WRITER) {
           const {spawn} = await import('node:child_process');
           const {once} = await import('node:events');
-          const tool = spawn(process.execPath,['--eval',"require('node:fs').writeFileSync(process.argv[1], 'Tool edit'); process.stdout.write('ready'); setInterval(()=>{},1000)",cwd+'/tool.txt'],{detached:true,stdio:['ignore','pipe','ignore']});
+          const tool = spawn(process.execPath,['--eval',"require('node:fs').writeFileSync(process.argv[1], 'Tool edit'); process.stdout.write('ready'); setInterval(()=>{},1000)",cwd+'/tool.txt'],{cwd,detached:true,stdio:['ignore','pipe','ignore']});
           await once(tool.stdout,'data');
           fs.writeFileSync(cwd+'/tool.pid',String(tool.pid));
         }

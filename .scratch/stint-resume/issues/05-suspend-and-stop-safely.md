@@ -159,3 +159,21 @@ pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packa
 ```
 
 No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — real adapter EOF after server SIGKILL:** Read the supplied evidence; reproduced the missing-leader block before fixing it. Startup can now certify an absent/reused owner and adapter only with valid recorded attempt/native identities and a bounded native writer scan. It rejects remaining group members, markers, remembered descendants and same-UID processes whose canonical cwd is inside the worktree. Identity changes or new processes during inspection, missing UID/cwd information, inspection failures and budget expiry stay blocked. Suspected writers are named but never signalled. Guidance now distinguishes a named live writer from unavailable inspection instead of directing the developer to stop nonexistent processes. The existing durable suspension proof covers inspected attempts before warm verification, another launch or checkpoint fallback.
+
+Used `/proc/<pid>/cwd` on Linux and one bounded, NUL-delimited `lsof` call on macOS. Native snapshots exclude only the inspector child identified by its own spawn result, avoiding false churn from `ps` itself. No supervisor or new dependency. Updated the spec's **Known limit**: the additional scan applies after the owner/adapter disappear; writers that leave ancestry, group, marker and worktree cwd remain outside the guarantee, including writes through open files or absolute paths.
+
+Red regressions covered absent/reused processes, the server stuck running, native cwd parsing, inspector self-inclusion, marker and UID uncertainty. The server-only SIGKILL matrix now has **24 cases**: the original eight surviving-adapter cases, eight EOF exits, and eight EOF exits with a detached worktree tool that must block. Fixture teardown verifies recorded tool identities before signalling. Socketless tests cover resume, checkpoint fallback, durable proof ordering and writer blocking; a direct child-process check confirms stdin EOF alone exits the fixture adapter with code 0. Crash/phase/reply triggers are explicit; deadline tests use fake clocks.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and the append-only/Status guard passed. Available agents: **24 files / 301 passed / 9 native cases excluded**. Five affected server files: **121 passed / 59 native-or-TCP cases excluded**. Final focused ownership/inspection/readiness: **77 passed**; recovery/shutdown guards: **15 passed**. An earlier broader server attempt hit ten environment failures (two TCP listeners and eight native prepared-launch checks); the final run explicitly excludes them. No native `ps`/`lsof`, real-agent, packed-CLI, smoke or socket pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host; require **all 24 server-only SIGKILL** and **13 failed-recovery** cases to execute. Then repeat the reported packed Installed-Claude server-only SIGKILL check and the passing graceful SIGTERM/restart check using the rebuilt package.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+pnpm --config.verify-deps-before-run=false smoke:package
+```
+
+No commit; all `Status:` lines unchanged; ADR 0012 unchanged.

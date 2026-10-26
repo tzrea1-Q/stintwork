@@ -14,6 +14,7 @@ import {
   createCodexAgent,
   prepareAgent,
   adapterHost,
+  type AgentStintResult,
   continuationInstruction,
   systemProcesses,
   stopStintProcesses,
@@ -49,6 +50,7 @@ const fixtures: {
   projects: ReturnType<typeof createProjectServer>[];
   children: ChildProcess[];
   attempts: StintProcessAttempt[];
+  tools: ReturnType<typeof systemProcesses.read>;
   cache?: string;
 }[] = [];
 const brief = { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Work" };
@@ -75,6 +77,7 @@ async function fixture() {
     projects: [] as ReturnType<typeof createProjectServer>[],
     children: [] as ChildProcess[],
     attempts: [] as StintProcessAttempt[],
+    tools: [] as ReturnType<typeof systemProcesses.read>,
   };
   fixtures.push(tracked);
   function project(options: Parameters<typeof createProjectServer>[2] = {}) {
@@ -103,10 +106,20 @@ function kill(child: ChildProcess) {
 }
 
 afterEach(async () => {
-  for (const { parent, projects, children, attempts, cache } of fixtures.splice(0)) {
+  for (const { parent, projects, children, attempts, tools, cache } of fixtures.splice(0)) {
     for (const child of children) kill(child);
+    for (const tool of tools)
+      if (
+        systemProcesses.read().some((row) => row.pid === tool.pid && row.identity === tool.identity)
+      )
+        systemProcesses.signal(tool.pid, "SIGKILL");
     for (const attempt of attempts)
-      if (systemProcesses.exists(attempt.pid)) await stopStintProcesses(attempt, true);
+      if (
+        systemProcesses
+          .read()
+          .some((row) => row.pid === attempt.pid && row.identity === attempt.identity)
+      )
+        await stopStintProcesses(attempt, true);
     await Promise.all(projects.map((project) => project.stop()));
     await rm(parent, { recursive: true, force: true });
     if (cache) await rm(cache, { recursive: true, force: true });
@@ -494,17 +507,22 @@ const nativeProcessInspection = (() => {
   }
 })();
 
-test
-  .skipIf(!nativeProcessInspection)
-  .each(
-    (["claude", "codex"] as const).flatMap((agent) =>
-      (["installed", "bundled"] as const).flatMap((source) =>
-        [false, true].map((tcp) => ({ agent, source, tcp })),
+test.skipIf(!nativeProcessInspection).each(
+  (["claude", "codex"] as const).flatMap((agent) =>
+    (["installed", "bundled"] as const).flatMap((source) =>
+      [false, true].flatMap((tcp) =>
+        (["surviving", "EOF", "EOF-with-tool"] as const).map((lifetime) => ({
+          agent,
+          source,
+          tcp,
+          lifetime,
+        })),
       ),
     ),
-  )(
-  "$agent/$source: server-only SIGKILL stops owned adapter/tools before resuming the same session (TCP: $tcp)",
-  async ({ agent, source, tcp }) => {
+  ),
+)(
+  "$agent/$source: server-only SIGKILL checks adapter/tools ($lifetime, TCP: $tcp)",
+  async ({ agent, source, tcp, lifetime }) => {
     const { root, project, tracked, selected, env, registered, calls, cache } = await warmRecovery(
       agent,
       source,
@@ -518,7 +536,7 @@ test
       import { once } from 'node:events';
       import { createProjectServer } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
       import { createAgentRegistry, createClaudeCodeAgent, createCodexAgent } from ${JSON.stringify(new URL("../../agents/src/index.ts", import.meta.url).href)};
-      const env = ${JSON.stringify({ ...env, TEST_RECOVERY: "crash", TEST_TOOL_WRITER: "1" })};
+      const env = ${JSON.stringify({ ...env, TEST_RECOVERY: "crash", TEST_TOOL_WRITER: lifetime === "EOF" ? undefined : "1", TEST_EXIT_ON_EOF: lifetime === "surviving" ? undefined : "1" })};
       const agent = ${JSON.stringify(agent)} === 'claude' ? createClaudeCodeAgent(env) : createCodexAgent({ env });
       agent.prepare = async () => (${JSON.stringify(selected)});
       const launch = agent.launch;
@@ -562,16 +580,34 @@ test
     const before = await readFile(path, "utf8");
     const original = indexStints(createNodeRepoFiles(root)).stints[0];
     expect(original.recovery?.sessionId).toBe("fake-session");
-    const exited = once(child, "exit");
-    // Kill only the server. The adapter and tool deliberately ignore stdin EOF.
-    child.kill("SIGKILL");
-    await exited;
     const oldAttempt = original.recovery?.attempt;
     if (!oldAttempt) throw new Error("Expected recorded process ownership");
     tracked.attempts.push(oldAttempt);
-    expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
-    const toolPid = Number(await readFile(join(stint.worktree.path, "tool.pid"), "utf8"));
-    expect(systemProcesses.exists(toolPid)).toBe(true);
+    const toolPid =
+      lifetime === "EOF"
+        ? undefined
+        : Number(await readFile(join(stint.worktree.path, "tool.pid"), "utf8"));
+    if (toolPid) {
+      const tool = systemProcesses
+        .read()
+        .find((row) => row.pid === toolPid && row.parent === oldAttempt.pid);
+      if (!tool) throw new Error("Expected tool ancestry before killing the server");
+      tracked.tools.push(tool);
+    }
+    const exited = once(child, "exit");
+    // Explicitly kill only the server; EOF lifetime adapters exit from their stdin end signal.
+    child.kill("SIGKILL");
+    await exited;
+    if (lifetime === "surviving") expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
+    else
+      await expect
+        .poll(() =>
+          systemProcesses
+            .read()
+            .some((row) => row.pid === oldAttempt.pid && row.identity === oldAttempt.identity),
+        )
+        .toBe(false);
+    if (toolPid) expect(systemProcesses.exists(toolPid)).toBe(true);
     const npmCalls = await cache.calls();
     let release: () => void = () => {};
     let enteredVerification!: () => void;
@@ -580,13 +616,13 @@ test
     });
     const verified = registered.verifyRecovery;
     if (!verified) throw new Error("Expected recovery verifier");
-    registered.verifyRecovery = async (...args) => {
+    registered.verifyRecovery = vi.fn(async (...args: Parameters<typeof verified>) => {
       await new Promise<void>((resolve) => {
         release = resolve;
         enteredVerification();
       });
       return verified(...args);
-    };
+    });
     const restarted = project({
       agentRegistry: createAgentRegistry([registered]),
       handoffTimeoutMs: 3000,
@@ -613,6 +649,21 @@ test
     const request = (path: string, init?: RequestInit) =>
       url ? fetch(`${url}${path}`, init) : restarted.app.request(path, init);
     expect((await request("/api/health")).status).toBe(200);
+    if (lifetime === "EOF-with-tool") {
+      await expect
+        .poll(async () => {
+          const snapshot: ProjectSnapshot = await (await request("/api/project")).json();
+          return snapshot.warnings.map((warning) => warning.message).join("\n");
+        })
+        .toContain(`PID ${toolPid}`);
+      expect(registered.verifyRecovery).not.toHaveBeenCalled();
+      expect(await readFile(path, "utf8")).toBe(before);
+      expect((await request("/api/work-items/first/checks", { method: "POST" })).status).toBe(409);
+      expect(systemProcesses.exists(toolPid as number)).toBe(true);
+      expect(await cache.calls()).toEqual(npmCalls);
+      socket?.close();
+      return;
+    }
     await verificationEntered;
     const live = systemProcesses.read();
     expect(live.some((row) => row.pid === oldAttempt.pid || row.pid === toolPid)).toBe(false);
@@ -669,7 +720,12 @@ test
     const tools = recovered.events.filter((event) => event.type === "tool_call");
     expect(tools.map((event) => event.title)).toEqual(["Old tool", "Fresh tool"]);
     expect(new Set(tools.map((event) => event.toolCallId)).size).toBe(2);
-    for (const name of ["partial.txt", "tool.txt", "resumed.txt", "handoff.txt"]) {
+    for (const name of [
+      "partial.txt",
+      ...(toolPid ? ["tool.txt"] : []),
+      "resumed.txt",
+      "handoff.txt",
+    ]) {
       expect(
         execFileSync("git", ["show", `${recovered.checkpointCommit}:${name}`], {
           cwd: root,
@@ -2644,4 +2700,172 @@ test("a rejected shutdown closes server resources and a later stop retries succe
     listeningState.mockRestore();
     server.stop = async () => {};
   }
+});
+
+test.each(["resume", "fallback", "detached-writer"] as const)(
+  "startup after an EOF-exited adapter uses a complete fake native writer scan: %s",
+  async (scenario) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    const old = entries.find((entry) => entry.type === "recovery" && entry.kind === "attempt");
+    if (old?.type !== "recovery" || old.kind !== "attempt") throw new Error("Expected attempt");
+    const uid = process.getuid?.() as number;
+    Object.assign(old.attempt, {
+      pid: 20,
+      identity: `${uid}:old-adapter`,
+      processGroup: true,
+      owner: { pid: 10, identity: `${uid}:old-owner`, startedAt: old.attempt.owner.startedAt },
+    });
+    await writeFile(
+      logged.path,
+      `${entries
+        .filter((entry) => !(entry.type === "recovery" && entry.kind === "resume"))
+        .map((entry) => JSON.stringify(entry))
+        .join("\n")}\n`,
+    );
+    await writeFile(join(logged.worktree.path, "partial.txt"), "Before EOF");
+    const before = await readFile(logged.path, "utf8");
+    const rows = [
+      { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
+      ...(scenario === "detached-writer"
+        ? [
+            {
+              pid: 21,
+              parent: 1,
+              group: 21,
+              uid,
+              identity: `${uid}:tool`,
+              command: "detached tool",
+            },
+          ]
+        : []),
+    ];
+    const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => rows);
+    const exists = vi
+      .spyOn(systemProcesses, "exists")
+      .mockImplementation((pid) => rows.some((row) => row.pid === pid));
+    const directories = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(
+      new Map([
+        [process.pid, "/outside"],
+        [21, join(logged.worktree.path, "subdirectory")],
+      ]),
+    );
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("No process in this fixture is owned by the vanished adapter");
+    });
+    registered.verifyRecovery = vi.fn(async () => {
+      expect(await readFile(logged.path, "utf8")).toContain('"state":"suspended"');
+      if (scenario === "fallback") throw new Error("Controlled warm verification failure");
+      return selected;
+    });
+    let complete: () => void = () => {};
+    registered.launch = vi.fn((options) => {
+      expect(options.resume?.sessionId).toBe("fake-session");
+      options.onProcess?.({
+        id: "replacement",
+        pid: 30,
+        marker: "stintwork-replacement",
+        identity: `${uid}:replacement`,
+        processGroup: true,
+        owner: { pid: process.pid, identity: `${uid}:server`, startedAt: "2026-10-26T12:00:00Z" },
+      });
+      options.onSession?.("fake-session");
+      return {
+        ready: Promise.resolve(),
+        done: new Promise<AgentStintResult>((resolve) => {
+          complete = () => {
+            options.onCleanup?.("replacement");
+            resolve({
+              stopReason: "end_turn",
+              handoff: { stoppedAt: "Recovered work.", unresolved: "None", nextStep: "Review." },
+            });
+          };
+        }),
+        cancel: async () => {},
+      };
+    });
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await server.app.request("/api/health");
+      if (scenario === "detached-writer") {
+        await expect
+          .poll(async () => {
+            const snapshot: ProjectSnapshot = await (
+              await server.app.request("/api/project")
+            ).json();
+            return snapshot.warnings.map((warning) => warning.message).join("\n");
+          })
+          .toContain("PID 21 (detached tool)");
+        expect(await readFile(logged.path, "utf8")).toBe(before);
+        expect(registered.verifyRecovery).not.toHaveBeenCalled();
+        expect(registered.launch).not.toHaveBeenCalled();
+        expect(
+          (await server.app.request("/api/work-items/first/checks", { method: "POST" })).status,
+        ).toBe(409);
+      } else {
+        if (scenario === "resume") {
+          await expect
+            .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
+            .toBe("resumed");
+          complete();
+        }
+        const ended = await waitForEnding(root);
+        expect(ended, JSON.stringify(ended.recovery)).toMatchObject({
+          id: "saved-phase",
+          status: scenario === "resume" ? "finished" : "interrupted",
+          checkpointCommit: expect.any(String),
+        });
+        expect(
+          execFileSync("git", ["show", `${ended.checkpointCommit}:partial.txt`], {
+            cwd: root,
+            encoding: "utf8",
+          }),
+        ).toBe("Before EOF");
+        const after = await readFile(logged.path, "utf8");
+        expect(after.startsWith(before)).toBe(true);
+        expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
+        expect(registered.launch).toHaveBeenCalledTimes(scenario === "resume" ? 1 : 0);
+      }
+      expect(directories).toHaveBeenCalledOnce();
+      expect(signal).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+      exists.mockRestore();
+      directories.mockRestore();
+      signal.mockRestore();
+      await server.stop();
+    }
+  },
+);
+
+test("the crash fixture adapter really exits when its server closes stdin mid-work", async () => {
+  const { tracked, selected, env, cache } = await warmRecovery("claude", "installed");
+  const child = spawn(process.execPath, [selected.adapterEntry], {
+    cwd: cache.options.cwd,
+    env: { ...env, TEST_RECOVERY: "crash", TEST_EXIT_ON_EOF: "1" },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+  tracked.children.push(child);
+  let output = "";
+  const working = new Promise<void>((resolve) => {
+    child.stdout.on("data", (bytes) => {
+      output += String(bytes);
+      if (output.includes("Before crash")) resolve();
+    });
+  });
+  child.stdin.write(
+    `${[
+      { method: "initialize", params: { protocolVersion: 1 } },
+      { method: "session/new", params: { cwd: cache.options.cwd, mcpServers: [] } },
+      {
+        method: "session/prompt",
+        params: { sessionId: "fake-session", prompt: [{ type: "text", text: "Work" }] },
+      },
+    ]
+      .map((request, id) => JSON.stringify({ jsonrpc: "2.0", id, ...request }))
+      .join("\n")}\n`,
+  );
+  await working;
+  const exited = once(child, "exit");
+  child.stdin.end(); // The only exit trigger: no native inspection, timer or signal kills this adapter.
+  expect(await exited).toEqual([0, null]);
 });

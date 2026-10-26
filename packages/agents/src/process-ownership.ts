@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { readlinkSync, realpathSync } from "node:fs";
+import { relative, isAbsolute } from "node:path";
 import type { StintProcessAttempt } from "@stintwork/core";
 
 export type ProcessIdentity = {
@@ -9,11 +11,13 @@ export type ProcessIdentity = {
   identity: string;
   command: string;
   state?: string;
+  uid?: number;
 };
 export type ProcessControl = {
   exists: (pid: number) => boolean;
   read: () => ProcessIdentity[];
   signal: (pid: number, signal: NodeJS.Signals) => void;
+  workingDirectories: (pids: readonly number[], platform?: NodeJS.Platform) => Map<number, string>;
 };
 export const systemProcesses: ProcessControl = {
   exists(pid) {
@@ -26,7 +30,7 @@ export const systemProcesses: ProcessControl = {
   },
   read() {
     // POSIX groups are created at launch, never inferred from a logged PID.
-    const output = execFileSync(
+    const inspection = spawnSync(
       "/bin/ps",
       ["-axo", "pid=,ppid=,pgid=,uid=,lstart=,stat=,command="],
       {
@@ -36,7 +40,9 @@ export const systemProcesses: ProcessControl = {
         stdio: ["ignore", "pipe", "pipe"],
       },
     );
-    return output
+    if (inspection.error) throw inspection.error;
+    if (inspection.status !== 0) throw new Error("Cannot inspect the native process table.");
+    return inspection.stdout
       .trim()
       .split("\n")
       .flatMap((line) => {
@@ -44,10 +50,12 @@ export const systemProcesses: ProcessControl = {
           .trim()
           .match(/^(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\d+\s+\S+\s+\d+)\s+(\S+)\s+(.*)$/);
         if (!match) throw new Error("Cannot verify the native process table.");
-        if (match[6].includes("Z")) return [];
+        // This observed child has already exited; it must not look like new same-UID churn on every scan.
+        if (Number(match[1]) === inspection.pid || match[6].includes("Z")) return [];
         return [
           {
             pid: Number(match[1]),
+            uid: Number(match[4]),
             parent: Number(match[2]),
             group: Number(match[3]),
             identity: `${match[4]}:${match[5]}`,
@@ -56,6 +64,54 @@ export const systemProcesses: ProcessControl = {
           },
         ];
       });
+  },
+  workingDirectories(pids, platform = process.platform) {
+    const directories = new Map<number, string>();
+    if (platform === "linux") {
+      for (const pid of pids) {
+        try {
+          directories.set(pid, realpathSync(readlinkSync(`/proc/${pid}/cwd`)));
+        } catch (error) {
+          if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? ""))
+            throw error;
+          // The caller rechecks identity: a missing cwd is safe only if the process also disappeared.
+        }
+      }
+    } else if (platform === "darwin") {
+      if (!pids.length) return directories;
+      let output: string;
+      try {
+        output = execFileSync(
+          "/usr/sbin/lsof",
+          ["-a", "-p", pids.join(","), "-d", "cwd", "-F0pn"],
+          {
+            encoding: "utf8",
+            timeout: 1000,
+            maxBuffer: 16 * 1024 * 1024,
+            stdio: ["ignore", "pipe", "pipe"],
+          },
+        );
+      } catch (error) {
+        const failure = error as { status?: number; stdout?: string; stderr?: string };
+        if (failure.status !== 1 || failure.stderr) throw error;
+        output = failure.stdout ?? "";
+      }
+      let pid = 0;
+      let cwd = false;
+      for (const entry of output.split("\0")) {
+        const field = entry.replace(/^\n/, ""); // lsof terminates each record with an extra newline.
+        if (!field) continue;
+        if (/^p[1-9][0-9]*$/.test(field)) {
+          pid = Number(field.slice(1));
+          cwd = false;
+        } else if (field === "fcwd") cwd = true;
+        else if (field.startsWith("n") && pid && cwd && isAbsolute(field.slice(1))) {
+          directories.set(pid, realpathSync(field.slice(1)));
+          cwd = false;
+        } else throw new Error("Cannot verify native working-directory records.");
+      }
+    } else throw new Error("Native working-directory inspection requires Linux or macOS.");
+    return directories;
   },
   signal: (pid, signal) => {
     process.kill(pid, signal);
@@ -72,16 +128,17 @@ export function processIdentity(pid: number): string | undefined {
   } // Restricted/unsupported hosts must block orphan cleanup, never guess.
 }
 
-// Covers the recorded group and traceable descendants; deliberate detach/reparent outside recorded ancestry is not discoverable here.
+// Stops the recorded group and traceable descendants. For dead owners and vanished adapters, startup also checks marker/group/worktree cwd; writers outside those links remain undiscoverable.
 export async function stopStintProcesses(
   attempt: StintProcessAttempt,
   ownerReleased = false,
   processes = systemProcesses,
   unstartedExit?: Promise<void>,
+  worktree?: string,
 ): Promise<void> {
-  const blocked = () =>
+  const blocked = (detail = "") =>
     new ProcessOwnershipError(
-      `Cannot recover stint: previous owner or adapter/tool ownership is live or unverifiable (attempt ${attempt.id}, owner ${attempt.owner.pid}, adapter ${attempt.pid}, marker ${attempt.marker ?? "unavailable"}). Stop the old processes after verifying their identities, then restart Stintwork. No checkpoint or replacement was started.`,
+      `Cannot recover stint: previous owner or adapter/tool ownership is live or unverifiable (attempt ${attempt.id}, owner ${attempt.owner.pid}, adapter ${attempt.pid}, marker ${attempt.marker ?? "unavailable"}). ${detail} Verify any named live writers or restore native process/cwd inspection, then restart Stintwork. No checkpoint or replacement was started.`,
     );
   if (!ownerReleased && processes.exists(attempt.owner.pid)) {
     if (!attempt.owner.identity) throw blocked();
@@ -91,7 +148,8 @@ export async function stopStintProcesses(
     } catch {
       throw blocked();
     }
-    if (owner?.identity === attempt.owner.identity) throw blocked();
+    if (owner?.identity === attempt.owner.identity)
+      throw blocked(`Recorded owner PID ${owner.pid} is still alive.`);
   }
   const group = attempt.processGroup ? -attempt.pid : attempt.pid;
   const verified = () => {
@@ -217,6 +275,77 @@ export async function stopStintProcesses(
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   } catch (error) {
+    if (!ownerReleased && worktree && error instanceof ProcessOwnershipError) {
+      const uid = process.getuid?.();
+      if (
+        uid === undefined ||
+        !attempt.processGroup ||
+        attempt.marker !== `stintwork-${attempt.id}` ||
+        !attempt.identity?.startsWith(`${uid}:`) ||
+        !attempt.owner.identity?.startsWith(`${uid}:`)
+      )
+        throw error;
+      const root = realpathSync(worktree);
+      const snapshot = () => {
+        try {
+          return processes.read();
+        } catch {
+          throw blocked("Process table inspection failed.");
+        }
+      };
+      const absent = (rows: ProcessIdentity[]) => {
+        if (
+          rows.some(
+            (row) =>
+              (row.pid === attempt.owner.pid && row.identity === attempt.owner.identity) ||
+              (row.pid === attempt.pid && row.identity === attempt.identity),
+          )
+        )
+          throw blocked("The recorded owner or adapter is still alive.");
+        const writers = rows.filter(
+          (row) =>
+            row.group === attempt.pid ||
+            (row.parent === attempt.pid && !rows.some((parent) => parent.pid === attempt.pid)) ||
+            (attempt.marker !== null && row.command.includes(attempt.marker)) ||
+            owned.get(row.pid)?.identity === row.identity,
+        );
+        if (writers.length)
+          throw blocked(
+            `Live possible writers: ${writers.map((row) => `${row.pid} (${row.command})`).join(", ")}. Verify and stop those writers before retrying.`,
+          );
+      };
+      const rows = snapshot();
+      absent(rows);
+      if (rows.some((row) => !Number.isSafeInteger(row.uid)))
+        throw blocked("Process UID inspection is unavailable.");
+      const candidates = new Map(
+        rows.filter((row) => row.uid === uid).map((row) => [row.pid, row.identity]),
+      );
+      let directories: Map<number, string>;
+      try {
+        directories = processes.workingDirectories([...candidates.keys()]);
+      } catch {
+        throw blocked("Working-directory inspection failed; no live writer has been identified.");
+      }
+      const current = snapshot();
+      absent(current);
+      if (Date.now() >= deadline) throw blocked("Writer inspection exceeded its cleanup budget.");
+      for (const row of current) {
+        if (!Number.isSafeInteger(row.uid)) throw blocked("Process UID inspection is unavailable.");
+        if (row.uid !== uid) continue;
+        const directory = directories.get(row.pid);
+        if (candidates.get(row.pid) !== row.identity || !directory || !isAbsolute(directory))
+          throw blocked(
+            `Cannot inspect working directory for live PID ${row.pid} (${row.command}); no writer ownership was assumed.`,
+          );
+        const inside = relative(root, directory);
+        if (inside !== ".." && !inside.startsWith("../") && !isAbsolute(inside))
+          throw blocked(
+            `Live possible writer: PID ${row.pid} (${row.command}), cwd ${directory}. Verify and stop that writer before retrying.`,
+          );
+      }
+      return;
+    }
     if (!ownerReleased || !unstartedExit || !(error instanceof ProcessOwnershipError)) throw error;
     // ACP may close before Node delivers this server's ChildProcess exit event.
     // Only an unstarted local handle may use this proof. After session loading/work,

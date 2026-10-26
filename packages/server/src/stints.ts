@@ -1371,7 +1371,14 @@ export function addStintRoutes(
               entry.type === "recovery" &&
               entry.kind === "attempt",
           );
-          for (const entry of uncleanedAttempts) await stopStintProcesses(entry.attempt);
+          for (const entry of uncleanedAttempts)
+            await stopStintProcesses(
+              entry.attempt,
+              false,
+              undefined,
+              undefined,
+              stint.worktree.path,
+            );
           // Make startup cleanup durable too, before another attempt can start or the server can crash.
           if (uncleanedAttempts.length)
             appendRecovery({
