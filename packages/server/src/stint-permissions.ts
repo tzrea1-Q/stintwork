@@ -28,7 +28,8 @@ export function addStintPermissionRoute(app: Hono) {
   const unavailable = new Map<string, CoreText>();
   const endedStints = new Set<string>();
   let closed = false;
-  const key = (stintId: string, requestId: string) => `${stintId}/${requestId}`;
+  const key = (stintId: string, requestId: string, attemptId?: string) =>
+    JSON.stringify([stintId, requestId, attemptId ?? null]);
   app.post("/api/stints/:stintId/permissions/:requestId", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
@@ -61,7 +62,11 @@ export function addStintPermissionRoute(app: Hono) {
       );
     const requestId = context.req.param("requestId");
     const stintId = context.req.param("stintId");
-    const requestKey = key(stintId, requestId);
+    const requestKey = key(
+      stintId,
+      requestId,
+      "attemptId" in body && typeof body.attemptId === "string" ? body.attemptId : undefined,
+    );
     const permission = pending.get(requestKey);
     if (!permission)
       return context.json(
@@ -101,7 +106,7 @@ export function addStintPermissionRoute(app: Hono) {
     wait(stintId: string, request: PermissionRequest): Promise<PermissionResponse> {
       if (closed || endedStints.has(stintId))
         return Promise.resolve({ outcome: { outcome: "cancelled" } });
-      const requestKey = key(stintId, request.requestId);
+      const requestKey = key(stintId, request.requestId, request.attemptId);
       if (pending.has(requestKey) || unavailable.has(requestKey))
         throw new Error("This permission request was already registered.");
       if (!request.forwarded)

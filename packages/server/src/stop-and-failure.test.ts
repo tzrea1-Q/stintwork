@@ -142,16 +142,20 @@ async function stoppedAt(root: string, id: string) {
   return receivedAt;
 }
 
-function answer(
+async function answer(
   project: ReturnType<typeof createProjectServer>,
   id: string,
   requestId: string,
   optionId: string,
 ) {
+  const { stint }: { stint: Stint } = await (await project.app.request(`/api/stints/${id}`)).json();
+  const attemptId = stint.events
+    .filter((event) => event.type === "permission_request")
+    .find((event) => event.requestId === requestId)?.attemptId;
   return project.app.request(`/api/stints/${id}/permissions/${requestId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ optionId }),
+    body: JSON.stringify({ optionId, attemptId }),
   });
 }
 

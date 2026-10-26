@@ -5,20 +5,31 @@ import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
 import { PermissionDetails } from "./PermissionDetails";
 
-export function PermissionAnswer({
-  stintId,
-  request,
-  profile,
-  onError,
-}: {
+type PermissionAnswerProps = {
   stintId: string;
   request: Pick<
     Extract<StintEvent, { type: "permission_request" }>,
-    "requestId" | "options" | "details"
-  >;
+    "requestId" | "options" | "details" | "attemptId" | "binding"
+  > & { answering?: boolean };
   profile?: AgentProfile;
   onError?: (reason: string | Error) => void;
-}) {
+};
+
+export function PermissionAnswer(props: PermissionAnswerProps) {
+  return (
+    <PermissionAnswerBinding
+      key={JSON.stringify([
+        props.stintId,
+        props.request.requestId,
+        props.request.attemptId,
+        props.request.binding,
+      ])}
+      {...props}
+    />
+  );
+}
+
+function PermissionAnswerBinding({ stintId, request, profile, onError }: PermissionAnswerProps) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -34,7 +45,10 @@ export function PermissionAnswer({
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ optionId }),
+          body: JSON.stringify({
+            optionId,
+            ...(request.attemptId ? { attemptId: request.attemptId } : {}),
+          }),
         },
       );
       if (!response.ok) {
@@ -58,6 +72,13 @@ export function PermissionAnswer({
 
   return (
     <>
+      {request.binding && !submitted && (
+        <p role="status">
+          {request.binding === "reconnecting"
+            ? t.needsYou.reconnectingPermission
+            : t.needsYou.waitingPermission}
+        </p>
+      )}
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
         <p className="warning text-warning">{t.needsYou.declineEndsTurn(profile.displayName)}</p>
@@ -69,7 +90,9 @@ export function PermissionAnswer({
             variant={option.kind === "allow_once" ? "primary" : "secondary"}
             className="h-auto min-h-8 flex-col items-start whitespace-normal py-2 text-left"
             key={option.optionId}
-            disabled={sending || submitted}
+            disabled={
+              request.binding === "reconnecting" || request.answering || sending || submitted
+            }
             onClick={() => void answer(option.optionId)}
           >
             <strong>

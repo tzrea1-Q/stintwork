@@ -25,8 +25,24 @@ async function openFixture(page: Page, language: "en" | "zh-CN") {
     language,
   );
   await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
-  await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
-  return { snapshot, item };
+  let publish = () => {};
+  let connected!: () => void;
+  const socketReady = new Promise<void>((resolve) => {
+    connected = resolve;
+  });
+  await page.routeWebSocket("**/api/live", (socket) => {
+    publish = () => socket.send(JSON.stringify(snapshot));
+    publish();
+    connected();
+  });
+  return {
+    snapshot,
+    item,
+    publish: async () => {
+      await socketReady;
+      publish();
+    },
+  };
 }
 
 async function captureSheet(page: Page, testInfo: TestInfo, region: string, state: string) {
@@ -193,7 +209,7 @@ for (const language of ["en", "zh-CN"] as const) {
       test(`Needs you ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 900 });
         await page.emulateMedia({ colorScheme });
-        const { snapshot, item } = await openFixture(page, language);
+        const { snapshot, item, publish } = await openFixture(page, language);
         snapshot.agents = [
           {
             id: "fixture-agent",
@@ -243,13 +259,20 @@ for (const language of ["en", "zh-CN"] as const) {
             { optionId: "reject_once", kind: "reject_once", name: "Decline 原文" },
           ],
         }));
+        const restored = snapshot.attentionItems[0];
+        if (restored.kind !== "permission") throw new Error("Expected permission fixture");
+        restored.binding = "reconnecting";
+        restored.attemptId = "old-attempt";
         let releaseAnswer = () => {};
         const answerReady = new Promise<void>((resolve) => {
           releaseAnswer = resolve;
         });
         let attempts = 0;
         await page.route("**/api/stints/fixture-stint/permissions/request-0", async (route) => {
-          expect(route.request().postDataJSON()).toEqual({ optionId: "allow_once" });
+          expect(route.request().postDataJSON()).toEqual({
+            optionId: "allow_once",
+            attemptId: "new-attempt",
+          });
           attempts++;
           if (attempts === 1) {
             await answerReady;
@@ -272,6 +295,19 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(warnings).toBeAttached();
         await expect(warnings.getByText(longPath, { exact: true })).toBeAttached();
         const first = sheet.getByRole("article").first();
+        await expect(first.getByRole("status")).toHaveText(t.needsYou.reconnectingPermission);
+        await expect(
+          first.getByRole("button", { name: new RegExp(`^${t.needsYou.allowOnce}`) }),
+        ).toBeDisabled();
+        await expect(
+          first.getByRole("button", { name: new RegExp(`^${t.needsYou.deny}`) }),
+        ).toBeDisabled();
+        await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-reconnecting");
+        restored.binding = "live";
+        restored.attemptId = "new-attempt";
+        await publish();
+        await expect(first.getByRole("status")).toHaveText(t.needsYou.waitingPermission);
+        await expect(sheet.getByRole("article")).toHaveCount(8);
         await first.getByText(t.needsYou.fullPermissionJson, { exact: true }).click();
         for (const code of await first.locator(".permission-details").all()) {
           await code.scrollIntoViewIfNeeded();

@@ -209,7 +209,7 @@ test("Needs-you snapshots reach both tabs; a queue answer is logged, received by
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ optionId: "allow_once" }),
+        body: JSON.stringify({ optionId: "allow_once", attemptId: item.attemptId }),
       },
     );
     expect(response.status).toBe(200);
@@ -266,13 +266,16 @@ test("twenty answers each log exactly one decision before success and reach the 
   for (const { optionId, marker } of cycles) {
     const requestId = await pending(project, stint.id);
     const path = `/api/stints/${stint.id}/permissions/${requestId}`;
-    const answer = await post(project.app, path, { optionId });
+    const attemptId = (await history(project, stint.id)).events
+      .filter((event) => event.type === "permission_request")
+      .find((event) => event.requestId === requestId)?.attemptId;
+    const answer = await post(project.app, path, { optionId, attemptId });
     expect(answer.status).toBe(200);
     expect(await answer.json()).toEqual({ requestId, optionId });
     expect(await decisions(root, stint.id, requestId)).toMatchObject([
       { type: "event", event: { decision: { outcome: "selected", optionId } } },
     ]);
-    const duplicate = await post(project.app, path, { optionId });
+    const duplicate = await post(project.app, path, { optionId, attemptId });
     expect(duplicate.status).toBe(409);
     expect(await duplicate.json()).toMatchObject({
       reason: expect.stringContaining("already answered"),
@@ -317,7 +320,13 @@ test("real HTTP answers sent immediately on WebSocket request events reach the a
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ optionId }),
+          body: JSON.stringify({
+            optionId,
+            attemptId:
+              message.entry.type === "event" && message.entry.event.type === "permission_request"
+                ? message.entry.event.attemptId
+                : undefined,
+          }),
         },
       );
       expect(response.status).toBe(200);
@@ -356,6 +365,9 @@ test("ending a waiting stint removes its pending request and rejects late and un
   await expect.poll(async () => (await history(project, stint.id)).status).toBe("stopped");
   const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
     optionId: "allow_once",
+    attemptId: (await history(project, stint.id)).events
+      .filter((event) => event.type === "permission_request")
+      .find((event) => event.requestId === requestId)?.attemptId,
   });
   expect(answer.status).toBe(409);
   expect(await answer.json()).toMatchObject({ reason: expect.stringContaining("stint has ended") });
@@ -367,6 +379,9 @@ test("ending a waiting stint removes its pending request and rejects late and un
   );
   const unknown = await post(project.app, `/api/stints/${stint.id}/permissions/unknown`, {
     optionId: "allow_once",
+    attemptId: (await history(project, stint.id)).events
+      .filter((event) => event.type === "permission_request")
+      .find((event) => event.requestId === requestId)?.attemptId,
   });
   expect(unknown.status).toBe(409);
   expect(await unknown.json()).toMatchObject({
@@ -374,27 +389,37 @@ test("ending a waiting stint removes its pending request and rejects late and un
   });
 });
 
-test("a decision log failure is an error, never a successful answer", async () => {
-  const base = createFakeAgentLauncher([permission]);
-  const { project } = await fixture((options) =>
-    base({
-      ...options,
-      onEvent(event) {
-        if (event.type === "permission" && event.decision.outcome === "selected")
-          throw new Error("Permission log is unavailable.");
-        options.onEvent(event);
-      },
-    }),
-  );
-  const stint = await start(project);
-  const requestId = await pending(project, stint.id);
-  const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
-    optionId: "allow_once",
-  });
-  expect(answer.status).toBe(503);
-  expect(await answer.json()).toEqual({ reason: "Permission log is unavailable." });
-  await expect.poll(async () => (await history(project, stint.id)).status).toBe("failed");
-});
+test.each(["permission", "permission_delivery"] as const)(
+  "a %s log failure is an error, never a successful answer",
+  async (record) => {
+    const base = createFakeAgentLauncher([permission]);
+    const { project } = await fixture((options) =>
+      base({
+        ...options,
+        onEvent(event) {
+          if (
+            event.type === record &&
+            ((event.type === "permission" && event.decision.outcome === "selected") ||
+              (event.type === "permission_delivery" && event.outcome === "written"))
+          )
+            throw new Error("Permission log is unavailable.");
+          options.onEvent(event);
+        },
+      }),
+    );
+    const stint = await start(project);
+    const requestId = await pending(project, stint.id);
+    const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
+      optionId: "allow_once",
+      attemptId: (await history(project, stint.id)).events
+        .filter((event) => event.type === "permission_request")
+        .find((event) => event.requestId === requestId)?.attemptId,
+    });
+    expect(answer.status).toBe(503);
+    expect(await answer.json()).toEqual({ reason: "Permission log is unavailable." });
+    await expect.poll(async () => (await history(project, stint.id)).status).toBe("failed");
+  },
+);
 
 test("a broken agent pipe returns an error even when the selected decision was logged", async () => {
   const launcher = createAgentLauncher((cwd) => {
@@ -431,6 +456,9 @@ test("a broken agent pipe returns an error even when the selected decision was l
   const requestId = await pending(project, stint.id);
   const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
     optionId: "allow_once",
+    attemptId: (await history(project, stint.id)).events
+      .filter((event) => event.type === "permission_request")
+      .find((event) => event.requestId === requestId)?.attemptId,
   });
   expect(answer.status).toBe(503);
   expect(await answer.json()).toEqual({ reason: "Agent pipe is closed." });
@@ -459,6 +487,9 @@ test("a stopped work turn can still forward a permission answer during its hando
   const requestId = await pending(project, stint.id);
   const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
     optionId: "allow_once",
+    attemptId: (await history(project, stint.id)).events
+      .filter((event) => event.type === "permission_request")
+      .find((event) => event.requestId === requestId)?.attemptId,
   });
   expect(answer.status).toBe(200);
   expect(await decisions(root, stint.id, requestId)).toHaveLength(1);
@@ -481,6 +512,9 @@ test("declining is forwarded once and finishes the fake agent's turn", async () 
   const requestId = await pending(project, stint.id);
   const answer = await post(project.app, `/api/stints/${stint.id}/permissions/${requestId}`, {
     optionId: "cancel",
+    attemptId: (await history(project, stint.id)).events
+      .filter((event) => event.type === "permission_request")
+      .find((event) => event.requestId === requestId)?.attemptId,
   });
   expect(answer.status).toBe(200);
   expect(await decisions(root, stint.id, requestId)).toMatchObject([
@@ -644,4 +678,45 @@ test("permission identifiers are scoped to their stint and late registration can
     reason: "This permission request's stint has ended.",
     reasonMessage: { code: "permission.stintEnded" },
   });
+});
+
+test("a reused permission ID requires its current attempt even after suspension", async () => {
+  const app = new Hono();
+  const permissions = addStintPermissionRoute(app);
+  const make = (attemptId: string) => ({
+    sessionId: "acp",
+    requestId: "reused",
+    attemptId,
+    forwarded: new Promise<void>(() => {}),
+    toolCall: { toolCallId: "tool" },
+    options: [{ optionId: "allow", name: "Allow", kind: "allow_once" as const }],
+  });
+  const old = permissions.wait("stint", make("old"));
+  permissions.clear("stint", false);
+  await expect(old).resolves.toMatchObject({ outcome: { outcome: "cancelled" } });
+  const request = make("new");
+  let written!: () => void;
+  request.forwarded = new Promise<void>((resolve) => {
+    written = resolve;
+  });
+  const live = permissions.wait("stint", request);
+  const path = "/api/stints/stint/permissions/reused";
+  expect((await post(app, path, { optionId: "allow", attemptId: "old" })).status).toBe(409);
+  expect((await post(app, path, { optionId: "allow" })).status).toBe(409);
+  expect((await post(app, path, { optionId: "invalid", attemptId: "new" })).status).toBe(400);
+  expect(
+    (
+      await app.request(path, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Origin: "https://foreign.invalid" },
+        body: JSON.stringify({ optionId: "allow", attemptId: "new" }),
+      })
+    ).status,
+  ).toBe(403);
+  const answer = post(app, path, { optionId: "allow", attemptId: "new" });
+  await expect(live).resolves.toMatchObject({ outcome: { optionId: "allow" } });
+  expect((await post(app, path, { optionId: "allow", attemptId: "new" })).status).toBe(409);
+  written();
+  expect((await answer).status).toBe(200);
+  permissions.clear();
 });

@@ -5,6 +5,7 @@ import {
   CoreTextError,
   coreText,
   foldStintLog,
+  pendingStintPermissions,
   indexProject,
   agentUnavailable,
   type BriefHandoff,
@@ -199,6 +200,7 @@ export function addStintRoutes(
       recovery,
       fallbackReason,
       logPath,
+      savedPermissions = [],
     }: {
       preparedAgent?: PreparedAgent;
       selected?: AgentSelection | PreparedAgent;
@@ -207,6 +209,7 @@ export function addStintRoutes(
       recovery?: Stint["recovery"];
       fallbackReason?: string;
       logPath?: string;
+      savedPermissions?: Extract<Stint["events"][number], { type: "permission_request" }>[];
     } = {},
   ) {
     const { id, worktree, brief, baseCommit, agent: agentId, workItem, ticket } = started.stint;
@@ -473,6 +476,14 @@ export function addStintRoutes(
     let setupStarted = 0;
     let liveWaits = 0;
     let setupFinished = false;
+    const reconciling = new Set(
+      savedPermissions.map((request) => request.logicalRequestId ?? request.requestId),
+    );
+    let reconciled: () => void = () => {};
+    const reconciliation = new Promise<void>((resolve) => {
+      reconciled = resolve;
+    });
+    if (!reconciling.size) reconciled();
     let rejectSetup: (error: Error) => void = () => {};
     const setupFailure = new Promise<never>((_resolve, reject) => {
       rejectSetup = reject;
@@ -615,7 +626,13 @@ export function addStintRoutes(
         ...(additionalDirectories ? { additionalDirectories } : {}),
         prompt: recovery ? "" : brief.prompt,
         ...(recovery?.sessionId
-          ? { resume: { sessionId: recovery.sessionId, progress: savedProgress } }
+          ? {
+              resume: {
+                sessionId: recovery.sessionId,
+                progress: savedProgress,
+                permissions: savedPermissions,
+              },
+            }
           : {}),
         permissionLevel: recovery?.launch?.permissionLevel ?? brief.permissionLevel,
         handoffTimeoutMs,
@@ -668,7 +685,19 @@ export function addStintRoutes(
         onEvent: (event) => {
           if (state.ending || state.suspending) return;
           append({ type: "event", at: new Date().toISOString(), event });
-          if (event.type === "permission_request" || event.type === "permission") refresh();
+          if (event.type === "permission_request" && event.logicalRequestId)
+            reconciling.delete(event.logicalRequestId);
+          if (event.type === "permission_delivery" && event.outcome === "retired") {
+            const saved = savedPermissions.find((request) => request.requestId === event.requestId);
+            if (saved) reconciling.delete(saved.logicalRequestId ?? saved.requestId);
+          }
+          if (!reconciling.size) reconciled();
+          if (
+            event.type === "permission_request" ||
+            event.type === "permission" ||
+            event.type === "permission_delivery"
+          )
+            refresh();
         },
         onPermission: (request) =>
           closing
@@ -715,7 +744,7 @@ export function addStintRoutes(
         .catch((error: unknown) => {
           console.error("Could not record the end of a stint:", error);
         });
-      await Promise.race([state.handle.ready, setupFailure]);
+      await Promise.race([Promise.all([state.handle.ready, reconciliation]), setupFailure]);
       clearSetupTimer();
       if (state.suspending || state.stopRequested) return;
       if (recovery) {
@@ -1282,6 +1311,28 @@ export function addStintRoutes(
       return;
     }
     const recovery = stint.recovery ?? { version: 1 as const };
+    // Saved data is never a live binding, including while old-writer inspection is pending.
+    if (
+      pendingStintPermissions({ ...stint, recovery: { ...recovery, state: "resuming" } }).length &&
+      !recovery.stopRequestedAt &&
+      recovery.state !== "fallback"
+    ) {
+      try {
+        appendRecovery({
+          type: "recovery",
+          version: 1,
+          at: new Date().toISOString(),
+          kind: "resume",
+          state: "resuming",
+        });
+      } catch (error) {
+        state.recoveryBlocked = true;
+        warning(
+          `Could not recover stint: ${String(error)}. Repair the ownership/log storage and restart Stintwork.`,
+        );
+        return;
+      }
+    }
     const agent = registry.get(stint.agent);
     let reason: string | undefined;
     let attemptId: string | undefined;
@@ -1345,17 +1396,6 @@ export function addStintRoutes(
       )
         reason = "The recorded recovery session or agent does not match this stint.";
       else if (!agent?.verifyRecovery) reason = "The recorded agent has no recovery verifier.";
-      // Rebinding is ticket 06's seam; do not silently approve or send saved consent.
-      else if (
-        stint.events.some(
-          (event) =>
-            event.type === "permission_request" &&
-            !stint.events.some(
-              (answer) => answer.type === "permission" && answer.requestId === event.requestId,
-            ),
-        )
-      )
-        reason = "A saved permission request cannot yet be rebound to a live process.";
     }
     const started = entries.find((entry) => entry.type === "started");
     if (!started) return;
@@ -1448,6 +1488,10 @@ export function addStintRoutes(
             ?.gate === "evidence";
         await runStint(started, state, agent, evidence, recoverySequence, {
           recovery,
+          savedPermissions: pendingStintPermissions({
+            ...stint,
+            recovery: { ...recovery, state: "resuming" },
+          }),
           fallbackReason: reason,
           logPath: join(root, path),
         });

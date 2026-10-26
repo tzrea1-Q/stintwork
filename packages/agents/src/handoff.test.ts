@@ -359,6 +359,7 @@ test("a pending handoff permission is cancelled and logged before the handoff ti
       automatic: false,
       decision: { outcome: "cancelled" },
     },
+    { type: "permission_delivery", outcome: "failed" },
   ]);
   const completed = structuredClone(events);
   await new Promise((resolve) => setTimeout(resolve, 50));

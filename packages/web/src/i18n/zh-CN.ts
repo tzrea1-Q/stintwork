@@ -320,6 +320,8 @@ export const zhCN: Catalog = {
     },
   },
   needsYou: {
+    reconnectingPermission: "正在重新连接权限请求…",
+    waitingPermission: "等待你批准权限请求",
     yourAttention: "待处理事项",
     heading: "待你处理",
     close: "关闭待你处理",

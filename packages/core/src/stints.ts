@@ -143,6 +143,7 @@ export type StintEvent =
   | {
       type: "permission";
       requestId?: string;
+      attemptId?: string;
       toolCallId: string;
       title: string | null;
       kind: string | null;
@@ -151,6 +152,12 @@ export type StintEvent =
         | { outcome: "selected"; optionId: string; kind: string }
         | { outcome: "cancelled" }
         | { outcome: "failed"; reason: string };
+    }
+  | {
+      type: "permission_delivery";
+      requestId: string;
+      attemptId: string;
+      outcome: "written" | "failed" | "retired";
     }
   | { type: "other"; kind: string; update: Record<string, unknown> };
 export type StintLogEvent =
@@ -237,7 +244,12 @@ export type StintLiveMessage = {
 };
 
 export function mergeStintEvent(events: readonly StintEvent[], event: StintLogEvent): StintEvent[] {
-  if (event.type === "other" || event.type === "permission" || event.type === "permission_request")
+  if (
+    event.type === "other" ||
+    event.type === "permission" ||
+    event.type === "permission_request" ||
+    event.type === "permission_delivery"
+  )
     return [...events, event];
   if (
     event.type === "plan" ||
@@ -324,6 +336,17 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     return {
       ...stint,
       recovery,
+      ...((entry.kind === "resume" &&
+        ["resuming", "suspending", "suspended"].includes(entry.state)) ||
+      entry.kind === "stop_requested"
+        ? {
+            events: stint.events.map((event) =>
+              event.type === "permission_request"
+                ? { ...event, binding: "reconnecting" as const }
+                : event,
+            ),
+          }
+        : {}),
       ...(entry.kind === "phase"
         ? {
             ...(entry.progress.handoff === undefined ? {} : { handoff: entry.progress.handoff }),
@@ -393,6 +416,12 @@ export function isStintEvent(value: unknown): value is StintEvent {
   if (!value || typeof value !== "object") return false;
   const event = value as Record<string, unknown>;
   if (isRichStintEvent(event)) return true;
+  if (event.type === "permission_delivery")
+    return (
+      typeof event.requestId === "string" &&
+      typeof event.attemptId === "string" &&
+      ["written", "failed", "retired"].includes(String(event.outcome))
+    );
   if (event.type === "permission") {
     const decision = event.decision as Record<string, unknown> | undefined;
     return (
@@ -401,6 +430,7 @@ export function isStintEvent(value: unknown): value is StintEvent {
       (event.kind === null || typeof event.kind === "string") &&
       typeof event.automatic === "boolean" &&
       (event.requestId === undefined || typeof event.requestId === "string") &&
+      (event.attemptId === undefined || typeof event.attemptId === "string") &&
       !!decision &&
       (decision.outcome === "cancelled" ||
         (decision.outcome === "failed" && typeof decision.reason === "string") ||

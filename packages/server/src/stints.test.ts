@@ -339,7 +339,7 @@ test.each(["allow", "cancel"])(
       project.app.request(path, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ ...(body as object), attemptId: pending?.attemptId }),
       });
     expect((await answer({ optionId: "invented" })).status).toBe(400);
     expect((await answer({})).status).toBe(400);
@@ -375,6 +375,7 @@ test.each(["allow", "cancel"])(
     const permission = {
       type: "permission",
       requestId: pending?.requestId,
+      attemptId: pending?.attemptId,
       toolCallId: "git-add",
       title: "Escalate git add",
       kind: "execute",
@@ -641,7 +642,18 @@ test("rich events and pending permission frames broadcast in durable order and a
   const answer = await fetch(`${url}/api/stints/${stint.id}/permissions/${requestId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ optionId: "allow" }),
+    body: JSON.stringify({
+      optionId: "allow",
+      attemptId: messages
+        .flatMap((message) =>
+          message.entry.type === "event" &&
+          message.entry.event.type === "permission_request" &&
+          message.entry.event.requestId === requestId
+            ? [message.entry.event.attemptId]
+            : [],
+        )
+        .at(-1),
+    }),
   });
   expect(answer.status).toBe(200);
   await ended;
@@ -674,6 +686,7 @@ test("rich events and pending permission frames broadcast in durable order and a
         automatic: false,
         decision: { outcome: "selected", optionId: "allow" },
       },
+      { type: "permission_delivery", requestId, outcome: "written" },
     ],
   });
 });

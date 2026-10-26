@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { pendingStintPermissions } from "./stint-permissions.js";
 import { riskyPathAccepted } from "./review-evidence.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { CheckpointWarning, StintEvent } from "./stints.js";
@@ -24,6 +25,9 @@ export type PermissionAttentionItem = AttentionItemSource & {
   stintId: string;
   agent: string;
   requestId: string;
+  attemptId?: string;
+  binding?: "live" | "reconnecting";
+  answering?: boolean;
   options: Extract<StintEvent, { type: "permission_request" }>["options"];
 };
 
@@ -156,37 +160,28 @@ export function deriveAttentionItems(
       : [];
     const proposals = item.memoryProposals ?? [];
     if (stint?.status !== "running") return [...handoffs, ...checkpoints, ...proposals];
-    const answered = new Set(
-      stint.events.flatMap((event) =>
-        event.type === "permission" && event.requestId ? [event.requestId] : [],
-      ),
-    );
-    const requests = new Map(
-      stint.events.flatMap((event) =>
-        event.type === "permission_request" ? [[event.requestId, event] as const] : [],
-      ),
-    );
     return [
       ...handoffs,
       ...checkpoints,
       ...proposals,
-      ...[...requests.values()]
-        .filter((request) => !request.automatic && !answered.has(request.requestId))
-        .map(
-          (request): PermissionAttentionItem => ({
-            kind: "permission",
-            id: `permission:${JSON.stringify([stint.id, request.requestId])}`,
-            workItem: item.slug,
-            ticket: stint.ticket,
-            stintId: stint.id,
-            agent: stint.agent,
-            requestId: request.requestId,
-            title: request.title ?? "Permission requested",
-            details: request.details ?? request.title ?? request.toolCallId,
-            raisedAt: request.raisedAt ?? stint.startedAt,
-            options: request.options,
-          }),
-        ),
+      ...pendingStintPermissions(stint).map(
+        (request): PermissionAttentionItem => ({
+          kind: "permission",
+          id: `permission:${JSON.stringify([stint.id, request.logicalRequestId ?? request.requestId])}`,
+          workItem: item.slug,
+          ticket: stint.ticket,
+          stintId: stint.id,
+          agent: stint.agent,
+          requestId: request.requestId,
+          ...(request.attemptId ? { attemptId: request.attemptId } : {}),
+          ...(request.binding ? { binding: request.binding } : {}),
+          ...(request.answering ? { answering: true } : {}),
+          title: request.title ?? "Permission requested",
+          details: request.details ?? request.title ?? request.toolCallId,
+          raisedAt: request.raisedAt ?? stint.startedAt,
+          options: request.options,
+        }),
+      ),
     ];
   });
   const logins: LoginRequiredAttentionItem[] = (snapshot.agents ?? [])

@@ -195,3 +195,5 @@ export {
   compileBrief,
 } from "./brief.js";
 export * from "./pull-requests.js";
+
+export { pendingStintPermissions } from "./stint-permissions.js";

@@ -126,7 +126,7 @@ test("a Claude stint accepts Yes and No without ending on decline, then saves it
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ optionId }),
+        body: JSON.stringify({ optionId, attemptId: item.attemptId }),
       },
     );
     expect(answered.status).toBe(200);

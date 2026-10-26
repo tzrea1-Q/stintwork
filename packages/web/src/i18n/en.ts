@@ -302,6 +302,8 @@ export const en = {
     },
   },
   needsYou: {
+    reconnectingPermission: "Reconnecting permission request…",
+    waitingPermission: "Waiting for your permission",
     yourAttention: "Your attention",
     heading: "Needs you",
     close: "Close Needs you",
