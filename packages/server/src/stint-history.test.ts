@@ -1090,11 +1090,19 @@ test("a live recorded owner reserves the work item without launching or checkpoi
   entries.pop(); // This test models an uncleaned attempt still owned by a live server.
   await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
   const before = await readFile(logged.path, "utf8");
-  const server = project({ agentRegistry: createAgentRegistry([registered]) });
-  const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
-  expect(snapshot.warnings.some((warning) => warning.message.includes("previous owner"))).toBe(
-    true,
-  );
+  const server = project({
+    agentRegistry: createAgentRegistry([registered]),
+    recoveryProcessScan: { wait: async () => {} },
+  });
+  await expect
+    .poll(
+      async () => {
+        const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+        return snapshot.warnings.some((warning) => warning.message.includes("previous owner"));
+      },
+      { message: "bounded inspection must retain the live-owner block" },
+    )
+    .toBe(true);
   expect(await readFile(logged.path, "utf8")).toBe(before);
   expect(await calls()).toEqual([]);
   expect(
@@ -2979,7 +2987,10 @@ test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const
         cancel: async () => {},
       };
     });
-    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    const server = project({
+      agentRegistry: createAgentRegistry([registered]),
+      recoveryProcessScan: { wait: async () => {} },
+    });
     try {
       await server.app.request("/api/health");
       if (scenario === "detached-writer") {
@@ -3033,7 +3044,7 @@ test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const
         expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
         expect(registered.launch).toHaveBeenCalledTimes(scenario === "resume" ? 1 : 0);
       }
-      expect(directories).toHaveBeenCalledOnce();
+      expect(directories).toHaveBeenCalledTimes(scenario === "detached-writer" ? 4 : 1);
       expect(signal).not.toHaveBeenCalled();
     } finally {
       read.mockRestore();
@@ -3120,6 +3131,7 @@ test.each(["grok", "grok-writer", "pre-patch", "legacy-no-attempt"] as const)(
       throw new Error("Grok/legacy recovery must use fallback");
     });
     const server = project({
+      recoveryProcessScan: { wait: async () => {} },
       agentRegistry: createAgentRegistry([
         { ...fakeAgentProfiles.grok, launch },
         { ...fakeAgentProfiles.codex, launch },
@@ -3173,7 +3185,9 @@ test.each(["grok", "grok-writer", "pre-patch", "legacy-no-attempt"] as const)(
         const finished: ProjectSnapshot = await (await server.app.request("/api/project")).json();
         expect(finished.workItems[0].activeStint).toBeNull();
       }
-      expect(directories).toHaveBeenCalledTimes(kind === "legacy-no-attempt" ? 0 : 1);
+      expect(directories).toHaveBeenCalledTimes(
+        kind === "legacy-no-attempt" ? 0 : kind === "grok-writer" ? 4 : 1,
+      );
       expect(signal).not.toHaveBeenCalled();
       expect(launch).not.toHaveBeenCalled();
     } finally {
@@ -3273,3 +3287,83 @@ test.each(["work", "finalization"] as const)(
     }
   },
 );
+
+test("orphan scan retries stay in the background while transient cwd inspection settles", async () => {
+  const { root, project } = await fixture();
+  const logged = await log(root, "retry-native", "2026-10-26T11:08:55Z");
+  const started = JSON.parse(logged.text) as Extract<StintLogEntry, { type: "started" }>;
+  started.stint.agent = "grok";
+  const attempt: StintProcessAttempt = {
+    id: "native",
+    pid: 20,
+    marker: null,
+    owner: { pid: 10, startedAt: "2026-10-26T11:00:00Z" },
+  };
+  const before = `${JSON.stringify(started)}\n${JSON.stringify({ type: "recovery", version: 1, at: started.at, kind: "attempt", attempt })}\n`;
+  await writeFile(logged.path, before);
+  await writeFile(join(logged.worktree.path, "partial.txt"), "Native partial work");
+  const uid = process.getuid?.() as number;
+  let transient = true;
+  let now = 0;
+  let release = () => {};
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const wait = vi.fn(async (milliseconds: number) => {
+    await waiting;
+    now += milliseconds;
+    transient = false;
+  });
+  const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => [
+    { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
+    ...(transient
+      ? [
+          {
+            pid: 21,
+            group: 21,
+            uid,
+            identity: `${uid}:transient`,
+            command: "unrelated transient job",
+          },
+        ]
+      : []),
+  ]);
+  const exists = vi
+    .spyOn(systemProcesses, "exists")
+    .mockImplementation((pid) => pid === process.pid || (pid === 21 && transient));
+  const cwd = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(new Map());
+  const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+    throw new Error("No signal is verified");
+  });
+  const server = project({ recoveryProcessScan: { now: () => now, wait } });
+  try {
+    const starting = server.start();
+    void starting.catch(() => {});
+    expect((await server.app.request("/api/health")).status).toBe(200);
+    expect(wait).toHaveBeenCalledOnce();
+    await crashStep("server ready while orphan re-inspection waits", () => starting);
+    const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+    expect(snapshot.workItems[0].activeStint?.id).toBe("retry-native");
+    expect(snapshot.warnings.map((warning) => warning.message).join("\n")).not.toContain(
+      "Cannot recover stint",
+    );
+    expect(
+      (await server.app.request("/api/work-items/first/checks", { method: "POST" })).status,
+    ).toBe(409);
+    expect(await readFile(logged.path, "utf8")).toBe(before);
+    release();
+    expect(await waitForEnding(root)).toMatchObject({
+      status: "interrupted",
+      checkpointCommit: expect.any(String),
+    });
+    expect(cwd).toHaveBeenCalledTimes(2);
+    expect(signal).not.toHaveBeenCalled();
+  } finally {
+    release();
+    await server.stop();
+    signal.mockRestore();
+    cwd.mockRestore();
+    exists.mockRestore();
+    read.mockRestore();
+  }
+});

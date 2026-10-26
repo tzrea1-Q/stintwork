@@ -5,10 +5,16 @@ import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import type { StintProcessAttempt } from "@stintwork/core";
 import {
-  stopStintProcesses,
+  stopStintProcesses as inspectProcesses,
   type ProcessControl,
   type ProcessIdentity,
 } from "./process-ownership.js";
+
+// Pin existing single-scan regressions; retry cases below inject their complete schedule.
+const stopStintProcesses: typeof inspectProcesses = (...args) => {
+  args[5] ??= { attempts: 1, timeoutMs: 1000 };
+  return inspectProcesses(...args);
+};
 
 const attempt: StintProcessAttempt = {
   id: "attempt",
@@ -459,7 +465,7 @@ test("startup absence proof ignores zombie rows even with old ownership links an
   await expect(
     stopStintProcesses(recorded, false, fake.control, undefined, process.cwd()),
   ).resolves.toBeUndefined();
-  expect(cwd).toHaveBeenCalledWith([]);
+  expect(cwd).toHaveBeenCalledWith([], undefined, expect.any(Number));
   expect(fake.signal).not.toHaveBeenCalled();
 });
 
@@ -585,6 +591,8 @@ test.each([
     // No cwd is needed for our proven tree, regardless of commands or process groups.
     expect(cwd).toHaveBeenCalledWith(
       interleaving === "foreign-git" ? [21] : interleaving === "missing-root" ? [31, 32] : [],
+      undefined,
+      expect.any(Number),
     );
     expect(fake.signal).not.toHaveBeenCalled();
     expect(fake.table.has(child.pid)).toBe(true);
@@ -840,3 +848,196 @@ test.each([
     }
   },
 );
+
+test("orphan inspection retries a process that outlives the immediate cwd recheck but exits before the next scan", async () => {
+  const uid = process.getuid?.() as number;
+  const fake = processes([
+    { pid: 21, group: 21, uid, identity: `${uid}:transient`, command: "transient job" },
+  ]);
+  let now = 0;
+  const wait = vi.fn(async (milliseconds: number) => {
+    now += milliseconds;
+    fake.table.delete(21);
+  });
+  const cwd = vi.spyOn(fake.control, "workingDirectories");
+  await expect(
+    stopStintProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:adapter`,
+        owner: { ...attempt.owner, identity: `${uid}:owner` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+      { attempts: 4, intervalMs: 500, timeoutMs: 3000, now: () => now, wait },
+    ),
+  ).resolves.toBeUndefined();
+  expect(wait).toHaveBeenCalledExactlyOnceWith(500);
+  expect(cwd).toHaveBeenCalledTimes(2);
+  expect(fake.signal).not.toHaveBeenCalled();
+});
+
+test.each([
+  "churn",
+  "persistent",
+  "switch-first",
+  "writer-late",
+  "writer-gone",
+  "error-clean",
+  "errors-all",
+  "error-final",
+  "cwd-error-clean",
+  "cwd-errors-all",
+  "cwd-writer-late",
+] as const)(
+  "the final bounded orphan scan classifies identities across complete inspections: %s",
+  async (scenario) => {
+    const uid = process.getuid?.() as number;
+    const base = { pid: 21, group: 21, uid, identity: `${uid}:first`, command: "transient" };
+    const fake = processes([]);
+    let scan = 0;
+    let now = 0;
+    const read = fake.control.read;
+    fake.control.read = () => {
+      if (
+        scenario === "errors-all" ||
+        (scenario === "error-clean" && scan === 0) ||
+        (scenario === "error-final" && scan === 3)
+      )
+        throw new Error("Native inspection failed");
+      return read();
+    };
+    const update = () => {
+      fake.table.clear();
+      if (["writer-gone", "error-clean", "cwd-error-clean"].includes(scenario) && scan > 0) return;
+      fake.table.set(21, {
+        ...base,
+        identity: scenario === "churn" ? `${uid}:identity-${scan}` : base.identity,
+        command:
+          (scenario === "writer-late" && scan === 3) || scenario === "writer-gone"
+            ? "stintwork-attempt"
+            : base.command,
+      });
+      if (scenario === "switch-first")
+        fake.table.set(22, {
+          ...base,
+          pid: 22,
+          identity: `${uid}:persistent`,
+          command: "persistent unknown",
+        });
+    };
+    update();
+    const cwd = vi.fn(() => {
+      if (scenario === "cwd-errors-all" || (scenario === "cwd-error-clean" && scan === 0))
+        throw new Error("Native cwd inspection failed");
+      if (scenario === "cwd-writer-late" && scan === 3)
+        return new Map([[21, `${process.cwd()}/deleted-subdir (deleted)`]]);
+      return scenario === "switch-first" && scan > 0
+        ? new Map([[21, "/outside"]])
+        : new Map<number, string>();
+    });
+    fake.control.workingDirectories = cwd;
+    const wait = vi.fn(async (milliseconds: number) => {
+      now += milliseconds;
+      scan++;
+      update();
+    });
+    const result = stopStintProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:adapter`,
+        owner: { ...attempt.owner, identity: `${uid}:owner` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+      { attempts: 4, intervalMs: 500, timeoutMs: 3000, now: () => now, wait },
+    );
+    if (["churn", "writer-gone", "error-clean", "cwd-error-clean"].includes(scenario))
+      await expect(result).resolves.toBeUndefined();
+    else await expect(result).rejects.toThrow(/No checkpoint or replacement/);
+    expect(wait).toHaveBeenCalledTimes(
+      ["writer-gone", "error-clean", "cwd-error-clean"].includes(scenario) ? 1 : 3,
+    );
+    if (scenario === "writer-gone") expect(cwd).toHaveBeenCalledTimes(2);
+    expect(fake.signal).not.toHaveBeenCalled();
+  },
+);
+
+test("default orphan inspection takes four scans with bounded scheduled waits", async () => {
+  const uid = process.getuid?.() as number;
+  const fake = processes([
+    { pid: 21, group: 21, uid, identity: `${uid}:persistent`, command: "unknown" },
+  ]);
+  const cwd = vi.spyOn(fake.control, "workingDirectories");
+  vi.useFakeTimers();
+  try {
+    const result = inspectProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:adapter`,
+        owner: { ...attempt.owner, identity: `${uid}:owner` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+    );
+    const rejected = expect(result).rejects.toThrow(
+      "Cannot inspect working directory for live PID 21",
+    );
+    expect(cwd).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1500);
+    await rejected;
+    expect(cwd).toHaveBeenCalledTimes(4);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(fake.signal).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("orphan scan shares its remaining budget across native reads, cwd inspection and waits", async () => {
+  const uid = process.getuid?.() as number;
+  const fake = processes([
+    { pid: 21, group: 21, uid, identity: `${uid}:persistent`, command: "unknown" },
+  ]);
+  let now = 0;
+  const read = fake.control.read;
+  const timedRead = vi.fn((timeout?: number) => {
+    if (timeout !== undefined) now += 200;
+    return read();
+  });
+  fake.control.read = timedRead;
+  const cwd = vi.fn((_pids: readonly number[], _platform?: NodeJS.Platform, timeout?: number) => {
+    expect(timeout).toBe(800);
+    now += 200;
+    return new Map<number, string>();
+  });
+  fake.control.workingDirectories = cwd;
+  const wait = vi.fn(async (milliseconds: number) => {
+    now += milliseconds;
+  });
+  await expect(
+    inspectProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:adapter`,
+        owner: { ...attempt.owner, identity: `${uid}:owner` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+      { attempts: 4, intervalMs: 500, timeoutMs: 1000, now: () => now, wait },
+    ),
+  ).rejects.toThrow("Cannot inspect working directory");
+  expect(timedRead.mock.calls.map(([timeout]) => timeout)).toEqual([undefined, 1000, 600, 400]);
+  expect(wait).toHaveBeenCalledExactlyOnceWith(200);
+  expect(now).toBe(1000);
+  expect(cwd).toHaveBeenCalledOnce();
+  expect(fake.signal).not.toHaveBeenCalled();
+});

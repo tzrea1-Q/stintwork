@@ -15,9 +15,13 @@ export type ProcessIdentity = {
 };
 export type ProcessControl = {
   exists: (pid: number) => boolean;
-  read: () => ProcessIdentity[];
+  read: (timeoutMs?: number) => ProcessIdentity[];
   signal: (pid: number, signal: NodeJS.Signals) => void;
-  workingDirectories: (pids: readonly number[], platform?: NodeJS.Platform) => Map<number, string>;
+  workingDirectories: (
+    pids: readonly number[],
+    platform?: NodeJS.Platform,
+    timeoutMs?: number,
+  ) => Map<number, string>;
 };
 export const systemProcesses: ProcessControl = {
   exists(pid) {
@@ -28,14 +32,14 @@ export const systemProcesses: ProcessControl = {
       return (error as NodeJS.ErrnoException).code !== "ESRCH";
     }
   },
-  read() {
+  read(timeoutMs = 1000) {
     // POSIX groups are created at launch, never inferred from a logged PID.
     const inspection = spawnSync(
       "/bin/ps",
       ["-axo", "pid=,ppid=,pgid=,uid=,lstart=,stat=,command="],
       {
         encoding: "utf8",
-        timeout: 1000,
+        timeout: timeoutMs,
         maxBuffer: 16 * 1024 * 1024,
         stdio: ["ignore", "pipe", "pipe"],
       },
@@ -65,16 +69,18 @@ export const systemProcesses: ProcessControl = {
         ];
       });
   },
-  workingDirectories(pids, platform = process.platform) {
+  workingDirectories(pids, platform = process.platform, timeoutMs = 1000) {
     const directories = new Map<number, string>();
     if (platform === "linux") {
+      const deadline = Date.now() + timeoutMs;
       for (const pid of pids) {
+        if (Date.now() >= deadline) throw new Error("Working-directory inspection timed out.");
         try {
           directories.set(pid, readlinkSync(`/proc/${pid}/cwd`));
         } catch (error) {
           if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? ""))
             throw error;
-          // The caller rechecks identity: a missing cwd is safe only if the process also disappeared.
+          // The caller rechecks identity and retries transient missing cwd records.
         }
       }
     } else if (platform === "darwin") {
@@ -86,7 +92,7 @@ export const systemProcesses: ProcessControl = {
           ["-a", "-p", pids.join(","), "-d", "cwd", "-F0pn"],
           {
             encoding: "utf8",
-            timeout: 1000,
+            timeout: timeoutMs,
             maxBuffer: 16 * 1024 * 1024,
             stdio: ["ignore", "pipe", "pipe"],
           },
@@ -174,6 +180,13 @@ export async function stopStintProcesses(
   processes = systemProcesses,
   unstartedExit?: Promise<void>,
   worktree?: string,
+  scanOptions: {
+    attempts?: number;
+    intervalMs?: number;
+    timeoutMs?: number;
+    now?: () => number;
+    wait?: (milliseconds: number) => Promise<void>;
+  } = {},
 ): Promise<void> {
   const blocked = (detail = "") =>
     new ProcessOwnershipError(
@@ -182,17 +195,20 @@ export async function stopStintProcesses(
   const describe = (row: ProcessIdentity) =>
     `${row.pid} (${row.command.length > 120 ? `${row.command.slice(0, 119)}…` : row.command})`;
   // Zombies retain a PID but cannot write, including in injected native snapshots.
-  const liveProcesses = () => processes.read().filter((row) => !row.state?.includes("Z"));
-  if (!ownerReleased && processes.exists(attempt.owner.pid)) {
-    let owner: ProcessIdentity | undefined;
-    try {
-      owner = liveProcesses().find((row) => row.pid === attempt.owner.pid);
-    } catch {
-      throw blocked();
+  const liveProcesses = (timeoutMs?: number) =>
+    processes.read(timeoutMs).filter((row) => !row.state?.includes("Z"));
+  const checkOwner = () => {
+    if (!ownerReleased && processes.exists(attempt.owner.pid)) {
+      let owner: ProcessIdentity | undefined;
+      try {
+        owner = liveProcesses().find((row) => row.pid === attempt.owner.pid);
+      } catch {
+        throw blocked();
+      }
+      if (owner && (!attempt.owner.identity || owner.identity === attempt.owner.identity))
+        throw blocked(`Recorded owner PID ${owner.pid} is still alive.`);
     }
-    if (owner && (!attempt.owner.identity || owner.identity === attempt.owner.identity))
-      throw blocked(`Recorded owner PID ${owner.pid} is still alive.`);
-  }
+  };
   const group = attempt.processGroup ? -attempt.pid : attempt.pid;
   const verified = () => {
     let rows: ProcessIdentity[];
@@ -263,6 +279,7 @@ export async function stopStintProcesses(
     }
   };
   try {
+    checkOwner();
     verified();
     verified();
     signal(group, "SIGSTOP");
@@ -335,133 +352,200 @@ export async function stopStintProcesses(
           throw blocked("Cannot resolve the worktree path for writer inspection.");
         // A missing worktree still needs an absence check before the non-mutating ending fallback.
       }
-      const snapshot = () => {
-        try {
-          return liveProcesses();
-        } catch {
-          throw blocked("Process table inspection failed.");
-        }
+      const {
+        attempts = 4,
+        intervalMs = 500,
+        timeoutMs = 3000,
+        now = Date.now,
+        wait = (milliseconds) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
+      } = scanOptions;
+      if (
+        !Number.isInteger(attempts) ||
+        attempts < 1 ||
+        attempts > 4 ||
+        !Number.isFinite(timeoutMs) ||
+        timeoutMs <= 0 ||
+        timeoutMs > 3000 ||
+        !Number.isFinite(intervalMs) ||
+        intervalMs < 0
+      )
+        throw blocked("Invalid orphan inspection schedule.");
+      const scanDeadline = now() + timeoutMs;
+      const remaining = () => {
+        const milliseconds = Math.min(1000, Math.floor(scanDeadline - now()));
+        if (milliseconds <= 0) throw blocked("Writer inspection exceeded its cleanup budget.");
+        return milliseconds;
       };
-      const rows = snapshot();
-      const initial = new Map(rows.map((row) => [row.pid, row]));
-      const serverIdentity = initial.get(process.pid)?.identity;
-      // Parent PIDs alone are insufficient: each link must keep its identity and ancestry across snapshots.
-      const localProcesses = (before: ProcessIdentity[], after: ProcessIdentity[]) => {
-        const previous = new Map(before.map((row) => [row.pid, row]));
-        const local = new Set<number>();
-        if (
-          serverIdentity &&
-          previous.get(process.pid)?.identity === serverIdentity &&
-          after.some((row) => row.pid === process.pid && row.identity === serverIdentity)
-        )
-          local.add(process.pid);
-        // ponytail: small local process trees use repeated scans; index children if this exceeds the cleanup budget.
-        let added = true;
-        while (added) {
-          added = false;
-          for (const row of after) {
-            const old = previous.get(row.pid);
-            const original = initial.get(row.pid);
-            if (
-              row.parent &&
-              local.has(row.parent) &&
-              !local.has(row.pid) &&
-              old?.identity === row.identity &&
-              old.parent === row.parent &&
-              (!original || (original.identity === row.identity && original.parent === row.parent))
-            ) {
-              local.add(row.pid);
-              added = true;
+      const key = (row: ProcessIdentity) => `${row.pid}:${row.identity}`;
+      const scan = () => {
+        const snapshot = () => {
+          try {
+            return liveProcesses(remaining());
+          } catch {
+            throw blocked("Process table inspection failed.");
+          }
+        };
+        const rows = snapshot();
+        const initial = new Map(rows.map((row) => [row.pid, row]));
+        const serverIdentity = initial.get(process.pid)?.identity;
+        // Parent PIDs alone are insufficient: each link must keep its identity and ancestry across snapshots.
+        const localProcesses = (before: ProcessIdentity[], after: ProcessIdentity[]) => {
+          const previous = new Map(before.map((row) => [row.pid, row]));
+          const local = new Set<number>();
+          if (
+            serverIdentity &&
+            previous.get(process.pid)?.identity === serverIdentity &&
+            after.some((row) => row.pid === process.pid && row.identity === serverIdentity)
+          )
+            local.add(process.pid);
+          // ponytail: small local process trees use repeated scans; index children if this exceeds the cleanup budget.
+          let added = true;
+          while (added) {
+            added = false;
+            for (const row of after) {
+              const old = previous.get(row.pid);
+              const original = initial.get(row.pid);
+              if (
+                row.parent &&
+                local.has(row.parent) &&
+                !local.has(row.pid) &&
+                old?.identity === row.identity &&
+                old.parent === row.parent &&
+                (!original ||
+                  (original.identity === row.identity && original.parent === row.parent))
+              ) {
+                local.add(row.pid);
+                added = true;
+              }
             }
           }
-        }
-        return local;
-      };
-      const local = localProcesses(rows, rows);
-      const absent = (rows: ProcessIdentity[], local: Set<number>) => {
-        if (
-          rows.some(
-            (row) =>
-              (row.pid === attempt.owner.pid &&
-                (!attempt.owner.identity || row.identity === attempt.owner.identity)) ||
-              (row.pid === attempt.pid && (!attempt.identity || row.identity === attempt.identity)),
-          )
-        )
-          throw blocked("The recorded owner or adapter is still alive.");
-        const writers = rows.filter(
-          (row) =>
-            !local.has(row.pid) &&
-            ((attempt.processGroup && row.group === attempt.pid) ||
-              (row.parent === attempt.pid && !rows.some((parent) => parent.pid === attempt.pid)) ||
-              (attempt.marker !== null && row.command.includes(attempt.marker)) ||
-              owned.get(row.pid)?.identity === row.identity),
+          return local;
+        };
+        const local = localProcesses(rows, rows);
+        if (rows.some((row) => !Number.isSafeInteger(row.uid)))
+          throw blocked("Process UID inspection is unavailable.");
+        const candidates = new Map(
+          rows
+            .filter((row) => row.uid === uid && !local.has(row.pid))
+            .map((row) => [row.pid, row.identity]),
         );
-        if (writers.length)
-          throw blocked(
-            `Live possible writers: ${writers.map(describe).join(", ")}. Verify and stop those writers before retrying.`,
+        let directories: Map<number, string>;
+        try {
+          directories = processes.workingDirectories(
+            [...candidates.keys()],
+            undefined,
+            remaining(),
           );
-      };
-      absent(rows, local);
-      if (rows.some((row) => !Number.isSafeInteger(row.uid)))
-        throw blocked("Process UID inspection is unavailable.");
-      const candidates = new Map(
-        rows
-          .filter((row) => row.uid === uid && !local.has(row.pid))
-          .map((row) => [row.pid, row.identity]),
-      );
-      let directories: Map<number, string>;
-      try {
-        directories = processes.workingDirectories([...candidates.keys()]);
-      } catch {
-        throw blocked("Working-directory inspection failed; no live writer has been identified.");
-      }
-      const current = snapshot();
-      const currentLocal = localProcesses(rows, current);
-      absent(current, currentLocal);
-      if (Date.now() >= deadline) throw blocked("Writer inspection exceeded its cleanup budget.");
-      let rechecked: ProcessIdentity[] | undefined;
-      for (const row of current) {
-        if (!Number.isSafeInteger(row.uid)) throw blocked("Process UID inspection is unavailable.");
-        if (row.uid !== uid || currentLocal.has(row.pid)) continue;
-        const directory = directories.get(row.pid);
-        if (!directory) {
-          // lsof/proc can lose cwd before ps loses an exiting process. Recheck once, within the same budget.
-          rechecked ??= snapshot();
-          const recheckedLocal = localProcesses(current, rechecked);
-          absent(rechecked, recheckedLocal);
-          if (Date.now() >= deadline)
-            throw blocked("Writer inspection exceeded its cleanup budget.");
-          if (
-            recheckedLocal.has(row.pid) ||
-            !rechecked.some((item) => item.pid === row.pid && item.identity === row.identity)
-          )
-            continue;
+        } catch {
+          throw blocked("Working-directory inspection failed; no live writer has been identified.");
         }
-        if (candidates.get(row.pid) !== row.identity || !directory || !isAbsolute(directory))
-          throw blocked(
-            `Cannot inspect working directory for live PID ${describe(row)}; no writer ownership was assumed.`,
-          );
-        // Keep the raw spelling too: " (deleted)" can also be part of a real directory name.
-        const paths = [resolve(directory), resolve(directory.replace(/ \(deleted\)$/, ""))];
+        let current = snapshot();
+        const replaced = new Set<string>();
+        let currentLocal = localProcesses(rows, current);
         if (
-          roots.some((root) =>
-            paths.some((path) => {
-              const inside = relative(root, path);
-              return inside !== ".." && !inside.startsWith("../") && !isAbsolute(inside);
-            }),
+          current.some(
+            (row) =>
+              row.uid === uid &&
+              !currentLocal.has(row.pid) &&
+              (!directories.has(row.pid) || candidates.get(row.pid) !== row.identity),
           )
         ) {
-          const attemptStart = nativeStart(attempt.identity, uid);
-          const start = nativeStart(row.identity, uid);
-          // lstart has one-second resolution; the same second can still belong to this attempt.
-          if (start !== undefined && attemptStart !== undefined && start + 1000 <= attemptStart)
-            continue;
-          throw blocked(
-            `Live possible writer: PID ${describe(row)}, cwd ${directory}. Verify and stop that writer before retrying.`,
-          );
+          const rechecked = snapshot();
+          for (const row of rechecked)
+            if (current.some((old) => old.pid === row.pid && old.identity !== row.identity))
+              replaced.add(key(row));
+          currentLocal = localProcesses(current, rechecked);
+          current = rechecked;
         }
+        remaining();
+        const writers = new Map<string, ProcessOwnershipError>();
+        const unreadable = new Map<string, ProcessOwnershipError>();
+        // A transient first row must not hide another persistently unreadable process.
+        for (const row of current) {
+          if (!Number.isSafeInteger(row.uid))
+            throw blocked("Process UID inspection is unavailable.");
+          if (
+            (row.pid === attempt.owner.pid &&
+              (!attempt.owner.identity || row.identity === attempt.owner.identity)) ||
+            (row.pid === attempt.pid && (!attempt.identity || row.identity === attempt.identity)) ||
+            (!currentLocal.has(row.pid) &&
+              ((attempt.processGroup && row.group === attempt.pid) ||
+                (row.parent === attempt.pid &&
+                  !current.some((parent) => parent.pid === attempt.pid)) ||
+                (attempt.marker !== null && row.command.includes(attempt.marker)) ||
+                owned.get(row.pid)?.identity === row.identity))
+          ) {
+            writers.set(
+              key(row),
+              blocked(
+                `Live possible writers: ${describe(row)}. Verify and stop those writers before retrying.`,
+              ),
+            );
+            continue;
+          }
+          if (row.uid !== uid || currentLocal.has(row.pid) || replaced.has(key(row))) continue;
+          const directory = directories.get(row.pid);
+          if (candidates.get(row.pid) !== row.identity || !directory || !isAbsolute(directory)) {
+            unreadable.set(
+              key(row),
+              blocked(
+                `Cannot inspect working directory for live PID ${describe(row)}; no writer ownership was assumed.`,
+              ),
+            );
+            continue;
+          }
+          // Retain both spellings: " (deleted)" may also be part of a real directory name.
+          const paths = [resolve(directory), resolve(directory.replace(/ \(deleted\)$/, ""))];
+          if (
+            roots.some((root) =>
+              paths.some((path) => {
+                const inside = relative(root, path);
+                return inside !== ".." && !inside.startsWith("../") && !isAbsolute(inside);
+              }),
+            )
+          ) {
+            const attemptStart = nativeStart(attempt.identity, uid);
+            const start = nativeStart(row.identity, uid);
+            // The same native start second may still belong to the attempt.
+            if (start !== undefined && attemptStart !== undefined && start + 1000 <= attemptStart)
+              continue;
+            writers.set(
+              key(row),
+              blocked(
+                `Live possible writer: PID ${describe(row)}, cwd ${directory}. Verify and stop that writer before retrying.`,
+              ),
+            );
+          }
+        }
+        remaining();
+        return { writers, unreadable };
+      };
+      let persistent: Map<string, ProcessOwnershipError> | undefined;
+      let failure: unknown = error;
+      for (let index = 0; index < attempts && now() < scanDeadline; index++) {
+        try {
+          const result = scan();
+          // Only the same PID/start identity, unreadable in every complete scan, remains uncertain.
+          persistent =
+            persistent === undefined
+              ? result.unreadable
+              : new Map([...persistent].filter(([identity]) => result.unreadable.has(identity)));
+          if (!result.writers.size && !result.unreadable.size) return;
+          if (index + 1 === attempts) {
+            const blocker =
+              result.writers.values().next().value ?? persistent.values().next().value;
+            if (!blocker) return;
+            throw blocker;
+          }
+          failure =
+            result.writers.values().next().value ?? persistent.values().next().value ?? blocked();
+        } catch (error) {
+          failure = error;
+        }
+        if (index + 1 < attempts && now() < scanDeadline)
+          await wait(Math.min(intervalMs, scanDeadline - now()));
       }
-      return;
+      throw failure;
     }
     if (!ownerReleased || !unstartedExit || !(error instanceof ProcessOwnershipError)) throw error;
     // ACP may close before Node delivers this server's ChildProcess exit event.

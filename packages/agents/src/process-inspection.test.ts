@@ -148,3 +148,27 @@ test.each([
     );
   },
 );
+
+test("native commands use the caller's remaining orphan inspection budget", () => {
+  vi.mocked(childProcess.spawnSync).mockReturnValue({
+    pid: 99,
+    status: 0,
+    stdout: "20 1 20 501 Mon Oct 26 11:08:55 2026 S adapter\n",
+    stderr: "",
+    output: [],
+    signal: null,
+  });
+  systemProcesses.read(250);
+  expect(childProcess.spawnSync).toHaveBeenCalledWith(
+    "/bin/ps",
+    expect.any(Array),
+    expect.objectContaining({ timeout: 250 }),
+  );
+  vi.mocked(childProcess.execFileSync).mockReturnValue("p20\0\nfcwd\0n/outside\0\n");
+  systemProcesses.workingDirectories([20], "darwin", 125);
+  expect(childProcess.execFileSync).toHaveBeenCalledWith(
+    "/usr/sbin/lsof",
+    expect.any(Array),
+    expect.objectContaining({ timeout: 125 }),
+  );
+});

@@ -252,3 +252,17 @@ pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — transient orphan inspection:** Reproduced the reported interleaving test-first: an unrelated process remained alive at the immediate missing-cwd identity recheck, then exited at an injected scheduler boundary. The old single scan blocked it permanently. Orphan verification now retries the whole process/cwd scan up to four times, with 500 ms scheduled waits and a shared three-second inspection budget passed into native commands. Every candidate is classified on each complete scan so a transient first row cannot hide a persistent unreadable identity. Current writers in the final scan still block; unreadable cwd blocks only for a PID/start identity present and unreadable throughout every complete scan. Disappearance/reuse clears earlier uncertainty. Failed native inspection can be superseded by a complete clean scan; persistent failures or an exhausted budget still block. No new signals or command-name exclusions; age, zombies, verified current-server ancestry, deleted cwd and missing-worktree rules remain. Updated spec step 4; ADR 0012 unchanged.
+
+Added 15 deterministic agent regressions/control checks using fake tables, an injected scheduler/clock or explicitly advanced fake timers, plus a failing-before server regression holding the scheduler while readiness completes and mutations stay reserved, then releasing it to reach interrupted/checkpoint fallback. Existing persistent-writer fixtures now exercise all four scans with injected immediate yields. Actual checks passed: `format:check`, `lint`, workspace `typecheck`, ownership/inspection **127/127**, available agents **384 passed / 9 native cases excluded**, five affected server files **132 passed / 59 native-or-TCP cases excluded**, and `git diff --check`. Existing informational Biome deprecation only. Native/socket, real-agent, smoke and e2e results are not claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, requiring all **24 server-only SIGKILL** and **13 failed-recovery** cases to execute; repeat the SIGKILL matrix and the rebuilt real-Claude crash recovery while an unrelated job creates transient processes:
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='server-only SIGKILL'
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.

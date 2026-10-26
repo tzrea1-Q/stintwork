@@ -82,6 +82,7 @@ export type StintServerOptions = {
   agentRegistry?: AgentRegistry;
   handoffTimeoutMs?: number;
   recoverySetupTimeoutMs?: number;
+  recoveryProcessScan?: Parameters<typeof stopStintProcesses>[5];
   prepareAgent?: (options: AgentPreparationOptions) => Promise<PreparedAgent>;
 };
 
@@ -1380,6 +1381,7 @@ export function addStintRoutes(
               undefined,
               undefined,
               stint.worktree.path,
+              options.recoveryProcessScan,
             );
           // Old attempts can be proven absent without being eligible to resume implementation.
           // Preserve a saved genuine ending: it only needs its existing finalization.
