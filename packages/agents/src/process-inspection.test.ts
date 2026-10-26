@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { systemProcesses } from "./process-ownership.js";
 
 vi.mock("node:child_process", async (original) => ({
@@ -14,7 +14,8 @@ vi.mock("node:fs", async (original) => ({
   readlinkSync: vi.fn(),
   realpathSync: vi.fn((path) => String(path)),
 }));
-afterEach(() => vi.clearAllMocks());
+beforeEach(() => vi.mocked(fs.realpathSync).mockImplementation((path) => String(path)));
+afterEach(() => vi.resetAllMocks());
 
 test("Linux inspects each requested proc cwd and distinguishes disappeared processes from permission errors", () => {
   vi.mocked(fs.readlinkSync).mockImplementation((path) => {
@@ -94,3 +95,51 @@ test("native process rows retain UID and omit zombies and the observed inspector
 test("unsupported platforms cannot certify cwd inspection", () => {
   expect(() => systemProcesses.workingDirectories([20], "win32")).toThrow();
 });
+
+test.each(["linux", "darwin"] as const)(
+  "%s preserves deleted cwd paths without requiring the directories to exist",
+  (platform) => {
+    const outside = "/unrelated/removed-worktree";
+    const inside = `/worktree/removed-subdirectory${platform === "linux" ? " (deleted)" : ""}`;
+    vi.mocked(fs.realpathSync).mockImplementation(() => {
+      throw Object.assign(new Error("Deleted directory"), { code: "ENOENT" });
+    });
+    vi.mocked(fs.readlinkSync).mockImplementation((path) =>
+      path === "/proc/20/cwd" ? outside : inside,
+    );
+    // lsof status 1 with complete stdout and no stderr is valid on the coordinator's host.
+    vi.mocked(childProcess.execFileSync).mockImplementation(() => {
+      throw Object.assign(new Error("Partial process selection"), {
+        status: 1,
+        stderr: "",
+        stdout: `p20\0\nfcwd\0n${outside}\0\np21\0\nfcwd\0n${inside}\0\n`,
+      });
+    });
+    expect(systemProcesses.workingDirectories([20, 21], platform)).toEqual(
+      new Map([
+        [20, outside],
+        [21, inside],
+      ]),
+    );
+  },
+);
+
+test.each([
+  { status: 1, signal: "SIGTERM", stderr: "", code: "ETIMEDOUT" },
+  { status: 1, stderr: "", code: "ETIMEDOUT" },
+  { status: 1, stderr: "native inspection denied" },
+  { status: 2, stderr: "" },
+])(
+  "macOS inspection failure still blocks even with parseable partial cwd output: %j",
+  (failure) => {
+    vi.mocked(childProcess.execFileSync).mockImplementation(() => {
+      throw Object.assign(new Error("Native command failed"), {
+        stdout: "p20\0\nfcwd\0n/unrelated/deleted\0\n",
+        ...failure,
+      });
+    });
+    expect(() => systemProcesses.workingDirectories([20], "darwin")).toThrow(
+      "Native command failed",
+    );
+  },
+);

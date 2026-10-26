@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, test, vi } from "vitest";
 import type { StintProcessAttempt } from "@stintwork/core";
 import {
@@ -394,3 +397,48 @@ test("a stable same-UID process outside the worktree and another UID inside it d
   ).resolves.toBeUndefined();
   expect(fake.signal).not.toHaveBeenCalled();
 });
+
+test.each([
+  { cwd: "unrelated/removed-directory", blocked: false },
+  { cwd: "unrelated/removed-directory (deleted)", blocked: false },
+  { cwd: "canonical/deleted-subdirectory", blocked: true },
+  { cwd: "canonical/deleted-subdirectory (deleted)", blocked: true },
+  { cwd: "canonical (deleted)", blocked: true },
+  { cwd: "recorded/deleted-subdirectory", blocked: true },
+  { cwd: "recorded (deleted)", blocked: true },
+  { cwd: "recorded/../unrelated/removed-directory", blocked: false },
+  { cwd: "unrelated/removed-directory", blocked: false, missing: true },
+  { cwd: "recorded/deleted-subdirectory (deleted)", blocked: true, missing: true },
+])(
+  "deleted cwd $cwd (missing worktree: $missing) is matched lexically against recorded and canonical paths",
+  async ({ cwd, blocked, missing }) => {
+    const parent = realpathSync(mkdtempSync(join(tmpdir(), "stintwork-deleted-cwd-")));
+    const canonical = join(parent, "canonical");
+    const recorded = join(parent, "recorded");
+    mkdirSync(canonical);
+    symlinkSync(canonical, recorded, "dir");
+    if (missing) rmSync(canonical, { recursive: true });
+    const uid = process.getuid?.() as number;
+    const fake = processes([{ pid: 21, group: 21, uid, identity: `${uid}:tool`, command: "tool" }]);
+    fake.control.workingDirectories = () => new Map([[21, `${parent}/${cwd}`]]);
+    try {
+      const result = stopStintProcesses(
+        {
+          ...attempt,
+          identity: `${uid}:adapter`,
+          owner: { ...attempt.owner, identity: `${uid}:owner` },
+        },
+        false,
+        fake.control,
+        undefined,
+        recorded,
+      );
+      if (blocked) await expect(result).rejects.toThrow("Live possible writer: PID 21");
+      else await expect(result).resolves.toBeUndefined();
+      expect(fake.signal).not.toHaveBeenCalled();
+      expect(fake.table.has(21)).toBe(true);
+    } finally {
+      rmSync(parent, { recursive: true, force: true });
+    }
+  },
+);

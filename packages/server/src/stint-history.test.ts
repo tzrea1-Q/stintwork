@@ -527,6 +527,23 @@ test.skipIf(!nativeProcessInspection).each(
       agent,
       source,
     );
+    let unrelated: ChildProcess | undefined;
+    if (lifetime !== "surviving") {
+      const directory = join(tracked.parent, "unrelated-deleted-cwd");
+      await mkdir(directory);
+      unrelated = spawn(
+        process.execPath,
+        ["--eval", "process.send('ready'); setInterval(() => {}, 1000)"],
+        {
+          cwd: directory,
+          detached: true,
+          stdio: ["ignore", "ignore", "pipe", "ipc"],
+        },
+      );
+      tracked.children.push(unrelated);
+      await once(unrelated, "message");
+      await rm(directory, { recursive: true });
+    }
     const child = spawn(
       process.execPath,
       sourceNodeArgs(
@@ -661,6 +678,7 @@ test.skipIf(!nativeProcessInspection).each(
       expect((await request("/api/work-items/first/checks", { method: "POST" })).status).toBe(409);
       expect(systemProcesses.exists(toolPid as number)).toBe(true);
       expect(await cache.calls()).toEqual(npmCalls);
+      expect(unrelated?.exitCode).toBeNull();
       socket?.close();
       return;
     }
@@ -760,6 +778,7 @@ test.skipIf(!nativeProcessInspection).each(
     expect(await cache.calls()).toEqual(npmCalls);
     expect((await request(`/api/stints/${stint.id}`)).status).toBe(200);
     expect((await calls()).filter((call) => call.method === "session/load")).toHaveLength(1);
+    if (unrelated) expect(unrelated.exitCode).toBeNull();
   },
 );
 
@@ -2702,7 +2721,7 @@ test("a rejected shutdown closes server resources and a later stop retries succe
   }
 });
 
-test.each(["resume", "fallback", "detached-writer"] as const)(
+test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const)(
   "startup after an EOF-exited adapter uses a complete fake native writer scan: %s",
   async (scenario) => {
     const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
@@ -2723,6 +2742,14 @@ test.each(["resume", "fallback", "detached-writer"] as const)(
         .join("\n")}\n`,
     );
     await writeFile(join(logged.worktree.path, "partial.txt"), "Before EOF");
+    if (scenario === "missing-worktree") {
+      // Keep the stage current in the checkout too, so the fallback specifically diagnoses the missing worktree.
+      await writeFile(
+        join(root, ".scratch/first/workflow.yaml"),
+        "workflow: feature\nstage: review\n",
+      );
+      await rm(logged.worktree.path, { recursive: true });
+    }
     const before = await readFile(logged.path, "utf8");
     const rows = [
       { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
@@ -2749,6 +2776,7 @@ test.each(["resume", "fallback", "detached-writer"] as const)(
         [21, join(logged.worktree.path, "subdirectory")],
       ]),
     );
+    const checkpoint = vi.spyOn(git, "createCheckpoint");
     const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
       throw new Error("No process in this fixture is owned by the vanished adapter");
     });
@@ -2801,6 +2829,18 @@ test.each(["resume", "fallback", "detached-writer"] as const)(
         expect(
           (await server.app.request("/api/work-items/first/checks", { method: "POST" })).status,
         ).toBe(409);
+      } else if (scenario === "missing-worktree") {
+        const ended = await waitForEnding(root);
+        expect(ended).toMatchObject({ status: "interrupted", checkpointCommit: null });
+        expect(ended.error).toMatch(/Checkpoint failed.*ENOENT/);
+        expect(checkpoint).not.toHaveBeenCalled();
+        expect(registered.verifyRecovery).not.toHaveBeenCalled();
+        expect(registered.launch).not.toHaveBeenCalled();
+        const after = await readFile(logged.path, "utf8");
+        expect(after.startsWith(before)).toBe(true);
+        expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
+        const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+        expect(snapshot.workItems[0].activeStint).toBeNull();
       } else {
         if (scenario === "resume") {
           await expect
@@ -2832,6 +2872,7 @@ test.each(["resume", "fallback", "detached-writer"] as const)(
       exists.mockRestore();
       directories.mockRestore();
       signal.mockRestore();
+      checkpoint.mockRestore();
       await server.stop();
     }
   },

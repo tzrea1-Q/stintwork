@@ -177,3 +177,18 @@ pnpm --config.verify-deps-before-run=false smoke:package
 ```
 
 No commit; all `Status:` lines unchanged; ADR 0012 unchanged.
+
+**Codex, 2026-10-26 — deleted cwd and missing worktree:** Reproduced both bugs before fixing them: deleted cwd resolution failed/dropped native records, and a deleted worktree left recovery running. Native cwd parsing now preserves raw absolute paths without filesystem resolution. The matcher normalizes paths lexically against recorded and available canonical worktree paths, retaining the raw spelling and a Linux ` (deleted)`-stripped spelling. Deleted unrelated cwds are ignored; deleted cwds inside the worktree still name and block the possible writer. A missing worktree is scanned lexically, then reaches one interrupted ending with an explicit checkpoint error, no agent launch/checkpoint call and no active stint. Native command errors, malformed output and timeouts still block; new regressions also reject timed-out partial output with status 1.
+
+All 16 native EOF matrix cases now explicitly hold an unrelated process in a deleted cwd and verify it survives recovery/blocking. Readiness/EOF/crash triggers remain explicit; no timer race or ownership/signalling relaxation was added. Updated the spec's path-handling description; ADR 0012 is unchanged.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and the append-only/Status guard passed (existing informational Biome deprecation only). Available agents: **24 files / 317 passed / 9 native cases excluded**. Five affected server files: **122 passed / 59 native-or-TCP cases excluded**, including the missing-worktree ending and earlier ownership/suspension safeguards. No native/socket, packed-CLI, smoke or e2e pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, requiring all **24 server-only SIGKILL** cases (including the 16 EOF cases with unrelated deleted cwds) and all **13 failed-recovery** cases to execute:
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.

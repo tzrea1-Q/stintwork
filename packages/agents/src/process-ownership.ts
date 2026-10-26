@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync, spawnSync } from "node:child_process";
 import { readlinkSync, realpathSync } from "node:fs";
-import { relative, isAbsolute } from "node:path";
+import { relative, isAbsolute, resolve } from "node:path";
 import type { StintProcessAttempt } from "@stintwork/core";
 
 export type ProcessIdentity = {
@@ -70,7 +70,7 @@ export const systemProcesses: ProcessControl = {
     if (platform === "linux") {
       for (const pid of pids) {
         try {
-          directories.set(pid, realpathSync(readlinkSync(`/proc/${pid}/cwd`)));
+          directories.set(pid, readlinkSync(`/proc/${pid}/cwd`));
         } catch (error) {
           if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? ""))
             throw error;
@@ -92,8 +92,20 @@ export const systemProcesses: ProcessControl = {
           },
         );
       } catch (error) {
-        const failure = error as { status?: number; stdout?: string; stderr?: string };
-        if (failure.status !== 1 || failure.stderr) throw error;
+        const failure = error as {
+          status?: number;
+          stdout?: string;
+          stderr?: string;
+          code?: string;
+          signal?: string;
+        };
+        if (
+          failure.status !== 1 ||
+          failure.stderr ||
+          failure.code === "ETIMEDOUT" ||
+          failure.signal
+        )
+          throw error;
         output = failure.stdout ?? "";
       }
       let pid = 0;
@@ -106,7 +118,7 @@ export const systemProcesses: ProcessControl = {
           cwd = false;
         } else if (field === "fcwd") cwd = true;
         else if (field.startsWith("n") && pid && cwd && isAbsolute(field.slice(1))) {
-          directories.set(pid, realpathSync(field.slice(1)));
+          directories.set(pid, field.slice(1));
           cwd = false;
         } else throw new Error("Cannot verify native working-directory records.");
       }
@@ -285,7 +297,14 @@ export async function stopStintProcesses(
         !attempt.owner.identity?.startsWith(`${uid}:`)
       )
         throw error;
-      const root = realpathSync(worktree);
+      const roots = [resolve(worktree)];
+      try {
+        roots.push(realpathSync(worktree));
+      } catch (error) {
+        if (!["ENOENT", "ENOTDIR"].includes((error as NodeJS.ErrnoException).code ?? ""))
+          throw blocked("Cannot resolve the worktree path for writer inspection.");
+        // A missing worktree still needs an absence check before the non-mutating ending fallback.
+      }
       const snapshot = () => {
         try {
           return processes.read();
@@ -338,8 +357,16 @@ export async function stopStintProcesses(
           throw blocked(
             `Cannot inspect working directory for live PID ${row.pid} (${row.command}); no writer ownership was assumed.`,
           );
-        const inside = relative(root, directory);
-        if (inside !== ".." && !inside.startsWith("../") && !isAbsolute(inside))
+        // Keep the raw spelling too: " (deleted)" can also be part of a real directory name.
+        const paths = [resolve(directory), resolve(directory.replace(/ \(deleted\)$/, ""))];
+        if (
+          roots.some((root) =>
+            paths.some((path) => {
+              const inside = relative(root, path);
+              return inside !== ".." && !inside.startsWith("../") && !isAbsolute(inside);
+            }),
+          )
+        )
           throw blocked(
             `Live possible writer: PID ${row.pid} (${row.command}), cwd ${directory}. Verify and stop that writer before retrying.`,
           );
