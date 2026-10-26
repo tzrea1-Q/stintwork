@@ -74,6 +74,7 @@ export type StintServerOptions = {
   launchAgent?: AgentLauncher;
   agentRegistry?: AgentRegistry;
   handoffTimeoutMs?: number;
+  recoverySetupTimeoutMs?: number;
   prepareAgent?: (options: AgentPreparationOptions) => Promise<PreparedAgent>;
 };
 
@@ -85,6 +86,8 @@ type ActiveStint = {
   setupCancellation?: AbortController;
   stopRequested?: boolean;
   ending?: boolean;
+  recoveryBlocked?: boolean;
+  ownsRecoveryReservation?: boolean;
   confirmSource?: () => void;
   recordStop?: () => void;
 };
@@ -116,6 +119,9 @@ export function addStintRoutes(
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
   if (!Number.isFinite(handoffTimeoutMs) || handoffTimeoutMs < 0)
     throw new Error("Handoff timeout must be a non-negative number of milliseconds.");
+  const recoverySetupTimeoutMs = options.recoverySetupTimeoutMs ?? 60_000;
+  if (!Number.isFinite(recoverySetupTimeoutMs) || recoverySetupTimeoutMs < 0)
+    throw new Error("Recovery setup timeout must be a non-negative number of milliseconds.");
   const active = new Map<string, ActiveStint>();
   const workflowWrites = new Set<string>();
   const stageAgents = addStageAgentRoute(
@@ -168,7 +174,7 @@ export function addStintRoutes(
   async function runStint(
     started: Extract<StintLogEntry, { type: "started" }>,
     state: ActiveStint,
-    agent: RegisteredAgent,
+    agent: RegisteredAgent | undefined,
     evidence: boolean,
     sequence: number,
     {
@@ -177,16 +183,20 @@ export function addStintRoutes(
       beforeLaunch,
       send = () => {},
       recovery,
+      fallbackReason,
+      logPath,
     }: {
       preparedAgent?: PreparedAgent;
       selected?: AgentSelection | PreparedAgent;
       beforeLaunch?: (append: (entry: StintLogEntry) => void) => Promise<void>;
       send?: (message: unknown) => void;
       recovery?: Stint["recovery"];
+      fallbackReason?: string;
+      logPath?: string;
     } = {},
   ) {
     const { id, worktree, brief, baseCommit, agent: agentId, workItem, ticket } = started.stint;
-    const path = join(root, ".stintwork/local/stints", `${id}.jsonl`);
+    const path = logPath ?? join(root, ".stintwork/local/stints", `${id}.jsonl`);
     function append(entry: StintLogEntry) {
       if (entry.type === "recovery" && !isStintLogEntry(entry))
         throw new Error("Invalid stint recovery entry; work cannot continue.");
@@ -288,6 +298,7 @@ export function addStintRoutes(
       } = {},
     ) {
       state.ending = true;
+      clearSetupTimer();
       details.handoff ??= savedProgress.handoff;
       details.handoffError ??= savedProgress.handoffError
         ? { text: savedProgress.handoffError }
@@ -310,7 +321,7 @@ export function addStintRoutes(
           });
       } catch (error) {
         // Recovery metadata must never prevent ADR 0004's genuine-ending checkpoint.
-        status = "failed";
+        if (!fallback) status = "failed";
         details.error = {
           text: [details.error?.text, `Could not record finalization: ${errorText(error).text}`]
             .filter(Boolean)
@@ -323,7 +334,10 @@ export function addStintRoutes(
       let checkpointWarnings: CheckpointWarning[] = [];
       let verifiedWorktree = !recovery;
       try {
-        if (recovery) verifyStintWorktree(root, started.stint);
+        if (recovery) {
+          verifyRecoveryWorktree(started.stint);
+          ensureLocalIgnore(worktree.path);
+        }
         verifiedWorktree = true;
         checkpointCommit = await createCheckpoint(
           worktree.path,
@@ -338,7 +352,7 @@ export function addStintRoutes(
           },
         );
       } catch (error) {
-        status = "failed";
+        if (!fallback) status = "failed";
         details.error = {
           text: [
             details.error?.text,
@@ -352,7 +366,7 @@ export function addStintRoutes(
         if (verifiedWorktree)
           checkpointWarnings.push(...committedRiskyPaths(worktree.path, baseCommit));
       } catch (error) {
-        status = "failed";
+        if (!fallback) status = "failed";
         details.error = {
           text: [details.error?.text, `Cannot inspect stint commits: ${String(error)}`]
             .filter(Boolean)
@@ -386,10 +400,77 @@ export function addStintRoutes(
     }
     let attempt: StintProcessAttempt | undefined = recovery?.attempt;
     let resumeEstablished = false;
+    let fallback = recovery?.state === "fallback";
+    let setupError: unknown;
     let savedProgress: StintProgress = recovery?.progress ?? { phase: "work" };
+    let setupTimer: ReturnType<typeof setTimeout> | undefined;
+    let remainingSetupMs = recoverySetupTimeoutMs;
+    let setupStarted = 0;
+    let liveWaits = 0;
+    let setupFinished = false;
+    let rejectSetup: (error: Error) => void = () => {};
+    const setupFailure = new Promise<never>((_resolve, reject) => {
+      rejectSetup = reject;
+    });
+    void setupFailure.catch(() => {});
+    function clearSetupTimer() {
+      clearTimeout(setupTimer);
+      setupFinished = true;
+    }
+    function armSetupTimer() {
+      if (!recovery || setupFinished || liveWaits) return;
+      setupStarted = Date.now();
+      setupTimer = setTimeout(
+        () =>
+          rejectSetup(
+            new Error(`Recovery setup exceeded ${recoverySetupTimeoutMs / 1000} seconds.`),
+          ),
+        remainingSetupMs,
+      );
+    }
+    async function waitForPermission(request: Parameters<typeof permissions.wait>[1]) {
+      // Only a real current-process callback pauses setup; saved requests do not.
+      const setupWait = !!recovery && !setupFinished;
+      if (setupWait && liveWaits++ === 0) {
+        clearTimeout(setupTimer);
+        remainingSetupMs -= Date.now() - setupStarted;
+      }
+      try {
+        return await permissions.wait(id, request);
+      } finally {
+        if (setupWait && --liveWaits === 0) armSetupTimer();
+      }
+    }
+    function recordAuthentication(error: unknown) {
+      if (error instanceof AgentAuthenticationError && agent)
+        agent.availability = {
+          ...agent.availability,
+          available: false,
+          kind: "login-required",
+          canStart: true,
+          reason: error.coreText,
+          checkedAt: new Date().toISOString(),
+        };
+    }
+    async function failedRecovery(error: unknown) {
+      clearSetupTimer();
+      fallback = true;
+      recordAuthentication(error);
+      const reason = errorText(error).text;
+      // This durable boundary precedes every fallback checkpoint, even for legacy logs.
+      recordRecovery({ kind: "resume", state: "fallback", reason });
+      await end("interrupted", { error: { text: `Could not resume stint: ${reason}` } });
+    }
+    armSetupTimer();
     try {
       if (recovery) {
-        verifyStintWorktree(root, started.stint);
+        if (fallbackReason || fallback) {
+          await failedRecovery(
+            new Error(fallbackReason ?? recovery.reason ?? "Recovery previously failed."),
+          );
+          return;
+        }
+        verifyRecoveryWorktree(started.stint);
         if (recovery.stopRequestedAt || recovery.progress?.phase === "finalization") {
           const { status, ...details } = completionOutcome(savedProgress.stopReason);
           await end(status, {
@@ -401,9 +482,12 @@ export function addStintRoutes(
           });
           return;
         }
-        if (!recovery.launch || !agent.verifyRecovery)
+        if (!recovery.launch || !agent?.verifyRecovery)
           throw new Error("No recorded agent verifier.");
-        preparedAgent = await agent.verifyRecovery(recovery.launch, worktree.path);
+        preparedAgent = await Promise.race([
+          agent.verifyRecovery(recovery.launch, worktree.path),
+          setupFailure,
+        ]);
       }
       if (state.stopRequested && recovery) {
         await end("stopped");
@@ -411,8 +495,9 @@ export function addStintRoutes(
       }
       if (closing) throw new CoreTextError({ code: "server.stopping" });
       await beforeLaunch?.(append);
+      if (!agent) throw new Error("The recorded agent is no longer registered.");
       const additionalDirectories = agent.capabilities.additionalDirectories
-        ? await worktreeGitDirectories(worktree.path)
+        ? await Promise.race([worktreeGitDirectories(worktree.path), setupFailure])
         : undefined;
       state.setupCancellation?.signal.throwIfAborted();
       const executable = preparedAgent?.executable ?? selected?.executable;
@@ -437,7 +522,7 @@ export function addStintRoutes(
             permissionLevel: brief.permissionLevel ?? "edit-freely",
           },
         });
-      if (recovery) verifyStintWorktree(root, started.stint);
+      if (recovery) verifyRecoveryWorktree(started.stint);
       state.handle = (recovery ? agent.launch : (options.launchAgent ?? agent.launch))({
         agent: agent.id,
         cwd: worktree.path,
@@ -490,11 +575,16 @@ export function addStintRoutes(
         onPermission: (request) =>
           closing
             ? Promise.resolve({ outcome: { outcome: "cancelled" as const } })
-            : permissions.wait(id, request),
+            : waitForPermission(request),
       });
       state.completion = state.handle.done
         .then(
           ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) => {
+            if (recovery && !resumeEstablished)
+              return failedRecovery(
+                setupError ??
+                  new Error("The replacement process ended before recovery setup completed."),
+              );
             const { status, ...details } = completionOutcome(stopReason);
             return end(status, {
               stopReason,
@@ -509,16 +599,8 @@ export function addStintRoutes(
             });
           },
           (error: unknown) => {
-            if (error instanceof AgentAuthenticationError && agent.detectAvailability)
-              agent.availability = {
-                available: false,
-                kind: "login-required",
-                canStart: true,
-                selection: agent.availability?.selection,
-                installedIdentity: agent.availability?.installedIdentity,
-                reason: error.coreText,
-                checkedAt: new Date().toISOString(),
-              };
+            recordAuthentication(error);
+            if (recovery && !resumeEstablished) return failedRecovery(setupError ?? error);
             return end(closing || (recovery && !resumeEstablished) ? "interrupted" : "failed", {
               error: errorText(error),
             });
@@ -527,7 +609,12 @@ export function addStintRoutes(
         .catch((error: unknown) => {
           console.error("Could not record the end of a stint:", error);
         });
-      await state.handle.ready;
+      await Promise.race([state.handle.ready, setupFailure]);
+      clearSetupTimer();
+      if (recovery) {
+        recordRecovery({ kind: "resume", state: "resumed" });
+        refresh();
+      }
       resumeEstablished = true;
       if (agent.detectAvailability) {
         agent.availability = {
@@ -542,11 +629,18 @@ export function addStintRoutes(
         refresh();
       }
     } catch (error) {
+      clearSetupTimer();
+      if (state.ending && !state.completion) throw error;
+      setupError = error;
+      recordAuthentication(error);
       const reason =
         state.stopRequested && !state.handle
           ? coreText({ code: "agent.preparationCancelled" })
           : errorText(error);
-      if (state.completion) await state.completion;
+      if (state.completion) {
+        if (recovery && !resumeEstablished) await state.handle?.cancel();
+        await state.completion;
+      } else if (recovery) await failedRecovery(error);
       else
         await end(
           closing || recovery ? "interrupted" : state.stopRequested ? "stopped" : "failed",
@@ -556,7 +650,7 @@ export function addStintRoutes(
                 error: reason,
               },
         );
-      if (agent.detectAvailability && agent.availability?.kind !== "login-required")
+      if (agent?.detectAvailability && agent.availability?.kind !== "login-required")
         agent.availability = {
           ...agent.availability,
           available: false,
@@ -564,7 +658,7 @@ export function addStintRoutes(
           kind: state.stopRequested ? "not-prepared" : "preparation-failed",
           reason,
         };
-      send({ type: "availability", agent: agent.id, availability: agent.availability });
+      if (agent) send({ type: "availability", agent: agent.id, availability: agent.availability });
       refresh();
       return reason;
     }
@@ -973,105 +1067,179 @@ export function addStintRoutes(
       );
     });
   });
+  function verifyRecoveryWorktree(
+    stint: Pick<Stint, "id" | "workItem" | "stage" | "ticket" | "worktree" | "baseCommit">,
+  ) {
+    const project = indexProject(readProjectFiles().files, { name: "" });
+    const workItem = project.workItems.find((item) => item.slug === stint.workItem);
+    if (
+      !workItem ||
+      workItem.merged ||
+      workItem.stage !== stint.stage ||
+      workItem.stints[0]?.id !== stint.id ||
+      !project.workflows[workItem.workflow]?.stages.some((stage) => stage.id === stint.stage) ||
+      (stint.ticket !== null && !workItem.tickets.some((ticket) => ticket.number === stint.ticket))
+    )
+      throw new Error("The recorded work item/stage is no longer current.");
+    return verifyStintWorktree(root, stint);
+  }
   function recover(
     stint: Stint,
     entries: StintLogEntry[],
     warn: (warning: Warning) => void,
-    valid = true,
+    valid: boolean,
+    path: string,
   ) {
-    const recovery = stint.recovery;
-    // Until permission rebinding lands, only the permission-free success path is eligible.
-    const pendingPermission = stint.events.some(
-      (event) =>
-        event.type === "permission_request" &&
-        !stint.events.some(
-          (answer) => answer.type === "permission" && answer.requestId === event.requestId,
-        ),
-    );
-    const agent = registry.get(stint.agent);
-    if (active.has(stint.workItem)) return true;
-    if (activeStintIds.has(stint.id)) {
-      active.set(stint.workItem, { id: stint.id });
-      warn({
-        path: `.stintwork/local/stints/${stint.id}.jsonl`,
-        message:
-          "Cannot recover a stint owned by another live server. Stop that server before restarting recovery.",
-      });
-      return true;
+    const warning = (message: string) => warn({ path, message });
+    if (active.has(stint.workItem)) {
+      const previous = active.get(stint.workItem);
+      if (previous) previous.recoveryBlocked = true;
+      warning(
+        "Multiple unfinished stints name this work item. Resolve the conflicting logs before restarting Stintwork.",
+      );
+      return;
     }
-    if (recovery?.attempt) {
-      // Conservatively block live or unverifiable old writers. Ticket 05 adds verified cleanup.
-      for (const pid of [recovery.attempt.owner.pid, recovery.attempt.pid]) {
+    // Every candidate, including fallback/blocked logs, reserves before asynchronous work.
+    const state: ActiveStint = { id: stint.id };
+    active.set(stint.workItem, state);
+    if (activeStintIds.has(stint.id)) {
+      warning(
+        "Cannot recover a stint owned by another live server. Stop that server before restarting recovery.",
+      );
+      return;
+    }
+    // Conservatively block all readable old attempts, including those in ambiguous logs.
+    // Ticket 05 owns verified old-process/descendant cleanup; never signal a logged PID here.
+    for (const entry of entries) {
+      if (entry.type !== "recovery" || entry.kind !== "attempt") continue;
+      for (const pid of [entry.attempt.owner.pid, entry.attempt.pid]) {
         try {
           process.kill(pid, 0);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code === "ESRCH") continue;
         }
-        active.set(stint.workItem, { id: stint.id });
-        warn({
-          path: `.stintwork/local/stints/${stint.id}.jsonl`,
-          message: `Cannot recover stint while its previous owner or adapter (${pid}) is live or unverifiable. Stop the old processes and restart Stintwork.`,
-        });
-        return true;
+        warning(
+          `Cannot recover stint while its previous owner or adapter (${pid}) is live or unverifiable. Stop the old processes and restart Stintwork.`,
+        );
+        return;
       }
     }
-    const session = [...entries]
-      .reverse()
-      .find((entry) => entry.type === "recovery" && entry.kind === "session");
-    if (
-      !valid ||
-      !recovery?.launch ||
-      !recovery.sessionId ||
-      !recovery.attempt ||
-      !recovery.progress ||
-      recovery.launch.agent !== stint.agent ||
-      !agent?.verifyRecovery ||
-      pendingPermission ||
-      session?.type !== "recovery" ||
-      session.kind !== "session" ||
-      session.attemptId !== recovery.attempt.id
-    )
-      return false;
-    const state: ActiveStint = { id: stint.id };
-    active.set(stint.workItem, state);
-    activeStintIds.add(stint.id);
-    const project = indexProject(readProjectFiles().files, { name: "" });
-    const workItem = project.workItems.find((item) => item.slug === stint.workItem);
-    const stage =
-      workItem &&
-      project.workflows[workItem.workflow]?.stages.find((stage) => stage.id === stint.stage);
-    try {
-      if (
-        !workItem ||
-        workItem.merged ||
-        workItem.stage !== stint.stage ||
-        !stage ||
-        workItem.stints[0]?.id !== stint.id ||
-        (stint.ticket !== null &&
-          !workItem.tickets.some((ticket) => ticket.number === stint.ticket))
+    const recovery = stint.recovery ?? { version: 1 as const };
+    const agent = registry.get(stint.agent);
+    let reason: string | undefined;
+    let attemptId: string | undefined;
+    let sessionId: string | undefined;
+    let sessionAttemptId: string | undefined;
+    const attempts = new Set<string>();
+    let launches = 0;
+    let starts = 0;
+    let previousPhase = -1;
+    for (const entry of entries) {
+      if (entry.type === "started") starts++;
+      if (entry.type !== "recovery") continue;
+      if (entry.kind === "launch" && ++launches > 1) reason = "Ambiguous recovery launch history.";
+      if (entry.kind === "attempt") {
+        if (attempts.has(entry.attempt.id)) reason = "Ambiguous recovery attempt history.";
+        attempts.add(entry.attempt.id);
+        attemptId = entry.attempt.id;
+      }
+      if (entry.kind === "session") {
+        if (entry.attemptId !== attemptId || (sessionId && sessionId !== entry.sessionId))
+          reason = "Ambiguous recovery session history.";
+        sessionId = entry.sessionId;
+        sessionAttemptId = entry.attemptId;
+      }
+      if (entry.kind === "phase") {
+        const phase = ["work", "handoff", "findings", "finalization"].indexOf(entry.progress.phase);
+        if (entry.attemptId !== attemptId || phase < previousPhase)
+          reason = "Ambiguous recovery phase history.";
+        previousPhase = phase;
+      }
+    }
+    if (starts !== 1) reason = "Ambiguous stint start history.";
+    if (path !== `.stintwork/local/stints/${stint.id}.jsonl`)
+      reason = "The stint ID does not match its log filename.";
+    if (!valid) reason = "Invalid or torn recovery log; readable history has been preserved.";
+    if (stint.agent === "grok")
+      reason = "Grok Build is experimental; restart recovery uses a checkpoint and a new stint.";
+    else if (
+      !reason &&
+      recovery.state !== "fallback" &&
+      recovery.progress?.phase !== "finalization" &&
+      !recovery.stopRequestedAt
+    ) {
+      if (!recovery.launch || !recovery.sessionId || !recovery.attempt || !recovery.progress)
+        reason = "Missing recovery metadata (legacy or incomplete stint log).";
+      else if (
+        recovery.launch.agent !== stint.agent ||
+        sessionId !== recovery.sessionId ||
+        sessionAttemptId !== recovery.attempt.id
       )
-        throw new Error("The recorded work item/stage is no longer current.");
-      verifyStintWorktree(root, stint);
-    } catch {
-      active.delete(stint.workItem);
-      activeStintIds.delete(stint.id);
-      return false;
+        reason = "The recorded recovery session or agent does not match this stint.";
+      else if (!agent?.verifyRecovery) reason = "The recorded agent has no recovery verifier.";
+      // Rebinding is ticket 06's seam; do not silently approve or send saved consent.
+      else if (
+        stint.events.some(
+          (event) =>
+            event.type === "permission_request" &&
+            !stint.events.some(
+              (answer) => answer.type === "permission" && answer.requestId === event.requestId,
+            ),
+        )
+      )
+        reason = "A saved permission request cannot yet be rebound to a live process.";
     }
     const started = entries.find((entry) => entry.type === "started");
-    if (!started) return false;
-    state.preparation = runStint(started, state, agent, stage.gate === "evidence", entries.length, {
-      recovery,
-    })
-      .then(() => {})
-      .catch((error: unknown) => {
-        console.error("Could not recover stint:", stint.id, error);
-        warn({
-          path: `.stintwork/local/stints/${stint.id}.jsonl`,
-          message: `Could not recover stint: ${String(error)}`,
+    if (!started) return;
+    activeStintIds.add(stint.id);
+    state.ownsRecoveryReservation = true;
+    state.preparation = Promise.resolve()
+      .then(async () => {
+        if (state.recoveryBlocked) return;
+        if (!reason && recovery.state !== "fallback") {
+          try {
+            verifyRecoveryWorktree(stint);
+          } catch (error) {
+            reason = errorText(error).text;
+          }
+        }
+        const entry: StintLogEntry = {
+          type: "recovery",
+          version: 1,
+          at: new Date().toISOString(),
+          kind: "resume",
+          state: recovery.state === "fallback" ? "fallback" : "resuming",
+          ...(recovery.reason ? { reason: recovery.reason } : {}),
+        };
+        ensureLocalIgnore(root);
+        appendStintLog(join(root, path), entry);
+        broadcast({
+          type: "stint",
+          stintId: stint.id,
+          workItem: stint.workItem,
+          sequence: entries.length + 1,
+          entry,
         });
         refresh();
+        const project = indexProject(readProjectFiles().files, { name: "" });
+        const workItem = project.workItems.find((item) => item.slug === stint.workItem);
+        const evidence =
+          !!workItem &&
+          project.workflows[workItem.workflow]?.stages.find((stage) => stage.id === stint.stage)
+            ?.gate === "evidence";
+        await runStint(started, state, agent, evidence, entries.length + 1, {
+          recovery,
+          fallbackReason: reason,
+          logPath: join(root, path),
+        });
+      })
+      .catch((error: unknown) => {
+        console.error("Could not recover stint:", stint.id, error);
+        warning(
+          `Could not recover stint: ${String(error)}. Repair the log storage and restart Stintwork.`,
+        );
+        refresh();
       });
-    return true;
   }
   return Object.assign(
     async () => {
@@ -1083,7 +1251,8 @@ export function addStintRoutes(
           await state.preparation;
           await state.handle?.cancel();
           await state.completion;
-          if (state.id && state.handle) activeStintIds.delete(state.id);
+          if (state.id && (state.handle || state.ownsRecoveryReservation))
+            activeStintIds.delete(state.id);
         }),
       );
     },

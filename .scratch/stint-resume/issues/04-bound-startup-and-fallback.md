@@ -24,3 +24,59 @@ Apply the explicit Grok policy: no load attempt, native launch unchanged for lat
 ## Comments
 
 **Codex, 2026-10-26:** Failure injection uses fake ACP, isolated cache and Git fixtures without registry/provider network. Socket readiness/concurrency, real offline/provider failures and Grok observations are coordinator-run; Grok real verification is not an M10 blocker.
+
+**Codex, 2026-10-26 — ticket 04 implementation:** Implemented on `codex/m10-04`, based on `02dafed`. No commit and no `Status:` changes; tickets 05–08 remain unchanged.
+
+Behaviour and handoff seams:
+
+- Startup discovers logs once, reserves every readable unfinished candidate synchronously, then queues both resume and checkpoint fallback. `initialize()`, board, health and history do not await recovery verification, ACP setup or checkpointing. Unreadable logs/directories become project warnings; one failed candidate does not take the API offline. Repeated reads/start calls and WebSocket reconnects cannot launch another attempt. Multiple unfinished logs for a work item, a live owner or an unverifiable old process block its mutations with cleanup guidance.
+- A single 60-second recovery setup budget covers warm verification, writable-directory lookup, initialization, load and mode restoration. Only an actual live permission callback pauses the budget while awaiting the developer. It ends when setup succeeds; there is no work-turn deadline or retry loop. Ticket 06 still owns saved-permission reconstruction/rebinding and reconciliation. The launcher's ordinary fresh-start timeout remains intact; cancelled/settled initialization cannot later persist a session or continue work.
+- JSONL adds `{ type: "recovery", version: 1, at, kind: "resume", state: "resuming" | "resumed" | "fallback", reason? }`. Core validates/folds this into existing stint summaries, snapshots and history; lifecycle remains `running` during setup. Durable stream sequences include these entries. Ticket 07 owns the translated presentation and copy.
+- Invalid/legacy/incomplete metadata, torn/ambiguous control history, changed/missing source/cache/lock/host identities, unsafe worktrees, unsupported load/directories/mode, load/auth/provider/network rejection, setup timeout and transport/process loss use the shared ending/checkpoint path. A replacement's `done` includes process exit and outstanding file-write cleanup before fallback checkpointing. The fallback marker and interrupted finalization are durable before checkpointing, so restarting during fallback cannot reload implementation. Checkpoint errors retain `interrupted`, the real resume reason, explicit checkpoint diagnostics and original files, without inventing a commit or handoff. Saved real outputs, original Review identity and risky-file rules remain in the shared lifecycle.
+- Worktree/stage/branch/base ancestry is checked again before writes. Missing, foreign, changed-branch or superseded worktrees are untouched. Appends use the discovered log file rather than trusting a logged ID as a path. Logs without a usable start remain warnings; completed logs remain byte-for-byte terminal. Grok takes experimental checkpoint fallback without load or source changes. Authentication failure retains the existing login-required attention and login command; no automatic login or new stint is introduced. Ordinary work/after-turn failures after successful setup retain normal ending semantics.
+- Ticket 05 still owns suspension, Stop races and verified old adapter/tool-descendant cleanup. This ticket conservatively blocks live/uncertain old writers and does not signal a logged PID.
+
+Changed files:
+
+- `packages/server/src/index.ts`, `stints.ts`, `stint-history.ts`: discovery/reservation, background recovery, budget, safe fallback and warning handling.
+- `packages/core/src/stints.ts`, `stints.test.ts`: recovery state validation/folding/summaries, terminal immutability and missing-start warnings.
+- `packages/agents/src/index.ts`, `packages/agents/test/adapter-cache-fixture.ts`: resume-budget ownership/cancellation guards and isolated fake ACP failure injection.
+- `packages/server/src/stint-history.test.ts`: failure tables, writer-exit-before-checkpoint hook, risky/partial files, fallback/checkpoint failure, no retry/download/new session, metadata/path safety, slow readiness/mutation/reconnect, live-wait budget and post-setup failure checks. Existing fallback tests now await their background ending explicitly.
+- This ticket's Comments only.
+
+Validation commands:
+
+```sh
+pnpm --config.verify-deps-before-run=false format:check
+pnpm --config.verify-deps-before-run=false lint
+pnpm --config.verify-deps-before-run=false typecheck
+pnpm --config.verify-deps-before-run=false vitest run packages/core packages/agents \
+  packages/server/src/{stints,stint-history,review-findings,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts \
+  --configLoader native \
+  --testNamePattern='^(?![\s\S]*(?:HTTP start|rich events and pending permission|HTTP preparation disconnect|TCP: true|WebSocket|Needs-you snapshots reach both tabs))'
+```
+
+Coordinator: run the same Vitest command **without `--testNamePattern`** on a socket-enabled machine. The 13 socket-dependent runnable cases are:
+
+1. `stint-history.test.ts`: the existing legacy `SIGKILL leaves an unfinished log; restart checkpoints edits before accepting a new stint (TCP: true)`.
+2. `stint-history.test.ts`: four `SIGKILL resumes the same stint/session through loadSession (TCP: true)` cases, Claude/Codex × Installed/Bundled. Their stream assertions now distinguish the startup marker already included in snapshot/history from subsequent live frames.
+3. `stint-history.test.ts`: new `slow startup leaves board/health/history usable, reserves mutations and reconnects once (TCP: true)`, including repeated WebSocket connections while warm verification is held, blocked conflicting actions and usable checks on another work item.
+4. `stints.test.ts`: `HTTP start streams ACP messages over WebSocket in durable log order and ends finished`.
+5. `stints.test.ts`: `rich events and pending permission frames broadcast in durable order and a live HTTP answer reaches ACP`.
+6. `stints.test.ts`: `HTTP preparation disconnect cancels before download and a new request retries`.
+7. `stint-permissions.test.ts`: `Needs-you snapshots reach both tabs; a queue answer is logged, received by the agent and removed everywhere`.
+8. `stint-permissions.test.ts`: `real HTTP answers sent immediately on WebSocket request events reach the agent twenty times`.
+9. `checkpoint-handoff.test.ts`: `HTTP and WebSocket expose the durable ended handoff and checkpoint in sequence`.
+10. `stop-and-failure.test.ts`: `Stop mid-turn ends stopped within two seconds with a handoff and checkpoint (WebSocket)`.
+
+The four-agent/source row above counts as four cases, giving 13 total. This sandbox cannot bind sockets or reach provider/registry network; these cases were excluded, not passed. Real offline/provider/auth failures, Grok observations and browser presentation remain coordinator resources. Ticket 08 owns the complete real-agent runbook; tickets 05/06 own shutdown/Stop and restored permissions. No real-agent, browser, server-only descendant cleanup, other-platform or M10 exit pass is claimed. Child servers use `sourceNodeArgs` / `--conditions=development`; generated fake adapters use Node built-ins, so CI does not require workspace `dist`. Ignored package `node_modules` links were redirected locally to this worktree's workspace packages while reusing installed external dependencies; no main-checkout edits or downloads.
+
+Checks actually run:
+
+- `format:check`: passed, 382 files.
+- `lint`: passed, 334 licence headers / 383 Biome files; only the pre-existing informational `biome.json:24` deprecation.
+- The broad core/agents/six-server command above: passed, 60 files / 1,337 tests, with the 13 listed socket cases excluded.
+- After the final discovery read/list-error isolation, `pnpm --config.verify-deps-before-run=false vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='^(?![\s\S]*TCP: true)'`: passed, 51 tests / 6 socket cases excluded. This includes all failure tables, both source/agent crash paths, path safety and the new discovery I/O-error check.
+- The final typecheck caught a mutable annotation on `RepoFiles.list`'s readonly result; it was corrected to `readonly string[]` with no runtime change. Final typecheck result is recorded below.
+- Final `pnpm --config.verify-deps-before-run=false typecheck`: passed across the workspace after the readonly annotation correction.
+- Final `format:check`, `lint` and `git diff --check`: passed. A separate Markdown/diff guard verified the complete pre-Comments ticket content (including acceptance boxes), every `Status:` line and tickets 05–08 are unchanged. No commit.
