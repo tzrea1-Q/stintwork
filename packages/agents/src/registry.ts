@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AgentAvailability, AgentProfile, AgentSelection } from "@stintwork/core";
+import type { AgentAvailability, AgentProfile, AgentSelection, StintLaunch } from "@stintwork/core";
 import type { AgentPreparationOptions, PreparedAgent } from "./adapter-cache.js";
 import type { AgentLauncher } from "./index.js";
 import { createCodexAgent } from "./codex.js";
@@ -11,6 +11,7 @@ export type RegisteredAgent = AgentProfile & {
   prepare?: (
     options: Omit<AgentPreparationOptions, "agent">,
   ) => Promise<PreparedAgent | AgentSelection>;
+  verifyRecovery?: (launch: StintLaunch, cwd: string) => Promise<PreparedAgent>;
   detectAvailability?: () => Promise<AgentAvailability>;
 };
 export type AgentRegistry = ReadonlyMap<string, RegisteredAgent>;
@@ -57,6 +58,12 @@ export function createAgentRegistry(
 
 export function describeAgents(registry: AgentRegistry): AgentProfile[] {
   return [...registry.values()].map(
-    ({ launch: _launch, prepare: _prepare, detectAvailability: _detect, ...profile }) => profile,
+    ({
+      launch: _launch,
+      prepare: _prepare,
+      verifyRecovery: _verify,
+      detectAvailability: _detect,
+      ...profile
+    }) => profile,
   );
 }

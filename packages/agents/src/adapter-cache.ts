@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile, spawn } from "node:child_process";
-import { CoreTextError } from "@stintwork/core";
+import { CoreTextError, type StintLaunch } from "@stintwork/core";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import {
@@ -593,6 +593,88 @@ async function smokeAdapter(
     await closed;
     clearTimeout(killTimer);
   }
+}
+
+/** Read-only recovery verification: never prepare, repair, select or open a session. */
+export async function verifyRecordedAgent(
+  launch: StintLaunch,
+  options: Omit<AgentPreparationOptions, "agent">,
+): Promise<PreparedAgent> {
+  const host = adapterHost();
+  if (Object.entries(host).some(([key, value]) => launch.host[key as keyof typeof host] !== value))
+    throw new Error("Recorded agent host differs from this host.");
+  const profile = await releasedProfile({ ...options, agent: launch.agent }, launch.source, host);
+  const cacheKey = digest(
+    JSON.stringify({
+      agent: launch.agent,
+      adapter: adapterPins[launch.agent].version,
+      release: profile.identity,
+      source: launch.source,
+      ...host,
+    }),
+  );
+  if (
+    launch.cacheKey !== cacheKey ||
+    launch.lockDigest !== profile.lockDigest ||
+    launch.adapterVersion !== adapterPins[launch.agent].version
+  )
+    throw new Error("Recorded adapter/lock identity differs from the released profile.");
+  const root = resolve(options.cacheDirectory ?? agentCacheDirectory(options.env));
+  const project = await realpath(options.cwd);
+  if (inside(project, root)) throw new Error("Adapter cache must be outside the project.");
+  for (const directory of [root, join(root, "entries"), join(root, "entries", cacheKey)]) {
+    if (!(await owned(directory)).isDirectory()) throw new Error("Unsafe adapter cache directory.");
+    await windowsOwnership(directory, false);
+  }
+  const canonicalRoot = await realpath(root);
+  if (inside(project, canonicalRoot)) throw new Error("Adapter cache resolves inside the project.");
+  const marker = join(canonicalRoot, ".stintwork-agent-cache");
+  if (
+    !(await owned(marker)).isFile() ||
+    (await readFile(marker, "utf8")) !== "stintwork-agent-cache-v1\n"
+  )
+    throw new Error("Invalid Stintwork cache ownership marker.");
+  const entry = await realpath(join(root, "entries", cacheKey));
+  const completion = join(entry, "complete.json");
+  if (!(await owned(completion)).isFile())
+    throw new Error("Unsafe adapter cache completion record.");
+  const recorded = JSON.parse(await readFile(completion, "utf8"));
+  if (
+    recorded.cacheKey !== cacheKey ||
+    JSON.stringify(recorded.files) !==
+      JSON.stringify(await files(entry, options.signal ?? new AbortController().signal))
+  )
+    throw new Error("Adapter cache integrity mismatch; recovery cannot repair it.");
+  if (
+    !profile.manifestBytes.equals(await readFile(join(entry, "package.json"))) ||
+    !profile.lockBytes.equals(await readFile(join(entry, "package-lock.json")))
+  )
+    throw new Error("Cached profile/lock differs from the released profile.");
+  const verified = await verifyPackages(entry, profile.lock, launch.agent, launch.source, host);
+  if (
+    launch.adapterEntry !== verified.adapterEntry ||
+    (launch.source === "bundled" && launch.executable.path !== verified.executable)
+  )
+    throw new Error("Recorded executable/adapter path differs from the warm cache.");
+  if (
+    (await realpath(launch.executable.path)) !== launch.executable.path ||
+    executableIdentity(launch.executable.path, await lstat(launch.executable.path)) !==
+      launch.executable.identity
+  )
+    throw new Error("Recorded agent executable identity changed.");
+  const executable = await inspectInstalledAgent(
+    launch.agent,
+    preparedAgentEnvironment(launch, options.env),
+    options.signal,
+  );
+  if (
+    !executable ||
+    executable.path !== launch.executable.path ||
+    executable.version !== launch.executable.version ||
+    executable.identity !== launch.executable.identity
+  )
+    throw new Error("Recorded agent executable identity/version changed.");
+  return launch;
 }
 
 // Explicit first use only. Detection and board inspection must not call this function.

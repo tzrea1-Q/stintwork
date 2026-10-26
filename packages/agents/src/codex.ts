@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { verifyRecordedAgent } from "./adapter-cache.js";
 import { prepareAgentForStint } from "./prepare-agent.js";
 import { inspectAgentAvailability } from "./availability.js";
 import { type AgentLauncher, startAgentStint } from "./index.js";
@@ -23,6 +24,8 @@ export function createCodexAgent(
     launch,
     prepare: (preparation) =>
       prepareAgentForStint({ ...preparation, agent: "codex", env: options.env ?? process.env }),
+    verifyRecovery: (launch, cwd) =>
+      verifyRecordedAgent(launch, { cwd, env: options.env ?? process.env }),
     async detectAvailability() {
       return inspectAgentAvailability("codex", options.env ?? process.env, this.availability);
     },

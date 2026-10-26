@@ -83,9 +83,11 @@ export function createProjectServer(
     readReviewEvidence(project, snapshot);
     snapshot.warnings.push(...project.warnings);
     if (branchWarning) snapshot.warnings.push(branchWarning);
+    snapshot.warnings.push(...recoveryWarnings);
     return snapshot;
   }
 
+  const recoveryWarnings: Warning[] = [];
   let snapshot = readSnapshot();
   let lastBroadcast = JSON.stringify(coreTextWire(snapshot));
   let watcher: FSWatcher | undefined;
@@ -130,7 +132,9 @@ export function createProjectServer(
   function initialize() {
     initialization ??= Promise.all([
       Promise.resolve().then(() => checks.recover()),
-      recoverInterruptedStints(root, files),
+      recoverInterruptedStints(root, files, (stint, entries, valid) =>
+        stopStints.recover(stint, entries, (warning) => recoveryWarnings.push(warning), valid),
+      ),
       refreshAgentRegistry(agentRegistry),
     ]).then(() => refresh());
     return initialization;

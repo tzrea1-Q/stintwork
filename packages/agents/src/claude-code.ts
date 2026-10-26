@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { verifyRecordedAgent } from "./adapter-cache.js";
 import { prepareAgentForStint } from "./prepare-agent.js";
 import { inspectAgentAvailability } from "./availability.js";
 import { spawn } from "node:child_process";
@@ -32,6 +33,7 @@ export function createClaudeCodeAgent(env: NodeJS.ProcessEnv = process.env): Reg
       env,
     ),
     prepare: (preparation) => prepareAgentForStint({ ...preparation, agent: "claude", env: env }),
+    verifyRecovery: (launch, cwd) => verifyRecordedAgent(launch, { cwd, env: env }),
     async detectAvailability() {
       return inspectAgentAvailability("claude", env, this.availability);
     },
