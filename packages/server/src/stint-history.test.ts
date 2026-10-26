@@ -2,7 +2,16 @@
 import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import type { Server } from "node:http";
-import { appendFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { adapterCacheFixture } from "../../agents/test/adapter-cache-fixture.js";
@@ -507,6 +516,52 @@ const nativeProcessInspection = (() => {
   }
 })();
 
+async function crashStep<T>(
+  name: string,
+  work: () => T | Promise<T>,
+  timeout = 10_000,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work(),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timed out at ${name}`)), timeout);
+      }),
+    ]);
+  } catch (error) {
+    throw new Error(`${name}: ${String(error)}`, { cause: error });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+test.each(["resolved", "rejected", "stalled"] as const)(
+  "a matrix wait names its step and clears its deadline when %s",
+  async (outcome) => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      let finish!: (value: string) => void;
+      let fail!: (error: Error) => void;
+      const pending = new Promise<string>((resolve, reject) => {
+        finish = resolve;
+        fail = reject;
+      });
+      const result = crashStep("recovery verification entered", () => pending).catch(
+        (error) => error,
+      );
+      if (outcome === "resolved") finish("entered");
+      else if (outcome === "rejected") fail(new Error("Controlled verification failure"));
+      else await vi.advanceTimersByTimeAsync(10_000);
+      if (outcome === "resolved") expect(await result).toBe("entered");
+      else expect(String(await result)).toContain("recovery verification entered");
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
 test.skipIf(!nativeProcessInspection).each(
   (["claude", "codex"] as const).flatMap((agent) =>
     (["installed", "bundled"] as const).flatMap((source) =>
@@ -523,33 +578,44 @@ test.skipIf(!nativeProcessInspection).each(
 )(
   "$agent/$source: server-only SIGKILL checks adapter/tools ($lifetime, TCP: $tcp)",
   async ({ agent, source, tcp, lifetime }) => {
-    const { root, project, tracked, selected, env, registered, calls, cache } = await warmRecovery(
-      agent,
-      source,
-    );
-    let unrelated: ChildProcess | undefined;
-    if (lifetime !== "surviving") {
-      const directory = join(tracked.parent, "unrelated-deleted-cwd");
-      await mkdir(directory);
-      unrelated = spawn(
-        process.execPath,
-        ["--eval", "process.send('ready'); setInterval(() => {}, 1000)"],
-        {
-          cwd: directory,
-          detached: true,
-          stdio: ["ignore", "ignore", "pipe", "ipc"],
-        },
+    let diagnosticRoot: string | undefined;
+    let diagnosticLog: string | undefined;
+    let restarted: ReturnType<typeof createProjectServer> | undefined;
+    let release: () => void = () => {};
+    let socket: WebSocket | undefined;
+    let childStep = "not spawned";
+    let stderr = "";
+    try {
+      const { root, project, tracked, selected, env, registered, calls, cache } = await crashStep(
+        "prepare warm recovery fixture",
+        () => warmRecovery(agent, source),
       );
-      tracked.children.push(unrelated);
-      await once(unrelated, "message");
-      await rm(directory, { recursive: true });
-    }
-    const child = spawn(
-      process.execPath,
-      sourceNodeArgs(
-        "--input-type=module",
-        "--eval",
-        `
+      diagnosticRoot = root;
+      let unrelated: ChildProcess | undefined;
+      if (lifetime !== "surviving") {
+        const directory = join(tracked.parent, "unrelated-deleted-cwd");
+        await crashStep("create unrelated cwd", () => mkdir(directory));
+        unrelated = spawn(
+          process.execPath,
+          ["--eval", "process.send('ready'); setInterval(() => {}, 1000)"],
+          {
+            cwd: directory,
+            detached: true,
+            stdio: ["ignore", "ignore", "pipe", "ipc"],
+          },
+        );
+        tracked.children.push(unrelated);
+        await crashStep("unrelated process ready IPC", () =>
+          once(unrelated as ChildProcess, "message"),
+        );
+        await crashStep("delete unrelated cwd", () => rm(directory, { recursive: true }));
+      }
+      const child = spawn(
+        process.execPath,
+        sourceNodeArgs(
+          "--input-type=module",
+          "--eval",
+          `
       import { once } from 'node:events';
       import { createProjectServer } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
       import { createAgentRegistry, createClaudeCodeAgent, createCodexAgent } from ${JSON.stringify(new URL("../../agents/src/index.ts", import.meta.url).href)};
@@ -564,221 +630,323 @@ test.skipIf(!nativeProcessInspection).each(
       const project = createProjectServer(${JSON.stringify(root)}, ${JSON.stringify(join(root, "web"))}, {agentRegistry:createAgentRegistry([agent]),handoffTimeoutMs:3000});
       let url;
       if (${tcp}) {
-        const server = await project.start(); server.listen(0,'127.0.0.1'); await once(server,'listening');
+        process.send({step:'cold server watcher ready'});
+        const server = await project.start();
+        process.send({step:'cold TCP listener ready'});
+        server.listen(0,'127.0.0.1'); await once(server,'listening',{signal:AbortSignal.timeout(10000)});
         url = 'http://127.0.0.1:' + server.address().port;
       }
       const request = {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workItem:'first',ticket:1,agent:agent.id})};
-      const response = url ? await fetch(url+'/api/stints',request) : await project.app.request('/api/stints',request);
+      process.send({step:'cold start response'});
+      const response = url ? await fetch(url+'/api/stints',{...request,signal:AbortSignal.timeout(10000)}) : await project.app.request('/api/stints',request);
       process.send({status:response.status,body:await response.json()});
     `,
-      ),
-      { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
-    );
-    tracked.children.push(child);
-    const working = new Promise<void>((resolve) => {
-      child.on("message", (message) => {
-        if (message === "working") resolve();
-      });
-    });
-    const message = await new Promise<{ status: number; body: { stint: Stint } }>(
-      (resolve, reject) => {
-        child.on("message", (message) => {
-          if (message && typeof message === "object" && "status" in message)
-            resolve(message as { status: number; body: { stint: Stint } });
-        });
-        child.once("error", reject);
-        child.once("exit", (code, signal) => reject(new Error(`Server exited: ${code ?? signal}`)));
-      },
-    );
-    expect(message.status).toBe(201);
-    const stint = message.body.stint;
-    const path = join(root, ".stintwork/local/stints", `${stint.id}.jsonl`);
-    await working;
-    const before = await readFile(path, "utf8");
-    const original = indexStints(createNodeRepoFiles(root)).stints[0];
-    expect(original.recovery?.sessionId).toBe("fake-session");
-    const oldAttempt = original.recovery?.attempt;
-    if (!oldAttempt) throw new Error("Expected recorded process ownership");
-    tracked.attempts.push(oldAttempt);
-    const toolPid =
-      lifetime === "EOF"
-        ? undefined
-        : Number(await readFile(join(stint.worktree.path, "tool.pid"), "utf8"));
-    if (toolPid) {
-      const tool = systemProcesses
-        .read()
-        .find((row) => row.pid === toolPid && row.parent === oldAttempt.pid);
-      if (!tool) throw new Error("Expected tool ancestry before killing the server");
-      tracked.tools.push(tool);
-    }
-    const exited = once(child, "exit");
-    // Explicitly kill only the server; EOF lifetime adapters exit from their stdin end signal.
-    child.kill("SIGKILL");
-    await exited;
-    if (lifetime === "surviving") expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
-    else
-      await expect
-        .poll(() =>
-          systemProcesses
-            .read()
-            .some((row) => row.pid === oldAttempt.pid && row.identity === oldAttempt.identity),
-        )
-        .toBe(false);
-    if (toolPid) expect(systemProcesses.exists(toolPid)).toBe(true);
-    const npmCalls = await cache.calls();
-    let release: () => void = () => {};
-    let enteredVerification!: () => void;
-    const verificationEntered = new Promise<void>((resolve) => {
-      enteredVerification = resolve;
-    });
-    const verified = registered.verifyRecovery;
-    if (!verified) throw new Error("Expected recovery verifier");
-    registered.verifyRecovery = vi.fn(async (...args: Parameters<typeof verified>) => {
-      await new Promise<void>((resolve) => {
-        release = resolve;
-        enteredVerification();
-      });
-      return verified(...args);
-    });
-    const restarted = project({
-      agentRegistry: createAgentRegistry([registered]),
-      handoffTimeoutMs: 3000,
-    });
-    let url: string | undefined;
-    if (tcp) {
-      const server = await restarted.start();
-      server.listen(0, "127.0.0.1");
-      await once(server, "listening");
-      const address = server.address();
-      if (!address || typeof address === "string") throw new Error("Expected TCP address");
-      url = `http://127.0.0.1:${address.port}`;
-    }
-    let socket: WebSocket | undefined;
-    const frames: StintLiveMessage[] = [];
-    if (url) {
-      socket = new WebSocket(`${url.replace("http:", "ws:")}/api/live`);
-      socket.on("message", (bytes) => {
-        const message = JSON.parse(String(bytes));
-        if (message.type === "stint") frames.push(message);
-      });
-      await once(socket, "message");
-    }
-    const request = (path: string, init?: RequestInit) =>
-      url ? fetch(`${url}${path}`, init) : restarted.app.request(path, init);
-    expect((await request("/api/health")).status).toBe(200);
-    if (lifetime === "EOF-with-tool") {
-      await expect
-        .poll(async () => {
-          const snapshot: ProjectSnapshot = await (await request("/api/project")).json();
-          return snapshot.warnings.map((warning) => warning.message).join("\n");
-        })
-        .toContain(`PID ${toolPid}`);
-      expect(registered.verifyRecovery).not.toHaveBeenCalled();
-      expect(await readFile(path, "utf8")).toBe(before);
-      expect((await request("/api/work-items/first/checks", { method: "POST" })).status).toBe(409);
-      expect(systemProcesses.exists(toolPid as number)).toBe(true);
-      expect(await cache.calls()).toEqual(npmCalls);
-      expect(unrelated?.exitCode).toBeNull();
-      socket?.close();
-      return;
-    }
-    await verificationEntered;
-    const live = systemProcesses.read();
-    expect(live.some((row) => row.pid === oldAttempt.pid || row.pid === toolPid)).toBe(false);
-    const current = await (await request(`/api/stints/${stint.id}`)).json();
-    expect(current.stint.status).toBe("running");
-    expect(
-      (
-        await request("/api/stints", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ workItem: "first", ticket: 1, agent }),
-        })
-      ).status,
-    ).toBe(409);
-    expect((await request("/api/work-items/first/checks", { method: "POST" })).status).toBe(409);
-    // The startup marker is already represented in the initial snapshot/history.
-    const previousEntries = (await readFile(path, "utf8")).trim().split("\n").length;
-    release();
-    await expect
-      .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].status)
-      .toBe("finished");
-    const recovered = indexStints(createNodeRepoFiles(root)).stints[0];
-    expect(recovered).toMatchObject({
-      id: stint.id,
-      startedAt: stint.startedAt,
-      baseCommit: stint.baseCommit,
-      worktree: stint.worktree,
-      brief: original.brief,
-      recovery: { sessionId: "fake-session", launch: { ...selected } },
-      handoff: { stoppedAt: "Recovered work." },
-    });
-    expect(recovered.recovery?.attempt?.pid).not.toBe(original.recovery?.attempt?.pid);
-    const after = await readFile(path, "utf8");
-    expect(after.startsWith(before)).toBe(true);
-    expect(after).not.toContain("REPLAY MUST NOT APPEND");
-    expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
-    const entries = after
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line));
-    expect(entries.every(isStintLogEntry)).toBe(true);
-    if (socket) {
-      await expect.poll(() => frames.at(-1)?.entry.type).toBe("ended");
-      expect(frames.map((frame) => frame.sequence)).toEqual(
-        frames.map((_, index) => previousEntries + index + 1),
+        ),
+        { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
       );
-      expect(frames.map((frame) => frame.entry)).toEqual(entries.slice(previousEntries));
-      socket.close();
-    }
-    const messages = recovered.events.filter((event) => event.type === "message");
-    expect(messages.filter((event) => event.text === "Before crash")).toHaveLength(1);
-    expect(messages.filter((event) => event.text === "After restart")).toHaveLength(1);
-    expect(new Set(messages.map((event) => event.id)).size).toBe(messages.length);
-    const tools = recovered.events.filter((event) => event.type === "tool_call");
-    expect(tools.map((event) => event.title)).toEqual(["Old tool", "Fresh tool"]);
-    expect(new Set(tools.map((event) => event.toolCallId)).size).toBe(2);
-    for (const name of [
-      "partial.txt",
-      ...(toolPid ? ["tool.txt"] : []),
-      "resumed.txt",
-      "handoff.txt",
-    ]) {
+      tracked.children.push(child);
+      child.stderr?.on("data", (bytes) => {
+        stderr = (stderr + String(bytes)).slice(-8000);
+      });
+      child.on("message", (message) => {
+        if (message && typeof message === "object" && "step" in message)
+          childStep = String(message.step);
+      });
+      const working = new Promise<void>((resolve) => {
+        child.on("message", (message) => {
+          if (message === "working") resolve();
+        });
+      });
+      const message = await crashStep(
+        "cold server start response IPC",
+        () =>
+          new Promise<{ status: number; body: { stint: Stint } }>((resolve, reject) => {
+            child.on("message", (message) => {
+              if (message && typeof message === "object" && "status" in message)
+                resolve(message as { status: number; body: { stint: Stint } });
+            });
+            child.once("error", reject);
+            child.once("exit", (code, signal) =>
+              reject(new Error(`Server exited: ${code ?? signal}`)),
+            );
+          }),
+      );
+      expect(message.status).toBe(201);
+      const stint = message.body.stint;
+      const path = join(root, ".stintwork/local/stints", `${stint.id}.jsonl`);
+      diagnosticLog = path;
+      await crashStep("work started IPC", () => working);
+      const before = await crashStep("read log before crash", () => readFile(path, "utf8"));
+      const original = indexStints(createNodeRepoFiles(root)).stints[0];
+      expect(original.recovery?.sessionId).toBe("fake-session");
+      const oldAttempt = original.recovery?.attempt;
+      if (!oldAttempt) throw new Error("Expected recorded process ownership");
+      tracked.attempts.push(oldAttempt);
+      const toolPid =
+        lifetime === "EOF"
+          ? undefined
+          : Number(
+              await crashStep("read tool PID", () =>
+                readFile(join(stint.worktree.path, "tool.pid"), "utf8"),
+              ),
+            );
+      if (toolPid) {
+        const tool = systemProcesses
+          .read()
+          .find((row) => row.pid === toolPid && row.parent === oldAttempt.pid);
+        if (!tool) throw new Error("Expected tool ancestry before killing the server");
+        tracked.tools.push(tool);
+      }
+      const exited = once(child, "exit");
+      // Explicitly kill only the server; EOF lifetime adapters exit from their stdin end signal.
+      child.kill("SIGKILL");
+      await crashStep("server SIGKILL exit", () => exited);
+      if (lifetime === "surviving") expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
+      else
+        await expect
+          .poll(
+            () =>
+              systemProcesses
+                .read()
+                .some((row) => row.pid === oldAttempt.pid && row.identity === oldAttempt.identity),
+            { timeout: 10_000, message: "adapter stdin EOF exit" },
+          )
+          .toBe(false);
+      if (toolPid) expect(systemProcesses.exists(toolPid)).toBe(true);
+      const npmCalls = await crashStep("read preparation trace", () => cache.calls());
+      let enteredVerification!: () => void;
+      const verificationEntered = new Promise<void>((resolve) => {
+        enteredVerification = resolve;
+      });
+      const verified = registered.verifyRecovery;
+      if (!verified) throw new Error("Expected recovery verifier");
+      registered.verifyRecovery = vi.fn(async (...args: Parameters<typeof verified>) => {
+        await crashStep(
+          "fixture verification release",
+          () =>
+            new Promise<void>((resolve) => {
+              release = resolve;
+              enteredVerification();
+            }),
+        );
+        return verified(...args);
+      });
+      const recoveredProject = project({
+        agentRegistry: createAgentRegistry([registered]),
+        handoffTimeoutMs: 3000,
+      });
+      restarted = recoveredProject;
+      let url: string | undefined;
+      if (tcp) {
+        const server = await crashStep("restarted server watcher ready", () =>
+          recoveredProject.start(),
+        );
+        server.listen(0, "127.0.0.1");
+        await crashStep("restarted TCP listener ready", () => once(server, "listening"));
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("Expected TCP address");
+        url = `http://127.0.0.1:${address.port}`;
+      }
+      const frames: StintLiveMessage[] = [];
+      if (url) {
+        socket = new WebSocket(`${url.replace("http:", "ws:")}/api/live`);
+        socket.on("message", (bytes) => {
+          const message = JSON.parse(String(bytes));
+          if (message.type === "stint") frames.push(message);
+        });
+        await crashStep("initial WebSocket snapshot", () => once(socket as WebSocket, "message"));
+      }
+      const request = (path: string, init?: RequestInit) =>
+        crashStep(`${init?.method ?? "GET"} ${path}`, () =>
+          url
+            ? fetch(`${url}${path}`, { ...init, signal: AbortSignal.timeout(10_000) })
+            : recoveredProject.app.request(path, init),
+        );
+      expect((await request("/api/health")).status).toBe(200);
+      if (lifetime === "EOF-with-tool") {
+        await expect
+          .poll(
+            async () => {
+              const snapshot: ProjectSnapshot = await crashStep(
+                "read detached tool warning response",
+                async () => (await request("/api/project")).json(),
+              );
+              return snapshot.warnings.map((warning) => warning.message).join("\n");
+            },
+            { timeout: 10_000, message: "detached tool ownership warning" },
+          )
+          .toContain(`PID ${toolPid}`);
+        expect(registered.verifyRecovery).not.toHaveBeenCalled();
+        expect(await crashStep("read blocked recovery log", () => readFile(path, "utf8"))).toBe(
+          before,
+        );
+        expect((await request("/api/work-items/first/checks", { method: "POST" })).status).toBe(
+          409,
+        );
+        expect(systemProcesses.exists(toolPid as number)).toBe(true);
+        expect(await crashStep("verify no preparation on restart", () => cache.calls())).toEqual(
+          npmCalls,
+        );
+        expect(unrelated?.exitCode).toBeNull();
+        socket?.close();
+        return;
+      }
+      await crashStep("recovery verification entered", () => verificationEntered);
+      const live = systemProcesses.read();
+      expect(live.some((row) => row.pid === oldAttempt.pid || row.pid === toolPid)).toBe(false);
+      const current = await crashStep("read current stint response", async () =>
+        (await request(`/api/stints/${stint.id}`)).json(),
+      );
+      expect(current.stint.status).toBe("running");
       expect(
-        execFileSync("git", ["show", `${recovered.checkpointCommit}:${name}`], {
-          cwd: root,
-          encoding: "utf8",
-        }),
-      ).toBeTruthy();
+        (
+          await request("/api/stints", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ workItem: "first", ticket: 1, agent }),
+          })
+        ).status,
+      ).toBe(409);
+      expect((await request("/api/work-items/first/checks", { method: "POST" })).status).toBe(409);
+      // The startup marker is already represented in the initial snapshot/history.
+      const previousEntries = (
+        await crashStep("read recovery log before continuation", () => readFile(path, "utf8"))
+      )
+        .trim()
+        .split("\n").length;
+      release();
+      await expect
+        .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].status, {
+          timeout: 10_000,
+          message: "resumed stint finished",
+        })
+        .toBe("finished");
+      const recovered = indexStints(createNodeRepoFiles(root)).stints[0];
+      expect(recovered).toMatchObject({
+        id: stint.id,
+        startedAt: stint.startedAt,
+        baseCommit: stint.baseCommit,
+        worktree: stint.worktree,
+        brief: original.brief,
+        recovery: { sessionId: "fake-session", launch: { ...selected } },
+        handoff: { stoppedAt: "Recovered work." },
+      });
+      expect(recovered.recovery?.attempt?.pid).not.toBe(original.recovery?.attempt?.pid);
+      const after = await crashStep("read finished stint log", () => readFile(path, "utf8"));
+      expect(after.startsWith(before)).toBe(true);
+      expect(after).not.toContain("REPLAY MUST NOT APPEND");
+      expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
+      const entries = after
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(entries.every(isStintLogEntry)).toBe(true);
+      if (socket) {
+        await expect
+          .poll(() => frames.at(-1)?.entry.type, {
+            timeout: 10_000,
+            message: "WebSocket ended frame",
+          })
+          .toBe("ended");
+        expect(frames.map((frame) => frame.sequence)).toEqual(
+          frames.map((_, index) => previousEntries + index + 1),
+        );
+        expect(frames.map((frame) => frame.entry)).toEqual(entries.slice(previousEntries));
+        socket.close();
+      }
+      const messages = recovered.events.filter((event) => event.type === "message");
+      expect(messages.filter((event) => event.text === "Before crash")).toHaveLength(1);
+      expect(messages.filter((event) => event.text === "After restart")).toHaveLength(1);
+      expect(new Set(messages.map((event) => event.id)).size).toBe(messages.length);
+      const tools = recovered.events.filter((event) => event.type === "tool_call");
+      expect(tools.map((event) => event.title)).toEqual(["Old tool", "Fresh tool"]);
+      expect(new Set(tools.map((event) => event.toolCallId)).size).toBe(2);
+      for (const name of [
+        "partial.txt",
+        ...(toolPid ? ["tool.txt"] : []),
+        "resumed.txt",
+        "handoff.txt",
+      ]) {
+        expect(
+          execFileSync("git", ["show", `${recovered.checkpointCommit}:${name}`], {
+            cwd: root,
+            encoding: "utf8",
+          }),
+        ).toBeTruthy();
+      }
+      const trace = await crashStep("read ACP trace", () => calls());
+      const resumed = trace.filter((call) => call.pid === recovered.recovery?.attempt?.pid);
+      expect(resumed.map((call) => call.method)).toEqual([
+        "initialize",
+        "session/load",
+        "session/set_mode",
+        "session/prompt",
+        "session/prompt",
+      ]);
+      expect(resumed[1].params).toMatchObject({
+        sessionId: "fake-session",
+        cwd: stint.worktree.path,
+        additionalDirectories: expect.arrayContaining([expect.any(String)]),
+      });
+      expect(resumed[2].params.modeId).toBe(agent === "claude" ? "acceptEdits" : "workspace-write");
+      expect(resumed[3].params.prompt).toEqual([{ type: "text", text: continuationInstruction }]);
+      expect(
+        resumed.every(
+          (call) =>
+            call.home === env.HOME &&
+            call.token === env.TEST_LAUNCH_ENV &&
+            call[agent] === selected.executable.path,
+        ),
+      ).toBe(true);
+      expect(await crashStep("verify no preparation on restart", () => cache.calls())).toEqual(
+        npmCalls,
+      );
+      expect((await request(`/api/stints/${stint.id}`)).status).toBe(200);
+      expect(
+        (await crashStep("verify a single session load", () => calls())).filter(
+          (call) => call.method === "session/load",
+        ),
+      ).toHaveLength(1);
+      if (unrelated) expect(unrelated.exitCode).toBeNull();
+    } catch (error) {
+      const diagnosticApp = restarted?.app;
+      const warnings = diagnosticApp
+        ? await crashStep(
+            "diagnostic /api/project",
+            async () => (await diagnosticApp.request("/api/project")).json(),
+            1000,
+          ).then(
+            (snapshot) => snapshot.warnings,
+            (failure) => `unavailable: ${String(failure)}`,
+          )
+        : "restarted server not created";
+      const tail = await crashStep(
+        "diagnostic stint log tail",
+        async () => {
+          if (!diagnosticLog && diagnosticRoot) {
+            const directory = join(diagnosticRoot, ".stintwork/local/stints");
+            const name = (await readdir(directory)).find((name) => name.endsWith(".jsonl"));
+            if (name) diagnosticLog = join(directory, name);
+          }
+          return diagnosticLog
+            ? (await readFile(diagnosticLog, "utf8"))
+                .trim()
+                .split("\n")
+                .slice(-12)
+                .join("\n")
+                .slice(-12000)
+            : "no stint log yet";
+        },
+        1000,
+      ).catch((failure) => `unavailable: ${String(failure)}`);
+      throw new Error(
+        `${String(error)}\nCold child step: ${childStep}\nChild stderr: ${stderr}\nRestart /api/project warnings: ${JSON.stringify(warnings)}\nStint log tail:\n${tail}`,
+        { cause: error },
+      );
+    } finally {
+      release();
+      socket?.terminate();
     }
-    const trace = await calls();
-    const resumed = trace.filter((call) => call.pid === recovered.recovery?.attempt?.pid);
-    expect(resumed.map((call) => call.method)).toEqual([
-      "initialize",
-      "session/load",
-      "session/set_mode",
-      "session/prompt",
-      "session/prompt",
-    ]);
-    expect(resumed[1].params).toMatchObject({
-      sessionId: "fake-session",
-      cwd: stint.worktree.path,
-      additionalDirectories: expect.arrayContaining([expect.any(String)]),
-    });
-    expect(resumed[2].params.modeId).toBe(agent === "claude" ? "acceptEdits" : "workspace-write");
-    expect(resumed[3].params.prompt).toEqual([{ type: "text", text: continuationInstruction }]);
-    expect(
-      resumed.every(
-        (call) =>
-          call.home === env.HOME &&
-          call.token === env.TEST_LAUNCH_ENV &&
-          call[agent] === selected.executable.path,
-      ),
-    ).toBe(true);
-    expect(await cache.calls()).toEqual(npmCalls);
-    expect((await request(`/api/stints/${stint.id}`)).status).toBe(200);
-    expect((await calls()).filter((call) => call.method === "session/load")).toHaveLength(1);
-    if (unrelated) expect(unrelated.exitCode).toBeNull();
   },
 );
 

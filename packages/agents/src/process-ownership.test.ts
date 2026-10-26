@@ -442,3 +442,151 @@ test.each([
     }
   },
 );
+
+test("startup absence proof ignores zombie rows even with old ownership links and no cwd", async () => {
+  const uid = process.getuid?.() as number;
+  const recorded = {
+    ...attempt,
+    identity: `${uid}:adapter`,
+    owner: { ...attempt.owner, identity: `${uid}:owner` },
+  };
+  const fake = processes([
+    { pid: 10, group: 10, uid, identity: recorded.owner.identity, command: "(server)", state: "Z" },
+    { pid: 20, group: 20, uid, identity: recorded.identity, command: "(adapter)", state: "Z+" },
+    { pid: 21, group: 20, uid, identity: `${uid}:tool`, command: "stintwork-attempt", state: "Z" },
+  ]);
+  const cwd = vi.spyOn(fake.control, "workingDirectories");
+  await expect(
+    stopStintProcesses(recorded, false, fake.control, undefined, process.cwd()),
+  ).resolves.toBeUndefined();
+  expect(cwd).toHaveBeenCalledWith([]);
+  expect(fake.signal).not.toHaveBeenCalled();
+});
+
+test.each(["gone", "reused", "zombie", "live", "read-error", "budget", "old-writer"] as const)(
+  "an unreadable cwd gets a final identity check before blocking: %s",
+  async (outcome) => {
+    const uid = process.getuid?.() as number;
+    const row = { pid: 21, group: 21, uid, identity: `${uid}:git`, command: "(git)" };
+    const fake = processes([row]);
+    let afterCwd = 0;
+    let inspected = false;
+    const read = fake.control.read;
+    fake.control.workingDirectories = () => {
+      inspected = true;
+      return new Map();
+    };
+    fake.control.read = () => {
+      // Keep the process in the post-lsof snapshot; force the exit/reuse only on re-inspection.
+      if (inspected && ++afterCwd === 2) {
+        if (outcome === "gone") fake.table.delete(21);
+        if (outcome === "reused") fake.table.set(21, { ...row, identity: `${uid}:replacement` });
+        if (outcome === "zombie") fake.table.set(21, { ...row, state: "Z" });
+        if (outcome === "old-writer") {
+          fake.table.delete(21);
+          fake.table.set(22, { ...row, pid: 22, command: "stintwork-attempt" });
+        }
+        if (outcome === "read-error") throw new Error("Native inspection unavailable");
+        if (outcome === "budget") vi.advanceTimersByTime(1000);
+      }
+      return read();
+    };
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const result = stopStintProcesses(
+        {
+          ...attempt,
+          identity: `${uid}:adapter`,
+          owner: { ...attempt.owner, identity: `${uid}:owner` },
+        },
+        false,
+        fake.control,
+        undefined,
+        process.cwd(),
+      );
+      if (["live", "read-error", "budget", "old-writer"].includes(outcome))
+        await expect(result).rejects.toThrow(/No checkpoint or replacement/);
+      else await expect(result).resolves.toBeUndefined();
+      expect(afterCwd).toBe(2);
+      expect(fake.signal).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test.each([
+  "stable-tree",
+  "new-child",
+  "root-reused",
+  "parent-reused",
+  "reparented-child",
+  "foreign-git",
+  "missing-root",
+] as const)(
+  "startup excludes only identity-verified current-server ancestry: %s",
+  async (interleaving) => {
+    const uid = process.getuid?.() as number;
+    const server = {
+      pid: process.pid,
+      parent: 1,
+      group: process.pid,
+      uid,
+      identity: `${uid}:current-server`,
+      command: "server",
+    };
+    const parent = {
+      pid: 31,
+      parent: server.pid,
+      group: 31,
+      uid,
+      identity: `${uid}:current-child`,
+      command: "arbitrary child",
+    };
+    const child = {
+      pid: 32,
+      parent: parent.pid,
+      group: 32,
+      uid,
+      identity: `${uid}:current-grandchild`,
+      command: "(git)",
+    };
+    const fake = processes([server, ...(interleaving === "new-child" ? [] : [parent, child])]);
+    if (interleaving === "missing-root") fake.table.delete(server.pid);
+    if (interleaving === "foreign-git")
+      fake.table.set(21, { ...child, pid: 21, parent: 1, identity: `${uid}:foreign` });
+    const cwd = vi.fn(() => {
+      if (interleaving === "new-child") {
+        fake.table.set(parent.pid, parent);
+        fake.table.set(child.pid, child);
+      }
+      if (interleaving === "root-reused")
+        fake.table.set(server.pid, { ...server, identity: `${uid}:reused-server` });
+      if (interleaving === "parent-reused")
+        fake.table.set(parent.pid, { ...parent, identity: `${uid}:reused-parent` });
+      if (interleaving === "reparented-child") fake.table.set(child.pid, { ...child, parent: 1 });
+      return new Map<number, string>();
+    });
+    fake.control.workingDirectories = cwd;
+    const result = stopStintProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:adapter`,
+        owner: { ...attempt.owner, identity: `${uid}:old-server` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+    );
+    if (["stable-tree", "new-child"].includes(interleaving))
+      await expect(result).resolves.toBeUndefined();
+    else await expect(result).rejects.toThrow(/No checkpoint or replacement/);
+    // No cwd is needed for our proven tree, regardless of commands or process groups.
+    expect(cwd).toHaveBeenCalledWith(
+      interleaving === "foreign-git" ? [21] : interleaving === "missing-root" ? [31, 32] : [],
+    );
+    expect(fake.signal).not.toHaveBeenCalled();
+    expect(fake.table.has(child.pid)).toBe(true);
+  },
+);

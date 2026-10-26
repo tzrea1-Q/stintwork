@@ -69,7 +69,7 @@ test("macOS tolerates vanished lsof entries but does not hide native inspection 
 
 test("native process rows retain UID and omit zombies and the observed inspector child", () => {
   const output =
-    "20 1 20 501 Mon Oct 26 11:08:55 2026 S adapter\n21 1 21 501 Mon Oct 26 11:08:55 2026 Z zombie\n99 1 99 501 Mon Oct 26 11:08:55 2026 R inspector\n";
+    "20 1 20 501 Mon Oct 26 11:08:55 2026 S adapter\n21 1 21 501 Mon Oct 26 11:08:55 2026 Z+ (git)\n99 1 99 501 Mon Oct 26 11:08:55 2026 R inspector\n";
   vi.mocked(childProcess.execFileSync).mockReturnValue(output);
   vi.mocked(childProcess.spawnSync).mockReturnValue({
     pid: 99,
@@ -90,6 +90,11 @@ test("native process rows retain UID and omit zombies and the observed inspector
       command: "adapter",
     },
   ]);
+  expect(childProcess.spawnSync).toHaveBeenCalledWith(
+    "/bin/ps",
+    ["-axo", "pid=,ppid=,pgid=,uid=,lstart=,stat=,command="],
+    expect.objectContaining({ timeout: 1000 }),
+  );
 });
 
 test("unsupported platforms cannot certify cwd inspection", () => {

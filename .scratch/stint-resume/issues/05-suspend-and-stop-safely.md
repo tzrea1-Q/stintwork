@@ -192,3 +192,35 @@ pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — intermittent native TCP/EOF matrix diagnostics (cause not yet established):** Every asynchronous matrix step now has a named deadline, including cold-child IPC/work readiness, SIGKILL/EOF observation, restarted watcher/listener/WebSocket readiness, API requests and response bodies, recovery verification, completion and trace reads. Failures include the restarted `/api/project` warnings, the last 12 stint log entries, the cold child's last reported startup phase and stderr. The verifier gate is released and the WebSocket terminated on failure so fixture teardown can proceed. Three fake-clock checks cover resolved, rejected and stalled waits and deadline disposal. The overall 30-second test timeout was not increased.
+
+Traced both paths: the native absent-adapter scan is queued during initialization before the restarted watcher starts; an ownership failure records a warning and deliberately never calls the verifier. TCP also waits for watcher/listener readiness and the first WebSocket snapshot before observing the verifier. The original unbounded waits hid which of these occurred. No specific interleaving is proven from the bare timeout, so no product/ownership relaxation or claimed race fix has been made. This sandbox denies native `ps` and TCP; the targeted native matrix invocation skips here. Diagnosis remains incomplete pending the first instrumented host failure; the coordinator was asked for it during this run.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Agents: **24 files / 317 passed / 9 native cases excluded**. Five affected server files: **125 passed / 59 native-or-TCP cases excluded**, including all three deadline checks. No native/socket pass is claimed.
+
+Coordinator: run the eight EOF cases below (repeat to obtain the reported intermittent failure), and return the full step-specific failure including warnings/log tail. Then the actual interleaving can be forced in a regression before changing product or fixture behavior.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='server-only SIGKILL.*EOF[^-]*, TCP:'
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — exiting processes during native writer inspection:** The host's new diagnostics identify a product race: the scan treated a missing cwd in its post-lsof process snapshot as permanent uncertainty, without checking whether that identity had since exited, and unnecessarily inspected the restarted server's own Git children. The native parser already requests `stat` and filters `Z`; parenthesized `(git)` names alone are not proof of exit or ownership. Cleanup now also filters zombies at the injected process-table boundary, re-reads the table once when cwd is missing, and permits a disappeared, changed-identity or zombie original process to fall through. A still-live same-identity process without cwd remains blocked, regardless of command name. The extra read shares the existing one-second cleanup budget; command/parse failures and budget expiry still block.
+
+The scan excludes the current server and descendants only through PID/identity and parent links verified across snapshots, anchored to the current process's recorded native identity. A child first seen during cwd inspection must survive another ancestry verification. Root/parent identity changes and reparenting invalidate the exclusion; neither command names nor bare parent PIDs grant it. The scan still issues no signals. Deleted-cwd lexical matching, missing-worktree interrupted fallback and observed replacement-initialize exit remain covered and passing. No timeout increase, sleep, supervisor or new dependency.
+
+Added **15 deterministic ownership regressions** using fake process/cwd tables, explicit inspection interleavings and a fake clock for expiry. Positive exit/zombie/ancestry cases reproduced failures before their fixes; negative controls cover stable unreadable `(git)`, foreign ancestry, PID reuse, reparenting, inspection errors, late old-attempt writers and expiry. The native parser regression now explicitly asserts `stat` selection and a `Z+ (git)` row. The earlier matrix diagnostics are preserved.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Ownership/inspection: **75 passed**. Available agents: **24 files / 332 passed / 9 native cases excluded**. Five affected server files: **125 passed / 59 native-or-TCP cases excluded**, including EOF scan resume/fallback, detached writer blocking, missing worktree, initialize-exit fallback and durable cleanup proof. Native `ps`/TCP matrix execution is unavailable in this sandbox; no host, smoke or e2e pass is claimed.
+
+Coordinator: run the following unfiltered on the native/socket host, requiring all **24 server-only SIGKILL** and **13 failed-recovery** cases to execute. Repeat the matrix command at least six times to compare with the reported intermittent runs, then run the full unit suite.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='server-only SIGKILL'
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged; ADR 0012 unchanged.
