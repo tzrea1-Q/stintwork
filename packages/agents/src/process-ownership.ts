@@ -140,7 +140,34 @@ export function processIdentity(pid: number): string | undefined {
   } // Restricted/unsupported hosts must block orphan cleanup, never guess.
 }
 
-// Stops the recorded group and traceable descendants. For dead owners and vanished adapters, startup also checks marker/group/worktree cwd; writers outside those links remain undiscoverable.
+// Accept only the native UID:lstart identity, rejecting Date's permissive calendar normalization.
+function nativeStart(identity: string | undefined, uid: number): number | undefined {
+  const match = identity?.match(
+    /^(\d+):([A-Za-z]{3})\s+([A-Za-z]{3})\s+(\d{1,2})\s+(\d{2}:\d{2}:\d{2})\s+(\d{4})$/,
+  );
+  if (!match || Number(match[1]) !== uid) return;
+  const date = new Date(`${match[3]} ${match[4]}, ${match[6]} ${match[5]}`);
+  if (
+    date.toDateString() !== `${match[2]} ${match[3]} ${match[4].padStart(2, "0")} ${match[6]}` ||
+    date.toTimeString().slice(0, 8) !== match[5]
+  )
+    return;
+  // lstart omits the UTC offset, so a repeated local time cannot establish ordering.
+  const tomorrow = new Date(date);
+  tomorrow.setDate(date.getDate() + 1);
+  const repeatedMinutes = tomorrow.getTimezoneOffset() - date.getTimezoneOffset();
+  const later = new Date(date.getTime() + repeatedMinutes * 60_000);
+  if (
+    repeatedMinutes > 0 &&
+    later.toDateString() === date.toDateString() &&
+    later.toTimeString().slice(0, 8) === match[5]
+  )
+    return;
+  return date.getTime();
+}
+
+// Stops the recorded group and traceable descendants. Startup also checks marker/group/worktree cwd;
+// the cwd heuristic excludes processes proven older than the attempt. Writers outside these links remain undiscoverable.
 export async function stopStintProcesses(
   attempt: StintProcessAttempt,
   ownerReleased = false,
@@ -152,6 +179,8 @@ export async function stopStintProcesses(
     new ProcessOwnershipError(
       `Cannot recover stint: previous owner or adapter/tool ownership is live or unverifiable (attempt ${attempt.id}, owner ${attempt.owner.pid}, adapter ${attempt.pid}, marker ${attempt.marker ?? "unavailable"}). ${detail} Verify any named live writers or restore native process/cwd inspection, then restart Stintwork. No checkpoint or replacement was started.`,
     );
+  const describe = (row: ProcessIdentity) =>
+    `${row.pid} (${row.command.length > 120 ? `${row.command.slice(0, 119)}…` : row.command})`;
   // Zombies retain a PID but cannot write, including in injected native snapshots.
   const liveProcesses = () => processes.read().filter((row) => !row.state?.includes("Z"));
   if (!ownerReleased && processes.exists(attempt.owner.pid)) {
@@ -369,7 +398,7 @@ export async function stopStintProcesses(
         );
         if (writers.length)
           throw blocked(
-            `Live possible writers: ${writers.map((row) => `${row.pid} (${row.command})`).join(", ")}. Verify and stop those writers before retrying.`,
+            `Live possible writers: ${writers.map(describe).join(", ")}. Verify and stop those writers before retrying.`,
           );
       };
       absent(rows, local);
@@ -410,7 +439,7 @@ export async function stopStintProcesses(
         }
         if (candidates.get(row.pid) !== row.identity || !directory || !isAbsolute(directory))
           throw blocked(
-            `Cannot inspect working directory for live PID ${row.pid} (${row.command}); no writer ownership was assumed.`,
+            `Cannot inspect working directory for live PID ${describe(row)}; no writer ownership was assumed.`,
           );
         // Keep the raw spelling too: " (deleted)" can also be part of a real directory name.
         const paths = [resolve(directory), resolve(directory.replace(/ \(deleted\)$/, ""))];
@@ -421,10 +450,16 @@ export async function stopStintProcesses(
               return inside !== ".." && !inside.startsWith("../") && !isAbsolute(inside);
             }),
           )
-        )
+        ) {
+          const attemptStart = nativeStart(attempt.identity, uid);
+          const start = nativeStart(row.identity, uid);
+          // lstart has one-second resolution; the same second can still belong to this attempt.
+          if (start !== undefined && attemptStart !== undefined && start + 1000 <= attemptStart)
+            continue;
           throw blocked(
-            `Live possible writer: PID ${row.pid} (${row.command}), cwd ${directory}. Verify and stop that writer before retrying.`,
+            `Live possible writer: PID ${describe(row)}, cwd ${directory}. Verify and stop that writer before retrying.`,
           );
+        }
       }
       return;
     }

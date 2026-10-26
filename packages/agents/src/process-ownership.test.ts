@@ -590,3 +590,165 @@ test.each([
     expect(fake.table.has(child.pid)).toBe(true);
   },
 );
+
+test.each([
+  { start: "Mon Oct 26 11:08:53 2026", older: true },
+  { start: "Mon Oct 26 11:08:54 2026", older: true },
+  { start: "Mon Oct 26 11:08:55 2026", older: false },
+  { start: "Mon Oct 26 11:08:56 2026", older: false },
+  { start: "Sun Oct 25 23:59:59 2026", older: true },
+  { start: "Wed Dec 31 23:59:59 2025", older: true },
+  { start: "Mon Oct  5 11:08:54 2026", older: true },
+  { start: "unparseable", older: false },
+  { start: "Mon Oct 26 25:00:00 2026", older: false },
+  { start: "Mon Feb 30 11:08:54 2026", older: false },
+  { start: "Tue Oct 26 11:08:54 2026", older: false },
+  { start: "Mon Oct 26 11:08:54 2026 trailing", older: false },
+  { start: "2026-10-25T11:08:54Z", older: false },
+  { start: "Mon Oct 26 11:08:54 2026", attemptStart: "unknown", older: false },
+  { start: "Mon Oct 26 11:08:54 2026", wrongUid: true, older: false },
+])(
+  "worktree cwd start $start (attempt: $attemptStart, wrong UID: $wrongUid) predates the attempt only when proven: $older",
+  async ({ start, attemptStart = "Mon Oct 26 11:08:55 2026", wrongUid, older }) => {
+    const uid = process.getuid?.() as number;
+    const row = {
+      pid: 21,
+      group: 21,
+      uid,
+      identity: `${wrongUid ? uid + 1 : uid}:${start}`,
+      command: "arbitrary terminal/editor/watcher",
+    };
+    const fake = processes([row]);
+    const directory = `${process.cwd()}/subdirectory (deleted)`;
+    fake.control.workingDirectories = () => new Map([[row.pid, directory]]);
+    const result = stopStintProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:${attemptStart}`,
+        owner: { ...attempt.owner, identity: `${uid}:old-server` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+    );
+    if (older) await expect(result).resolves.toBeUndefined();
+    else
+      await expect(result).rejects.toThrow(
+        `Live possible writer: PID 21 (${row.command}), cwd ${directory}`,
+      );
+    expect(fake.signal).not.toHaveBeenCalled();
+    expect(fake.table.get(21)).toBe(row);
+  },
+);
+
+test.each(["cwd", "group", "marker", "unreadable-cwd"] as const)(
+  "ownership guidance bounds a long suspect command without losing PID/cwd: %s",
+  async (link) => {
+    const uid = process.getuid?.() as number;
+    const command = `writer ${"x".repeat(4000)}${link === "marker" ? " --attempt=stintwork-attempt" : ""}`;
+    const fake = processes([
+      {
+        pid: 21,
+        group: link === "group" ? 20 : 21,
+        uid,
+        identity: `${uid}:Mon Oct 26 11:08:56 2026`,
+        command,
+      },
+    ]);
+    const directory = `${process.cwd()}/subdirectory`;
+    fake.control.workingDirectories = () =>
+      link === "unreadable-cwd" ? new Map() : new Map([[21, directory]]);
+    const error = await stopStintProcesses(
+      {
+        ...attempt,
+        identity: `${uid}:Mon Oct 26 11:08:55 2026`,
+        owner: { ...attempt.owner, identity: `${uid}:old-server` },
+      },
+      false,
+      fake.control,
+      undefined,
+      process.cwd(),
+    ).catch((error) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect(error.message).toContain(`21 (${command.slice(0, 119)}…)`);
+    expect(error.message).not.toContain(command);
+    expect(error.message.length).toBeLessThan(800 + directory.length);
+    if (link === "cwd") expect(error.message).toContain(`cwd ${directory}`);
+    expect(fake.signal).not.toHaveBeenCalled();
+  },
+);
+
+test("a repeated daylight-saving hour cannot prove which process started first", async () => {
+  vi.stubEnv("TZ", "America/Los_Angeles");
+  try {
+    const uid = process.getuid?.() as number;
+    // 01:15 in the second occurrence is later than 01:45 in the first occurrence.
+    const fake = processes([
+      { pid: 21, group: 21, uid, identity: `${uid}:Sun Nov  1 01:15:00 2026`, command: "writer" },
+    ]);
+    fake.control.workingDirectories = () => new Map([[21, process.cwd()]]);
+    await expect(
+      stopStintProcesses(
+        {
+          ...attempt,
+          identity: `${uid}:Sun Nov  1 01:45:00 2026`,
+          owner: { ...attempt.owner, identity: `${uid}:old-server` },
+        },
+        false,
+        fake.control,
+        undefined,
+        process.cwd(),
+      ),
+    ).rejects.toThrow("Live possible writer: PID 21");
+    expect(fake.signal).not.toHaveBeenCalled();
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+test.each(["reused", "group", "marker", "later-child"] as const)(
+  "a pre-attempt cwd process cannot hide stronger writer evidence or later children: %s",
+  async (link) => {
+    const uid = process.getuid?.() as number;
+    const old = `${uid}:Mon Oct 26 11:08:54 2026`;
+    const row = {
+      pid: 21,
+      group: link === "group" ? 20 : 21,
+      uid,
+      identity: old,
+      command: link === "marker" ? "stintwork-attempt" : "terminal",
+    };
+    const fake = processes([row]);
+    if (link === "later-child")
+      fake.table.set(22, {
+        ...row,
+        pid: 22,
+        parent: 21,
+        group: 22,
+        identity: `${uid}:Mon Oct 26 11:08:56 2026`,
+        command: "later child",
+      });
+    fake.control.workingDirectories = (pids) => {
+      if (link === "reused")
+        fake.table.set(21, { ...row, identity: `${uid}:Mon Oct 26 11:08:53 2026` });
+      return new Map(pids.map((pid) => [pid, process.cwd()]));
+    };
+    await expect(
+      stopStintProcesses(
+        {
+          ...attempt,
+          identity: `${uid}:Mon Oct 26 11:08:55 2026`,
+          owner: { ...attempt.owner, identity: `${uid}:old-server` },
+        },
+        false,
+        fake.control,
+        undefined,
+        process.cwd(),
+      ),
+    ).rejects.toThrow(
+      link === "later-child" ? "Live possible writer: PID 22" : /No checkpoint or replacement/,
+    );
+    expect(fake.signal).not.toHaveBeenCalled();
+  },
+);

@@ -224,3 +224,16 @@ pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
 ```
 
 No commit; all `Status:` lines unchanged; ADR 0012 unchanged.
+
+**Codex, 2026-10-26 — pre-existing worktree processes and concise guidance:** Reproduced the older terminal false block before fixing it. The cwd heuristic now excludes a process only when its identity stayed stable across inspection and validated native `UID:lstart` times place it in an earlier second than the adapter attempt. Same-second/later, invalid calendar/UID, unparseable and ambiguous daylight-saving times remain blocked. This exception never overrides marker/group/recorded ancestry evidence and does not exclude later children of an older process. No command-name exclusions or new signals. Suspect command text is capped at 120 characters including an ellipsis, preserving PID and available cwd. Updated spec step 4 and Known limit to state the age exception and delegated-write boundary; ADR 0012 unchanged.
+
+Added **24 deterministic fake-process regressions**, including failing-before age, command-length and repeated-hour cases. Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and append-only/Status/ADR guards passed (existing informational Biome deprecation only). Ownership/inspection: **99 passed**. Available agents: **356 passed / 9 native cases excluded**; five affected server files: **125 passed / 59 native-or-TCP cases excluded**, including deleted cwd, missing worktree, observed initialize exit and durable cleanup proof. No native/socket, real-agent, smoke or e2e pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, requiring all 24 server-only SIGKILL and 13 failed-recovery cases to execute; repeat the real rebuilt-CLI crash with a terminal/harness that predates the attempt in the worktree, and verify that a process started during/after the attempt still blocks with bounded guidance.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.
