@@ -473,7 +473,7 @@ test("a timed-out handoff permission is no longer answerable and leaves no event
   );
   if (request?.type !== "event" || request.event.type !== "permission_request")
     throw new Error("Expected a permission request");
-  expect(log.at(-2)).toMatchObject({
+  expect(log.filter((entry) => entry.type === "event").at(-1)).toMatchObject({
     type: "event",
     event: { type: "permission", automatic: false, decision: { outcome: "cancelled" } },
   });

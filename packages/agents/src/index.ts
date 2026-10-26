@@ -9,6 +9,8 @@ import {
   type StintEvent,
   type StintLogEvent,
   type ReviewFinding,
+  type StintPhase,
+  type StintProcessAttempt,
 } from "@stintwork/core";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -61,7 +63,7 @@ export {
 } from "./adapter-cache.js";
 export { prepareAgentForStint } from "./prepare-agent.js";
 export { selectAgentSource } from "./executable.js";
-export { adapterPins } from "./adapter-profiles.js";
+export { adapterPins, adapterHost } from "./adapter-profiles.js";
 
 export type AgentStintOptions = {
   preparedAgent?: PreparedAgent;
@@ -73,6 +75,9 @@ export type AgentStintOptions = {
   additionalDirectories?: string[];
   prompt: string;
   onEvent: (event: StintLogEvent) => void;
+  onProcess?: (attempt: StintProcessAttempt) => void;
+  onSession?: (sessionId: string) => void;
+  onPhase?: (phase: StintPhase, result: Partial<AgentStintResult>) => void;
   onPermission?: (
     request: RequestPermissionRequest & { requestId: string; forwarded: Promise<void> },
   ) => Promise<RequestPermissionResponse>;
@@ -81,17 +86,18 @@ export type AgentStintOptions = {
   afterTurnRequests?: readonly AfterTurnRequest[];
   checkAvailability?: boolean;
 };
+export type AgentStintResult = {
+  stopReason: string;
+  handoff?: AgentHandoff | null;
+  handoffError?: string;
+  findings?: Omit<ReviewFinding, "id">[] | null;
+  findingsError?: string;
+  findingsRawReply?: string;
+  [field: string]: unknown;
+};
 export type AgentStint = {
   ready?: Promise<void>;
-  done: Promise<{
-    stopReason: string;
-    handoff?: AgentHandoff | null;
-    handoffError?: string;
-    findings?: Omit<ReviewFinding, "id">[] | null;
-    findingsError?: string;
-    findingsRawReply?: string;
-    [field: string]: unknown;
-  }>;
+  done: Promise<AgentStintResult>;
   cancel: () => Promise<void>;
 };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
@@ -117,6 +123,9 @@ export function createAgentLauncher(
     additionalDirectories = [],
     prompt,
     onEvent,
+    onProcess,
+    onSession,
+    onPhase,
     onPermission,
     handoffTimeoutMs,
     afterTurnTimeoutMs = handoffTimeoutMs,
@@ -188,8 +197,10 @@ export function createAgentLauncher(
       if (cancelled) return { stopReason: "cancelled" };
       if (preparedAgent && preparedAgent.agent !== agent)
         throw new Error("Prepared agent does not match the requested stint.");
+      const attemptId = randomUUID();
+      const marker = preparedAgent ? `stintwork-${attemptId}` : null;
       child = preparedAgent
-        ? spawn(process.execPath, [preparedAgent.adapterEntry], {
+        ? spawn(process.execPath, [`--title=${marker}`, preparedAgent.adapterEntry], {
             cwd,
             stdio: "pipe",
             env: preparedAgentEnvironment(preparedAgent, env),
@@ -361,6 +372,13 @@ export function createAgentLauncher(
       );
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
+        if (child.pid)
+          onProcess?.({
+            id: attemptId,
+            owner: { pid: process.pid, startedAt: new Date(performance.timeOrigin).toISOString() },
+            pid: child.pid,
+            marker,
+          });
         const initialize = (async () => {
           const initialized = await acp.initialize({
             protocolVersion: PROTOCOL_VERSION,
@@ -383,6 +401,8 @@ export function createAgentLauncher(
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
           });
           acpId = opened.sessionId;
+          // Synchronous persistence is part of opening the session, before even mode setup.
+          onSession?.(acpId);
           if (policy.mode !== null) {
             if (!opened.modes?.availableModes.some(({ id }) => id === policy.mode))
               throw new Error(
@@ -410,12 +430,16 @@ export function createAgentLauncher(
         if (cancelled) return { stopReason: "cancelled" };
         resolveReady();
         if (checkAvailability) return { stopReason: "end_turn" };
+        onPhase?.("work", {});
         workTurn = acp.prompt({
           sessionId: acpId as string,
           prompt: [{ type: "text", text: prompt }],
         });
         const result = await Promise.race([workTurn, failure]);
-        if (afterTurnTimeoutMs === undefined) return result;
+        if (afterTurnTimeoutMs === undefined) {
+          onPhase?.("finalization", result);
+          return result;
+        }
         permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
           cancelPermission = () => resolvePermission({ outcome: { outcome: "cancelled" } });
         });
@@ -423,6 +447,14 @@ export function createAgentLauncher(
           timeoutMs: afterTurnTimeoutMs,
           failure,
           retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
+          onRequest(request, results) {
+            if (request.resultField === "handoff" || request.resultField === "findings")
+              onPhase?.(request.resultField, { ...result, ...results });
+          },
+          onResult(request, results) {
+            if (request.resultField === "handoff" || request.resultField === "findings")
+              onPhase?.(request.resultField, { ...result, ...results });
+          },
           async prompt(text) {
             chunk = undefined;
             afterTurnMessages = [];
@@ -443,6 +475,7 @@ export function createAgentLauncher(
             });
           },
         });
+        onPhase?.("finalization", { ...result, ...afterTurnResults });
         return { ...result, ...afterTurnResults };
       } catch (error) {
         if (cancelled) return { stopReason: "cancelled" };

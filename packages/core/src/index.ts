@@ -177,6 +177,13 @@ export {
   type StintLogEntry,
   type StintStatus,
   type StintSummary,
+  type StintLaunch,
+  type StintProcessAttempt,
+  type StintProgress,
+  type StintPhase,
+  type StintRecovery,
+  type StintRecoveryEntry,
+  type StintRecoveryData,
   type CheckpointWarning,
 } from "./stints.js";
 export {

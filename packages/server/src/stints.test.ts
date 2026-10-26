@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
+import { mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,12 +11,14 @@ import {
   createClaudeCodeAgent,
   createCodexAgent,
   readExecutableIdentity,
+  adapterPins,
   type AgentLauncher,
   type AgentPreparationOptions,
   type PreparedAgent,
 } from "@stintwork/agents";
 import {
   foldStintLog,
+  isStintLogEntry,
   type Brief,
   type ProjectSnapshot,
   type Stint,
@@ -247,7 +250,12 @@ test("starts from the server-compiled preview, records every event and reuses th
     .trim()
     .split("\n")
     .map((line) => JSON.parse(line));
-  expect(entries.map((entry) => entry.type)).toEqual(["started", "event", "event", "ended"]);
+  expect(entries.filter((entry) => entry.type !== "recovery").map((entry) => entry.type)).toEqual([
+    "started",
+    "event",
+    "event",
+    "ended",
+  ]);
   expect(foldStintLog(entries)).toMatchObject({
     status: "finished",
     events: [{ type: "message", text: "Hello world" }],
@@ -377,9 +385,13 @@ test.each(["allow", "cancel"])(
     };
     if (!pending) throw new Error("Expected the pending permission request.");
     const { raisedAt, ...loggedRequest } = pending;
-    expect(entries[2]).toEqual({ type: "event", at: raisedAt, event: loggedRequest });
+    expect(
+      entries.find((entry) => entry.type === "event" && entry.event.type === "permission_request"),
+    ).toEqual({ type: "event", at: raisedAt, event: loggedRequest });
     expect(foldStintLog(entries)?.events).toContainEqual(pending);
-    expect(entries[3]).toMatchObject({ type: "event", event: permission });
+    expect(
+      entries.find((entry) => entry.type === "event" && entry.event.type === "permission"),
+    ).toMatchObject({ type: "event", event: permission });
     expect(entries.at(-1)).toMatchObject({
       type: "ended",
       status: "finished",
@@ -463,12 +475,12 @@ test("N ACP chunks persist as N bounded delta entries and fold to the full messa
     .split("\n");
   const entries: StintLogEntry[] = lines.map((line) => JSON.parse(line));
   const events = entries.filter((entry) => entry.type === "event");
-  expect(entries).toHaveLength(count + 2);
+  expect(entries.filter((entry) => entry.type !== "recovery")).toHaveLength(count + 2);
   expect(events).toHaveLength(count);
   expect(events.map((entry) => entry.event)).toEqual(
     Array.from({ length: count }, () => ({ type: "message_delta", id: "1", text })),
   );
-  expect(lines.slice(1, -1).every((line) => line.length < 150)).toBe(true);
+  expect(events.every((entry) => JSON.stringify(entry).length < 150)).toBe(true);
   expect(foldStintLog(entries)).toMatchObject({
     status: "finished",
     events: [{ type: "message", id: "1", text: text.repeat(count) }],
@@ -506,7 +518,20 @@ test("HTTP start streams ACP messages over WebSocket in durable log order and en
   expect(response.status).toBe(201);
   const { stint }: { stint: Stint } = await response.json();
   await ended;
-  expect(messages.map((message) => message.sequence)).toEqual([1, 2, 3, 4]);
+  expect(messages.map((message) => message.sequence)).toEqual(
+    messages.map((_, index) => index + 1),
+  );
+  expect(
+    messages.filter((message) => message.entry.type === "recovery").map((message) => message.entry),
+  ).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: "session", sessionId: expect.any(String) }),
+      expect.objectContaining({
+        kind: "phase",
+        progress: expect.objectContaining({ phase: "work" }),
+      }),
+    ]),
+  );
   expect(
     messages.every((message) => message.stintId === stint.id && message.workItem === "first"),
   ).toBe(true);
@@ -696,8 +721,8 @@ const selectedPreparation = {
     identity: readExecutableIdentity(process.execPath)?.identity ?? "fixture",
   },
   adapterEntry: "/fixture/cache/adapter.js",
-  cacheKey: "fixture",
-  lockDigest: "fixture",
+  cacheKey: "a".repeat(64),
+  lockDigest: "b".repeat(64),
 } satisfies PreparedAgent;
 
 function fakePreparation(afterConfirmation: () => void = () => {}) {
@@ -1087,9 +1112,15 @@ test("HTTP preparation disconnect cancels before download and a new request retr
   expect(launch).toHaveBeenCalledTimes(1);
 });
 
-test.each(["claude", "codex"] as const)(
-  "%s: server launch preserves the registered environment while pinning the selected executable",
-  async (agent) => {
+test.each(
+  (["claude", "codex"] as const).flatMap((agent) =>
+    (["installed", "bundled"] as const).flatMap((source) =>
+      [false, true].map((failSession) => ({ agent, source, failSession })),
+    ),
+  ),
+)(
+  "$agent/$source: records the selected launch before work (session write failure: $failSession)",
+  async ({ agent, source, failSession }) => {
     const override = agent === "claude" ? "CLAUDE_CODE_EXECUTABLE" : "CODEX_PATH";
     const env = {
       ...process.env,
@@ -1099,7 +1130,7 @@ test.each(["claude", "codex"] as const)(
       [override]: "/nonexistent/agent",
     };
     const registered = agent === "claude" ? createClaudeCodeAgent(env) : createCodexAgent({ env });
-    const { project, tracked } = await fixture(undefined, {
+    const { root, project, tracked } = await fixture(undefined, {
       launchAgent: undefined,
       agentRegistry: createAgentRegistry([registered]),
     });
@@ -1113,13 +1144,69 @@ test.each(["claude", "codex"] as const)(
       writeFileSync("launched-environment.json", JSON.stringify({
         home: process.env.HOME,
         executable: process.env[${JSON.stringify(override)}],
+        title: process.title,
       }));
       process.env.STINTWORK_FAKE_OPTIONS = ${JSON.stringify(JSON.stringify({ profile: agent }))};
+      process.env.STINTWORK_FAKE_SCRIPT = JSON.stringify([{type:"write",path:"work.txt",content:"Work"}]);
+      process.env.STINTWORK_FAKE_HANDOFF = JSON.stringify([{type:"write",path:"after-turn.txt",content:"Handoff edit"},{type:"message",text:"## Where I stopped\\nSaved work.\\n## Unresolved\\nNone\\n## Suggested next\\nReview."}]);
       await import(${JSON.stringify(new URL("../../agents/src/fake-agent.ts", import.meta.url).href)});
     `,
     );
-    registered.prepare = async () => ({ ...selectedPreparation, agent, adapterEntry });
+    const preparedAgent = {
+      ...selectedPreparation,
+      agent,
+      source,
+      adapterEntry,
+      adapterVersion: adapterPins[agent].version,
+    };
+    registered.prepare = async () => preparedAgent;
+    const directory = join(root, ".stintwork/local/stints");
+    const entries = () =>
+      readFileSync(join(directory, readdirSync(directory)[0]), "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+    const launch = registered.launch;
+    registered.launch = (options) =>
+      launch({
+        ...options,
+        onSession(id) {
+          if (!failSession) {
+            options.onSession?.(id);
+            return;
+          }
+          const path = join(directory, readdirSync(directory)[0]);
+          renameSync(path, `${path}.saved`);
+          mkdirSync(path);
+          try {
+            options.onSession?.(id);
+          } finally {
+            rmdirSync(path);
+            renameSync(`${path}.saved`, path);
+          }
+        },
+        onPhase(phase, result) {
+          options.onPhase?.(phase, result);
+          expect(entries().at(-1)).toMatchObject({ kind: "phase", progress: { phase } });
+          if (phase === "work") {
+            expect(entries().find((entry) => entry.kind === "launch").launch).toMatchObject(
+              preparedAgent,
+            );
+            expect(entries().find((entry) => entry.kind === "session")).toMatchObject({
+              sessionId: expect.any(String),
+            });
+          }
+        },
+      });
     const response = await start(project, { workItem: "first", ticket: 1, agent });
+    if (failSession) {
+      expect(response.status).toBe(503);
+      expect(entries().some((entry) => entry.kind === "session")).toBe(false);
+      expect(entries().at(-1)).toMatchObject({ type: "ended", status: "failed" });
+      const worktree = entries()[0].stint.worktree.path;
+      await expect(readFile(join(worktree, "work.txt"))).rejects.toMatchObject({ code: "ENOENT" });
+      return;
+    }
     expect(response.status, await response.clone().text()).toBe(201);
     const { stint }: { stint: Stint } = await response.json();
     expect(
@@ -1127,7 +1214,107 @@ test.each(["claude", "codex"] as const)(
     ).toEqual({
       home: env.HOME,
       executable: selectedPreparation.executable.path,
+      title: expect.stringMatching(/^stintwork-/),
     });
     await finished(project, stint.id);
+    const log = entries();
+    expect(log.every(isStintLogEntry)).toBe(true);
+    expect(log.find((entry) => entry.kind === "attempt").attempt.marker).toBe(
+      JSON.parse(await readFile(join(stint.worktree.path, "launched-environment.json"), "utf8"))
+        .title,
+    );
+    expect(log.filter((entry) => entry.type === "ended")).toHaveLength(1);
+    const replay = await (await project.app.request(`/api/stints/${stint.id}`)).json();
+    expect(replay.stint).toMatchObject({
+      id: stint.id,
+      baseCommit: stint.baseCommit,
+      worktree: stint.worktree,
+      brief: stint.brief,
+      startedAt: stint.startedAt,
+      status: "finished",
+      handoff: { stoppedAt: "Saved work." },
+      recovery: {
+        launch: {
+          ...preparedAgent,
+          host: expect.objectContaining({ os: process.platform, arch: process.arch }),
+          permissionLevel: "edit-freely",
+        },
+        attempt: {
+          id: expect.any(String),
+          pid: expect.any(Number),
+          owner: { pid: process.pid },
+          marker: expect.stringMatching(/^stintwork-/),
+        },
+        sessionId: log.find((entry) => entry.kind === "session").sessionId,
+        progress: { phase: "finalization", handoff: { stoppedAt: "Saved work." } },
+      },
+    });
+    expect(JSON.stringify(log)).not.toContain(env.HOME);
+    expect(
+      execFileSync("git", ["show", `${replay.stint.checkpointCommit}:after-turn.txt`], {
+        cwd: stint.worktree.path,
+        encoding: "utf8",
+      }),
+    ).toBe("Handoff edit");
+  },
+);
+
+test.each([false, true])(
+  "Stop intent is durable before cancellation (write fails: %s)",
+  async (failWrite) => {
+    let complete: (result: { stopReason: string }) => void = () => {};
+    let logPath = "";
+    const cancel = vi.fn(async () => {
+      const entries = readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(entries.at(-1)).toMatchObject({
+        type: "recovery",
+        version: 1,
+        kind: "stop_requested",
+      });
+      complete({ stopReason: "cancelled" });
+    });
+    const { root, project } = await fixture(() => ({
+      ready: Promise.resolve(),
+      done: new Promise((resolve) => {
+        complete = resolve;
+      }),
+      cancel,
+    }));
+    const { stint } = await (await start(project)).json();
+    logPath = join(root, `.stintwork/local/stints/${stint.id}.jsonl`);
+    if (failWrite) {
+      renameSync(logPath, `${logPath}.saved`);
+      mkdirSync(logPath);
+      const report = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        expect(
+          (await project.app.request(`/api/stints/${stint.id}/stop`, { method: "POST" })).status,
+        ).toBe(500);
+        expect(cancel).not.toHaveBeenCalled();
+      } finally {
+        report.mockRestore();
+        rmdirSync(logPath);
+        renameSync(`${logPath}.saved`, logPath);
+      }
+    }
+    expect(
+      (await project.app.request(`/api/stints/${stint.id}/stop`, { method: "POST" })).status,
+    ).toBe(202);
+    await expect
+      .poll(
+        async () =>
+          (await (await project.app.request(`/api/stints/${stint.id}`)).json()).stint.status,
+      )
+      .toBe("stopped");
+    expect(cancel).toHaveBeenCalledTimes(1);
+    const entries = readFileSync(logPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(entries.filter((entry) => entry.kind === "stop_requested")).toHaveLength(1);
+    expect(entries.filter((entry) => entry.type === "ended")).toHaveLength(1);
   },
 );

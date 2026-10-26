@@ -9,7 +9,7 @@ import {
 } from "@stintwork/core";
 
 import { execFileSync } from "node:child_process";
-import { appendFileSync, realpathSync } from "node:fs";
+import { appendFileSync, closeSync, fstatSync, openSync, readSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 
 import { ensureLocalIgnore } from "./stint-repo-writes.js";
@@ -18,6 +18,22 @@ import type { Hono } from "hono";
 
 export const activeStintIds = new Set<string>();
 const recovering = new Map<string, Promise<void>>();
+
+/** Keep a torn last line as evidence and separate every new append from it. */
+export function appendStintLog(path: string, entry: StintLogEntry) {
+  const descriptor = openSync(path, "a+");
+  try {
+    const size = fstatSync(descriptor).size;
+    const last = Buffer.alloc(1);
+    if (size) readSync(descriptor, last, 0, 1, size - 1);
+    appendFileSync(
+      descriptor,
+      `${size && last[0] !== 10 ? "\n" : ""}${JSON.stringify(coreTextWire(entry))}\n`,
+    );
+  } finally {
+    closeSync(descriptor);
+  }
+}
 
 export function recoverInterruptedStints(root: string, files: RepoFiles): Promise<void> {
   const projectPath = realpathSync(root);
@@ -89,10 +105,7 @@ export function recoverInterruptedStints(root: string, files: RepoFiles): Promis
         ...(error ? { error } : {}),
       };
       ensureLocalIgnore(root);
-      appendFileSync(
-        join(root, path),
-        `${text.endsWith("\n") ? "" : "\n"}${JSON.stringify(ended)}\n`,
-      );
+      appendStintLog(join(root, path), ended);
     }
   })();
   recovering.set(projectPath, recovery);

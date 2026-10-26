@@ -27,6 +27,8 @@ export async function collectAfterTurnRequests(
     failure: Promise<never>;
     retryAfterCancel: () => boolean;
     cancel: () => Promise<void>;
+    onRequest?: (request: AfterTurnRequest, results: Readonly<Record<string, unknown>>) => void;
+    onResult?: (request: AfterTurnRequest, results: Readonly<Record<string, unknown>>) => void;
   },
 ): Promise<Record<string, unknown>> {
   const results: Record<string, unknown> = {};
@@ -46,6 +48,7 @@ export async function collectAfterTurnRequests(
   try {
     for (const request of requests) {
       current = request;
+      options.onRequest?.(request, results);
       results[request.resultField] = null;
       try {
         for (let attempt = 0; attempt < 3; attempt++) {
@@ -89,6 +92,8 @@ export async function collectAfterTurnRequests(
       } finally {
         clearTimeout(retryTimer);
       }
+      // Persistence failures must escape the request/retry handler and stop later prompts.
+      options.onResult?.(request, results);
     }
     return results;
   } finally {
