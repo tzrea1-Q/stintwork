@@ -101,6 +101,10 @@ export function createProjectServer(
   let stopping: Promise<void> | undefined;
   const lifetime = new AbortController();
   const websocket = new WebSocketServer({ noServer: true });
+  let websocketClosed = false;
+  websocket.once("close", () => {
+    websocketClosed = true;
+  });
   websocket.on("connection", (socket) => {
     socket.on("error", () => socket.terminate());
     socket.send(JSON.stringify(coreTextWire(snapshot)));
@@ -189,6 +193,7 @@ export function createProjectServer(
     refresh,
     checks.isActive,
     readReviewEvidence,
+    (warning) => recoveryWarnings.push(warning),
   );
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
   const live = upgradeWebSocket(() => ({}));
@@ -207,7 +212,7 @@ export function createProjectServer(
   const server = createAdaptorServer({ fetch: app.fetch, websocket: { server: websocket } });
 
   function start(): Promise<ServerType> {
-    if (stopping) return Promise.reject(new Error("Project server is stopped"));
+    if (lifetime.signal.aborted) return Promise.reject(new Error("Project server is stopped"));
     starting ??= (async () => {
       await initialize();
       watcher = watch([...watchedPaths], {
@@ -224,7 +229,7 @@ export function createProjectServer(
         },
       });
       watcher.on("all", (_event, path) => {
-        if (stopping || !watcherReady) return;
+        if (lifetime.signal.aborted || !watcherReady) return;
         if (![...watchedPaths].some((scope) => path === scope || path.startsWith(`${scope}${sep}`)))
           return;
         clearTimeout(debounce);
@@ -238,12 +243,12 @@ export function createProjectServer(
           // after; refresh() only broadcasts if the snapshot actually changed.
           clearTimeout(settle);
           settle = setTimeout(() => {
-            if (!stopping) refresh(paths);
+            if (!lifetime.signal.aborted) refresh(paths);
           }, 400);
         }, 150);
       });
       watcher.on("error", (error) => {
-        if (stopping) return;
+        if (lifetime.signal.aborted) return;
         watcherWarning = { path: "", message: `File watcher error: ${String(error)}` };
         refresh([]);
       });
@@ -252,7 +257,7 @@ export function createProjectServer(
         watcherReady = true;
         refresh();
         metadataPoll = setInterval(() => {
-          if (!stopping && readProjectFiles.metadataChanged()) refresh([]);
+          if (!lifetime.signal.aborted && readProjectFiles.metadataChanged()) refresh([]);
         }, 150).unref();
         return server;
       } catch (error) {
@@ -269,20 +274,30 @@ export function createProjectServer(
       clearTimeout(debounce);
       clearTimeout(settle);
       clearInterval(metadataPoll);
-      await Promise.all([stopStints(), checks.stop()]);
-      for (const client of websocket.clients) client.terminate();
-      await Promise.all([
-        watcher?.close(),
-        new Promise<void>((resolve, reject) => {
-          websocket.close((error) => (error ? reject(error) : resolve()));
-        }),
-        server.listening
-          ? new Promise<void>((resolve, reject) => {
-              server.close((error) => (error ? reject(error) : resolve()));
-            })
-          : undefined,
-      ]);
-    })();
+      try {
+        const results = await Promise.allSettled([stopStints(), checks.stop()]);
+        const failed = results.find((result) => result.status === "rejected");
+        if (failed?.status === "rejected") throw failed.reason;
+      } finally {
+        for (const client of websocket.clients) client.terminate();
+        await Promise.all([
+          watcher?.close(),
+          !websocketClosed
+            ? new Promise<void>((resolve, reject) => {
+                websocket.close((error) => (error ? reject(error) : resolve()));
+              })
+            : undefined,
+          server.listening
+            ? new Promise<void>((resolve, reject) => {
+                server.close((error) => (error ? reject(error) : resolve()));
+              })
+            : undefined,
+        ]);
+      }
+    })().catch((error: unknown) => {
+      stopping = undefined;
+      throw error;
+    });
     return stopping;
   }
 

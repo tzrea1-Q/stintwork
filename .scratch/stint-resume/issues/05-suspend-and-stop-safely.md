@@ -1,6 +1,6 @@
 # 05 — Suspend on shutdown and honor Stop across crashes
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 04
 
 ## What to build
@@ -23,3 +23,266 @@ Complete the ownership check for old processes on crash/restart. Kill only the s
 ## Comments
 
 **Codex, 2026-10-26:** Local fake-process ownership/phase checks are allowed. The coordinator runs real server-signal/process-tree tests, sockets and real authenticated agent shutdowns; killing an entire process group is not sufficient server-only crash evidence.
+
+**Codex, 2026-10-26 — ticket 05 implementation:** Implemented in `codex/m10-05`, without committing or changing any `Status:` line or acceptance checkbox.
+
+- Graceful shutdown now suspends an eligible active stint through a separate launcher operation. It records suspension, disables live permission/event callbacks before detaching them, stops the owned writers and records completed suspension only after cleanup. It does not request a handoff, record a developer rejection, checkpoint or append `ended` for suspended work. Startup retains the original stint/session/brief/base identities. Saved handoff/findings/finalization remain authoritative, including shutdown before a ready callback is delivered. Legacy launchers retain interrupted/checkpoint behavior; shutdown cancels a launcher still opening its first session before awaiting preparation.
+- Explicit Stop persists one intent before cancellation, including the reservation/verification window. It aborts setup, clears live requests, ignores late session/work/ready callbacks and produces one stopped ending/checkpoint. A Stop recovered after a crash never verifies or loads implementation. Repeated Stop/shutdown and Stop concurrent with shutdown are covered.
+- Prepared adapters have their own POSIX process group and record native owner/adapter identity alongside the unique attempt title. Cleanup checks the recorded attempt, native start/UID identity, group and live owner before signalling. It freezes the verified group, follows and freezes tool descendants even in separate groups while their ancestry remains verifiable, rechecks child and parent identities before signalling, then waits for writers to disappear within a bounded cleanup budget. A reused PID, changed marker, live owner, missing proof, unverifiable orphan or failed cleanup blocks replacement/checkpoint and mutations with identifying cleanup guidance. A completed suspension is durable cleanup proof; old PIDs are never signalled again merely because they remain in its history.
+- A per-work-item ownership file under `.stintwork/local/stint-owners/` reserves recovery before asynchronous verification and also protects fresh starts across servers. A short exclusive claim directory serializes stale-lock reclamation; PID/identity data are validated and release checks a unique token. An interrupted/unverifiable claim stays blocked with its paths in the diagnostic, rather than guessing ownership. This remains inside the existing server/launcher lifecycle.
+
+Regression checks use controlled fake launchers, fake process tables, explicit ACP/IPC signals and virtual clocks for deadlines. Red checks exposed the old shutdown ending/checkpoint, missing suspension, late callback appends, lost saved Review findings, cross-server reservation race, detached tool groups, reused detached-parent ancestry, malformed ownership identity and the first-session shutdown deadlock before their fixes. No new test relies on racing a real timeout. Real Git/file completion polls observe results; they do not drive the shutdown/setup deadlines.
+
+The main fake-process crash matrix now kills **only the server**. Its adapter and separate-group tool report readiness explicitly before the kill. The restart must establish both old writers are gone before the held verifier is released, then load the same session and checkpoint the tool/work/handoff artifacts. Native access is probed independently of the identity parser, so a parser regression fails these cases instead of silently skipping them.
+
+Actual local checks:
+
+- `pnpm --config.verify-deps-before-run=false format:check`: passed.
+- `pnpm --config.verify-deps-before-run=false lint`: passed; only the existing informational Biome configuration deprecation remains.
+- `pnpm --config.verify-deps-before-run=false typecheck`: passed across the workspace.
+- Core/agents plus the eight related server files below: **63 files, 1,348 passed / 10 socket cases excluded**. Log: `/tmp/m10-05-core-agents-server-final.log`.
+- Final complete recovery file: **1 file, 59 passed / 10 excluded** (eight native-process cases plus two TCP cases). Log: `/tmp/m10-05-history-final-validated.log`.
+- CLI/Git/web: **62 files, 665 passed / 1 TCP case excluded**. Log: `/tmp/m10-05-other.log`.
+- All remaining server files, excluding the nine already covered: **26 files, 335 passed / 16 TCP cases excluded**, with `CHOKIDAR_USEPOLLING=1` for this sandbox's watcher limit. Log: `/tmp/m10-05-remaining-server.log`.
+- Together these cover **152 files / 2,407 available tests**; **37 cases were excluded, not passed**. Focused process-ownership checks also passed all 11 cases. `git diff --check` and the ticket/Status preservation guard passed.
+
+The broad run initially found nine compatibility failures (legacy shutdown classification, preparation creating the log directory too early, and a storage diagnostic prefix); all were fixed and all nine passed their focused rerun. A subsequent combined invocation exposed a stale identifier in the native-test access probe; it was fixed, and the final passing file groups above supersede that invocation. No failing or interrupted run is counted as a pass. Local ignored dependency links were redirected to this worktree's workspace packages, reusing installed external dependencies without downloads or main-checkout changes.
+
+Reproducible principal commands:
+
+```sh
+CHOKIDAR_USEPOLLING=1 pnpm --config.verify-deps-before-run=false vitest run \
+  packages/core packages/agents \
+  packages/server/src/{stints,review-findings,stop-and-failure,checkpoint-handoff,stint-permissions,brief-preview,local-data,work-item-files}.test.ts \
+  --configLoader native \
+  --testNamePattern='^(?![\s\S]*(?:HTTP start|rich events and pending permission|HTTP preparation disconnect|WebSocket|Needs-you snapshots reach both tabs|real HTTP answers|worktree ticket edits push|main spec edits push))'
+
+pnpm --config.verify-deps-before-run=false vitest run \
+  packages/server/src/stint-history.test.ts --configLoader native \
+  --testNamePattern='^(?![\s\S]*TCP: true)'
+
+pnpm --config.verify-deps-before-run=false vitest run packages/cli packages/git packages/web \
+  --configLoader native --testNamePattern='^(?![\s\S]*cli falls back to the next free port)'
+```
+
+Coordinator: run the unfiltered workspace unit suite on a socket-enabled POSIX host with native process inspection and native file watching:
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+These are the exact 37 excluded cases, grouped by file (server paths are under `packages/server/src/`):
+
+- `stint-history.test.ts`: eight `server-only SIGKILL stops owned adapter/tools before resuming the same session` cases: Claude/Codex × Installed/Bundled × TCP false/true. **Require all eight to run, not skip.** Also the legacy `SIGKILL leaves an unfinished log; restart checkpoints edits before accepting a new stint (TCP: true)` and `slow startup leaves board/health/history usable, reserves mutations and reconnects once (TCP: true)` cases.
+- `stints.test.ts`: `HTTP start streams ACP messages over WebSocket in durable log order and ends finished`; `rich events and pending permission frames broadcast in durable order and a live HTTP answer reaches ACP`; `HTTP preparation disconnect cancels before download and a new request retries`.
+- `stint-permissions.test.ts`: `Needs-you snapshots reach both tabs; a queue answer is logged, received by the agent and removed everywhere`; `real HTTP answers sent immediately on WebSocket request events reach the agent twenty times`.
+- `checkpoint-handoff.test.ts`: `HTTP and WebSocket expose the durable ended handoff and checkpoint in sequence`.
+- `stop-and-failure.test.ts`: `Stop mid-turn ends stopped within two seconds with a handoff and checkpoint (WebSocket)`.
+- `work-item-files.test.ts`: both `worktree ticket edits push a snapshot within 1 second (exists at startup: true/false)` cases, plus `main spec edits push a divergence warning naming the worktree, and restoring them clears it`.
+- `agent-registry.test.ts`: `the WebSocket snapshot attributes a completed stint and handoff to the registered second agent`.
+- `checks.test.ts`: `output is streamed over the existing WebSocket before the check completes`.
+- `claude-code.test.ts`: `WebSocket snapshots publish login attention and its removal after availability refresh`.
+- `create-work-item.test.ts`: `creation broadcasts a first-stage card over the live connection without a reload`.
+- `grok.test.ts`: `a Grok login attention item arrives and clears in live HTTP/WebSocket snapshots`.
+- `superseded-handoffs.test.ts`: both `resuming 1/null removes the source handoff, keeps new questions, and survives restart (WebSocket: true)` cases.
+- `index.test.ts`: `server serves the page and project health over HTTP`; `GET /api/project returns indexed work items`; `editing a ticket Status line pushes a new snapshot over WebSocket within 1 second`; `adding a new .scratch directory adds a work item`; `watching discovers project directories that do not exist at startup`; `roadmap, workflow and setup changes are included in live snapshots`; `atomic ticket replacement and file or work-item deletion update the snapshot`; `files outside the project paths are not indexed or watched`; `stop closes active clients, watchers and HTTP and is safe to repeat`.
+- `packages/cli/src/cli.test.ts`: `cli falls back to the next free port when 4317 is busy`.
+
+Remaining coordinator resources: real CLI/server SIGINT/SIGTERM shutdowns during active work and a permission wait; real server-only SIGKILL with adapter/tool identity inspection; authenticated Claude/Codex continuation; crash immediately after Stop intent and after-turn completion; native cleanup on other supported hosts. Confirm no handoff/checkpoint/rejection on suspension, original IDs on continuation, one stopped ending after Stop and no replacement/checkpoint alongside old writers. No real-agent, socket, native process-tree, browser or M10 exit pass is claimed here; permission rebinding/UI/exit work remains tickets 06–09.
+
+An early exploratory run still used the old whole-server-group crash fixture after adapters became detached, so its old “adapter gone” assertion failed and the run was interrupted. Native `ps` is blocked in this sandbox; no orphan was signalled from an unverified PID. Coordinator should inspect any remaining `stintwork-*` fake adapters from the temporary `stintwork-history-*` / `stintwork-cache-test-*` fixtures and clean them up only after matching attempt/title, start identity and fixture provenance. The revised native matrix tracks attempts for verified failure cleanup.
+
+
+**Codex, 2026-10-26 — initialization-exit follow-up:** Reproduced the coordinator's stuck-`running` symptom deterministically with fake native inspection: the replacement has native identity metadata, PID/group probes still report it, but `ps` has no live leader. Cleanup's ownership error replaced the original initialization failure and blocked fallback.
+
+The launcher now supplies its own `ChildProcess` exit promise to cleanup. Only this locally observed exit can satisfy the missing-leader case, within the existing cleanup budget; native inspection must also show no remaining group members, direct children or previously observed detached writers. Descendants are remembered from the first verified snapshot so an exiting parent cannot erase their ownership evidence. Foreign/orphan cleanup gets no local exit proof and stays blocked. No PID-only signal or relaxed foreign ownership check was added.
+
+The new server regression failed at `waitForEnding` before the fix and now records one interrupted ending/checkpoint, preserves partial files and the original failure, and launches/prompts no further work. Unit regressions cover both already-observed and later-delivered exit signals, surviving orphan/detached writers, missing exit delivery and unavailable inspection; their deadline uses a fake clock.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (only the existing informational Biome deprecation). All agents tests passed: **23 files / 263 tests**, including all **17 ownership tests**. The complete available recovery file passed **60 tests / 10 native-or-TCP cases excluded**. The original `initialize:exit` case and new fake-native regression also passed together in isolation (**2 passed**). No native-`ps` or socket success is claimed locally. Coordinator: repeat the original failing case on the native host, then run `pnpm --config.verify-deps-before-run=false vitest run packages/server/src/stint-history.test.ts --configLoader native` without exclusions and the unfiltered workspace suite. No commit; all `Status:` lines and acceptance criteria unchanged.
+
+
+**Codex, 2026-10-26 — review follow-up (P1/P2):** Verified both findings with failing regressions. Missing adapter/group probes no longer certify cleanup. After possible session work, an exited leader with untraceable descendants blocks checkpoint/suspension/replacement without signalling unrelated processes. Local observed-exit proof is restricted to initialization; the earlier `initialize:exit` fallback still passes with fake native inspection.
+
+Completed suspension covers only preceding attempts, surviving later startup records. Startup also durably records successful cleanup before another attempt starts. Regressions cover uncovered later attempts and three successive recoveries with reused adapter PIDs. Fixtures now distinguish explicit cleanup proof from legacy logs without live-state metadata.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed. Final ownership tests: **21 passed**; available recovery tests: **46 passed / 28 deferred**; stint-route tests: **27 passed / 11 deferred**. Broad available run: **151 files passed, 2,388 tests passed / 2 fixture failures / 65 excluded**; both fixture failures were corrected and the available recovery file rerun passed. Initial unfiltered core/agents: **1,228 passed / 9 failures from blocked native inspection**; those prepared-adapter cases remain deferred. One mocked-WebSocket test excluded by the broad filter was separately run and passed.
+
+Coordinator: run these exact commands without exclusions on the native/socket host. They cover prepared-adapter launches, all 13 failed-recovery variants, graceful shutdown/continuation and all socket cases. **All eight server-only SIGKILL cases must execute, not skip.** No native/socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run packages/agents/src/process-ownership.test.ts packages/agents/src/adapter-cache.test.ts packages/server/src/stints.test.ts packages/server/src/stint-history.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+No commit; all `Status:` lines and acceptance checkboxes unchanged.
+
+**Codex, 2026-10-26 — ending cleanup proof and unsupported hosts:** Verified both P1 findings with failing regressions. An attempt-specific `kind: "cleanup"` record is persisted after verified tree cleanup, child exit and pending writes, before `done` settles and checkpointing starts. Recovery applies it only to the preceding matching attempt without changing fallback/lifecycle state. Finish, Stop, failure and fallback tests restore the durable checkpoint-entry log and prove restart only finalizes. Proof-write failure blocks checkpointing.
+
+Linux/macOS are supported. Injected Windows/missing-group attempts reject cleanup; the server also rejects completed suspension from an uncertified custom launcher. Chosen policy: block with guidance and preserve the reservation, without checkpoint/ending/completed suspension. Killing our adapter cannot prove detached tools stopped, so checkpointing could race their writes. Permission detachment still produces no rejection or handoff. Unprepared suspension fixtures now expect ownership errors.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and the append-only/Status guard passed. Core/agents/Git/CLI/web: **117 files, 1,912 passed / 10 native-or-TCP cases excluded**. Nine affected server files: **164 passed / 46 excluded**. Final isolated launcher checks: **39 passed**. The initial non-server run's two old suspension expectations were corrected, then the complete non-server rerun passed. New capability/process tests use fake tables and explicit signals, not racing real timers.
+
+Coordinator: run these commands unfiltered on the native/socket host, including all 13 failed-recovery variants. **All eight server-only SIGKILL cases must execute, not skip.** No native-`ps`, Windows-host or socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run packages/agents/src/{adapter-cache,index,readiness,process-ownership}.test.ts packages/core/src/stints.test.ts packages/server/src/{stints,stint-history,stop-and-failure,checkpoint-handoff,stint-permissions,work-item-files}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+No commit; all `Status:` lines and acceptance checkboxes unchanged.
+
+**Codex, 2026-10-26 — third review:** Added the spec's **Known limit**: cleanup covers the adapter group and descendants traceable through recorded ancestry at cleanup time; deliberate detach/reparent is outside that guarantee. This bound applies to cleanup/ownership claims in these Comments. Qualified code comments; left ADR 0012 and the process-ownership algorithm unchanged, with no supervisor added.
+
+Both P2s reproduced before fixing. Failed `suspending` persistence now blocks certification/checkpointing but still awaits owned teardown and closes resources, even if storage recovers during cleanup. Unexpected teardown rejection also closes watcher/WebSocket/HTTP resources; failed stop promises can be retried without restarting the server. Review handoff collection now aborts on suspension or explicit Stop, including pending requests/backoff, before any later findings prompt. Updated former Stop-then-handoff expectations; agent-reported cancellation retains handoff retries and permission coverage.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Core/agents/Git/CLI/web: **117 files / 1,914 passed / 10 native-or-TCP cases excluded**. Nine affected server files: **166 passed / 46 excluded**. The two shutdown regressions also passed after the final lifetime-guard change. New tests use explicit teardown/reply signals and fake clocks; no real-timer race drives them. Earlier broad failures were obsolete Stop expectations, corrected and covered by the final passing reruns.
+
+Coordinator: run the unfiltered suite on the socket/native-`ps` host, requiring all **8 server-only SIGKILL** and **13 failed-recovery** cases to execute. The new socketless resource tests mock HTTP listening/close; real socket shutdown remains covered by the host suite. No native/socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+No commit; all `Status:` lines and acceptance checkboxes unchanged.
+
+**Codex, 2026-10-26 — Stop correction and transport cleanup:** Restored explicit Stop's handoff, retry, handoff-permission and Review findings paths; reviewed and reverted the incorrect expectations in all four named test files. Only suspension aborts after-turn collection (correcting the preceding Comment); the spec and explicitly released Review-reply regression now distinguish Stop from suspension.
+
+Native inspection rejection and cleanup-budget expiry both reproduced open local transports before the fix. Cleanup now always destroys stdin/stdout/stderr and, on failure, unreferences the child handle while preserving `ProcessOwnershipError`, withholding cleanup proof/checkpoint and issuing no unverified child signal. Successful cleanup still awaits child exit. The regressions use fake process tables, explicit phase/reply signals and a fake clock.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Agents: **23 files / 278 passed / 9 native-inspection cases excluded**. All seven requested/restored server files: **61 passed / 7 socket cases excluded**, including all five socketless cases from the reported seven failures. Five targeted recovery/shutdown regressions passed, including observed `initialize:exit` fallback, ownership/proof-write blocking and shutdown persistence/resource failures; 78 other history cases were unselected.
+
+Coordinator: run the following unfiltered on the socket/native-`ps` host. This includes the nine prepared-adapter cases, seven socket cases (including both remaining reported failures), all eight server-only SIGKILL cases and all 13 failed-recovery variants. No native/socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stage-stints,claude-code,handoff-notes,superseded-handoffs,stop-and-failure,checkpoint-handoff,stint-permissions,stint-history}.test.ts --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — real adapter EOF after server SIGKILL:** Read the supplied evidence; reproduced the missing-leader block before fixing it. Startup can now certify an absent/reused owner and adapter only with valid recorded attempt/native identities and a bounded native writer scan. It rejects remaining group members, markers, remembered descendants and same-UID processes whose canonical cwd is inside the worktree. Identity changes or new processes during inspection, missing UID/cwd information, inspection failures and budget expiry stay blocked. Suspected writers are named but never signalled. Guidance now distinguishes a named live writer from unavailable inspection instead of directing the developer to stop nonexistent processes. The existing durable suspension proof covers inspected attempts before warm verification, another launch or checkpoint fallback.
+
+Used `/proc/<pid>/cwd` on Linux and one bounded, NUL-delimited `lsof` call on macOS. Native snapshots exclude only the inspector child identified by its own spawn result, avoiding false churn from `ps` itself. No supervisor or new dependency. Updated the spec's **Known limit**: the additional scan applies after the owner/adapter disappear; writers that leave ancestry, group, marker and worktree cwd remain outside the guarantee, including writes through open files or absolute paths.
+
+Red regressions covered absent/reused processes, the server stuck running, native cwd parsing, inspector self-inclusion, marker and UID uncertainty. The server-only SIGKILL matrix now has **24 cases**: the original eight surviving-adapter cases, eight EOF exits, and eight EOF exits with a detached worktree tool that must block. Fixture teardown verifies recorded tool identities before signalling. Socketless tests cover resume, checkpoint fallback, durable proof ordering and writer blocking; a direct child-process check confirms stdin EOF alone exits the fixture adapter with code 0. Crash/phase/reply triggers are explicit; deadline tests use fake clocks.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and the append-only/Status guard passed. Available agents: **24 files / 301 passed / 9 native cases excluded**. Five affected server files: **121 passed / 59 native-or-TCP cases excluded**. Final focused ownership/inspection/readiness: **77 passed**; recovery/shutdown guards: **15 passed**. An earlier broader server attempt hit ten environment failures (two TCP listeners and eight native prepared-launch checks); the final run explicitly excludes them. No native `ps`/`lsof`, real-agent, packed-CLI, smoke or socket pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host; require **all 24 server-only SIGKILL** and **13 failed-recovery** cases to execute. Then repeat the reported packed Installed-Claude server-only SIGKILL check and the passing graceful SIGTERM/restart check using the rebuilt package.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+pnpm --config.verify-deps-before-run=false smoke:package
+```
+
+No commit; all `Status:` lines unchanged; ADR 0012 unchanged.
+
+**Codex, 2026-10-26 — deleted cwd and missing worktree:** Reproduced both bugs before fixing them: deleted cwd resolution failed/dropped native records, and a deleted worktree left recovery running. Native cwd parsing now preserves raw absolute paths without filesystem resolution. The matcher normalizes paths lexically against recorded and available canonical worktree paths, retaining the raw spelling and a Linux ` (deleted)`-stripped spelling. Deleted unrelated cwds are ignored; deleted cwds inside the worktree still name and block the possible writer. A missing worktree is scanned lexically, then reaches one interrupted ending with an explicit checkpoint error, no agent launch/checkpoint call and no active stint. Native command errors, malformed output and timeouts still block; new regressions also reject timed-out partial output with status 1.
+
+All 16 native EOF matrix cases now explicitly hold an unrelated process in a deleted cwd and verify it survives recovery/blocking. Readiness/EOF/crash triggers remain explicit; no timer race or ownership/signalling relaxation was added. Updated the spec's path-handling description; ADR 0012 is unchanged.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and the append-only/Status guard passed (existing informational Biome deprecation only). Available agents: **24 files / 317 passed / 9 native cases excluded**. Five affected server files: **122 passed / 59 native-or-TCP cases excluded**, including the missing-worktree ending and earlier ownership/suspension safeguards. No native/socket, packed-CLI, smoke or e2e pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, requiring all **24 server-only SIGKILL** cases (including the 16 EOF cases with unrelated deleted cwds) and all **13 failed-recovery** cases to execute:
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — intermittent native TCP/EOF matrix diagnostics (cause not yet established):** Every asynchronous matrix step now has a named deadline, including cold-child IPC/work readiness, SIGKILL/EOF observation, restarted watcher/listener/WebSocket readiness, API requests and response bodies, recovery verification, completion and trace reads. Failures include the restarted `/api/project` warnings, the last 12 stint log entries, the cold child's last reported startup phase and stderr. The verifier gate is released and the WebSocket terminated on failure so fixture teardown can proceed. Three fake-clock checks cover resolved, rejected and stalled waits and deadline disposal. The overall 30-second test timeout was not increased.
+
+Traced both paths: the native absent-adapter scan is queued during initialization before the restarted watcher starts; an ownership failure records a warning and deliberately never calls the verifier. TCP also waits for watcher/listener readiness and the first WebSocket snapshot before observing the verifier. The original unbounded waits hid which of these occurred. No specific interleaving is proven from the bare timeout, so no product/ownership relaxation or claimed race fix has been made. This sandbox denies native `ps` and TCP; the targeted native matrix invocation skips here. Diagnosis remains incomplete pending the first instrumented host failure; the coordinator was asked for it during this run.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Agents: **24 files / 317 passed / 9 native cases excluded**. Five affected server files: **125 passed / 59 native-or-TCP cases excluded**, including all three deadline checks. No native/socket pass is claimed.
+
+Coordinator: run the eight EOF cases below (repeat to obtain the reported intermittent failure), and return the full step-specific failure including warnings/log tail. Then the actual interleaving can be forced in a regression before changing product or fixture behavior.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='server-only SIGKILL.*EOF[^-]*, TCP:'
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — exiting processes during native writer inspection:** The host's new diagnostics identify a product race: the scan treated a missing cwd in its post-lsof process snapshot as permanent uncertainty, without checking whether that identity had since exited, and unnecessarily inspected the restarted server's own Git children. The native parser already requests `stat` and filters `Z`; parenthesized `(git)` names alone are not proof of exit or ownership. Cleanup now also filters zombies at the injected process-table boundary, re-reads the table once when cwd is missing, and permits a disappeared, changed-identity or zombie original process to fall through. A still-live same-identity process without cwd remains blocked, regardless of command name. The extra read shares the existing one-second cleanup budget; command/parse failures and budget expiry still block.
+
+The scan excludes the current server and descendants only through PID/identity and parent links verified across snapshots, anchored to the current process's recorded native identity. A child first seen during cwd inspection must survive another ancestry verification. Root/parent identity changes and reparenting invalidate the exclusion; neither command names nor bare parent PIDs grant it. The scan still issues no signals. Deleted-cwd lexical matching, missing-worktree interrupted fallback and observed replacement-initialize exit remain covered and passing. No timeout increase, sleep, supervisor or new dependency.
+
+Added **15 deterministic ownership regressions** using fake process/cwd tables, explicit inspection interleavings and a fake clock for expiry. Positive exit/zombie/ancestry cases reproduced failures before their fixes; negative controls cover stable unreadable `(git)`, foreign ancestry, PID reuse, reparenting, inspection errors, late old-attempt writers and expiry. The native parser regression now explicitly asserts `stat` selection and a `Z+ (git)` row. The earlier matrix diagnostics are preserved.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (existing informational Biome deprecation only). Ownership/inspection: **75 passed**. Available agents: **24 files / 332 passed / 9 native cases excluded**. Five affected server files: **125 passed / 59 native-or-TCP cases excluded**, including EOF scan resume/fallback, detached writer blocking, missing worktree, initialize-exit fallback and durable cleanup proof. Native `ps`/TCP matrix execution is unavailable in this sandbox; no host, smoke or e2e pass is claimed.
+
+Coordinator: run the following unfiltered on the native/socket host, requiring all **24 server-only SIGKILL** and **13 failed-recovery** cases to execute. Repeat the matrix command at least six times to compare with the reported intermittent runs, then run the full unit suite.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='server-only SIGKILL'
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged; ADR 0012 unchanged.
+
+**Codex, 2026-10-26 — pre-existing worktree processes and concise guidance:** Reproduced the older terminal false block before fixing it. The cwd heuristic now excludes a process only when its identity stayed stable across inspection and validated native `UID:lstart` times place it in an earlier second than the adapter attempt. Same-second/later, invalid calendar/UID, unparseable and ambiguous daylight-saving times remain blocked. This exception never overrides marker/group/recorded ancestry evidence and does not exclude later children of an older process. No command-name exclusions or new signals. Suspect command text is capped at 120 characters including an ellipsis, preserving PID and available cwd. Updated spec step 4 and Known limit to state the age exception and delegated-write boundary; ADR 0012 unchanged.
+
+Added **24 deterministic fake-process regressions**, including failing-before age, command-length and repeated-hour cases. Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and append-only/Status/ADR guards passed (existing informational Biome deprecation only). Ownership/inspection: **99 passed**. Available agents: **356 passed / 9 native cases excluded**; five affected server files: **125 passed / 59 native-or-TCP cases excluded**, including deleted cwd, missing worktree, observed initialize exit and durable cleanup proof. No native/socket, real-agent, smoke or e2e pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, requiring all 24 server-only SIGKILL and 13 failed-recovery cases to execute; repeat the real rebuilt-CLI crash with a terminal/harness that predates the attempt in the worktree, and verify that a process started during/after the attempt still blocks with bounded guidance.
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — Grok and pre-patch ownership compatibility:** Confirmed and reproduced the prepared-metadata gate blocking vanished native Grok and pre-patch attempts. Compatible recovery now uses the recorded owner/adapter PID and available identities with the existing bounded native writer scan. A live PID with no saved identity blocks; a known mismatched identity can prove reuse. Missing group metadata never implies group ownership. Zombies, verified current-server descendants, cwd/deleted-path checks, available native start-time exclusions, inspection failures and the cleanup budget retain their existing rules. No unverified process is signalled; no adapter timestamp is invented when absent. Logs without attempt records retain legacy fallback.
+
+After successful absence verification, unfinished pre-patch work takes interrupted/checkpoint fallback without verifying/loading an agent. Fallback intent is durable before cleanup proof and remains binding across later markers, including a crash immediately after that proof. Saved genuine finalization still completes its existing ending. Updated the spec's compatibility description; ADR 0012 unchanged.
+
+Added **13 fake-process controls and 6 server cases** covering empty native Grok recovery, a named surviving writer with no checkpoint, pre-patch records/session state, no-attempt legacy logs, saved finalization and the cleanup-proof crash boundary. The reported Grok/pre-patch failures and the session-load/crash-boundary regressions failed before their fixes. Actual checks: `format:check`, `lint`, workspace `typecheck`, `git diff --check` and append-only/Status/ADR guards passed (existing informational Biome deprecation only). Ownership/inspection: **112 passed**. Available agents: **369 passed / 9 native cases excluded**. Five affected server files: **131 passed / 59 native-or-TCP cases excluded**. No native/socket, real-agent, smoke or e2e pass is claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, including all 24 server-only SIGKILL and 13 failed-recovery cases:
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Codex, 2026-10-26 — transient orphan inspection:** Reproduced the reported interleaving test-first: an unrelated process remained alive at the immediate missing-cwd identity recheck, then exited at an injected scheduler boundary. The old single scan blocked it permanently. Orphan verification now retries the whole process/cwd scan up to four times, with 500 ms scheduled waits and a shared three-second inspection budget passed into native commands. Every candidate is classified on each complete scan so a transient first row cannot hide a persistent unreadable identity. Current writers in the final scan still block; unreadable cwd blocks only for a PID/start identity present and unreadable throughout every complete scan. Disappearance/reuse clears earlier uncertainty. Failed native inspection can be superseded by a complete clean scan; persistent failures or an exhausted budget still block. No new signals or command-name exclusions; age, zombies, verified current-server ancestry, deleted cwd and missing-worktree rules remain. Updated spec step 4; ADR 0012 unchanged.
+
+Added 15 deterministic agent regressions/control checks using fake tables, an injected scheduler/clock or explicitly advanced fake timers, plus a failing-before server regression holding the scheduler while readiness completes and mutations stay reserved, then releasing it to reach interrupted/checkpoint fallback. Existing persistent-writer fixtures now exercise all four scans with injected immediate yields. Actual checks passed: `format:check`, `lint`, workspace `typecheck`, ownership/inspection **127/127**, available agents **384 passed / 9 native cases excluded**, five affected server files **132 passed / 59 native-or-TCP cases excluded**, and `git diff --check`. Existing informational Biome deprecation only. Native/socket, real-agent, smoke and e2e results are not claimed locally.
+
+Coordinator: run these unfiltered on the native/socket host, requiring all **24 server-only SIGKILL** and **13 failed-recovery** cases to execute; repeat the SIGKILL matrix and the rebuilt real-Claude crash recovery while an unrelated job creates transient processes:
+
+```sh
+pnpm --config.verify-deps-before-run=false exec vitest run packages/agents packages/server/src/{stint-history,stints,stop-and-failure,checkpoint-handoff,stint-permissions}.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false exec vitest run packages/server/src/stint-history.test.ts --configLoader native --testNamePattern='server-only SIGKILL'
+pnpm --config.verify-deps-before-run=false exec vitest run --configLoader native
+```
+
+No commit; all `Status:` lines unchanged.
+
+**Coordinator, 2026-10-26:** Verified on the native socket host (darwin-arm64, maintainer's machine, Node 22).
+
+- **Checks:** format:check, lint, typecheck and build pass. All 2634 unit tests pass, including all 24 server-only SIGKILL cases. The SIGKILL matrix also passed 24/24 across repeated runs: 8 of 8 after the zombie and own-descendant fix, then 4 of 4 after the pre-attempt exclusion. smoke:package and 314 e2e tests pass.
+- **Reviews:** nine Codex reviews. Each finding was fixed with a regression test. The seventh and ninth reviews were clean.
+
+Real installed Claude 2.1.295 stints, run through the built CLI in a scratch repo:
+
+- **Graceful SIGTERM mid-work:** the log shows suspending → cleanup → suspended, with no ending, checkpoint or rejection. The server exited in about 2 s and no adapter was left. On restart: resuming → resumed in the same ACP session, then one `finished` ending with a handoff.
+- **Server-only SIGKILL mid-work:** the real adapter exits by itself on stdin EOF, and the crash test fixtures model this.
+  - Host runs found four defects, all fixed:
+    1. Recovery blocked forever after the adapter exited by itself.
+    2. Unrelated processes with deleted working directories broke the inspection.
+    3. Transient zombie or own `(git)` children blocked recovery.
+    4. A shell opened before the stint, sitting in the worktree, blocked recovery. The scan now also retries for transient processes.
+  - On the final build, two crashed stints recovered by resuming the same session. One finished with a handoff.
+  - The other was then suspended while a permission request was pending. On restart it took the designed checkpoint fallback: "A saved permission request cannot yet be rebound to a live process", one `interrupted` ending, checkpoint `7bea1d8`. Restoring pending permissions is ticket 06.
+- **Leftovers:** no `stintwork-*` adapter was left after any run.
+
+**Known limit:** a deliberately detached writer outside the marker, process group or worktree working directory is not covered (spec step 4). Windows has no verified cleanup and blocks instead of suspending. Real Codex shutdown and crash are left to ticket 09's M10 exit run. Resolved.

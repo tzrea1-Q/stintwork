@@ -10,8 +10,23 @@ import {
   isStintLogEntry,
 } from "@stintwork/core";
 
+import { randomUUID } from "node:crypto";
+import { join } from "node:path";
+import { processIdentity, systemProcesses } from "@stintwork/agents";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, closeSync, fstatSync, openSync, readSync, realpathSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  fstatSync,
+  openSync,
+  readSync,
+  realpathSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  rmdirSync,
+  unlinkSync,
+} from "node:fs";
 
 import type { Hono } from "hono";
 
@@ -112,4 +127,54 @@ export function addStintHistoryRoute(app: Hono, files: RepoFiles) {
       ? context.json(coreTextWire({ stint }))
       : context.json(coreTextWire({ reason: coreText({ code: "server.stintNotFound" }) }), 404);
   });
+}
+
+/** A short synchronous claim prevents concurrent servers from reclaiming each other's stale lock. */
+export function reserveStintWorkItem(directory: string, slug: string): () => void {
+  const path = join(directory, `${encodeURIComponent(slug)}.owner`);
+  const claim = `${path}.claim`;
+  const conflict = () =>
+    new Error(
+      `Work item is reserved by another server or ownership is unverifiable. Stop that server; if it is gone, inspect ${path} and ${claim} before removing stale ownership files and restarting Stintwork.`,
+    );
+  try {
+    mkdirSync(claim);
+  } catch {
+    throw conflict();
+  }
+  try {
+    let previous: { pid: number; identity?: string };
+    try {
+      previous = JSON.parse(readFileSync(path, "utf8"));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw conflict();
+      previous = { pid: 0 };
+    }
+    if (
+      !previous ||
+      typeof previous !== "object" ||
+      (previous.identity !== undefined &&
+        (typeof previous.identity !== "string" || !previous.identity.trim()))
+    )
+      throw conflict();
+    if (previous.pid !== 0) {
+      if (!Number.isSafeInteger(previous.pid) || previous.pid < 1) throw conflict();
+      if (systemProcesses.exists(previous.pid)) {
+        const identity = processIdentity(previous.pid);
+        if (!previous.identity || !identity || identity === previous.identity) throw conflict();
+      }
+      unlinkSync(path);
+    }
+    const token = randomUUID();
+    writeFileSync(
+      path,
+      JSON.stringify({ pid: process.pid, identity: processIdentity(process.pid), token }),
+      { flag: "wx", mode: 0o600 },
+    );
+    return () => {
+      if (JSON.parse(readFileSync(path, "utf8")).token === token) unlinkSync(path);
+    };
+  } finally {
+    rmdirSync(claim);
+  }
 }

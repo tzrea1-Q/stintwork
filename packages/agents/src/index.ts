@@ -33,6 +33,13 @@ import { codexProfile } from "./profiles.js";
 import { AgentAuthenticationError } from "./authentication.js";
 import { adapterEntry } from "./adapter-entry.js";
 import { preparedAgentEnvironment, type PreparedAgent } from "./adapter-cache.js";
+import { processIdentity, stopStintProcesses, ProcessOwnershipError } from "./process-ownership.js";
+export {
+  stopStintProcesses,
+  ProcessOwnershipError,
+  processIdentity,
+  systemProcesses,
+} from "./process-ownership.js";
 import { findExecutable } from "./executable.js";
 
 export { AgentAuthenticationError } from "./authentication.js";
@@ -79,6 +86,8 @@ export type AgentStintOptions = {
   resume?: { sessionId: string; progress: StintProgress };
   onEvent: (event: StintLogEvent) => void;
   onProcess?: (attempt: StintProcessAttempt) => void;
+  // Reports cleanup of the adapter group and traceable descendants; persistence failure must block the ending.
+  onCleanup?: (attemptId: string) => void;
   onSession?: (sessionId: string) => void;
   onPhase?: (phase: StintPhase, result: Partial<AgentStintResult>) => void;
   onPermission?: (
@@ -102,6 +111,7 @@ export type AgentStint = {
   ready?: Promise<void>;
   done: Promise<AgentStintResult>;
   cancel: () => Promise<void>;
+  suspend?: () => Promise<void>;
 };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (
@@ -119,7 +129,9 @@ export function createAgentLauncher(
   launchAdapter: AdapterLauncher,
   profile: AgentProfile = codexProfile,
   defaultEnv: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): AgentLauncher {
+  const processGroups = platform === "linux" || platform === "darwin";
   return ({
     preparedAgent,
     nativeExecutable,
@@ -131,6 +143,7 @@ export function createAgentLauncher(
     resume,
     onEvent: emitEvent,
     onProcess,
+    onCleanup,
     onSession,
     onPhase,
     onPermission,
@@ -158,9 +171,12 @@ export function createAgentLauncher(
     };
     let loading = !!resume;
     let child: ChildProcessWithoutNullStreams | undefined;
+    let processAttempt: StintProcessAttempt | undefined;
     let connection: import("@agentclientprotocol/sdk").ClientSideConnection | undefined;
     let acpId: string | undefined;
     let cancelled = false;
+    let suspended = false;
+    let writersMayHaveStarted = false;
     let settled = false;
     let cancelPermission: () => void = () => {};
     let permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
@@ -174,6 +190,7 @@ export function createAgentLauncher(
     let chunk: { type: "message_delta" | "thought_delta"; id: string } | undefined;
     let nextMessage = 0;
     const toolKinds = new Map<string, string>();
+    const afterTurnCancellation = new AbortController();
     let afterTurnMessages: string[] | undefined;
     let workTurn: Promise<{ stopReason: string }> | undefined;
     const writes = new Set<Promise<void>>();
@@ -219,6 +236,7 @@ export function createAgentLauncher(
         ? spawn(process.execPath, [`--title=${marker}`, preparedAgent.adapterEntry], {
             cwd,
             stdio: "pipe",
+            detached: processGroups,
             env: preparedAgentEnvironment(preparedAgent, env),
           })
         : launchAdapter(cwd, env, nativeExecutable);
@@ -249,7 +267,7 @@ export function createAgentLauncher(
       const acp = new ClientSideConnection(
         () => ({
           async sessionUpdate({ update }) {
-            if (settled || loading) return;
+            if (settled || suspended || loading) return;
             try {
               const kind = update.sessionUpdate;
               if (
@@ -272,7 +290,8 @@ export function createAgentLauncher(
             }
           },
           async requestPermission(request) {
-            if (settled) throw new CoreTextError({ code: "agent.stintEnded" });
+            writersMayHaveStarted = true;
+            if (settled || suspended) throw new CoreTextError({ code: "agent.stintEnded" });
             chunk = undefined;
             const requestId = randomUUID();
             const receipt = forwarding.prepare();
@@ -333,14 +352,14 @@ export function createAgentLauncher(
                 event.decision = { outcome: "cancelled" };
                 receipt.failed(new CoreTextError({ code: "agent.permissionCancelled" }));
               }
-              onEvent(event);
+              if (!suspended) onEvent(event);
               receipt.respond(response);
             } catch (error) {
               const failure = error instanceof Error ? error : new Error(String(error));
               receipt.failed(failure);
               event.decision = { outcome: "failed", reason: failure.message };
               try {
-                onEvent(event);
+                if (!suspended) onEvent(event);
               } finally {
                 fail(failure);
               }
@@ -363,7 +382,8 @@ export function createAgentLauncher(
             };
           },
           async writeTextFile({ path, content }) {
-            if (settled) throw new CoreTextError({ code: "agent.stintEnded" });
+            writersMayHaveStarted = true;
+            if (settled || suspended) throw new CoreTextError({ code: "agent.stintEnded" });
             const writing = (async () => {
               const target = await safePath(path);
               await mkdir(dirname(target), { recursive: true });
@@ -388,13 +408,23 @@ export function createAgentLauncher(
       );
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        if (child.pid)
-          onProcess?.({
+        if (child.pid) {
+          const identity = preparedAgent ? processIdentity(child.pid) : undefined;
+          const ownerIdentity = preparedAgent ? processIdentity(process.pid) : undefined;
+          processAttempt = {
             id: attemptId,
-            owner: { pid: process.pid, startedAt: new Date(performance.timeOrigin).toISOString() },
+            owner: {
+              pid: process.pid,
+              startedAt: new Date(performance.timeOrigin).toISOString(),
+              ...(ownerIdentity ? { identity: ownerIdentity } : {}),
+            },
             pid: child.pid,
             marker,
-          });
+            ...(identity ? { identity } : {}),
+            ...(preparedAgent && processGroups ? { processGroup: true } : {}),
+          };
+          onProcess?.(processAttempt);
+        }
         const initialize = (async () => {
           const initialized = await acp.initialize({
             protocolVersion: PROTOCOL_VERSION,
@@ -419,6 +449,7 @@ export function createAgentLauncher(
             mcpServers: [],
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
           };
+          writersMayHaveStarted = true;
           const opened = resume
             ? await acp.loadSession({ ...directories, sessionId: resume.sessionId })
             : await acp.newSession(directories);
@@ -436,6 +467,7 @@ export function createAgentLauncher(
               modeId: policy.mode,
             });
           }
+          if (cancelled || settled) throw new CoreTextError({ code: "agent.stintCancelled" });
         })();
         const timeout = new Promise<never>((_resolve, reject) => {
           // Recovery's server budget includes warm verification and pauses on live permission waits.
@@ -479,6 +511,7 @@ export function createAgentLauncher(
           });
           result = { ...result, ...(await Promise.race([workTurn, failure])) };
         }
+        if (suspended) return { stopReason: "cancelled" };
         if (afterTurnTimeoutMs === undefined) {
           onPhase?.("finalization", result);
           return result;
@@ -493,6 +526,7 @@ export function createAgentLauncher(
           {
             timeoutMs: afterTurnTimeoutMs,
             failure,
+            signal: afterTurnCancellation.signal,
             retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
             onRequest(request, results) {
               if (request.resultField === "handoff" || request.resultField === "findings")
@@ -561,14 +595,46 @@ export function createAgentLauncher(
           if (!child?.pid || child.exitCode !== null || child.signalCode !== null) resolveExit();
           else child.once("exit", () => resolveExit());
         });
-        child.kill("SIGTERM");
-        const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
-        killTimer.unref();
-        child.once("exit", () => clearTimeout(killTimer));
-        child.stdin.destroy();
-        child.stdout.destroy();
+        try {
+          if (processAttempt?.identity && processAttempt.processGroup)
+            await stopStintProcesses(
+              processAttempt,
+              true,
+              undefined,
+              writersMayHaveStarted ? undefined : exited,
+            );
+          child.kill("SIGTERM");
+          const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
+          killTimer.unref();
+          child.once("exit", () => clearTimeout(killTimer));
+        } catch (error) {
+          // Ownership failure still blocks checkpointing, but must not keep the CLI alive.
+          child.unref();
+          // biome-ignore lint/correctness/noUnsafeFinally: Preserve cleanup uncertainty instead of allowing a successful ending or checkpoint.
+          throw error;
+        } finally {
+          child.stdin.destroy();
+          child.stdout.destroy();
+          child.stderr.destroy();
+        }
         await exited;
         await Promise.allSettled(writes);
+        if (processAttempt?.processGroup && !processAttempt.identity)
+          await stopStintProcesses(
+            processAttempt,
+            true,
+            undefined,
+            writersMayHaveStarted ? undefined : exited,
+          );
+        if (processAttempt) {
+          if (processAttempt.processGroup) onCleanup?.(processAttempt.id);
+          else if (preparedAgent || suspended) {
+            // biome-ignore lint/correctness/noUnsafeFinally: Cleanup uncertainty must override success/cancellation to prevent an unsafe checkpoint.
+            throw new ProcessOwnershipError(
+              `Verified process-tree cleanup is unavailable for this attempt on ${platform}. Only Linux and macOS with recorded process-group ownership are supported. The adapter exited, but its tools may still be writing. Verify and stop the old tools before restarting Stintwork. No checkpoint or completed suspension was recorded.`,
+            );
+          }
+        }
       }
     })();
     void done.then(
@@ -578,6 +644,14 @@ export function createAgentLauncher(
     return {
       ready,
       done,
+      async suspend() {
+        suspended = true;
+        cancelled = true;
+        afterTurnCancellation.abort(new CoreTextError({ code: "agent.stintCancelled" }));
+        cancelPermission();
+        rejectFailure(new CoreTextError({ code: "agent.stintCancelled" }));
+        await done;
+      },
       async cancel() {
         cancelled = true;
         cancelPermission();
