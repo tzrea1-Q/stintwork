@@ -140,7 +140,7 @@ async function log(
 }
 
 test.each([false, true])(
-  "SIGKILL leaves an unfinished log; restart checkpoints edits before accepting a new stint (TCP: %s)",
+  "SIGKILL leaves an unfinished legacy log; restart checkpoints edits before accepting a new stint (TCP: %s)",
   async (tcp) => {
     const { root, project, tracked } = await fixture();
     const child = spawn(
@@ -153,7 +153,8 @@ test.each([false, true])(
      import { createFakeAgentLauncher } from ${JSON.stringify(new URL("../../agents/src/testing.ts", import.meta.url).href)};
      try {
        const project = createProjectServer(${JSON.stringify(root)}, ${JSON.stringify(join(root, "web"))}, {
-         launchAgent: createFakeAgentLauncher([{type:'message',text:'Before crash'}, {type:'write',path:'partial.txt',content:'Uncommitted work'}, {type:'hang'}])
+         // Legacy logs have no process-attempt metadata. Native ownership is covered by the server-only crash matrix.
+         launchAgent: options => createFakeAgentLauncher([{type:'message',text:'Before crash'}, {type:'write',path:'partial.txt',content:'Uncommitted work'}, {type:'hang'}])({...options, onProcess: undefined, onSession: undefined, onPhase: undefined})
        });
        let url;
        if (${tcp}) {
@@ -724,7 +725,8 @@ async function savedRecovery(phase: StintProgress["phase"]) {
     };
   if (phase === "finalization")
     progress.findings = { commit: started.stint.baseCommit, findings: [], rawReply: "No findings" };
-  // Real exited processes supply unambiguous dead identities without guessing a free PID.
+  // This fixture owns and observes an unstarted child exiting, then records completed cleanup.
+  // Dead PIDs alone cannot prove that a previous adapter left no detached writers.
   const dead = spawn(process.execPath, ["--eval", ""]);
   await once(dead, "exit");
   const attempt = {
@@ -759,6 +761,7 @@ async function savedRecovery(phase: StintProgress["phase"]) {
       attemptId: attempt.id,
       progress,
     },
+    { type: "recovery", version: 1, at: started.at, kind: "resume", state: "suspended" },
   ];
   await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
   return { ...result, logged, started, entries, registered };
@@ -836,6 +839,7 @@ test("a live recorded owner reserves the work item without launching or checkpoi
   if (attempt?.type !== "recovery" || attempt.kind !== "attempt")
     throw new Error("Expected attempt");
   attempt.attempt.owner.pid = process.pid;
+  entries.pop(); // This test models an uncleaned attempt still owned by a live server.
   await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
   const before = await readFile(logged.path, "utf8");
   const server = project({ agentRegistry: createAgentRegistry([registered]) });
@@ -1770,6 +1774,7 @@ test("shutdown after a genuine completed turn finishes saved finalization instea
   const server = project({ agentRegistry: createAgentRegistry([registered]) });
   await server.app.request("/api/health");
   await completed;
+  const beforeShutdown = await readFile(logged.path, "utf8");
   await server.stop();
   const ended = await waitForEnding(root);
   expect(ended).toMatchObject({
@@ -1777,7 +1782,9 @@ test("shutdown after a genuine completed turn finishes saved finalization instea
     handoff: { stoppedAt: "Saved final turn" },
     findings: { commit: started.stint.baseCommit, findings: [] },
   });
-  expect(await readFile(logged.path, "utf8")).not.toContain('"state":"suspended"');
+  expect((await readFile(logged.path, "utf8")).slice(beforeShutdown.length)).not.toContain(
+    '"state":"suspended"',
+  );
 });
 
 test("shutdown cancels a fresh launcher still opening its first session before awaiting preparation", async () => {
@@ -1908,5 +1915,270 @@ test("an observed replacement initialize exit reaches fallback even while native
     read.mockRestore();
     probe.mockRestore();
     await server.stop();
+  }
+});
+
+test.each([false, true])(
+  "suspension proof survives repeated startup crashes but never covers a later attempt (uncovered: %s)",
+  async (uncovered) => {
+    const { root, project, registered, logged, entries, started } =
+      await savedRecovery("finalization");
+    const old = entries.find((entry) => entry.type === "recovery" && entry.kind === "attempt");
+    if (old?.type !== "recovery" || old.kind !== "attempt") throw new Error("Expected attempt");
+    old.attempt.pid = process.pid; // Reused by an unrelated process after its completed cleanup.
+    old.attempt.identity = "previous-start";
+    const at = "2026-10-26T12:00:00Z";
+    const resume = (state: "suspended" | "resuming"): StintLogEntry => ({
+      type: "recovery",
+      version: 1,
+      at,
+      kind: "resume",
+      state,
+    });
+    entries.push(resume("suspended"), resume("resuming"), resume("resuming"));
+    for (const id of ["second-attempt", ...(uncovered ? ["uncleaned-attempt"] : [])]) {
+      const attempt = { ...old.attempt, id, marker: `stintwork-${id}` };
+      entries.push(
+        { type: "recovery", version: 1, at, kind: "attempt", attempt },
+        {
+          type: "recovery",
+          version: 1,
+          at,
+          kind: "session",
+          attemptId: id,
+          sessionId: "fake-session",
+        },
+        {
+          type: "recovery",
+          version: 1,
+          at,
+          kind: "phase",
+          attemptId: id,
+          progress: { phase: "finalization", status: "finished" },
+        },
+      );
+      if (id !== "uncleaned-attempt")
+        entries.push(resume("suspended"), resume("resuming"), resume("resuming"));
+    }
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const read = vi
+      .spyOn(systemProcesses, "read")
+      .mockReturnValue([
+        { pid: process.pid, group: process.pid, identity: "unrelated-start", command: "editor" },
+      ]);
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("Must never signal reused PID");
+    });
+    registered.launch = vi.fn(() => {
+      throw new Error("Saved finalization must not launch");
+    });
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await server.app.request("/api/health");
+      if (uncovered) {
+        await expect
+          .poll(async () => {
+            const snapshot: ProjectSnapshot = await (
+              await server.app.request("/api/project")
+            ).json();
+            return snapshot.warnings.some((warning) =>
+              warning.message.includes("uncleaned-attempt"),
+            );
+          })
+          .toBe(true);
+        expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+          status: "running",
+          checkpointCommit: null,
+        });
+      } else {
+        const ended = await waitForEnding(root);
+        expect(ended).toMatchObject({
+          status: "finished",
+          checkpointCommit: expect.any(String),
+          findings: { commit: started.stint.baseCommit, findings: [] },
+        });
+        expect(
+          (await readFile(logged.path, "utf8"))
+            .split("\n")
+            .filter((line) => line.includes('"type":"ended"')),
+        ).toHaveLength(1);
+      }
+      expect(registered.launch).not.toHaveBeenCalled();
+      expect(signal).not.toHaveBeenCalled();
+    } finally {
+      read.mockRestore();
+      signal.mockRestore();
+      await server.stop();
+    }
+  },
+);
+
+test("an exited working replacement with an untraceable detached writer blocks checkpoint and suspension", async () => {
+  const { root, project, registered, env, logged, calls } = await savedRecovery("work");
+  env.TEST_RESUME_FAILURE = "session/prompt:exit";
+  const read = vi.spyOn(systemProcesses, "read").mockReturnValue([
+    { pid: process.pid, group: process.pid, identity: "server-start", command: "server" },
+    { pid: 123456789, parent: 1, group: 123456789, identity: "tool-start", command: "tool" },
+  ]);
+  let replacementPid = 0;
+  const exists = systemProcesses.exists;
+  const probe = vi
+    .spyOn(systemProcesses, "exists")
+    .mockImplementation((pid) =>
+      replacementPid && Math.abs(pid) === replacementPid ? false : exists(pid),
+    );
+  const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+    throw new Error("Must never signal an unverified writer");
+  });
+  const launch = registered.launch;
+  registered.launch = vi.fn((options) =>
+    launch({
+      ...options,
+      onProcess(attempt) {
+        attempt.identity = "replacement-start";
+        attempt.processGroup = true;
+        replacementPid = attempt.pid;
+        options.onProcess?.(attempt);
+      },
+    }),
+  );
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  try {
+    const head = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: logged.worktree.path,
+      encoding: "utf8",
+    });
+    await writeFile(join(logged.worktree.path, "partial.txt"), "Still being written");
+    await server.app.request("/api/health");
+    await expect
+      .poll(async () => {
+        const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+        return snapshot.warnings.some((warning) =>
+          warning.message.includes("adapter/tool ownership"),
+        );
+      })
+      .toBe(true);
+    expect(replacementPid).toBeGreaterThan(0);
+    expect(systemProcesses.exists(replacementPid)).toBe(false);
+    expect(systemProcesses.exists(-replacementPid)).toBe(false);
+    expect((await calls()).some((call) => call.method === "session/prompt")).toBe(true);
+    expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      status: "running",
+      checkpointCommit: null,
+    });
+    expect(
+      execFileSync("git", ["rev-parse", "HEAD"], { cwd: logged.worktree.path, encoding: "utf8" }),
+    ).toBe(head);
+    expect(signal).not.toHaveBeenCalled();
+    await server.stop();
+    const saved = (await readFile(logged.path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(saved.filter((entry) => entry.type === "ended")).toEqual([]);
+    // Only the fixture's original cleanup proof exists; the replacement never completed suspension.
+    expect(
+      saved.filter((entry) => entry.kind === "resume" && entry.state === "suspended"),
+    ).toHaveLength(1);
+    expect(registered.launch).toHaveBeenCalledOnce();
+  } finally {
+    read.mockRestore();
+    signal.mockRestore();
+    probe.mockRestore();
+    await server.stop();
+  }
+});
+
+test("cleanup during recovery stays proven through successive crashes and reused adapter PIDs", async () => {
+  const { root, project, registered, logged } = await savedRecovery("finalization");
+  const table = new Map<number, ReturnType<typeof systemProcesses.read>[number]>([
+    [
+      process.pid,
+      { pid: process.pid, group: process.pid, identity: "server-start", command: "server" },
+    ],
+  ]);
+  const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => [...table.values()]);
+  const exists = vi
+    .spyOn(systemProcesses, "exists")
+    .mockImplementation((pid) =>
+      pid < 0 ? [...table.values()].some((row) => row.group === -pid) : table.has(pid),
+    );
+  const signal = vi.spyOn(systemProcesses, "signal").mockImplementation((pid, value) => {
+    for (const row of table.values())
+      if (pid === row.pid || -pid === row.group) {
+        if (value === "SIGSTOP") row.state = "T";
+        else table.delete(row.pid);
+      }
+  });
+  registered.launch = vi.fn(() => {
+    throw new Error("Saved finalization must not launch");
+  });
+  try {
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      const id = `cycle-${cycle}`;
+      const pid = 123450 + cycle;
+      const at = `2026-10-26T12:00:0${cycle}Z`;
+      const attempt: StintProcessAttempt = {
+        id,
+        pid,
+        marker: `stintwork-${id}`,
+        identity: `start-${cycle}`,
+        processGroup: true,
+        owner: { pid: 10, identity: "old-server", startedAt: at },
+      };
+      table.set(pid, {
+        pid,
+        group: pid,
+        identity: attempt.identity as string,
+        command: attempt.marker as string,
+      });
+      // Crash after finalization but before ended is durable; the next attempt has no suspension yet.
+      const entries = (await readFile(logged.path, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+        .filter((entry) => entry.type !== "ended");
+      entries.push(
+        { type: "recovery", version: 1, at, kind: "attempt", attempt },
+        {
+          type: "recovery",
+          version: 1,
+          at,
+          kind: "session",
+          attemptId: id,
+          sessionId: "fake-session",
+        },
+        {
+          type: "recovery",
+          version: 1,
+          at,
+          kind: "phase",
+          attemptId: id,
+          progress: { phase: "finalization", status: "finished" },
+        },
+      );
+      await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+      const server = project({ agentRegistry: createAgentRegistry([registered]) });
+      await server.app.request("/api/health");
+      expect(await waitForEnding(root)).toMatchObject({
+        status: "finished",
+        checkpointCommit: expect.any(String),
+      });
+      await server.stop();
+      expect(table.has(pid)).toBe(false);
+      expect(signal.mock.calls.slice(-2)).toEqual([
+        [-pid, "SIGSTOP"],
+        [-pid, "SIGKILL"],
+      ]);
+      // Its numeric PID is immediately reused by an unrelated writer before the next crash recovery.
+      table.set(pid, { pid, group: pid, identity: "reused-start", command: "editor" });
+      expect(table.get(process.pid)?.identity).toBe("server-start");
+    }
+    expect(signal).toHaveBeenCalledTimes(6);
+    expect(registered.launch).not.toHaveBeenCalled();
+  } finally {
+    read.mockRestore();
+    exists.mockRestore();
+    signal.mockRestore();
   }
 });

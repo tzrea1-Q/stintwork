@@ -1256,10 +1256,11 @@ export function addStintRoutes(
     let sessionId: string | undefined;
     let sessionAttemptId: string | undefined;
     const attempts = new Set<string>();
+    let cleanedThrough = -1;
     let launches = 0;
     let starts = 0;
     let previousPhase = -1;
-    for (const entry of entries) {
+    for (const [index, entry] of entries.entries()) {
       if (entry.type === "started") starts++;
       if (entry.type !== "recovery") continue;
       if (entry.kind === "launch" && ++launches > 1) reason = "Ambiguous recovery launch history.";
@@ -1268,6 +1269,7 @@ export function addStintRoutes(
         attempts.add(entry.attempt.id);
         attemptId = entry.attempt.id;
       }
+      if (entry.kind === "resume" && entry.state === "suspended") cleanedThrough = index;
       if (entry.kind === "session") {
         if (entry.attemptId !== attemptId || (sessionId && sessionId !== entry.sessionId))
           reason = "Ambiguous recovery session history.";
@@ -1318,23 +1320,25 @@ export function addStintRoutes(
     if (!started) return;
     activeStintIds.add(stint.id);
     state.ownsRecoveryReservation = true;
-    const last = entries.at(-1);
-    const suspensionCompleted =
-      valid &&
-      !reason?.startsWith("Ambiguous") &&
-      last?.type === "recovery" &&
-      last.kind === "resume" &&
-      last.state === "suspended";
     state.preparation = Promise.resolve()
       .then(async () => {
         if (state.recoveryBlocked || state.suspending) return;
         try {
-          for (const entry of entries) {
-            // A suspended record is written only after the owned cleanup has completed.
-            // Old PIDs may now belong to unrelated processes; never signal them again.
-            if (!suspensionCompleted && entry.type === "recovery" && entry.kind === "attempt")
-              await stopStintProcesses(entry.attempt);
-          }
+          // Completed suspension proves cleanup of every preceding attempt, even if later
+          // startup or invalid session metadata prevents resume. Later attempts need their own proof.
+          const uncleanedAttempts = entries
+            .slice(cleanedThrough + 1)
+            .filter((entry) => entry.type === "recovery" && entry.kind === "attempt");
+          for (const entry of uncleanedAttempts) await stopStintProcesses(entry.attempt);
+          // Make startup cleanup durable too, before another attempt can start or the server can crash.
+          if (uncleanedAttempts.length)
+            appendRecovery({
+              type: "recovery",
+              version: 1,
+              at: new Date().toISOString(),
+              kind: "resume",
+              state: "suspended",
+            });
         } catch (error) {
           state.recoveryBlocked = true;
           warning(errorText(error).text);

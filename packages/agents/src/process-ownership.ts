@@ -76,7 +76,7 @@ export async function stopStintProcesses(
   attempt: StintProcessAttempt,
   ownerReleased = false,
   processes = systemProcesses,
-  observedExit?: Promise<void>,
+  unstartedExit?: Promise<void>,
 ): Promise<void> {
   const blocked = () =>
     new ProcessOwnershipError(
@@ -93,7 +93,6 @@ export async function stopStintProcesses(
     if (owner?.identity === attempt.owner.identity) throw blocked();
   }
   const group = attempt.processGroup ? -attempt.pid : attempt.pid;
-  if (!processes.exists(group) && !processes.exists(attempt.pid)) return;
   const verified = () => {
     let rows: ProcessIdentity[];
     try {
@@ -217,13 +216,14 @@ export async function stopStintProcesses(
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
   } catch (error) {
-    if (!ownerReleased || !observedExit || !(error instanceof ProcessOwnershipError)) throw error;
+    if (!ownerReleased || !unstartedExit || !(error instanceof ProcessOwnershipError)) throw error;
     // ACP may close before Node delivers this server's ChildProcess exit event.
-    // Only that live handle's exit is proof; a missing foreign leader remains blocked.
+    // Only an unstarted local handle may use this proof. After session loading/work,
+    // a vanished leader can have left reparented writers we can no longer identify.
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
-        observedExit,
+        unstartedExit,
         new Promise<never>((_resolve, reject) => {
           timer = setTimeout(() => reject(error), Math.max(0, deadline - Date.now()));
         }),

@@ -100,3 +100,19 @@ The launcher now supplies its own `ChildProcess` exit promise to cleanup. Only t
 The new server regression failed at `waitForEnding` before the fix and now records one interrupted ending/checkpoint, preserves partial files and the original failure, and launches/prompts no further work. Unit regressions cover both already-observed and later-delivered exit signals, surviving orphan/detached writers, missing exit delivery and unavailable inspection; their deadline uses a fake clock.
 
 Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed (only the existing informational Biome deprecation). All agents tests passed: **23 files / 263 tests**, including all **17 ownership tests**. The complete available recovery file passed **60 tests / 10 native-or-TCP cases excluded**. The original `initialize:exit` case and new fake-native regression also passed together in isolation (**2 passed**). No native-`ps` or socket success is claimed locally. Coordinator: repeat the original failing case on the native host, then run `pnpm --config.verify-deps-before-run=false vitest run packages/server/src/stint-history.test.ts --configLoader native` without exclusions and the unfiltered workspace suite. No commit; all `Status:` lines and acceptance criteria unchanged.
+
+
+**Codex, 2026-10-26 — review follow-up (P1/P2):** Verified both findings with failing regressions. Missing adapter/group probes no longer certify cleanup. After possible session work, an exited leader with untraceable descendants blocks checkpoint/suspension/replacement without signalling unrelated processes. Local observed-exit proof is restricted to initialization; the earlier `initialize:exit` fallback still passes with fake native inspection.
+
+Completed suspension covers only preceding attempts, surviving later startup records. Startup also durably records successful cleanup before another attempt starts. Regressions cover uncovered later attempts and three successive recoveries with reused adapter PIDs. Fixtures now distinguish explicit cleanup proof from legacy logs without live-state metadata.
+
+Actual checks: `format:check`, `lint`, workspace `typecheck` and `git diff --check` passed. Final ownership tests: **21 passed**; available recovery tests: **46 passed / 28 deferred**; stint-route tests: **27 passed / 11 deferred**. Broad available run: **151 files passed, 2,388 tests passed / 2 fixture failures / 65 excluded**; both fixture failures were corrected and the available recovery file rerun passed. Initial unfiltered core/agents: **1,228 passed / 9 failures from blocked native inspection**; those prepared-adapter cases remain deferred. One mocked-WebSocket test excluded by the broad filter was separately run and passed.
+
+Coordinator: run these exact commands without exclusions on the native/socket host. They cover prepared-adapter launches, all 13 failed-recovery variants, graceful shutdown/continuation and all socket cases. **All eight server-only SIGKILL cases must execute, not skip.** No native/socket pass is claimed locally.
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run packages/agents/src/process-ownership.test.ts packages/agents/src/adapter-cache.test.ts packages/server/src/stints.test.ts packages/server/src/stint-history.test.ts --configLoader native
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+```
+
+No commit; all `Status:` lines and acceptance checkboxes unchanged.

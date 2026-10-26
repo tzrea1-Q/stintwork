@@ -171,6 +171,7 @@ export function createAgentLauncher(
     let acpId: string | undefined;
     let cancelled = false;
     let suspended = false;
+    let writersMayHaveStarted = false;
     let settled = false;
     let cancelPermission: () => void = () => {};
     let permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
@@ -283,6 +284,7 @@ export function createAgentLauncher(
             }
           },
           async requestPermission(request) {
+            writersMayHaveStarted = true;
             if (settled || suspended) throw new CoreTextError({ code: "agent.stintEnded" });
             chunk = undefined;
             const requestId = randomUUID();
@@ -374,6 +376,7 @@ export function createAgentLauncher(
             };
           },
           async writeTextFile({ path, content }) {
+            writersMayHaveStarted = true;
             if (settled || suspended) throw new CoreTextError({ code: "agent.stintEnded" });
             const writing = (async () => {
               const target = await safePath(path);
@@ -440,6 +443,7 @@ export function createAgentLauncher(
             mcpServers: [],
             ...(additionalDirectories.length ? { additionalDirectories } : {}),
           };
+          writersMayHaveStarted = true;
           const opened = resume
             ? await acp.loadSession({ ...directories, sessionId: resume.sessionId })
             : await acp.newSession(directories);
@@ -585,7 +589,12 @@ export function createAgentLauncher(
           else child.once("exit", () => resolveExit());
         });
         if (processAttempt?.identity && processAttempt.processGroup)
-          await stopStintProcesses(processAttempt, true, undefined, exited);
+          await stopStintProcesses(
+            processAttempt,
+            true,
+            undefined,
+            writersMayHaveStarted ? undefined : exited,
+          );
         child.kill("SIGTERM");
         const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
         killTimer.unref();
@@ -595,7 +604,12 @@ export function createAgentLauncher(
         await exited;
         await Promise.allSettled(writes);
         if (processAttempt?.processGroup && !processAttempt.identity)
-          await stopStintProcesses(processAttempt, true, undefined, exited);
+          await stopStintProcesses(
+            processAttempt,
+            true,
+            undefined,
+            writersMayHaveStarted ? undefined : exited,
+          );
       }
     })();
     void done.then(

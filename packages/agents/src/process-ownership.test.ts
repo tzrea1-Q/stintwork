@@ -149,12 +149,17 @@ test("a detached parent reused during cleanup never authorizes signalling its un
   expect(fake.signal.mock.calls.some(([pid]) => pid === 22)).toBe(false);
 });
 
-test.each(["already observed", "delivered after transport closure"])(
-  "an owned adapter exit %s permits cleanup when native inspection finds no remaining writer",
-  async (timing) => {
+test.each([
+  ["already observed", true],
+  ["already observed", false],
+  ["delivered after transport closure", true],
+  ["delivered after transport closure", false],
+] as const)(
+  "an unstarted owned adapter exit %s permits cleanup with no writers (PID/group present: %s)",
+  async (timing, present) => {
     const fake = processes([{ pid: 30, group: 30, identity: "editor", command: "unrelated" }]);
     // kill(0) can still see the exited leader/group while ps omits its zombie row.
-    fake.control.exists = () => true;
+    fake.control.exists = () => present;
     let observeExit: () => void = () => {};
     const exited = new Promise<void>((resolve) => {
       observeExit = resolve;
@@ -237,3 +242,19 @@ test("observing a local exit cannot replace unavailable native writer inspection
   );
   expect(fake.signal).not.toHaveBeenCalled();
 });
+
+test.each([false, true])(
+  "a vanished adapter/group cannot certify a detached writer gone (local owner: %s)",
+  async (local) => {
+    const fake = processes([
+      { pid: 21, parent: 1, group: 21, identity: "detached-tool", command: "tool" },
+    ]);
+    const read = vi.spyOn(fake.control, "read");
+    await expect(stopStintProcesses(attempt, local, fake.control)).rejects.toThrow(
+      /Stop the old processes/,
+    );
+    expect(read).toHaveBeenCalled();
+    expect(fake.signal).not.toHaveBeenCalled();
+    expect(fake.table.has(21)).toBe(true);
+  },
+);
