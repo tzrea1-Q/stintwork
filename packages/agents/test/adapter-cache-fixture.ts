@@ -75,6 +75,13 @@ for await (const line of readline.createInterface({ input: process.stdin })) {
         process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'session/update',params:{sessionId:request.params.sessionId,update:{sessionUpdate:'tool_call',toolCallId:'same-tool',title:process.env.TEST_RECOVERY === 'crash' ? 'Old tool' : 'Fresh tool',status:'completed'}}})+'\\n');
       const notify = (text) => process.stdout.write(JSON.stringify({jsonrpc:'2.0',method:'session/update',params:{sessionId:request.params.sessionId,update:{sessionUpdate:'agent_message_chunk',content:{type:'text',text}}}})+'\\n');
       if (process.env.TEST_RECOVERY === 'crash') {
+        if (process.env.TEST_TOOL_WRITER) {
+          const {spawn} = await import('node:child_process');
+          const {once} = await import('node:events');
+          const tool = spawn(process.execPath,['--eval',"require('node:fs').writeFileSync(process.argv[1], 'Tool edit'); process.stdout.write('ready'); setInterval(()=>{},1000)",cwd+'/tool.txt'],{detached:true,stdio:['ignore','pipe','ignore']});
+          await once(tool.stdout,'data');
+          fs.writeFileSync(cwd+'/tool.pid',String(tool.pid));
+        }
         fs.writeFileSync(cwd+'/partial.txt','Before crash');
         notify('Before crash');
         setInterval(()=>{},1000);

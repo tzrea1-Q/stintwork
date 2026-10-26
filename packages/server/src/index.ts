@@ -189,6 +189,7 @@ export function createProjectServer(
     refresh,
     checks.isActive,
     readReviewEvidence,
+    (warning) => recoveryWarnings.push(warning),
   );
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
   const live = upgradeWebSocket(() => ({}));

@@ -33,6 +33,13 @@ import { codexProfile } from "./profiles.js";
 import { AgentAuthenticationError } from "./authentication.js";
 import { adapterEntry } from "./adapter-entry.js";
 import { preparedAgentEnvironment, type PreparedAgent } from "./adapter-cache.js";
+import { processIdentity, stopStintProcesses } from "./process-ownership.js";
+export {
+  stopStintProcesses,
+  ProcessOwnershipError,
+  processIdentity,
+  systemProcesses,
+} from "./process-ownership.js";
 import { findExecutable } from "./executable.js";
 
 export { AgentAuthenticationError } from "./authentication.js";
@@ -102,6 +109,7 @@ export type AgentStint = {
   ready?: Promise<void>;
   done: Promise<AgentStintResult>;
   cancel: () => Promise<void>;
+  suspend?: () => Promise<void>;
 };
 export type AgentLauncher = (options: AgentStintOptions) => AgentStint;
 export type AdapterLauncher = (
@@ -158,9 +166,11 @@ export function createAgentLauncher(
     };
     let loading = !!resume;
     let child: ChildProcessWithoutNullStreams | undefined;
+    let processAttempt: StintProcessAttempt | undefined;
     let connection: import("@agentclientprotocol/sdk").ClientSideConnection | undefined;
     let acpId: string | undefined;
     let cancelled = false;
+    let suspended = false;
     let settled = false;
     let cancelPermission: () => void = () => {};
     let permissionCancelled = new Promise<RequestPermissionResponse>((resolvePermission) => {
@@ -219,6 +229,7 @@ export function createAgentLauncher(
         ? spawn(process.execPath, [`--title=${marker}`, preparedAgent.adapterEntry], {
             cwd,
             stdio: "pipe",
+            detached: process.platform !== "win32",
             env: preparedAgentEnvironment(preparedAgent, env),
           })
         : launchAdapter(cwd, env, nativeExecutable);
@@ -249,7 +260,7 @@ export function createAgentLauncher(
       const acp = new ClientSideConnection(
         () => ({
           async sessionUpdate({ update }) {
-            if (settled || loading) return;
+            if (settled || suspended || loading) return;
             try {
               const kind = update.sessionUpdate;
               if (
@@ -272,7 +283,7 @@ export function createAgentLauncher(
             }
           },
           async requestPermission(request) {
-            if (settled) throw new CoreTextError({ code: "agent.stintEnded" });
+            if (settled || suspended) throw new CoreTextError({ code: "agent.stintEnded" });
             chunk = undefined;
             const requestId = randomUUID();
             const receipt = forwarding.prepare();
@@ -333,14 +344,14 @@ export function createAgentLauncher(
                 event.decision = { outcome: "cancelled" };
                 receipt.failed(new CoreTextError({ code: "agent.permissionCancelled" }));
               }
-              onEvent(event);
+              if (!suspended) onEvent(event);
               receipt.respond(response);
             } catch (error) {
               const failure = error instanceof Error ? error : new Error(String(error));
               receipt.failed(failure);
               event.decision = { outcome: "failed", reason: failure.message };
               try {
-                onEvent(event);
+                if (!suspended) onEvent(event);
               } finally {
                 fail(failure);
               }
@@ -363,7 +374,7 @@ export function createAgentLauncher(
             };
           },
           async writeTextFile({ path, content }) {
-            if (settled) throw new CoreTextError({ code: "agent.stintEnded" });
+            if (settled || suspended) throw new CoreTextError({ code: "agent.stintEnded" });
             const writing = (async () => {
               const target = await safePath(path);
               await mkdir(dirname(target), { recursive: true });
@@ -388,13 +399,23 @@ export function createAgentLauncher(
       );
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        if (child.pid)
-          onProcess?.({
+        if (child.pid) {
+          const identity = preparedAgent ? processIdentity(child.pid) : undefined;
+          const ownerIdentity = preparedAgent ? processIdentity(process.pid) : undefined;
+          processAttempt = {
             id: attemptId,
-            owner: { pid: process.pid, startedAt: new Date(performance.timeOrigin).toISOString() },
+            owner: {
+              pid: process.pid,
+              startedAt: new Date(performance.timeOrigin).toISOString(),
+              ...(ownerIdentity ? { identity: ownerIdentity } : {}),
+            },
             pid: child.pid,
             marker,
-          });
+            ...(identity ? { identity } : {}),
+            ...(preparedAgent && process.platform !== "win32" ? { processGroup: true } : {}),
+          };
+          onProcess?.(processAttempt);
+        }
         const initialize = (async () => {
           const initialized = await acp.initialize({
             protocolVersion: PROTOCOL_VERSION,
@@ -436,6 +457,7 @@ export function createAgentLauncher(
               modeId: policy.mode,
             });
           }
+          if (cancelled || settled) throw new CoreTextError({ code: "agent.stintCancelled" });
         })();
         const timeout = new Promise<never>((_resolve, reject) => {
           // Recovery's server budget includes warm verification and pauses on live permission waits.
@@ -479,6 +501,7 @@ export function createAgentLauncher(
           });
           result = { ...result, ...(await Promise.race([workTurn, failure])) };
         }
+        if (suspended) return { stopReason: "cancelled" };
         if (afterTurnTimeoutMs === undefined) {
           onPhase?.("finalization", result);
           return result;
@@ -561,6 +584,8 @@ export function createAgentLauncher(
           if (!child?.pid || child.exitCode !== null || child.signalCode !== null) resolveExit();
           else child.once("exit", () => resolveExit());
         });
+        if (processAttempt?.identity && processAttempt.processGroup)
+          await stopStintProcesses(processAttempt, true);
         child.kill("SIGTERM");
         const killTimer = setTimeout(() => child?.kill("SIGKILL"), 300);
         killTimer.unref();
@@ -569,6 +594,8 @@ export function createAgentLauncher(
         child.stdout.destroy();
         await exited;
         await Promise.allSettled(writes);
+        if (processAttempt?.processGroup && !processAttempt.identity)
+          await stopStintProcesses(processAttempt, true);
       }
     })();
     void done.then(
@@ -578,6 +605,13 @@ export function createAgentLauncher(
     return {
       ready,
       done,
+      async suspend() {
+        suspended = true;
+        cancelled = true;
+        cancelPermission();
+        rejectFailure(new CoreTextError({ code: "agent.stintCancelled" }));
+        await done;
+      },
       async cancel() {
         cancelled = true;
         cancelPermission();

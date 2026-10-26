@@ -31,11 +31,13 @@ export type StintLaunch = {
 };
 export type StintProcessAttempt = {
   id: string;
-  owner: { pid: number; startedAt: string };
+  owner: { pid: number; startedAt: string; identity?: string };
   pid: number;
   // An observable, unique Node process title; null for launchers without this proof.
   // A PID alone must never authorize signalling a process.
   marker: string | null;
+  identity?: string;
+  processGroup?: boolean;
 };
 export type StintPhase = "work" | "handoff" | "findings" | "finalization";
 export type StintProgress = {
@@ -55,7 +57,7 @@ export type StintRecovery = {
   sessionId?: string;
   progress?: StintProgress;
   stopRequestedAt?: string;
-  state?: "resuming" | "resumed" | "fallback";
+  state?: "resuming" | "resumed" | "fallback" | "suspended" | "suspending";
   reason?: string;
 };
 export type StintRecoveryData =
@@ -64,7 +66,11 @@ export type StintRecoveryData =
   | { kind: "session"; attemptId: string; sessionId: string }
   | { kind: "phase"; attemptId: string; progress: StintProgress }
   | { kind: "stop_requested" }
-  | { kind: "resume"; state: "resuming" | "resumed" | "fallback"; reason?: string };
+  | {
+      kind: "resume";
+      state: "resuming" | "resumed" | "fallback" | "suspended" | "suspending";
+      reason?: string;
+    };
 export type StintRecoveryEntry = {
   type: "recovery";
   version: 1;
@@ -512,7 +518,9 @@ function isStintRecoveryEntry(entry: Record<string, unknown>): boolean {
   if (entry.kind === "resume")
     return (
       keys(entry, [...common, "state", "reason"]) &&
-      ["resuming", "resumed", "fallback"].includes(String(entry.state)) &&
+      ["resuming", "resumed", "fallback", "suspended", "suspending"].includes(
+        String(entry.state),
+      ) &&
       (entry.reason === undefined || text(entry.reason))
     );
   if (entry.kind === "session")
@@ -526,13 +534,16 @@ function isStintRecoveryEntry(entry: Record<string, unknown>): boolean {
     return (
       keys(entry, [...common, "attempt"]) &&
       record(attempt) &&
-      keys(attempt, ["id", "owner", "pid", "marker"]) &&
+      keys(attempt, ["id", "owner", "pid", "marker", "identity", "processGroup"]) &&
       text(attempt.id) &&
       pid(attempt.pid) &&
+      (attempt.identity === undefined || text(attempt.identity)) &&
+      (attempt.processGroup === undefined || typeof attempt.processGroup === "boolean") &&
       (attempt.marker === null || attempt.marker === `stintwork-${attempt.id}`) &&
       record(attempt.owner) &&
-      keys(attempt.owner, ["pid", "startedAt"]) &&
+      keys(attempt.owner, ["pid", "startedAt", "identity"]) &&
       pid(attempt.owner.pid) &&
+      (attempt.owner.identity === undefined || text(attempt.owner.identity)) &&
       date(attempt.owner.startedAt)
     );
   }

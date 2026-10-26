@@ -13,6 +13,8 @@ import {
   prepareAgent,
   adapterHost,
   continuationInstruction,
+  systemProcesses,
+  stopStintProcesses,
 } from "@stintwork/agents";
 import {
   createFakeAgentLauncher,
@@ -27,6 +29,7 @@ import {
   type Stint,
   type StintLogEntry,
   type StintProgress,
+  type StintProcessAttempt,
   type StintLiveMessage,
   isStintLogEntry,
 } from "@stintwork/core";
@@ -40,6 +43,7 @@ const fixtures: {
   parent: string;
   projects: ReturnType<typeof createProjectServer>[];
   children: ChildProcess[];
+  attempts: StintProcessAttempt[];
   cache?: string;
 }[] = [];
 const brief = { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Work" };
@@ -65,6 +69,7 @@ async function fixture() {
     parent,
     projects: [] as ReturnType<typeof createProjectServer>[],
     children: [] as ChildProcess[],
+    attempts: [] as StintProcessAttempt[],
   };
   fixtures.push(tracked);
   function project(options: Parameters<typeof createProjectServer>[2] = {}) {
@@ -93,8 +98,10 @@ function kill(child: ChildProcess) {
 }
 
 afterEach(async () => {
-  for (const { parent, projects, children, cache } of fixtures.splice(0)) {
+  for (const { parent, projects, children, attempts, cache } of fixtures.splice(0)) {
     for (const child of children) kill(child);
+    for (const attempt of attempts)
+      if (systemProcesses.exists(attempt.pid)) await stopStintProcesses(attempt, true);
     await Promise.all(projects.map((project) => project.stop()));
     await rm(parent, { recursive: true, force: true });
     if (cache) await rm(cache, { recursive: true, force: true });
@@ -468,14 +475,29 @@ async function warmRecovery(agent: "claude" | "codex", source: "installed" | "bu
   return { ...result, cache, selected, registered, env, calls };
 }
 
-test.each(
-  (["claude", "codex"] as const).flatMap((agent) =>
-    (["installed", "bundled"] as const).flatMap((source) =>
-      [false, true].map((tcp) => ({ agent, source, tcp })),
+// Probe access independently of the identity parser: parser regressions must fail, not skip.
+const nativeProcessInspection = (() => {
+  try {
+    execFileSync("/bin/ps", ["-p", String(process.pid), "-o", "pid="], {
+      stdio: "ignore",
+      timeout: 1000,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+})();
+
+test
+  .skipIf(!nativeProcessInspection)
+  .each(
+    (["claude", "codex"] as const).flatMap((agent) =>
+      (["installed", "bundled"] as const).flatMap((source) =>
+        [false, true].map((tcp) => ({ agent, source, tcp })),
+      ),
     ),
-  ),
-)(
-  "$agent/$source: SIGKILL resumes the same stint/session through loadSession (TCP: $tcp)",
+  )(
+  "$agent/$source: server-only SIGKILL stops owned adapter/tools before resuming the same session (TCP: $tcp)",
   async ({ agent, source, tcp }) => {
     const { root, project, tracked, selected, env, registered, calls, cache } = await warmRecovery(
       agent,
@@ -490,9 +512,14 @@ test.each(
       import { once } from 'node:events';
       import { createProjectServer } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
       import { createAgentRegistry, createClaudeCodeAgent, createCodexAgent } from ${JSON.stringify(new URL("../../agents/src/index.ts", import.meta.url).href)};
-      const env = ${JSON.stringify({ ...env, TEST_RECOVERY: "crash" })};
+      const env = ${JSON.stringify({ ...env, TEST_RECOVERY: "crash", TEST_TOOL_WRITER: "1" })};
       const agent = ${JSON.stringify(agent)} === 'claude' ? createClaudeCodeAgent(env) : createCodexAgent({ env });
       agent.prepare = async () => (${JSON.stringify(selected)});
+      const launch = agent.launch;
+      agent.launch = options => launch({...options,onEvent(event) {
+        options.onEvent(event);
+        if ('text' in event && event.text === 'Before crash') process.send('working');
+      }});
       const project = createProjectServer(${JSON.stringify(root)}, ${JSON.stringify(join(root, "web"))}, {agentRegistry:createAgentRegistry([agent]),handoffTimeoutMs:3000});
       let url;
       if (${tcp}) {
@@ -507,11 +534,17 @@ test.each(
       { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
     );
     tracked.children.push(child);
+    const working = new Promise<void>((resolve) => {
+      child.on("message", (message) => {
+        if (message === "working") resolve();
+      });
+    });
     const message = await new Promise<{ status: number; body: { stint: Stint } }>(
       (resolve, reject) => {
-        child.once("message", (message) =>
-          resolve(message as { status: number; body: { stint: Stint } }),
-        );
+        child.on("message", (message) => {
+          if (message && typeof message === "object" && "status" in message)
+            resolve(message as { status: number; body: { stint: Stint } });
+        });
         child.once("error", reject);
         child.once("exit", (code, signal) => reject(new Error(`Server exited: ${code ?? signal}`)));
       },
@@ -519,31 +552,32 @@ test.each(
     expect(message.status).toBe(201);
     const stint = message.body.stint;
     const path = join(root, ".stintwork/local/stints", `${stint.id}.jsonl`);
-    await expect.poll(() => readFile(path, "utf8")).toContain("Before crash");
+    await working;
     const before = await readFile(path, "utf8");
     const original = indexStints(createNodeRepoFiles(root)).stints[0];
     expect(original.recovery?.sessionId).toBe("fake-session");
     const exited = once(child, "exit");
-    // Ticket 03 establishes the old writer is gone; server-only orphan cleanup is ticket 05.
-    kill(child);
+    // Kill only the server. The adapter and tool deliberately ignore stdin EOF.
+    child.kill("SIGKILL");
     await exited;
-    await expect
-      .poll(() => {
-        try {
-          process.kill(original.recovery?.attempt?.pid ?? 0, 0);
-          return false;
-        } catch (error) {
-          return (error as NodeJS.ErrnoException).code === "ESRCH";
-        }
-      })
-      .toBe(true);
+    const oldAttempt = original.recovery?.attempt;
+    if (!oldAttempt) throw new Error("Expected recorded process ownership");
+    tracked.attempts.push(oldAttempt);
+    expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
+    const toolPid = Number(await readFile(join(stint.worktree.path, "tool.pid"), "utf8"));
+    expect(systemProcesses.exists(toolPid)).toBe(true);
     const npmCalls = await cache.calls();
     let release: () => void = () => {};
+    let enteredVerification!: () => void;
+    const verificationEntered = new Promise<void>((resolve) => {
+      enteredVerification = resolve;
+    });
     const verified = registered.verifyRecovery;
     if (!verified) throw new Error("Expected recovery verifier");
     registered.verifyRecovery = async (...args) => {
       await new Promise<void>((resolve) => {
         release = resolve;
+        enteredVerification();
       });
       return verified(...args);
     };
@@ -573,6 +607,9 @@ test.each(
     const request = (path: string, init?: RequestInit) =>
       url ? fetch(`${url}${path}`, init) : restarted.app.request(path, init);
     expect((await request("/api/health")).status).toBe(200);
+    await verificationEntered;
+    const live = systemProcesses.read();
+    expect(live.some((row) => row.pid === oldAttempt.pid || row.pid === toolPid)).toBe(false);
     const current = await (await request(`/api/stints/${stint.id}`)).json();
     expect(current.stint.status).toBe("running");
     expect(
@@ -626,7 +663,7 @@ test.each(
     const tools = recovered.events.filter((event) => event.type === "tool_call");
     expect(tools.map((event) => event.title)).toEqual(["Old tool", "Fresh tool"]);
     expect(new Set(tools.map((event) => event.toolCallId)).size).toBe(2);
-    for (const name of ["partial.txt", "resumed.txt", "handoff.txt"]) {
+    for (const name of ["partial.txt", "tool.txt", "resumed.txt", "handoff.txt"]) {
       expect(
         execFileSync("git", ["show", `${recovered.checkpointCommit}:${name}`], {
           cwd: root,
@@ -677,7 +714,7 @@ async function savedRecovery(phase: StintProgress["phase"]) {
   started.stint.stage = "review";
   started.stint.ticket = null;
   const progress: StintProgress = { phase, stopReason: "end_turn" };
-  if (phase !== "handoff")
+  if (phase !== "handoff" && phase !== "work")
     progress.handoff = {
       stint: "saved-phase",
       agent: "codex",
@@ -1370,4 +1407,447 @@ test("recovery discovery isolates unreadable logs and reports directory errors w
     message: "Cannot list stint logs: Error: EACCES",
   });
   expect(adopt).toHaveBeenCalledTimes(1);
+});
+
+test("graceful suspension keeps the original stint/session and dirty work for one startup continuation", async () => {
+  const { root, project, registered, selected, env, calls } = await warmRecovery(
+    "codex",
+    "installed",
+  );
+  const initialAgent = createCodexAgent({ env: { ...env, TEST_RECOVERY: "crash" } });
+  initialAgent.prepare = async () => selected;
+  let working!: () => void;
+  const work = new Promise<void>((resolve) => {
+    working = resolve;
+  });
+  const launch = initialAgent.launch;
+  initialAgent.launch = (options) =>
+    launch({
+      ...options,
+      onEvent(event) {
+        options.onEvent(event);
+        if ("text" in event && event.text === "Before crash") working();
+      },
+    });
+  const first = project({
+    agentRegistry: createAgentRegistry([initialAgent]),
+    handoffTimeoutMs: 3000,
+  });
+  const response = await first.app.request("/api/stints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+  });
+  expect(response.status).toBe(201);
+  await work;
+  const original = indexStints(createNodeRepoFiles(root)).stints[0];
+  const head = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: original.worktree.path,
+    encoding: "utf8",
+  });
+  await Promise.all([first.stop(), first.stop()]);
+  const suspended = indexStints(createNodeRepoFiles(root)).stints[0];
+  expect(suspended).toMatchObject({
+    id: original.id,
+    status: "running",
+    endedAt: null,
+    checkpointCommit: null,
+    recovery: {
+      state: "suspended",
+      sessionId: original.recovery?.sessionId,
+      progress: { phase: "work" },
+    },
+  });
+  expect(
+    execFileSync("git", ["rev-parse", "HEAD"], { cwd: original.worktree.path, encoding: "utf8" }),
+  ).toBe(head);
+  expect((await calls()).filter((call) => call.method === "session/prompt")).toHaveLength(1);
+  const restarted = project({
+    agentRegistry: createAgentRegistry([registered]),
+    handoffTimeoutMs: 3000,
+  });
+  await restarted.app.request("/api/health");
+  await waitForEnding(root);
+  const ended = indexStints(createNodeRepoFiles(root)).stints[0];
+  expect(ended).toMatchObject({
+    id: original.id,
+    startedAt: original.startedAt,
+    baseCommit: original.baseCommit,
+    brief: original.brief,
+    status: "finished",
+    recovery: { sessionId: original.recovery?.sessionId },
+    handoff: { stoppedAt: "Recovered work." },
+  });
+});
+
+test.each(["verification", "load", "permission", "continuation"])(
+  "Stop during %s persists before cancellation and ignores late callbacks, even with shutdown",
+  async (point) => {
+    const { root, project, registered, selected, logged } = await savedRecovery("work");
+    let entered!: () => void;
+    const entering = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    registered.verifyRecovery = async () => {
+      if (point === "verification") {
+        entered();
+        await held;
+      }
+      return selected;
+    };
+    let ready!: () => void;
+    let finish!: (result: { stopReason: string }) => void;
+    let callbacks: Parameters<typeof registered.launch>[0] | undefined;
+    const launch = vi.fn((options: Parameters<typeof registered.launch>[0]) => {
+      callbacks = options;
+      const readiness = new Promise<void>((resolve) => {
+        ready = resolve;
+      });
+      const done = new Promise<{ stopReason: string }>((resolve) => {
+        finish = resolve;
+      });
+      if (point === "permission") {
+        if (!options.onPermission) throw new Error("Expected permission callback");
+        void options.onPermission({
+          sessionId: "fake-session",
+          requestId: "pending",
+          toolCall: { toolCallId: "tool" },
+          options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+          forwarded: new Promise(() => {}),
+        });
+      }
+      if (point === "continuation") ready();
+      entered();
+      return {
+        ready: readiness,
+        done,
+        cancel: async () => {
+          const text = await readFile(logged.path, "utf8");
+          expect(text).toContain('"kind":"stop_requested"');
+          finish({ stopReason: "cancelled" });
+        },
+      };
+    });
+    registered.launch = launch;
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    await server.app.request("/api/health");
+    await entering;
+    const stop = () => server.app.request("/api/stints/saved-phase/stop", { method: "POST" });
+    expect((await stop()).status).toBe(202);
+    const shutdown = server.stop();
+    release();
+    ready?.();
+    await shutdown;
+    const stopped = await waitForEnding(root);
+    expect(stopped).toMatchObject({ status: "stopped", checkpointCommit: expect.any(String) });
+    const before = await readFile(logged.path, "utf8");
+    callbacks?.onEvent({ type: "message", id: "late", text: "Must not append" });
+    callbacks?.onPhase?.("work", {});
+    expect(await readFile(logged.path, "utf8")).toBe(before);
+    const entries = before
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(entries.filter((entry) => entry.type === "ended")).toHaveLength(1);
+    expect(entries.filter((entry) => entry.kind === "stop_requested")).toHaveLength(1);
+    expect((await stop()).status).toBe(409);
+    expect(
+      (
+        await server.app.request("/api/stints/saved-phase/permissions/pending", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ optionId: "allow" }),
+        })
+      ).status,
+    ).toBe(409);
+    if (point === "verification") expect(launch).not.toHaveBeenCalled();
+  },
+);
+
+test("a crash after durable Stop intent checkpoints once without verifying or loading work", async () => {
+  const { root, project, registered, logged, entries, calls } = await savedRecovery("work");
+  entries.push({
+    type: "recovery",
+    version: 1,
+    at: "2026-01-01T00:00:01Z",
+    kind: "stop_requested",
+  });
+  await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+  const verify = vi.fn(async () => {
+    throw new Error("Stop must not load");
+  });
+  registered.verifyRecovery = verify;
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  await server.app.request("/api/health");
+  const ended = await waitForEnding(root);
+  expect(ended).toMatchObject({ status: "stopped", checkpointCommit: expect.any(String) });
+  expect(verify).not.toHaveBeenCalled();
+  expect(await calls()).toEqual([]);
+  await server.stop();
+  const before = await readFile(logged.path, "utf8");
+  const restarted = project({ agentRegistry: createAgentRegistry([registered]) });
+  await restarted.app.request("/api/health");
+  expect(await readFile(logged.path, "utf8")).toBe(before);
+});
+
+test("a concurrent server reserves recovery before async verification and cannot be stopped by its neighbour", async () => {
+  const { root, project, registered, selected, tracked, logged } = await savedRecovery("work");
+  const child = spawn(
+    process.execPath,
+    sourceNodeArgs(
+      "--input-type=module",
+      "--eval",
+      `
+    import {createProjectServer} from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
+    import {createAgentRegistry,createCodexAgent} from ${JSON.stringify(new URL("../../agents/src/index.ts", import.meta.url).href)};
+    const agent = createCodexAgent({env:{}});
+    agent.verifyRecovery = async () => {process.send('reserved'); return new Promise(()=>{});};
+    const server = createProjectServer(${JSON.stringify(root)},${JSON.stringify(join(root, "web"))},{agentRegistry:createAgentRegistry([agent])});
+    await server.app.request('/api/health');
+  `,
+    ),
+    { stdio: ["ignore", "ignore", "pipe", "ipc"] },
+  );
+  tracked.children.push(child);
+  const [message] = await once(child, "message");
+  expect(message).toBe("reserved");
+  const before = await readFile(logged.path, "utf8");
+  const verify = vi.fn(async () => selected);
+  registered.verifyRecovery = verify;
+  const second = project({ agentRegistry: createAgentRegistry([registered]) });
+  const snapshot: ProjectSnapshot = await (await second.app.request("/api/project")).json();
+  expect(snapshot.warnings.some((warning) => warning.message.includes("another server"))).toBe(
+    true,
+  );
+  expect(
+    (await second.app.request("/api/stints/saved-phase/stop", { method: "POST" })).status,
+  ).toBe(409);
+  await second.stop();
+  expect(verify).not.toHaveBeenCalled();
+  expect(await readFile(logged.path, "utf8")).toBe(before);
+  expect(child.exitCode).toBeNull();
+});
+
+test("unverifiable replacement cleanup blocks checkpoint and further Stop without releasing the work item", async () => {
+  const { root, project, registered, selected, logged } = await savedRecovery("work");
+  registered.verifyRecovery = async () => selected;
+  const { ProcessOwnershipError } = await import("@stintwork/agents");
+  let failed!: (error: Error) => void;
+  const failure = new Promise<never>((_, reject) => {
+    failed = reject;
+  });
+  let ready!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  registered.launch = () => {
+    ready();
+    return { ready: Promise.resolve(), done: failure, cancel: async () => {} };
+  };
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  await server.app.request("/api/health");
+  await entered;
+  const before = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: logged.worktree.path,
+    encoding: "utf8",
+  });
+  failed(
+    new ProcessOwnershipError(
+      "Unsafe adapter/tool ownership. Stop the old processes and restart Stintwork.",
+    ),
+  );
+  await expect
+    .poll(async () => {
+      const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+      return snapshot.warnings.some((warning) =>
+        warning.message.includes("Unsafe adapter/tool ownership"),
+      );
+    })
+    .toBe(true);
+  expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+    status: "running",
+    checkpointCommit: null,
+  });
+  expect(
+    execFileSync("git", ["rev-parse", "HEAD"], { cwd: logged.worktree.path, encoding: "utf8" }),
+  ).toBe(before);
+  expect(
+    (await server.app.request("/api/stints/saved-phase/stop", { method: "POST" })).status,
+  ).toBe(409);
+});
+
+test("shutdown detaches a live permission without a developer rejection, handoff or checkpoint", async () => {
+  const { root, project, registered, selected } = await warmRecovery("codex", "installed");
+  let raised!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    raised = resolve;
+  });
+  let requestId = "";
+  const fake = createFakeAgentLauncher([
+    {
+      type: "permission",
+      toolCall: { toolCallId: "work" },
+      options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+    },
+  ]);
+  const server = project({
+    agentRegistry: createAgentRegistry([registered]),
+    prepareAgent: async () => selected,
+    launchAgent: ({ preparedAgent: _, ...options }) =>
+      fake({
+        ...options,
+        onEvent(event) {
+          options.onEvent(event);
+          if (event.type === "permission_request") {
+            requestId = event.requestId;
+            raised();
+          }
+        },
+      }),
+  });
+  const response = await server.app.request("/api/stints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+  });
+  expect(response.status).toBe(201);
+  await waiting;
+  const original = indexStints(createNodeRepoFiles(root)).stints[0];
+  await server.stop();
+  const suspended = indexStints(createNodeRepoFiles(root)).stints[0];
+  expect(suspended).toMatchObject({
+    id: original.id,
+    status: "running",
+    endedAt: null,
+    checkpointCommit: null,
+    recovery: { state: "suspended", progress: { phase: "work" } },
+  });
+  expect(suspended.events.filter((event) => event.type === "permission")).toEqual([]);
+  expect(
+    (
+      await server.app.request(`/api/stints/${original.id}/permissions/${requestId}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optionId: "allow" }),
+      })
+    ).status,
+  ).toBe(409);
+});
+
+test("shutdown after a genuine completed turn finishes saved finalization instead of suspending work", async () => {
+  const { root, project, registered, selected, logged, started } = await savedRecovery("work");
+  registered.verifyRecovery = async () => selected;
+  let complete!: () => void;
+  let finish!: (value: { stopReason: string }) => void;
+  const completed = new Promise<void>((resolve) => {
+    complete = resolve;
+  });
+  registered.launch = (options) => {
+    if (!options.onPhase) throw new Error("Expected phase persistence");
+    options.onPhase("finalization", {
+      stopReason: "end_turn",
+      handoff: { stoppedAt: "Saved final turn", unresolved: "None", nextStep: "Review" },
+      findings: [],
+    });
+    complete();
+    return {
+      ready: new Promise<void>(() => {}),
+      done: new Promise((resolve) => {
+        finish = resolve;
+      }),
+      cancel: async () => {
+        finish({ stopReason: "end_turn" });
+      },
+      suspend: async () => {
+        throw new Error("Completed work must finalize");
+      },
+    };
+  };
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  await server.app.request("/api/health");
+  await completed;
+  await server.stop();
+  const ended = await waitForEnding(root);
+  expect(ended).toMatchObject({
+    status: "finished",
+    handoff: { stoppedAt: "Saved final turn" },
+    findings: { commit: started.stint.baseCommit, findings: [] },
+  });
+  expect(await readFile(logged.path, "utf8")).not.toContain('"state":"suspended"');
+});
+
+test("shutdown cancels a fresh launcher still opening its first session before awaiting preparation", async () => {
+  const { root, project, registered, selected } = await warmRecovery("codex", "installed");
+  let entered!: () => void;
+  let finish!: (value: { stopReason: string }) => void;
+  const starting = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const cancel = vi.fn(async () => {
+    finish({ stopReason: "cancelled" });
+  });
+  registered.prepare = async () => selected;
+  registered.launch = () => {
+    entered();
+    return {
+      ready: new Promise<void>(() => {}),
+      done: new Promise((resolve) => {
+        finish = resolve;
+      }),
+      cancel,
+    };
+  };
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  const request = server.app.request("/api/stints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+  });
+  await starting;
+  const stopping = server.stop();
+  try {
+    await Promise.resolve();
+    expect(cancel).toHaveBeenCalledOnce();
+  } finally {
+    finish({ stopReason: "cancelled" });
+    await stopping;
+    await request;
+  }
+  expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+    status: "interrupted",
+    checkpointCommit: expect.any(String),
+  });
+});
+
+test("malformed ownership metadata cannot reclaim a live server's reservation", async () => {
+  const { root, project, registered, logged } = await savedRecovery("work");
+  const directory = join(root, ".stintwork/local/stint-owners");
+  await mkdir(directory, { recursive: true });
+  const owner = join(directory, "first.owner");
+  const text = JSON.stringify({ pid: process.pid, identity: 123, token: "live-owner" });
+  await writeFile(owner, text);
+  const read = vi
+    .spyOn(systemProcesses, "read")
+    .mockReturnValue([
+      { pid: process.pid, group: process.pid, identity: "real-server-start", command: "server" },
+    ]);
+  registered.verifyRecovery = vi.fn(async () => new Promise<never>(() => {}));
+  const server = project({ agentRegistry: createAgentRegistry([registered]) });
+  try {
+    const before = await readFile(logged.path, "utf8");
+    const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+    expect(
+      snapshot.warnings.some((warning) => warning.message.includes("ownership is unverifiable")),
+    ).toBe(true);
+    expect(await readFile(owner, "utf8")).toBe(text);
+    expect(await readFile(logged.path, "utf8")).toBe(before);
+    expect(registered.verifyRecovery).not.toHaveBeenCalled();
+  } finally {
+    read.mockRestore();
+    await server.stop();
+  }
 });

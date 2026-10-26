@@ -282,3 +282,47 @@ test("unsupported agents fail before launching a child", async () => {
     launcher({ agent: "other", cwd: await fixture(), prompt: "Work", onEvent: () => {} }).done,
   ).rejects.toThrow("This launcher supports Codex, not agent other.");
 });
+
+test.each([false, true])(
+  "suspending active work detaches permission without recording a rejection or requesting handoff (permission: %s)",
+  async (permission) => {
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const events: StintLogEvent[] = [];
+    const phases: string[] = [];
+    const stint = createFakeAgentLauncher(
+      permission
+        ? [
+            {
+              type: "permission",
+              toolCall: { toolCallId: "pending" },
+              options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }],
+            },
+          ]
+        : [{ type: "message", text: "Working" }, { type: "hang" }],
+      [{ type: "message", text: "Handoff must not run" }],
+    )({
+      agent: "codex",
+      cwd: await fixture(),
+      prompt: "Work",
+      afterTurnTimeoutMs: 1000,
+      onEvent(event) {
+        events.push(event);
+        if (event.type === (permission ? "permission_request" : "message_delta")) entered();
+      },
+      onPhase(phase) {
+        phases.push(phase);
+      },
+      onPermission: async () => new Promise(() => {}),
+    });
+    await waiting;
+    if (!stint.suspend) throw new Error("Expected suspension support");
+    await stint.suspend();
+    expect(await stint.done).toEqual({ stopReason: "cancelled" });
+    expect(phases).toEqual(["work"]);
+    expect(events.filter((event) => event.type === "permission")).toEqual([]);
+    expect(events.some((event) => "text" in event && event.text.includes("Handoff"))).toBe(false);
+  },
+);

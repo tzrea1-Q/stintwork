@@ -12,7 +12,7 @@ afterEach(() => vi.useRealTimers());
 
 function waitingAgent(
   agent: keyof typeof fakeAgentProfiles,
-  phase: "initialize" | "newSession" | "setSessionMode" = "initialize",
+  phase: "initialize" | "newSession" | "loadSession" | "setSessionMode" = "initialize",
 ) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const profile = fakeAgentProfiles[agent];
@@ -43,7 +43,7 @@ function waitingAgent(
     () => ({
       async initialize() {
         await wait("initialize");
-        return { protocolVersion: PROTOCOL_VERSION };
+        return { protocolVersion: PROTOCOL_VERSION, agentCapabilities: { loadSession: true } };
       },
       async newSession() {
         await wait("newSession");
@@ -52,6 +52,15 @@ function waitingAgent(
           modes: {
             currentModeId: profile.capabilities.defaultMode ?? "default",
             availableModes: profile.capabilities.modes.map((id) => ({ id, name: id })),
+          },
+        };
+      },
+      async loadSession() {
+        await wait("loadSession");
+        return {
+          modes: {
+            currentModeId: "agent",
+            availableModes: [{ id: "workspace-write", name: "Write" }],
           },
         };
       },
@@ -70,7 +79,15 @@ function waitingAgent(
   const stint = createAgentLauncher(
     () => child as unknown as ChildProcessWithoutNullStreams,
     profile,
-  )({ agent, cwd: process.cwd(), prompt: "Work", onEvent: () => {} });
+  )({
+    agent,
+    cwd: process.cwd(),
+    prompt: "Work",
+    onEvent: () => {},
+    ...(phase === "loadSession"
+      ? { resume: { sessionId: "saved", progress: { phase: "work" as const } } }
+      : {}),
+  });
   const outcome = stint.done.then(
     (result) => result,
     (error: Error) => error,
@@ -114,7 +131,7 @@ test.each(["codex", "claude", "grok"] as const)(
   },
 );
 
-test.each(["initialize", "newSession", "setSessionMode"] as const)(
+test.each(["initialize", "newSession", "loadSession", "setSessionMode"] as const)(
   "cancellation interrupts the readiness wait during %s",
   async (phase) => {
     const waiting = waitingAgent("codex", phase);
@@ -126,6 +143,21 @@ test.each(["initialize", "newSession", "setSessionMode"] as const)(
     expect(waiting.prompt).not.toHaveBeenCalled();
     expect(waiting.child.kill).toHaveBeenCalledWith("SIGTERM");
     await vi.advanceTimersByTimeAsync(100);
+    expect(vi.getTimerCount()).toBe(0);
+  },
+);
+
+test.each(["initialize", "loadSession", "setSessionMode"] as const)(
+  "suspension interrupts %s without a prompt and ignores late setup replies",
+  async (phase) => {
+    const waiting = waitingAgent("codex", phase);
+    await waiting.entered;
+    if (!waiting.stint.suspend) throw new Error("Expected suspension support");
+    await waiting.stint.suspend();
+    expect(await waiting.outcome).toEqual({ stopReason: "cancelled" });
+    waiting.release();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(waiting.prompt).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   },
 );
