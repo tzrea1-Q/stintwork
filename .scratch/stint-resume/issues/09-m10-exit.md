@@ -88,3 +88,5 @@ Pending Ask-level permission runs:
 **Proposed verdict:** pass. M10 stays `active` until the maintainer accepts.
 
 **Coordinator, 2026-10-26:** The maintainer accepted the exit verdict (pass) on 2026-10-26, with the limits above. M10 is set to shipped. The follow-ups (Start right after a fallback ending; history raw agent ID and timestamps) are recorded for later work.
+
+**Coordinator, 2026-10-27:** M10 reopened, at the maintainer's choice. Linux CI (`checks` on ubuntu-latest) has failed since the stint-resume 05 merge: 16 server-only SIGKILL cases. On Linux, `readlink /proc/<pid>/cwd` returns EACCES for non-dumpable or other-user processes, and that EACCES failed the whole writer scan. The result was that crash recovery was blocked on Linux. My verdict summary above wrongly said Linux had CI coverage. The fix is on `codex/m10-linux`. M10 returns to shipped once Linux CI is green.
