@@ -36,6 +36,10 @@ function isStintSummary(value: unknown) {
     (value.endedAt === null || typeof value.endedAt === "string") &&
     (value.error === undefined || typeof value.error === "string") &&
     (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&
+    (value.worktree === undefined ||
+      (isRecord(value.worktree) &&
+        typeof value.worktree.path === "string" &&
+        typeof value.worktree.branch === "string")) &&
     (value.checkpointWarnings === undefined || isCheckpointWarnings(value.checkpointWarnings)) &&
     (value.handoff == null || isBriefHandoff(value.handoff)) &&
     (value.findings === undefined || isReviewFindings(value.findings)) &&

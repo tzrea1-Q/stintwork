@@ -14,13 +14,7 @@ import { useEffect, useId, useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import { StintStream } from "./StintStream";
 
-function StintHistoryEntry({
-  stint,
-  worktreePath,
-}: {
-  stint: StintSummary;
-  worktreePath?: string;
-}) {
+function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   const { t, language } = useLanguage();
   const date = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" });
   const replayId = useId();
@@ -97,7 +91,7 @@ function StintHistoryEntry({
           </>
         )}
       </p>
-      {!(open && replay) && <StintRecovery stint={stint} worktreePath={worktreePath} />}
+      {!(open && replay) && <StintRecovery stint={stint} />}
       {recorded.error && recorded.recovery?.state !== "fallback" && (
         <p className="warning text-warning" role="alert">
           {renderCoreText(recorded.errorMessage, recorded.error, t)}
@@ -133,18 +127,12 @@ function StintHistoryEntry({
   );
 }
 
-export function StintHistory({
-  stints,
-  worktreePath,
-}: {
-  stints: StintSummary[];
-  worktreePath?: string;
-}) {
+export function StintHistory({ stints }: { stints: StintSummary[] }) {
   const { t } = useLanguage();
   return stints.length ? (
     <ol aria-label={t.stints.history}>
       {stints.map((stint) => (
-        <StintHistoryEntry key={stint.id} stint={stint} worktreePath={worktreePath} />
+        <StintHistoryEntry key={stint.id} stint={stint} />
       ))}
     </ol>
   ) : (

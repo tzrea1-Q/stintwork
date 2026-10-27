@@ -350,7 +350,7 @@ test.each(["en", "zh-CN"] as const)(
     );
     const view = render(
       <LanguageProvider>
-        <StintHistory stints={[summarizeStint(stint)]} worktreePath={recoveryPath} />
+        <StintHistory stints={[summarizeStint(stint)]} />
       </LanguageProvider>,
     );
     await user.click(screen.getByRole("button", { name: t.stints.openStint(stint.id) }));
@@ -359,7 +359,7 @@ test.each(["en", "zh-CN"] as const)(
     stint = { ...stint, recovery: { ...stint.recovery, state: "resumed" } };
     view.rerender(
       <LanguageProvider>
-        <StintHistory stints={[summarizeStint(stint)]} worktreePath={recoveryPath} />
+        <StintHistory stints={[summarizeStint(stint)]} />
       </LanguageProvider>,
     );
     await waitFor(() =>
@@ -392,5 +392,116 @@ test.each(["en", "zh-CN"] as const)(
     expect(screen.getByRole("button", { name: t.stints.startNewStint })).toBeEnabled();
     expect(screen.queryByRole("button", { name: t.stints.stopStint })).not.toBeInTheDocument();
     expect(screen.getByText(t.stints.recovery.saved("abc123"))).toBeVisible();
+  },
+);
+
+test.each(["en", "zh-CN"] as const)(
+  "%s hides unfinished recovery phases after Stop but retains genuine resume success",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const { en } = await import("./i18n/en");
+    const { zhCN } = await import("./i18n/zh-CN");
+    const t = language === "en" ? en : zhCN;
+    const stint = recoveryStint();
+    stint.status = "stopped";
+    stint.endedAt = "2026-10-26T10:05:00Z";
+    const view = render(
+      <LanguageProvider>
+        <StintStream stint={stint} replay />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.queryByText(t.stints.recovery.states.resuming, { exact: true }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(t.stints.statuses.stopped, { exact: true })).toBeVisible();
+    view.rerender(
+      <LanguageProvider>
+        <StintStream
+          stint={{ ...stint, recovery: { ...stint.recovery, state: "resumed" } }}
+          replay
+        />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(t.stints.recovery.states.resumed, { exact: true })).toBeVisible();
+  },
+);
+
+test.each(["en", "zh-CN"] as const)(
+  "%s keeps recovery with the active stint before planning files",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    render(
+      <LanguageProvider>
+        <WorkItemDrawer item={recoverySnapshot().workItems[0]} onClose={() => {}} />
+      </LanguageProvider>,
+    );
+    const live = document.querySelector('section[aria-labelledby="drawer-live-stint-title"]');
+    const spec = document.querySelector("#drawer-spec");
+    if (!live || !spec) throw new Error("Expected active stint and planning sections");
+    expect(live.compareDocumentPosition(spec) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(live.querySelectorAll(".stint-stream > .stint-recovery")).toHaveLength(1);
+  },
+);
+
+test.each(["en", "zh-CN"] as const)(
+  "%s collapsed history names the recorded worktree after replacement",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const { en } = await import("./i18n/en");
+    const { zhCN } = await import("./i18n/zh-CN");
+    const t = language === "en" ? en : zhCN;
+    const stint = recoveryStint("fallback");
+    stint.status = "interrupted";
+    stint.error = "Checkpoint failed: disk full";
+    const item = recoverySnapshot(stint).workItems[0];
+    item.worktreePath = "/replacement/worktree";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    render(
+      <LanguageProvider>
+        <WorkItemDrawer item={item} onClose={() => {}} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByText(t.stints.recovery.checkpointFailed(recoveryPath, stint.error), {
+        exact: true,
+      }),
+    ).toBeVisible();
+    expect(
+      screen.queryByText(t.stints.recovery.checkpointFailed("/replacement/worktree", stint.error), {
+        exact: true,
+      }),
+    ).not.toBeInTheDocument();
+  },
+);
+
+test.each(["en", "zh-CN"] as const)(
+  "%s localizes a checkpoint failure even when an older summary lacks its worktree",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const { en } = await import("./i18n/en");
+    const { zhCN } = await import("./i18n/zh-CN");
+    const t = language === "en" ? en : zhCN;
+    const { summarizeStint } = await import("@stintwork/core");
+    const { StintHistory } = await import("./StintHistory");
+    const stint = recoveryStint("fallback");
+    stint.status = "interrupted";
+    stint.error = "Checkpoint failed: disk full";
+    const summary = summarizeStint(stint);
+    delete summary.worktree;
+    render(
+      <LanguageProvider>
+        <StintHistory stints={[summary]} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByText(t.stints.recovery.checkpointFailedUnknown(stint.error), { exact: true }),
+    ).toBeVisible();
   },
 );

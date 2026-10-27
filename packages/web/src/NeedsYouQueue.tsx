@@ -198,9 +198,7 @@ export function NeedsYouQueue({
                     {item.agent && ` · ${profile?.displayName ?? item.agent}`}
                   </p>
                   <h3>{title}</h3>
-                  {item.kind === "permission" && stint && (
-                    <StintRecovery stint={stint} worktreePath={workItem?.worktreePath} />
-                  )}
+                  {item.kind === "permission" && stint && <StintRecovery stint={stint} />}
                   {item.kind === "checkpoint-warning" && (
                     <>
                       <p>

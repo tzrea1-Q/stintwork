@@ -4,6 +4,8 @@ import {
   coreText,
   coreTextFields,
   deriveAttentionItems,
+  isRiskyPaths,
+  type ProjectSnapshot,
   summarizeStint,
   type Stint,
   type StintRecovery,
@@ -19,11 +21,33 @@ import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
 
-async function fixture(page: Page, language: "en" | "zh-CN") {
+const fixtureSnapshots = new WeakMap<Page, ProjectSnapshot>();
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return;
+  const snapshot = fixtureSnapshots.get(page);
+  if (snapshot)
+    await info.attach("recovery-fixture.json", {
+      body: JSON.stringify(snapshot, null, 2),
+      contentType: "application/json",
+    });
+  if (!page.isClosed())
+    await info.attach("recovery-dom.html", {
+      body: await page.content(),
+      contentType: "text/html",
+    });
+});
+
+async function fixture(page: Page, language: "en" | "zh-CN", risky = false) {
   const stint = recoveryStint();
   stint.events.push(recoveryPermission());
   const snapshot = recoverySnapshot(stint);
   snapshot.agents = [codexProfile];
+  if (risky)
+    snapshot.workItems[0].riskyPaths = [
+      { path: "secret.env", blob: "a".repeat(40), reasons: ["likely-secret"] },
+    ];
+  fixtureSnapshots.set(page, snapshot);
   let send = () => {};
   let disconnect = () => {};
   let connections = 0;
@@ -40,6 +64,11 @@ async function fixture(page: Page, language: "en" | "zh-CN") {
     send();
   });
   function publish(next: Stint = stint) {
+    const risks = snapshot.workItems[0].riskyPaths;
+    expect(
+      risks === undefined || isRiskyPaths(risks),
+      "Recovery fixture risky paths must pass the real snapshot validator",
+    ).toBe(true);
     snapshot.workItems[0].activeStint = next.status === "running" ? next : null;
     snapshot.workItems[0].stints = [summarizeStint(next)];
     snapshot.attentionItems = deriveAttentionItems(snapshot);
@@ -94,14 +123,51 @@ for (const language of ["en", "zh-CN"] as const) {
         ).toBeEnabled();
         for (const picker of await drawer.locator(".stage-rail").getByRole("combobox").all())
           await expect(picker).toBeDisabled();
-        await live.scrollIntoViewIfNeeded();
+        await live
+          .getByRole("heading", { name: t.stints.liveStint, exact: true })
+          .scrollIntoViewIfNeeded();
+        await expect(
+          live.getByRole("heading", { name: t.stints.liveStint, exact: true }),
+        ).toBeInViewport({ ratio: 1 });
+        await expect(
+          live
+            .locator(".stint-recovery")
+            .getByText(t.stints.recovery.states.resuming, { exact: true }),
+          "The full recovery badge must remain visible with its active stint heading",
+        ).toBeInViewport({ ratio: 1 });
         await expect(live.getByRole("button", { name: /Proceed 原文/ })).toBeDisabled();
         await expect(live.getByRole("button", { name: /Reject 原文/ })).toBeDisabled();
         await capture(page, info, "slow-load-reconnecting", ".work-item-drawer");
         const details = live.getByText(t.stints.recovery.details, { exact: true });
         await details.focus();
         await page.keyboard.press("Enter");
-        await expect(live.locator("details").filter({ has: details })).toHaveAttribute("open", "");
+        const disclosure = live.locator(".stint-stream > .stint-recovery > details");
+        await expect(
+          disclosure,
+          "Recovery details must be an open disclosure inside the active stint stream",
+        ).toHaveAttribute("open", "");
+        const insets = await disclosure.evaluate((element) => {
+          const summary = element.querySelector("summary");
+          const label = element.querySelector("dt");
+          if (!summary || !label) throw new Error("Missing recovery summary or first detail label");
+          const a = summary.getBoundingClientRect(),
+            b = label.getBoundingClientRect();
+          return { gap: b.top - a.bottom, inset: b.left - a.left };
+        });
+        expect(
+          insets.gap,
+          "Detail labels must clear the summary focus ring",
+        ).toBeGreaterThanOrEqual(8);
+        expect(
+          insets.inset,
+          "Disclosure details must use a token-sized inset",
+        ).toBeGreaterThanOrEqual(8);
+        await expect(
+          live
+            .locator(".stint-recovery")
+            .getByText(t.stints.recovery.states.resuming, { exact: true }),
+          "Expanding details must not clip the recovery badge",
+        ).toBeInViewport({ ratio: 1 });
         await expect(live.getByText(recoveryPath, { exact: true })).toHaveCount(2);
         await expect(live.getByText("0.163.0", { exact: true })).toBeAttached();
         await expect(live.getByText("2.1.1", { exact: true })).toBeAttached();
@@ -244,11 +310,7 @@ for (const language of ["en", "zh-CN"] as const) {
 
   test(`recovery conflicting Review actions ${language}`, async ({ page }, info) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    const f = await fixture(page, language);
-    f.snapshot.workItems[0].riskyPaths = [
-      { path: "secret.env", blob: "blob", reasons: ["likely-secret"] },
-    ];
-    f.publish();
+    await fixture(page, language, true);
     await page.route("**/api/work-items/recovery/checks", (route) =>
       route.fulfill({ json: { commands: [{ name: "test", command: "pnpm test" }], checks: [] } }),
     );
@@ -260,7 +322,25 @@ for (const language of ["en", "zh-CN"] as const) {
           mainCommit: "base",
           mergeBase: "base",
           headCommit: "base",
-          files: [],
+          files: [
+            {
+              path: "secret.env",
+              status: "added",
+              binary: false,
+              additions: 1,
+              deletions: 0,
+              hunks: [
+                {
+                  header: "@@ -0,0 +1 @@",
+                  oldStart: 0,
+                  oldCount: 0,
+                  newStart: 1,
+                  newCount: 1,
+                  lines: [{ kind: "added", oldLine: null, newLine: 1, text: "SYNTHETIC=fixture" }],
+                },
+              ],
+            },
+          ],
         },
       }),
     );
@@ -272,6 +352,15 @@ for (const language of ["en", "zh-CN"] as const) {
     await expect(
       review.getByRole("button", { name: t.review.checks.run, exact: true }),
     ).toBeDisabled();
+    await expect(
+      review.getByRole("region", { name: t.review.risks.label }),
+      "The valid fixture must render a real risky path section",
+    ).toBeVisible();
+    await expect(
+      review
+        .getByRole("region", { name: t.review.risks.label })
+        .getByText("secret.env", { exact: true }),
+    ).toBeVisible();
     await expect(
       review.getByRole("button", { name: t.review.risks.accept, exact: true }),
     ).toBeDisabled();

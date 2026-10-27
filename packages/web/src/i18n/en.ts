@@ -757,6 +757,8 @@ export const en = {
         `Could not resume stint. Changes saved at checkpoint ${commit}. Start a new stint from the recorded state.`,
       unchanged:
         "Could not resume stint. No new checkpoint was needed. Start a new stint from the recorded state.",
+      checkpointFailedUnknown: (reason: string) =>
+        `Could not resume stint or create a checkpoint. ${reason}`,
       checkpointFailed: (path: string, reason: string) =>
         `Could not resume stint or create a checkpoint. Your files remain in ${path}. ${reason}`,
     },

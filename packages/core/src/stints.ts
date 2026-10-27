@@ -208,7 +208,7 @@ export type StintSummary = Pick<
   | "handoffAnswer"
   | "findings"
   | "recovery"
-> & { lastHandoffStintId?: string };
+> & { lastHandoffStintId?: string; worktree?: Stint["worktree"] };
 export type StintLogEntry =
   | StintRecoveryEntry
   | {
@@ -402,7 +402,7 @@ export function summarizeStint(stint: Stint): StintSummary {
     ...(stint.checkpointWarnings ? { checkpointWarnings: stint.checkpointWarnings } : {}),
     handoff: stint.handoff,
     ...(stint.findings ? { findings: stint.findings } : {}),
-    ...(stint.recovery ? { recovery: stint.recovery } : {}),
+    ...(stint.recovery ? { recovery: stint.recovery, worktree: stint.worktree } : {}),
     ...(stint.brief.lastHandoff ? { lastHandoffStintId: stint.brief.lastHandoff.stint } : {}),
     ...(stint.handoffAnswer ? { handoffAnswer: stint.handoffAnswer } : {}),
     ...(stint.handoffError ? { handoffError: stint.handoffError } : {}),

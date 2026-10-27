@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { coreText, type Stint, type StintSummary } from "@stintwork/core";
+import { coreText, type StintSummary } from "@stintwork/core";
 import { renderCoreText, translateCoreText, useLanguage } from "./i18n/language";
 import type { Catalog } from "./i18n/en";
 import { Badge } from "./ui/Badge";
@@ -15,25 +15,22 @@ function recoveryReason(reason: string, t: Catalog) {
 }
 
 export function recoveryStatus(stint: StintSummary, t: Catalog) {
-  return stint.recovery?.state ? t.stints.recovery.states[stint.recovery.state] : null;
+  const state = stint.recovery?.state;
+  return state && (stint.status === "running" || state === "resumed")
+    ? t.stints.recovery.states[state]
+    : null;
 }
 
-export function StintRecovery({
-  stint,
-  worktreePath,
-}: {
-  stint: StintSummary & Partial<Pick<Stint, "worktree">>;
-  worktreePath?: string;
-}) {
+export function StintRecovery({ stint }: { stint: StintSummary }) {
   const { t } = useLanguage();
   const recovery = stint.recovery;
   if (!recovery?.state) return null;
   const launch = recovery.launch;
-  const path = stint.worktree?.path ?? worktreePath;
+  const path = stint.worktree?.path;
   const fallback = recovery.state === "fallback" && stint.status !== "running";
   const reason = recovery.reason ? recoveryReason(recovery.reason, t) : "";
   return (
-    <div className="stint-recovery my-3 min-w-0 space-y-2 text-sm [overflow-wrap:anywhere]">
+    <div className="stint-recovery my-3 grid min-w-0 gap-3 rounded-md border border-border bg-surface-raised p-3 text-sm [overflow-wrap:anywhere]">
       {fallback ? (
         <p role="status" className="text-warning">
           {stint.checkpointCommit
@@ -45,15 +42,19 @@ export function StintRecovery({
                     path,
                     renderCoreText(stint.errorMessage, stint.error ?? reason, t),
                   )
-                : renderCoreText(stint.errorMessage, stint.error ?? reason, t)}
+                : t.stints.recovery.checkpointFailedUnknown(
+                    renderCoreText(stint.errorMessage, stint.error ?? reason, t),
+                  )}
         </p>
-      ) : (
-        <Badge variant={recovery.state === "resumed" ? "success" : "accent"}>
-          {recoveryStatus(stint, t)}
-        </Badge>
-      )}
+      ) : recoveryStatus(stint, t) ? (
+        <div>
+          <Badge variant={recovery.state === "resumed" ? "success" : "accent"}>
+            {recoveryStatus(stint, t)}
+          </Badge>
+        </div>
+      ) : null}
       <Disclosure label={t.stints.recovery.details}>
-        <dl className="space-y-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap">
+        <dl className="mt-2 space-y-3 px-2 pb-2 [&_dt]:font-medium [&_dd]:mt-1 [&_dd]:whitespace-pre-wrap">
           {reason && (
             <div>
               <dt>{t.stints.recovery.reason}</dt>

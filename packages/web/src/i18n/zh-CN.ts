@@ -772,6 +772,7 @@ export const zhCN: Catalog = {
       saved: (commit: string) =>
         `无法恢复 Stint。更改已保存到检查点 ${commit}。请从已记录的状态开始新的 Stint。`,
       unchanged: "无法恢复 Stint。无需创建新的检查点。请从已记录的状态开始新的 Stint。",
+      checkpointFailedUnknown: (reason: string) => `无法恢复 Stint，也无法创建检查点。${reason}`,
       checkpointFailed: (path: string, reason: string) =>
         `无法恢复 Stint，也无法创建检查点。文件仍保留在 ${path}。${reason}`,
     },
