@@ -1,6 +1,6 @@
 # 08 — Verify crash boundaries and prepare real-agent checks
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 07
 
 ## What to build
@@ -206,3 +206,10 @@ pnpm --config.verify-deps-before-run=false vitest run packages/server/src/index.
 ```
 
 Together the disjoint broad groups cover **158 files / 2,652 passed / 88 deferred**, without counting overlapping focused reruns again. Both socketless superseded-handoff cases ran, rather than being accidentally filtered by the word WebSocket. The changed native matrix child's generated module syntax was checked without executing it; its real native/two-restart behavior remains coordinator-run. `git diff --check`, append-only ticket/unchanged pre-Comments and acceptance content, all changed-file `Status:` lines, exact two-file scope and branch guards passed. No commit.
+
+**Coordinator, 2026-10-26:** Verified on the native socket host (darwin-arm64, Node 22).
+
+- **Checks:** format:check, lint, typecheck, build, 2740 unit tests (all native/socket cases included), smoke:package and 334 e2e tests pass.
+- **Crash matrix:** the 24-case server-only SIGKILL matrix passed 24/24 in six repeated runs, as the runbook requires. No stopped processes were left.
+- **Review:** clean.
+- **Status:** the runbook above is the procedure for ticket 09. Nothing in this ticket counts as the M10 real exit. Resolved.
