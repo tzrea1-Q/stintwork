@@ -2,7 +2,7 @@
 import * as childProcess from "node:child_process";
 import * as fs from "node:fs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { systemProcesses } from "./process-ownership.js";
+import { stopStintProcesses, systemProcesses } from "./process-ownership.js";
 
 vi.mock("node:child_process", async (original) => ({
   ...(await original<typeof import("node:child_process")>()),
@@ -17,18 +17,106 @@ vi.mock("node:fs", async (original) => ({
 beforeEach(() => vi.mocked(fs.realpathSync).mockImplementation((path) => String(path)));
 afterEach(() => vi.resetAllMocks());
 
-test("Linux inspects each requested proc cwd and distinguishes disappeared processes from permission errors", () => {
-  vi.mocked(fs.readlinkSync).mockImplementation((path) => {
-    if (path === "/proc/20/cwd") return "/work tree/中文";
-    throw Object.assign(new Error("gone"), { code: "ENOENT" });
-  });
-  expect(systemProcesses.workingDirectories([20, 21], "linux")).toEqual(
-    new Map([[20, "/work tree/中文"]]),
-  );
+test.each(["ENOENT", "ESRCH", "EACCES", "EPERM"])(
+  "Linux keeps inspecting other cwds after one PID returns %s",
+  (code) => {
+    vi.mocked(fs.readlinkSync).mockImplementation((path) => {
+      if (path === "/proc/20/cwd") return "/work tree/中文";
+      if (path === "/proc/22/cwd") return "/work tree/deleted (deleted)";
+      throw Object.assign(new Error("unreadable"), { code });
+    });
+    expect(systemProcesses.workingDirectories([20, 21, 22], "linux")).toEqual(
+      new Map([
+        [20, "/work tree/中文"],
+        [22, "/work tree/deleted (deleted)"],
+      ]),
+    );
+  },
+);
+
+test("Linux still fails closed on unexpected cwd inspection errors", () => {
   vi.mocked(fs.readlinkSync).mockImplementation(() => {
-    throw Object.assign(new Error("denied"), { code: "EACCES" });
+    throw Object.assign(new Error("I/O failure"), { code: "EIO" });
   });
-  expect(() => systemProcesses.workingDirectories([20], "linux")).toThrow("denied");
+  expect(() => systemProcesses.workingDirectories([20], "linux")).toThrow("I/O failure");
+});
+
+test.each([
+  "old",
+  "zombie",
+  "own-child",
+  "same-second",
+  "later",
+  "unknown",
+  "gone",
+  "reused",
+  "readable",
+  "marker",
+  "group",
+])("Linux recovery rechecks a denied cwd without losing writer evidence: %s", async (scenario) => {
+  const uid = process.getuid?.() as number;
+  const row = {
+    pid: 21,
+    parent: 1,
+    group: scenario === "group" ? 20 : 21,
+    uid,
+    identity: `${uid}:Mon Oct 26 11:08:${["old", "marker", "group"].includes(scenario) ? "54" : scenario === "same-second" ? "55" : "56"} 2026`,
+    command: scenario === "marker" ? "stintwork-attempt" : "non-dumpable helper",
+    state: scenario === "zombie" ? "Z" : "S",
+  };
+  if (scenario === "unknown") row.identity = `${uid}:unparseable`;
+  const server = {
+    ...row,
+    pid: process.pid,
+    group: process.pid,
+    identity: `${uid}:server`,
+    command: "server",
+  };
+  if (scenario === "own-child") row.parent = server.pid;
+  let rows = [server, row];
+  let now = 0;
+  let scans = 0;
+  const cwd = vi.fn((pids: readonly number[]) => systemProcesses.workingDirectories(pids, "linux"));
+  const signal = vi.fn();
+  vi.mocked(fs.readlinkSync).mockImplementation(() => {
+    if (scenario === "readable" && scans) return "/outside";
+    throw Object.assign(new Error("denied"), { code: scans % 2 ? "EPERM" : "EACCES" });
+  });
+  const result = stopStintProcesses(
+    {
+      id: "attempt",
+      pid: 20,
+      marker: "stintwork-attempt",
+      processGroup: true,
+      identity: `${uid}:Mon Oct 26 11:08:55 2026`,
+      owner: { pid: 10, identity: `${uid}:owner`, startedAt: "2026-10-26T11:08:55Z" },
+    },
+    false,
+    { exists: () => false, read: () => rows, signal, workingDirectories: cwd },
+    undefined,
+    "/worktree",
+    {
+      now: () => now,
+      wait: async (milliseconds) => {
+        now += milliseconds;
+        scans++;
+        if (scenario === "gone") rows = [server];
+        if (scenario === "reused")
+          rows = [server, { ...row, identity: `${uid}:replacement-${scans}` }];
+      },
+    },
+  );
+  if (["same-second", "later", "unknown"].includes(scenario))
+    await expect(result).rejects.toThrow(
+      "Cannot inspect working directory for live PID 21 (non-dumpable helper)",
+    );
+  else if (["marker", "group"].includes(scenario))
+    await expect(result).rejects.toThrow("Live possible writers: 21");
+  else await expect(result).resolves.toBeUndefined();
+  if (["old", "zombie", "own-child", "marker", "group"].includes(scenario))
+    expect(fs.readlinkSync).not.toHaveBeenCalled();
+  else expect(cwd).toHaveBeenCalledTimes(["gone", "readable"].includes(scenario) ? 2 : 4);
+  expect(signal).not.toHaveBeenCalled();
 });
 
 test("macOS reads cwd records in one bounded lsof call without splitting spaces or NUL-delimited names", () => {
