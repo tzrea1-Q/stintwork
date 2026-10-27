@@ -26,6 +26,7 @@ export async function collectAfterTurnRequests(
     prompt: (text: string) => Promise<string>;
     failure: Promise<never>;
     signal?: AbortSignal;
+    onPermissionWait?: (listener: (waiting: boolean) => void) => () => void;
     retryAfterCancel: () => boolean;
     cancel: () => Promise<void>;
     onRequest?: (request: AfterTurnRequest, results: Readonly<Record<string, unknown>>) => void;
@@ -43,19 +44,42 @@ export async function collectAfterTurnRequests(
   options.signal?.addEventListener("abort", onAbort, { once: true });
   const failure = Promise.race([options.failure, aborted]);
   void failure.catch(() => {});
-  const deadline = performance.now() + options.timeoutMs;
+  let deadline = performance.now() + options.timeoutMs;
+  let pausedAt: number | undefined;
+  const now = () => pausedAt ?? performance.now();
   let current = requests[0];
   let expired = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectTimeout: (error: Error) => void = () => {};
   const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      expired = true;
-      reject(new Error(`${current.name} timed out.`));
-    }, options.timeoutMs);
+    rejectTimeout = reject;
   });
+  function armTimeout() {
+    timer = setTimeout(
+      () => {
+        expired = true;
+        rejectTimeout(new Error(`${current.name} timed out.`));
+      },
+      Math.max(0, deadline - performance.now()),
+    );
+  }
+  armTimeout();
   void timeout.catch(() => {});
   let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let stopWatchingPermissions: (() => void) | undefined;
   try {
+    stopWatchingPermissions = options.onPermissionWait?.((waiting) => {
+      if (expired || waiting === (pausedAt !== undefined)) return;
+      if (waiting) {
+        if (performance.now() >= deadline) return;
+        pausedAt = performance.now();
+        clearTimeout(timer);
+      } else if (pausedAt !== undefined) {
+        deadline += performance.now() - pausedAt;
+        pausedAt = undefined;
+        armTimeout();
+      }
+    });
     for (const request of requests) {
       options.signal?.throwIfAborted();
       current = request;
@@ -64,8 +88,7 @@ export async function collectAfterTurnRequests(
       try {
         for (let attempt = 0; attempt < 3; attempt++) {
           options.signal?.throwIfAborted();
-          if (expired || performance.now() >= deadline)
-            throw new Error(`${request.name} timed out.`);
+          if (expired || now() >= deadline) throw new Error(`${request.name} timed out.`);
           try {
             const text = await Promise.race([options.prompt(request.prompt), failure, timeout]);
             if (request.rawReplyField) results[request.rawReplyField] = text;
@@ -79,7 +102,7 @@ export async function collectAfterTurnRequests(
               !options.retryAfterCancel() ||
               expired ||
               attempt === 2 ||
-              performance.now() + backoffMs >= deadline
+              now() + backoffMs >= deadline
             )
               throw error;
             await Promise.race([
@@ -107,6 +130,7 @@ export async function collectAfterTurnRequests(
     }
     return results;
   } finally {
+    stopWatchingPermissions?.();
     clearTimeout(timer);
     options.signal?.removeEventListener("abort", onAbort);
   }

@@ -281,6 +281,7 @@ export const coreTextEnglish = {
   "ship.evidenceUnreadable": "Cannot read Ship evidence.",
   "permission.stintEnded": "This permission request's stint has ended.",
   "permission.notPending": "This permission request is no longer pending.",
+  "permission.attemptRequired": "Include the current attemptId to answer this permission request.",
   "permission.alreadyAnswered": "This permission request was already answered.",
   "agent.authenticationRequired": "Authentication required",
   "agent.codexTimeout": "Codex availability check timed out. Refresh agent availability.",

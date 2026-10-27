@@ -17,7 +17,11 @@ import { addProjectPermissionRoute } from "./project-permissions.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
 import { createProjectFiles } from "./work-item-files.js";
-import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.js";
+import {
+  addStintHistoryRoute,
+  recoverInterruptedStints,
+  projectStintPermissions,
+} from "./stint-history.js";
 import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availability.js";
 import { addHandoffAnswerRoute } from "./handoff-answers.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
@@ -59,6 +63,7 @@ export function createProjectServer(
     () => refresh(),
   );
   const readReviewEvidence = createReviewEvidenceReader(root, checks);
+  let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
@@ -81,6 +86,16 @@ export function createProjectServer(
       ...(branch ? { branch } : {}),
     });
     readReviewEvidence(project, snapshot);
+    for (const item of snapshot.workItems)
+      if (item.activeStint)
+        item.activeStint = projectStintPermissions(item.activeStint, hasPermissionBinding);
+    for (const item of snapshot.attentionItems)
+      if (
+        item.kind === "permission" &&
+        item.binding === "live" &&
+        !hasPermissionBinding(item.stintId, item.requestId, item.attemptId)
+      )
+        item.binding = "reconnecting";
     snapshot.warnings.push(...project.warnings);
     if (branchWarning) snapshot.warnings.push(branchWarning);
     snapshot.warnings.push(...recoveryWarnings);
@@ -173,7 +188,7 @@ export function createProjectServer(
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
-  addStintHistoryRoute(app, files);
+  addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles);
   addRoadmapRoute(app, root, readProjectFiles, refresh);
@@ -195,6 +210,7 @@ export function createProjectServer(
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
   );
+  hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {

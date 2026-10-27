@@ -2,7 +2,13 @@
 import { CodeBlock } from "./ui/CodeBlock";
 import { Markdown } from "./ui/Markdown";
 import { Badge } from "./ui/Badge";
-import type { AgentProfile, Stint, StintEvent, StintToolContent } from "@stintwork/core";
+import {
+  pendingStintPermissions,
+  type AgentProfile,
+  type Stint,
+  type StintEvent,
+  type StintToolContent,
+} from "@stintwork/core";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { PermissionDetails } from "./PermissionDetails";
@@ -33,7 +39,9 @@ function PermissionPrompt({
   const decision = stint.events.find(
     (entry) => entry.type === "permission" && entry.requestId === event.requestId,
   );
-  const pending = !event.automatic && !replay && !decision && stint.status === "running";
+  const pending =
+    !replay &&
+    pendingStintPermissions(stint).find((request) => request.requestId === event.requestId);
 
   let outcome = event.automatic
     ? !replay && stint.status === "running"
@@ -45,8 +53,17 @@ function PermissionPrompt({
   if (decision?.type === "permission") {
     if (decision.decision.outcome === "selected") {
       const optionId = decision.decision.optionId;
-      outcome = event.options.find((option) => option.optionId === optionId)?.name ?? optionId;
-      if (decision.automatic) outcome = t.stints.automaticOutcome(outcome);
+      const failed = stint.events.some(
+        (entry) =>
+          entry.type === "permission_delivery" &&
+          entry.requestId === event.requestId &&
+          entry.attemptId === event.attemptId &&
+          entry.outcome === "failed",
+      );
+      outcome = failed
+        ? t.needsYou.permissionFailed
+        : (event.options.find((option) => option.optionId === optionId)?.name ?? optionId);
+      if (decision.automatic && !failed) outcome = t.stints.automaticOutcome(outcome);
     } else
       outcome =
         decision.decision.outcome === "failed"
@@ -67,8 +84,8 @@ function PermissionPrompt({
       )}
       {pending ? (
         <>
-          <p>{t.stints.waitingForAnswer}</p>
-          <PermissionAnswer stintId={stint.id} request={event} profile={profile} />
+          {!pending.binding && <p>{t.stints.waitingForAnswer}</p>}
+          <PermissionAnswer stintId={stint.id} request={pending} profile={profile} />
         </>
       ) : (
         <>
@@ -90,14 +107,7 @@ export function StintStream({
   profile?: AgentProfile;
 }) {
   const { t } = useLanguage();
-  const waitingForPermission = stint.events.some(
-    (event) =>
-      event.type === "permission_request" &&
-      !event.automatic &&
-      !stint.events.some(
-        (decision) => decision.type === "permission" && decision.requestId === event.requestId,
-      ),
-  );
+  const waitingForPermission = pendingStintPermissions(stint).length > 0;
   return (
     <div className="stint-stream min-w-0 [overflow-wrap:anywhere]">
       {stint.events
@@ -171,6 +181,7 @@ export function StintStream({
             )
           )
             return null;
+          if (event.type === "permission_delivery") return null;
           const key =
             "requestId" in event
               ? event.requestId

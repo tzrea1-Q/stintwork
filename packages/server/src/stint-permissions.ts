@@ -28,7 +28,8 @@ export function addStintPermissionRoute(app: Hono) {
   const unavailable = new Map<string, CoreText>();
   const endedStints = new Set<string>();
   let closed = false;
-  const key = (stintId: string, requestId: string) => `${stintId}/${requestId}`;
+  const key = (stintId: string, requestId: string, attemptId?: string) =>
+    JSON.stringify([stintId, requestId, attemptId ?? null]);
   app.post("/api/stints/:stintId/permissions/:requestId", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
@@ -61,7 +62,24 @@ export function addStintPermissionRoute(app: Hono) {
       );
     const requestId = context.req.param("requestId");
     const stintId = context.req.param("stintId");
-    const requestKey = key(stintId, requestId);
+    const attemptId =
+      "attemptId" in body && typeof body.attemptId === "string" && body.attemptId.length
+        ? body.attemptId
+        : undefined;
+    if (
+      !attemptId &&
+      [...pending.values()].some(
+        (entry) =>
+          entry.stintId === stintId &&
+          entry.request.requestId === requestId &&
+          entry.request.attemptId,
+      )
+    )
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "permission.attemptRequired" }) }),
+        400,
+      );
+    const requestKey = key(stintId, requestId, attemptId);
     const permission = pending.get(requestKey);
     if (!permission)
       return context.json(
@@ -98,10 +116,13 @@ export function addStintPermissionRoute(app: Hono) {
     return context.json(coreTextWire({ requestId, optionId }));
   });
   return {
+    has(stintId: string, requestId: string, attemptId?: string) {
+      return pending.has(key(stintId, requestId, attemptId));
+    },
     wait(stintId: string, request: PermissionRequest): Promise<PermissionResponse> {
       if (closed || endedStints.has(stintId))
         return Promise.resolve({ outcome: { outcome: "cancelled" } });
-      const requestKey = key(stintId, request.requestId);
+      const requestKey = key(stintId, request.requestId, request.attemptId);
       if (pending.has(requestKey) || unavailable.has(requestKey))
         throw new Error("This permission request was already registered.");
       if (!request.forwarded)

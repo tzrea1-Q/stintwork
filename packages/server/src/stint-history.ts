@@ -117,14 +117,38 @@ export function recoverInterruptedStints(
   }
 }
 
-export function addStintHistoryRoute(app: Hono, files: RepoFiles) {
+export function projectStintPermissions(
+  stint: Stint,
+  hasPermissionBinding: (stintId: string, requestId: string, attemptId?: string) => boolean,
+): Stint {
+  return stint.status === "running"
+    ? {
+        ...stint,
+        events: stint.events.map((event) =>
+          event.type === "permission_request" &&
+          !event.automatic &&
+          event.binding === "live" &&
+          !hasPermissionBinding(stint.id, event.requestId, event.attemptId)
+            ? { ...event, binding: "reconnecting" as const }
+            : event,
+        ),
+      }
+    : stint;
+}
+
+export function addStintHistoryRoute(
+  app: Hono,
+  files: RepoFiles,
+  hasPermissionBinding: (stintId: string, requestId: string, attemptId?: string) => boolean = () =>
+    false,
+) {
   app.get("/api/stints/:stintId", (context) => {
     context.header("Cache-Control", "no-store");
     const stint = indexStints(files).stints.find(
       (candidate) => candidate.id === context.req.param("stintId"),
     );
     return stint
-      ? context.json(coreTextWire({ stint }))
+      ? context.json(coreTextWire({ stint: projectStintPermissions(stint, hasPermissionBinding) }))
       : context.json(coreTextWire({ reason: coreText({ code: "server.stintNotFound" }) }), 404);
   });
 }

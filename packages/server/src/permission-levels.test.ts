@@ -173,6 +173,7 @@ test.each(["edit-freely", "ask"] as const)(
           (
             await post(project, `/api/stints/${stint.id}/permissions/${requestId}`, {
               optionId: allow?.optionId,
+              attemptId: queued?.kind === "permission" ? queued.attemptId : undefined,
             })
           ).status,
         ).toBe(200);
@@ -361,6 +362,7 @@ test.each(Object.keys(fakeAgentProfiles) as (keyof typeof fakeAgentProfiles)[])(
             (
               await post(project, `/api/stints/${stint.id}/permissions/${requestId}`, {
                 optionId: allow?.optionId,
+                attemptId: item?.kind === "permission" ? item.attemptId : undefined,
               })
             ).status,
           ).toBe(200);

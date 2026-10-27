@@ -326,7 +326,12 @@ test("Codex's cancel decline ends its work turn but still receives a handoff and
   const answer = await project.app.request(`/api/stints/${started.id}/permissions/${requestId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ optionId: "cancel" }),
+    body: JSON.stringify({
+      optionId: "cancel",
+      attemptId: foldStintLog(await entries(root, started.id))
+        ?.events.filter((event) => event.type === "permission_request")
+        .find((event) => event.requestId === requestId)?.attemptId,
+    }),
   });
   expect(answer.status).toBe(200);
   const stint = await ended(project, started.id);
@@ -424,7 +429,12 @@ test("a handoff permission waits for the developer, then checkpoints rich events
   const answer = await project.app.request(`/api/stints/${started.id}/permissions/${requestId}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ optionId: "allow" }),
+    body: JSON.stringify({
+      optionId: "allow",
+      attemptId: foldStintLog(await entries(root, started.id))
+        ?.events.filter((event) => event.type === "permission_request")
+        .find((event) => event.requestId === requestId)?.attemptId,
+    }),
   });
   expect(answer.status).toBe(200);
   const stint = await ended(project, started.id);
@@ -443,6 +453,7 @@ test("a handoff permission waits for the developer, then checkpoints rich events
     { type: "file_edit", path: "/worktree/implementation.txt" },
     { type: "permission_request", requestId },
     { type: "permission", requestId, automatic: false, decision: { optionId: "allow" } },
+    { type: "permission_delivery", requestId, outcome: "written" },
     { type: "message", text: handoffText },
   ]);
 });
@@ -473,7 +484,9 @@ test("a timed-out handoff permission is no longer answerable and leaves no event
   );
   if (request?.type !== "event" || request.event.type !== "permission_request")
     throw new Error("Expected a permission request");
-  expect(log.filter((entry) => entry.type === "event").at(-1)).toMatchObject({
+  expect(
+    log.filter((entry) => entry.type === "event" && entry.event.type === "permission").at(-1),
+  ).toMatchObject({
     type: "event",
     event: { type: "permission", automatic: false, decision: { outcome: "cancelled" } },
   });
@@ -485,7 +498,7 @@ test("a timed-out handoff permission is no longer answerable and leaves no event
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ optionId: "allow" }),
+          body: JSON.stringify({ optionId: "allow", attemptId: request.event.attemptId }),
         },
       )
     ).status,

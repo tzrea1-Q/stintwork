@@ -109,6 +109,7 @@ test("handler decisions are recorded, including explicit cancellation", async ()
       automatic: false,
       decision: { outcome: "cancelled" },
     },
+    { type: "permission_delivery", outcome: "failed" },
   ]);
 });
 
@@ -128,7 +129,7 @@ test("a handler cannot select an option the agent did not offer", async () => {
     onPermission: async () => ({ outcome: { outcome: "selected", optionId: "made-up" } }),
   });
   await expect(stint.done).rejects.toThrow("offered option");
-  expect(events.at(-1)).toMatchObject({
+  expect(events.filter((event) => event.type === "permission").at(-1)).toMatchObject({
     type: "permission",
     automatic: false,
     decision: { outcome: "failed" },
@@ -158,6 +159,7 @@ test("messages before and after an inline permission remain separate delta group
     { type: "message_delta", id: "1", text: "Before permission" },
     { type: "permission_request" },
     { type: "permission", automatic: false, decision: { outcome: "selected", optionId: "allow" } },
+    { type: "permission_delivery", outcome: "written" },
     { type: "message_delta", id: "2", text: "After permission" },
   ]);
 });

@@ -35,6 +35,9 @@ export type RichStintEvent =
   | {
       type: "permission_request";
       requestId: string;
+      attemptId?: string;
+      logicalRequestId?: string;
+      binding?: "live" | "reconnecting";
       raisedAt?: string;
       details?: string;
       toolCallId: string;
@@ -71,7 +74,10 @@ export function isRichStintEvent(value: Record<string, unknown>, update = false)
   if (value.type === "permission_request")
     return (
       typeof value.requestId === "string" &&
-      ["raisedAt", "details"].every(
+      (value.binding === undefined ||
+        value.binding === "live" ||
+        value.binding === "reconnecting") &&
+      ["attemptId", "logicalRequestId", "raisedAt", "details"].every(
         (key) => value[key] === undefined || typeof value[key] === "string",
       ) &&
       typeof value.toolCallId === "string" &&

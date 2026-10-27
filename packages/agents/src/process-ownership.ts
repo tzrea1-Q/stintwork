@@ -188,9 +188,9 @@ export async function stopStintProcesses(
     wait?: (milliseconds: number) => Promise<void>;
   } = {},
 ): Promise<void> {
-  const blocked = (detail = "") =>
+  const blocked = (detail: string) =>
     new ProcessOwnershipError(
-      `Cannot recover stint: previous owner or adapter/tool ownership is live or unverifiable (attempt ${attempt.id}, owner ${attempt.owner.pid}, adapter ${attempt.pid}, marker ${attempt.marker ?? "unavailable"}). ${detail} Verify any named live writers or restore native process/cwd inspection, then restart Stintwork. No checkpoint or replacement was started.`,
+      `${ownerReleased ? "Cannot clean up current attempt: adapter/tool ownership" : "Cannot recover stint: previous owner or adapter/tool ownership"} is live or unverifiable (attempt ${attempt.id}, owner ${attempt.owner.pid}, adapter ${attempt.pid}, marker ${attempt.marker ?? "unavailable"}). ${detail} Verify any named live writers or restore native process/cwd inspection, then restart Stintwork. No checkpoint or replacement was started.`,
     );
   const describe = (row: ProcessIdentity) =>
     `${row.pid} (${row.command.length > 120 ? `${row.command.slice(0, 119)}…` : row.command})`;
@@ -203,7 +203,7 @@ export async function stopStintProcesses(
       try {
         owner = liveProcesses().find((row) => row.pid === attempt.owner.pid);
       } catch {
-        throw blocked();
+        throw blocked("Cannot inspect the recorded owner in the native process table.");
       }
       if (owner && (!attempt.owner.identity || owner.identity === attempt.owner.identity))
         throw blocked(`Recorded owner PID ${owner.pid} is still alive.`);
@@ -215,31 +215,36 @@ export async function stopStintProcesses(
     try {
       rows = liveProcesses();
     } catch {
-      throw blocked();
+      throw blocked("Cannot inspect the adapter in the native process table.");
     }
     const leader = rows.find((row) => row.pid === attempt.pid);
     const marker = attempt.marker;
-    if (
-      !attempt.processGroup ||
-      !attempt.identity ||
-      marker !== `stintwork-${attempt.id}` ||
-      !leader ||
-      leader.group !== attempt.pid ||
-      leader.identity !== attempt.identity ||
-      !(leader.command === marker || leader.command.split(/\s+/).includes(`--title=${marker}`))
-    )
-      throw blocked();
+    if (!attempt.processGroup)
+      throw blocked("Recorded attempt has no process-group ownership proof.");
+    if (!attempt.identity) throw blocked("Recorded adapter start identity is unavailable.");
+    if (marker !== `stintwork-${attempt.id}`)
+      throw blocked("Recorded launch marker does not match the attempt.");
+    if (!leader) throw blocked(`Adapter PID ${attempt.pid} is absent from the live process table.`);
+    if (leader.group !== attempt.pid)
+      throw blocked(`Adapter PID ${attempt.pid} no longer leads the recorded process group.`);
+    if (leader.identity !== attempt.identity)
+      throw blocked(`Adapter PID ${attempt.pid} has a different native start identity.`);
+    if (!(leader.command === marker || leader.command.split(/\s+/).includes(`--title=${marker}`)))
+      throw blocked(`Adapter PID ${attempt.pid} no longer has the recorded launch marker.`);
     rememberOwned(rows);
     return rows;
   };
-  const deadline = Date.now() + 1000;
+  const now = scanOptions.now ?? Date.now;
+  const wait =
+    scanOptions.wait ??
+    ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const deadline = now() + 1000;
   const owned = new Map<number, ProcessIdentity>();
   const frozen = new Set<number>();
+  let groupFrozen = false;
+  // exec and setsid can change command/group without changing native identity or ancestry.
   const same = (left: ProcessIdentity, right: ProcessIdentity) =>
-    left.identity === right.identity &&
-    left.parent === right.parent &&
-    left.group === right.group &&
-    left.command === right.command;
+    left.identity === right.identity && left.parent === right.parent;
   function rememberOwned(rows: ProcessIdentity[]) {
     for (const row of rows) if (row.group === attempt.pid) owned.set(row.pid, row);
     // ponytail: small local process trees use repeated scans; index parent IDs if large trees make this budget expire.
@@ -250,32 +255,42 @@ export async function stopStintProcesses(
         if (row.parent && owned.has(row.parent) && !owned.has(row.pid)) {
           const parent = rows.find((item) => item.pid === row.parent);
           const recorded = owned.get(row.parent);
-          if (!parent || !recorded || !same(parent, recorded)) throw blocked();
+          if (!parent || !recorded || !same(parent, recorded))
+            throw blocked(`Cannot verify ancestry for PID ${describe(row)}.`);
           owned.set(row.pid, row);
           added = true;
         }
     }
   }
-  function verifyDescendant(row: ProcessIdentity) {
-    const currentRows = verified();
+  function verifyDescendant(row: ProcessIdentity, currentRows: ProcessIdentity[]) {
     const current = currentRows.find((item) => item.pid === row.pid);
+    if (!current) {
+      owned.delete(row.pid);
+      return false;
+    }
     const parent = currentRows.find((item) => item.pid === row.parent);
     const recordedParent = row.parent ? owned.get(row.parent) : undefined;
     if (
-      !current ||
       !same(current, row) ||
-      !parent ||
-      !recordedParent ||
-      !same(parent, recordedParent)
+      (row.group !== attempt.pid && (!parent || !recordedParent || !same(parent, recordedParent)))
     )
-      throw blocked();
+      throw blocked(`PID/start identity or ancestry changed for descendant ${describe(row)}.`);
+    return true;
   }
   const signal = (pid: number, value: NodeJS.Signals) => {
-    if (Date.now() > deadline) throw blocked();
+    if (now() > deadline)
+      throw blocked(`Cleanup budget expired before ${value} to PID/group ${pid}.`);
+    // Even a failed syscall may leave signalling uncertain; unwind every attempted freeze.
+    if (value === "SIGSTOP") {
+      if (pid === group) {
+        groupFrozen = true;
+      } else frozen.add(pid);
+    }
     try {
       processes.signal(pid, value);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw blocked();
+      if ((error as NodeJS.ErrnoException).code !== "ESRCH")
+        throw blocked(`${value} to PID/group ${pid} failed: ${String(error)}.`);
     }
   };
   try {
@@ -285,14 +300,15 @@ export async function stopStintProcesses(
     signal(group, "SIGSTOP");
     // Freeze writers before walking their ancestry: a tool may have created its own process group.
     // Keep parents alive until every observed descendant is stopped, so ancestry cannot be lost.
+    let stoppedRows: ProcessIdentity[];
     for (;;) {
       const rows = verified();
       let signalled = false;
       for (const row of owned.values()) {
-        if (row.group === attempt.pid || frozen.has(row.pid)) continue;
-        verifyDescendant(row);
+        const current = rows.find((item) => item.pid === row.pid);
+        if (current?.group === attempt.pid || frozen.has(row.pid)) continue;
+        if (!verifyDescendant(row, rows)) continue;
         signal(row.pid, "SIGSTOP");
-        frozen.add(row.pid);
         signalled = true;
       }
       if (signalled) continue;
@@ -302,14 +318,17 @@ export async function stopStintProcesses(
             !rows.find((item) => item.pid === row.pid)?.state ||
             rows.find((item) => item.pid === row.pid)?.state?.includes("T"),
         )
-      )
+      ) {
+        // All observed writers are frozen; share this snapshot instead of running ps per kill.
+        stoppedRows = rows;
         break;
-      if (Date.now() >= deadline) throw blocked();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      if (now() >= deadline) throw blocked("Cleanup budget expired waiting for writers to stop.");
+      await wait(10);
     }
     for (const row of [...owned.values()].reverse()) {
-      if (row.group === attempt.pid) continue;
-      verifyDescendant(row);
+      if (stoppedRows.find((item) => item.pid === row.pid)?.group === attempt.pid) continue;
+      if (!verifyDescendant(row, stoppedRows)) continue;
       signal(row.pid, "SIGKILL");
     }
     verified();
@@ -319,7 +338,7 @@ export async function stopStintProcesses(
       try {
         rows = liveProcesses();
       } catch {
-        throw blocked();
+        throw blocked("Cannot inspect remaining writers after SIGKILL.");
       }
       if (
         !rows.some(
@@ -330,10 +349,47 @@ export async function stopStintProcesses(
         )
       )
         return;
-      if (Date.now() >= deadline) throw blocked();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      if (now() >= deadline)
+        throw blocked("Cleanup budget expired waiting for killed writers to exit.");
+      await wait(10);
     }
   } catch (error) {
+    if (groupFrozen || frozen.size) {
+      let rows: ProcessIdentity[] | undefined;
+      try {
+        rows = liveProcesses();
+      } catch {
+        /* Inspection uncertainty permits continuation, never an unverified kill. */
+      }
+      const failures: string[] = [];
+      const release = (pid: number, value: NodeJS.Signals) => {
+        try {
+          processes.signal(pid, value);
+        } catch (failure) {
+          if ((failure as NodeJS.ErrnoException).code !== "ESRCH")
+            failures.push(`${value} to ${pid}: ${String(failure)}`);
+        }
+      };
+      for (const recorded of [...owned.values()].reverse()) {
+        if (recorded.group !== attempt.pid && !frozen.has(recorded.pid)) continue;
+        const current = rows?.find((row) => row.pid === recorded.pid);
+        // A confirmed stopped process cannot exit/exec/reuse its PID by itself. A fresh matching
+        // native identity authorizes its kill even after the normal deadline. Uncertainty only
+        // authorizes SIGCONT; never strand a group just because verification or ps failed.
+        if (current?.identity === recorded.identity && current.state?.includes("T"))
+          release(recorded.pid, "SIGKILL");
+      }
+      // setsid/setpgid can race the group stop. The recorded members need individual
+      // continuation too, even if a failed inspection cannot find their new groups.
+      for (const recorded of owned.values())
+        if (recorded.group === attempt.pid) release(recorded.pid, "SIGCONT");
+      for (const pid of frozen) release(pid, "SIGCONT");
+      if (groupFrozen) release(group, "SIGCONT");
+      if (failures.length)
+        throw blocked(
+          `Frozen-writer release failed (${failures.join("; ")}). Original check: ${String(error)}`,
+        );
+    }
     if (!ownerReleased && worktree && error instanceof ProcessOwnershipError) {
       // Missing launch metadata cannot authorize signals, but native absence can still authorize fallback.
       const uid = process.getuid?.();
@@ -538,7 +594,9 @@ export async function stopStintProcesses(
             throw blocker;
           }
           failure =
-            result.writers.values().next().value ?? persistent.values().next().value ?? blocked();
+            result.writers.values().next().value ??
+            persistent.values().next().value ??
+            blocked("Writer inspection remained uncertain.");
         } catch (error) {
           failure = error;
         }
@@ -556,7 +614,7 @@ export async function stopStintProcesses(
       await Promise.race([
         unstartedExit,
         new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(error), Math.max(0, deadline - Date.now()));
+          timer = setTimeout(() => reject(error), Math.max(0, deadline - now()));
         }),
       ]);
     } finally {

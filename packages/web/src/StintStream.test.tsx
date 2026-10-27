@@ -371,3 +371,38 @@ test("the board card shows and removes the active stint indicator", () => {
   rerender(<WorkItemCard item={item} onOpen={() => {}} />);
   expect(screen.queryByText("Stint running")).not.toBeInTheDocument();
 });
+
+test("a restored selection stays disabled through transport delivery and replay/ending never offers controls", () => {
+  const bound = { ...request, attemptId: "new", binding: "live" as const };
+  const selected: StintLogEvent = {
+    type: "permission",
+    requestId: "request",
+    attemptId: "new",
+    toolCallId: "git",
+    title: request.title,
+    kind: request.kind,
+    automatic: false,
+    decision: { outcome: "selected", optionId: "allow", kind: "allow_once" },
+  };
+  const current = stint([bound, selected]);
+  const view = render(<StintStream stint={current} />);
+  expect(screen.getByRole("button", { name: /Allow once/ })).toBeDisabled();
+  view.rerender(<StintStream stint={current} replay />);
+  expect(screen.queryByRole("button", { name: /Allow once/ })).not.toBeInTheDocument();
+  view.rerender(<StintStream stint={{ ...current, status: "interrupted" }} />);
+  expect(screen.queryByRole("button", { name: /Allow once/ })).not.toBeInTheDocument();
+  view.rerender(
+    <StintStream
+      stint={stint([
+        bound,
+        selected,
+        { type: "permission_delivery", requestId: "request", attemptId: "new", outcome: "failed" },
+      ])}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: /Allow once/ })).not.toBeInTheDocument();
+  expect(screen.getByText("Could not answer permission request.")).toHaveAttribute(
+    "role",
+    "status",
+  );
+});

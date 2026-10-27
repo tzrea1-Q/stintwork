@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { execFileSync, spawn, type ChildProcess } from "node:child_process";
-import { once } from "node:events";
+import {
+  execFileSync,
+  spawn,
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
+import { EventEmitter, once } from "node:events";
 import type { Server } from "node:http";
 import {
   appendFile,
@@ -16,6 +21,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { adapterCacheFixture } from "../../agents/test/adapter-cache-fixture.js";
 import { verifyRecordedAgent } from "../../agents/src/adapter-cache.js";
+import { toAcpReadable } from "../../agents/src/stdio.js";
 import {
   createAgentRegistry,
   createAgentLauncher,
@@ -53,6 +59,14 @@ import * as checkModule from "./checks.js";
 import { afterEach, expect, test, vi } from "vitest";
 import { createProjectServer, createNodeRepoFiles } from "./index.js";
 import { recoverInterruptedStints } from "./stint-history.js";
+
+import { PassThrough, Writable } from "node:stream";
+import {
+  AgentSideConnection,
+  ndJsonStream,
+  PROTOCOL_VERSION,
+  type RequestPermissionResponse,
+} from "@agentclientprotocol/sdk";
 
 const fixtures: {
   parent: string;
@@ -562,6 +576,155 @@ test.each(["resolved", "rejected", "stalled"] as const)(
   },
 );
 
+test("a subscriber connected before EOF cleanup sees two valid frames before the fixture's late log count", async () => {
+  const { root, project, registered, selected, logged, entries } = await savedRecovery("handoff");
+  const uid = process.getuid?.() as number;
+  const attempt = entries.find((entry) => entry.type === "recovery" && entry.kind === "attempt");
+  if (attempt?.type !== "recovery" || attempt.kind !== "attempt")
+    throw new Error("Expected attempt");
+  Object.assign(attempt.attempt, { pid: 20, identity: `${uid}:old-adapter`, processGroup: true });
+  Object.assign(attempt.attempt.owner, { pid: 10, identity: `${uid}:old-owner` });
+  const before = entries.filter((entry) => !(entry.type === "recovery" && entry.kind === "resume"));
+  await writeFile(logged.path, `${before.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+  const inspecting = permissionSignal();
+  const resumeInspection = permissionSignal();
+  const verifying = permissionSignal();
+  const resumeVerification = permissionSignal();
+  const launched = permissionSignal();
+  const finish = permissionSignal<AgentStintResult>();
+  let transient = true;
+  let now = 0;
+  const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => [
+    { pid: process.pid, uid, group: process.pid, identity: `${uid}:server`, command: "server" },
+    ...(transient
+      ? [
+          {
+            pid: 21,
+            uid,
+            group: 21,
+            identity: `${uid}:transient`,
+            command: "transient unrelated job",
+          },
+        ]
+      : []),
+  ]);
+  const exists = vi
+    .spyOn(systemProcesses, "exists")
+    .mockImplementation((pid) => pid === process.pid || (pid === 21 && transient));
+  const cwd = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(new Map());
+  const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+    throw new Error("No signal is authorized");
+  });
+  const on = vi.spyOn(WebSocketServer.prototype, "on");
+  registered.verifyRecovery = async () => {
+    verifying.resolve();
+    await resumeVerification.promise;
+    return selected;
+  };
+  registered.launch = () => {
+    launched.resolve();
+    return {
+      ready: Promise.resolve(),
+      done: finish.promise,
+      cancel: async () => {
+        finish.resolve({ stopReason: "cancelled" });
+      },
+    };
+  };
+  const server = project({
+    agentRegistry: createAgentRegistry([registered]),
+    recoveryProcessScan: {
+      now: () => now,
+      wait: async (milliseconds) => {
+        inspecting.resolve();
+        await resumeInspection.promise;
+        transient = false;
+        now += milliseconds;
+      },
+    },
+  });
+  const websocket = on.mock.contexts.find(
+    (_, index) => on.mock.calls[index][0] === "connection",
+  ) as WebSocketServer;
+  const frames: StintLiveMessage[] = [];
+  const client = {
+    readyState: WebSocket.OPEN,
+    on: vi.fn(),
+    terminate: vi.fn(),
+    send(bytes: string) {
+      const message = JSON.parse(bytes);
+      if (message.type === "stint") frames.push(message);
+    },
+  } as unknown as WebSocket;
+  try {
+    await server.app.request("/api/health");
+    await permissionStep(
+      root,
+      server,
+      "old-writer inspection held before subscription",
+      () => inspecting.promise,
+    );
+    const subscriptionEntries = (await readFile(logged.path, "utf8")).trim().split("\n").length;
+    websocket.clients.add(client);
+    websocket.emit("connection", client);
+    resumeInspection.resolve();
+    await permissionStep(
+      root,
+      server,
+      "verification held after cleanup frames",
+      () => verifying.promise,
+    );
+    const previousEntries = (await readFile(logged.path, "utf8")).trim().split("\n").length;
+    expect(previousEntries).toBe(subscriptionEntries + 2);
+    expect(frames).toMatchObject([
+      {
+        sequence: subscriptionEntries + 1,
+        entry: { type: "recovery", kind: "resume", state: "suspended" },
+      },
+      {
+        sequence: subscriptionEntries + 2,
+        entry: { type: "recovery", kind: "resume", state: "resuming" },
+      },
+    ]);
+    const duringSetup = (await readFile(logged.path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(frames.map((frame) => frame.entry)).toEqual(duringSetup.slice(subscriptionEntries));
+    resumeVerification.resolve();
+    await permissionStep(
+      root,
+      server,
+      "replacement launched after verification release",
+      () => launched.promise,
+    );
+    finish.resolve({ stopReason: "end_turn" });
+    await permissionStep(root, server, "replacement ending and checkpoint", () =>
+      waitForEnding(root),
+    );
+    const ended = (await readFile(logged.path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(frames.map((frame) => frame.sequence)).toEqual(
+      frames.map((_, index) => subscriptionEntries + index + 1),
+    );
+    expect(frames.map((frame) => frame.entry)).toEqual(ended.slice(subscriptionEntries));
+    expect(new Set(frames.map((frame) => frame.sequence)).size).toBe(frames.length);
+  } finally {
+    websocket.clients.delete(client);
+    resumeInspection.resolve();
+    resumeVerification.resolve();
+    finish.resolve({ stopReason: "end_turn" });
+    await server.stop();
+    on.mockRestore();
+    signal.mockRestore();
+    cwd.mockRestore();
+    exists.mockRestore();
+    read.mockRestore();
+  }
+});
+
 test.skipIf(!nativeProcessInspection).each(
   (["claude", "codex"] as const).flatMap((agent) =>
     (["installed", "bundled"] as const).flatMap((source) =>
@@ -748,6 +911,13 @@ test.skipIf(!nativeProcessInspection).each(
         url = `http://127.0.0.1:${address.port}`;
       }
       const frames: StintLiveMessage[] = [];
+      // Hold verification before subscribing: cleanup/resuming entries must already be in
+      // snapshot/history, otherwise they are live frames included in the later log count too.
+      if (url && lifetime !== "EOF-with-tool")
+        await crashStep(
+          "recovery verification held before WebSocket subscription",
+          () => verificationEntered,
+        );
       if (url) {
         socket = new WebSocket(`${url.replace("http:", "ws:")}/api/live`);
         socket.on("message", (bytes) => {
@@ -3288,82 +3458,842 @@ test.each(["work", "finalization"] as const)(
   },
 );
 
-test("orphan scan retries stay in the background while transient cwd inspection settles", async () => {
-  const { root, project } = await fixture();
-  const logged = await log(root, "retry-native", "2026-10-26T11:08:55Z");
-  const started = JSON.parse(logged.text) as Extract<StintLogEntry, { type: "started" }>;
-  started.stint.agent = "grok";
-  const attempt: StintProcessAttempt = {
-    id: "native",
-    pid: 20,
-    marker: null,
-    owner: { pid: 10, startedAt: "2026-10-26T11:00:00Z" },
-  };
-  const before = `${JSON.stringify(started)}\n${JSON.stringify({ type: "recovery", version: 1, at: started.at, kind: "attempt", attempt })}\n`;
-  await writeFile(logged.path, before);
-  await writeFile(join(logged.worktree.path, "partial.txt"), "Native partial work");
-  const uid = process.getuid?.() as number;
-  let transient = true;
-  let now = 0;
-  let release = () => {};
-  const waiting = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const wait = vi.fn(async (milliseconds: number) => {
-    await waiting;
-    now += milliseconds;
-    transient = false;
-  });
-  const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => [
-    { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
-    ...(transient
-      ? [
-          {
-            pid: 21,
-            group: 21,
-            uid,
-            identity: `${uid}:transient`,
-            command: "unrelated transient job",
-          },
-        ]
-      : []),
-  ]);
-  const exists = vi
-    .spyOn(systemProcesses, "exists")
-    .mockImplementation((pid) => pid === process.pid || (pid === 21 && transient));
-  const cwd = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(new Map());
-  const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
-    throw new Error("No signal is verified");
-  });
-  const server = project({ recoveryProcessScan: { now: () => now, wait } });
-  try {
-    const starting = server.start();
-    void starting.catch(() => {});
-    expect((await server.app.request("/api/health")).status).toBe(200);
-    expect(wait).toHaveBeenCalledOnce();
-    await crashStep("server ready while orphan re-inspection waits", () => starting);
-    const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
-    expect(snapshot.workItems[0].activeStint?.id).toBe("retry-native");
-    expect(snapshot.warnings.map((warning) => warning.message).join("\n")).not.toContain(
-      "Cannot recover stint",
-    );
-    expect(
-      (await server.app.request("/api/work-items/first/checks", { method: "POST" })).status,
-    ).toBe(409);
-    expect(await readFile(logged.path, "utf8")).toBe(before);
-    release();
-    expect(await waitForEnding(root)).toMatchObject({
-      status: "interrupted",
-      checkpointCommit: expect.any(String),
+test.each([false, true])(
+  "orphan scan retries stay in the background while transient cwd inspection settles (permission: %s)",
+  async (permission) => {
+    const { root, project } = await fixture();
+    const logged = await log(root, "retry-native", "2026-10-26T11:08:55Z");
+    const started = JSON.parse(logged.text) as Extract<StintLogEntry, { type: "started" }>;
+    started.stint.agent = "grok";
+    const attempt: StintProcessAttempt = {
+      id: "native",
+      pid: 20,
+      marker: null,
+      owner: { pid: 10, startedAt: "2026-10-26T11:00:00Z" },
+    };
+    const savedPermission = {
+      type: "event",
+      at: started.at,
+      event: {
+        type: "permission_request",
+        requestId: "saved-before-scan",
+        attemptId: "native",
+        binding: "live",
+        toolCallId: "tool",
+        title: "Manual tool",
+        kind: "execute",
+        automatic: false,
+        details: "Saved details",
+        options: [{ optionId: "yes", name: "Yes", kind: "allow_once" }],
+      },
+    };
+    const before = `${JSON.stringify(started)}\n${JSON.stringify({ type: "recovery", version: 1, at: started.at, kind: "attempt", attempt })}\n${permission ? `${JSON.stringify(savedPermission)}\n` : ""}`;
+    await writeFile(logged.path, before);
+    await writeFile(join(logged.worktree.path, "partial.txt"), "Native partial work");
+    const uid = process.getuid?.() as number;
+    let transient = true;
+    let now = 0;
+    let release = () => {};
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
     });
-    expect(cwd).toHaveBeenCalledTimes(2);
-    expect(signal).not.toHaveBeenCalled();
-  } finally {
-    release();
-    await server.stop();
-    signal.mockRestore();
-    cwd.mockRestore();
-    exists.mockRestore();
-    read.mockRestore();
+    const wait = vi.fn(async (milliseconds: number) => {
+      await waiting;
+      now += milliseconds;
+      transient = false;
+    });
+    const read = vi.spyOn(systemProcesses, "read").mockImplementation(() => [
+      { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
+      ...(transient
+        ? [
+            {
+              pid: 21,
+              group: 21,
+              uid,
+              identity: `${uid}:transient`,
+              command: "unrelated transient job",
+            },
+          ]
+        : []),
+    ]);
+    const exists = vi
+      .spyOn(systemProcesses, "exists")
+      .mockImplementation((pid) => pid === process.pid || (pid === 21 && transient));
+    const cwd = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(new Map());
+    const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
+      throw new Error("No signal is verified");
+    });
+    const server = project({ recoveryProcessScan: { now: () => now, wait } });
+    try {
+      const starting = server.start();
+      void starting.catch(() => {});
+      expect((await server.app.request("/api/health")).status).toBe(200);
+      expect(wait).toHaveBeenCalledOnce();
+      await crashStep("server ready while orphan re-inspection waits", () => starting);
+      const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+      expect(snapshot.workItems[0].activeStint?.id).toBe("retry-native");
+      expect(snapshot.warnings.map((warning) => warning.message).join("\n")).not.toContain(
+        "Cannot recover stint",
+      );
+      expect(
+        (await server.app.request("/api/work-items/first/checks", { method: "POST" })).status,
+      ).toBe(409);
+      if (permission) {
+        expect(snapshot.attentionItems).toContainEqual(
+          expect.objectContaining({
+            kind: "permission",
+            requestId: "saved-before-scan",
+            binding: "reconnecting",
+          }),
+        );
+        expect((await readFile(logged.path, "utf8")).startsWith(before)).toBe(true);
+      } else expect(await readFile(logged.path, "utf8")).toBe(before);
+      release();
+      expect(await waitForEnding(root)).toMatchObject({
+        status: "interrupted",
+        checkpointCommit: expect.any(String),
+      });
+      expect(cwd).toHaveBeenCalledTimes(2);
+      expect(signal).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await server.stop();
+      signal.mockRestore();
+      cwd.mockRestore();
+      exists.mockRestore();
+      read.mockRestore();
+    }
+  },
+);
+
+function permissionSignal<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+test.each(
+  [true, false].flatMap((matching) =>
+    ["allow-once", "reject"].map((optionId) => ({ matching, optionId })),
+  ),
+)(
+  "real-shaped continuation reissue is HTTP-answerable ($optionId, matching: $matching)",
+  async ({ matching, optionId }) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    // Shape copied from the coordinator's installed Claude 2.1.295 evidence; no provider calls.
+    const command = "git log --stat -6 --format='--- %h %s%n%b' && git status --short && ls -la";
+    const description = "Show recent commits with files and working tree";
+    const tool = {
+      toolCallId: "toolu_01E3ytkqXqGDuEA7aHV7FiQP",
+      kind: "execute" as const,
+      status: "pending" as const,
+      title: command,
+      name: "Bash",
+      content: [
+        { content: { text: description, type: "text" as const }, type: "content" as const },
+      ],
+      rawInput: { command, description },
+    };
+    const options = [
+      { optionId: "allow-once", name: "Yes", kind: "allow_once" as const },
+      {
+        optionId: "allow-with-updates",
+        name: "Yes, and don't ask again for git log * commands",
+        kind: "allow_always" as const,
+      },
+      { optionId: "reject", name: "No", kind: "reject_once" as const },
+    ];
+    const raisedAt = "2026-10-26T23:22:16.126Z";
+    entries.push({
+      type: "event",
+      at: raisedAt,
+      event: {
+        type: "permission_request",
+        requestId: "old-request",
+        attemptId: "old-attempt",
+        binding: "live",
+        toolCallId: tool.toolCallId,
+        title: command,
+        kind: "execute",
+        automatic: false,
+        details: JSON.stringify(tool),
+        options,
+      },
+    });
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const input = new PassThrough();
+    const child = Object.assign(new EventEmitter(), {
+      stdin: input,
+      stdout: new PassThrough(),
+      stderr: new PassThrough(),
+      pid: 20,
+      exitCode: null,
+      signalCode: null,
+      kill() {
+        queueMicrotask(() => child.emit("exit", 0, "SIGTERM"));
+        return true;
+      },
+      unref() {},
+    });
+    const published = permissionSignal();
+    const received = permissionSignal<RequestPermissionResponse>();
+    const finish = permissionSignal();
+    const effects: string[] = [];
+    new AgentSideConnection(
+      (client) => ({
+        async initialize() {
+          return {
+            protocolVersion: PROTOCOL_VERSION,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { additionalDirectories: {} },
+            },
+          };
+        },
+        async newSession() {
+          throw new Error("Must restore the existing session");
+        },
+        async authenticate() {
+          throw new Error("Must use the developer's existing login");
+        },
+        async loadSession({ sessionId }) {
+          expect(sessionId).toBe("fake-session");
+          return {
+            modes: {
+              currentModeId: "read-only",
+              availableModes: [{ id: "read-only", name: "Ask" }],
+            },
+          };
+        },
+        async setSessionMode() {
+          return {};
+        },
+        async prompt({ prompt }) {
+          expect(prompt).toEqual([{ type: "text", text: continuationInstruction }]);
+          const answer = await client.requestPermission({
+            sessionId: "fake-session",
+            toolCall: {
+              ...tool,
+              toolCallId: "toolu_01EyJv6wRio7EAEaWvFV1ACE",
+              ...(!matching
+                ? { rawInput: { ...tool.rawInput, command: "changed operation" } }
+                : {}),
+            },
+            options,
+          });
+          if (answer.outcome.outcome === "selected" && answer.outcome.optionId === "allow-once")
+            effects.push("execute");
+          received.resolve(answer);
+          await finish.promise;
+          return { stopReason: "end_turn" as const };
+        },
+        async cancel() {
+          finish.resolve();
+        },
+      }),
+      ndJsonStream(Writable.toWeb(child.stdout), toAcpReadable(input)),
+    );
+    const launch = createAgentLauncher(
+      () => child as unknown as ChildProcessWithoutNullStreams,
+      fakeAgentProfiles.codex,
+    );
+    registered.verifyRecovery = async () => selected;
+    registered.launch = (options) => {
+      let attemptId = "";
+      const running = launch({
+        ...options,
+        preparedAgent: undefined,
+        afterTurnRequests: [],
+        onProcess(attempt) {
+          attemptId = attempt.id;
+          options.onProcess?.(attempt);
+        },
+        onEvent(event) {
+          options.onEvent(event);
+          if (event.type === "permission_request") published.resolve();
+        },
+      });
+      // This in-memory process has no native writers; explicitly certify its fake cleanup.
+      return {
+        ...running,
+        done: running.done.then((result) => {
+          options.onCleanup?.(attemptId);
+          return result;
+        }),
+      };
+    };
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    try {
+      await server.app.request("/api/health");
+      await permissionStep(
+        root,
+        server,
+        "continuation permission published",
+        () => published.promise,
+      );
+      const restartEntries = (await readFile(logged.path, "utf8"))
+        .trim()
+        .split("\n")
+        .slice(entries.length)
+        .map((line) => JSON.parse(line));
+      expect(
+        restartEntries.filter(
+          (entry) =>
+            entry.type === "recovery" && entry.kind === "resume" && entry.state === "resuming",
+        ),
+      ).toHaveLength(1);
+      const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
+      const items = snapshot.attentionItems.filter((item) => item.kind === "permission");
+      const live = items.find((item) => item.binding === "live");
+      expect(live).toBeDefined();
+      if (!live) throw new Error("Expected live permission");
+      expect(items).toHaveLength(1);
+      if (matching)
+        expect(live).toMatchObject({ raisedAt, id: 'permission:["saved-phase","old-request"]' });
+      const observer = project({ agentRegistry: createAgentRegistry([registered]) });
+      const observerSnapshot: ProjectSnapshot = await (
+        await observer.app.request("/api/project")
+      ).json();
+      expect(
+        observerSnapshot.attentionItems.find(
+          (item) => item.kind === "permission" && item.requestId === live.requestId,
+        ),
+      ).toMatchObject({ binding: "reconnecting" });
+      expect(
+        observerSnapshot.workItems[0].activeStint?.events.find(
+          (event) => event.type === "permission_request" && event.requestId === live.requestId,
+        ),
+      ).toMatchObject({ binding: "reconnecting" });
+      const observerHistory: { stint: Stint } = await (
+        await observer.app.request("/api/stints/saved-phase")
+      ).json();
+      expect(
+        observerHistory.stint.events.find(
+          (event) => event.type === "permission_request" && event.requestId === live.requestId,
+        ),
+      ).toMatchObject({ binding: "reconnecting" });
+      const post = (
+        target: typeof server,
+        requestId: string,
+        body: unknown,
+        origin = "http://localhost",
+      ) =>
+        target.app.request(`/api/stints/saved-phase/permissions/${requestId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", origin },
+          body: JSON.stringify(body),
+        });
+      const body = { optionId, attemptId: live.attemptId };
+      const beforeRefusals = await readFile(logged.path, "utf8");
+      expect((await post(observer, live.requestId, body)).status).toBe(409);
+      expect((await post(server, live.requestId, { optionId })).status).toBe(400);
+      expect(
+        (await post(server, live.requestId, { optionId, attemptId: "old-attempt" })).status,
+      ).toBe(409);
+      expect(
+        (await post(server, "old-request", { optionId, attemptId: "old-attempt" })).status,
+      ).toBe(409);
+      expect((await post(server, live.requestId, body, "http://foreign.invalid")).status).toBe(403);
+      expect((await post(server, live.requestId, { ...body, optionId: "invalid" })).status).toBe(
+        400,
+      );
+      expect(await readFile(logged.path, "utf8")).toBe(beforeRefusals);
+      expect(effects).toEqual([]);
+      const answer = await permissionStep(
+        root,
+        server,
+        "HTTP delivers current continuation permission",
+        () => post(server, live.requestId, body),
+      );
+      expect(await answer.json()).toMatchObject({ requestId: live.requestId, optionId });
+      expect(answer.status).toBe(200);
+      expect(
+        await permissionStep(
+          root,
+          server,
+          "fake ACP receives selected response",
+          () => received.promise,
+        ),
+      ).toEqual({ outcome: { outcome: "selected", optionId } });
+      expect(effects).toEqual(optionId === "allow-once" ? ["execute"] : []);
+      expect((await post(server, live.requestId, body)).status).toBe(409);
+      expect(indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state).toBe("resumed");
+      finish.resolve();
+      const ended = await permissionStep(
+        root,
+        server,
+        "continuation ends after current answer",
+        () => waitForEnding(root),
+      );
+      expect(ended.events.filter((event) => event.type === "permission")).toEqual([
+        expect.objectContaining({
+          requestId: live.requestId,
+          attemptId: live.attemptId,
+          decision: {
+            outcome: "selected",
+            optionId,
+            kind: optionId === "reject" ? "reject_once" : "allow_once",
+          },
+        }),
+      ]);
+      expect(
+        ended.events.filter(
+          (event) => event.type === "permission_delivery" && event.outcome === "written",
+        ),
+      ).toEqual([
+        {
+          type: "permission_delivery",
+          requestId: live.requestId,
+          attemptId: live.attemptId,
+          outcome: "written",
+        },
+      ]);
+    } finally {
+      finish.resolve();
+    }
+  },
+);
+
+async function permissionStep<T>(
+  root: string,
+  server: ReturnType<typeof createProjectServer>,
+  name: string,
+  work: () => T | Promise<T>,
+) {
+  try {
+    return await crashStep(name, work);
+  } catch (error) {
+    const snapshot = await Promise.resolve(server.app.request("/api/project"))
+      .then((response) => response.json())
+      .catch(String);
+    const stint = indexStints(createNodeRepoFiles(root)).stints[0];
+    const tail = await readFile(join(root, ".stintwork/local/stints", `${stint?.id}.jsonl`), "utf8")
+      .then((text) => text.trim().split("\n").slice(-12).join("\n"))
+      .catch(String);
+    throw new Error(
+      `${String(error)}\nWarnings: ${JSON.stringify(snapshot.warnings)}\nStint log tail:\n${tail}`,
+      { cause: error },
+    );
   }
-});
+}
+
+test.each(
+  ["allow", "reject"].flatMap((optionId) =>
+    [false, true].map((ambiguous) => ({ optionId, ambiguous })),
+  ),
+)(
+  "restored permission keeps age, waits during load and writes fresh $optionId once (ambiguous: $ambiguous)",
+  async ({ optionId, ambiguous }) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    const saved = {
+      type: "permission_request" as const,
+      requestId: "old-request",
+      attemptId: "old-attempt",
+      binding: "live" as const,
+      toolCallId: "old-attempt:tool",
+      title: "Manual edit",
+      kind: "edit",
+      automatic: false,
+      details: '{"toolCallId":"tool","title":"Manual edit"}',
+      options: [
+        { optionId: "allow", name: "Allow", kind: "allow_once" },
+        { optionId: "reject", name: "Reject", kind: "reject_once" },
+      ],
+    };
+    entries.push({ type: "event", at: "2026-01-01T00:01:00Z", event: saved });
+    if (ambiguous)
+      entries.push({
+        type: "event",
+        at: "2026-01-01T00:02:00Z",
+        event: {
+          type: "permission",
+          requestId: saved.requestId,
+          attemptId: saved.attemptId,
+          toolCallId: saved.toolCallId,
+          title: saved.title,
+          kind: saved.kind,
+          automatic: false,
+          decision: { outcome: "selected", optionId: "allow", kind: "allow_once" },
+        },
+      });
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const verify = permissionSignal<typeof selected>();
+    const verifying = permissionSignal();
+    registered.verifyRecovery = async () => {
+      verifying.resolve();
+      return verify.promise;
+    };
+    const published = permissionSignal();
+    const selectedAnswer = permissionSignal();
+    const write = permissionSignal();
+    const ready = permissionSignal();
+    const finish = permissionSignal<AgentStintResult>();
+    registered.launch = (options) => {
+      expect(options.resume?.permissions).toEqual([
+        expect.objectContaining({ requestId: "old-request" }),
+      ]);
+      options.onProcess?.({
+        id: "new-attempt",
+        owner: { pid: process.pid, startedAt: "2026-01-02T00:00:00Z" },
+        pid: process.pid,
+        marker: null,
+      });
+      const forwarded = write.promise.then(() => {
+        options.onEvent({
+          type: "permission_delivery",
+          requestId: "new-request",
+          attemptId: "new-attempt",
+          outcome: "written",
+        });
+      });
+      void options
+        .onPermission?.({
+          sessionId: "fake-session",
+          requestId: "new-request",
+          attemptId: "new-attempt",
+          forwarded,
+          toolCall: { toolCallId: "tool" },
+          options: saved.options as Parameters<
+            NonNullable<typeof options.onPermission>
+          >[0]["options"],
+        })
+        .then((answer) => {
+          expect(answer).toMatchObject({ outcome: { outcome: "selected", optionId } });
+          options.onEvent({
+            type: "permission",
+            requestId: "new-request",
+            attemptId: "new-attempt",
+            toolCallId: "new-attempt:tool",
+            title: saved.title,
+            kind: "edit",
+            automatic: false,
+            decision: {
+              outcome: "selected",
+              optionId,
+              kind: optionId === "allow" ? "allow_once" : "reject_once",
+            },
+          });
+          selectedAnswer.resolve();
+        });
+      options.onEvent({
+        ...saved,
+        requestId: "new-request",
+        attemptId: "new-attempt",
+        logicalRequestId: "old-request",
+        raisedAt: "2026-01-01T00:01:00Z",
+      });
+      published.resolve();
+      return {
+        ready: ready.promise,
+        done: finish.promise,
+        cancel: async () => {
+          finish.resolve({ stopReason: "cancelled" });
+        },
+      };
+    };
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      const server = project({ agentRegistry: createAgentRegistry([registered]) });
+      await server.app.request("/api/health");
+      await permissionStep(root, server, "warm verification entered", () => verifying.promise);
+      const snapshot = async (): Promise<ProjectSnapshot> =>
+        (await server.app.request("/api/project")).json();
+      expect(
+        (await snapshot()).attentionItems.filter((item) => item.kind === "permission"),
+      ).toEqual([
+        expect.objectContaining({
+          requestId: "old-request",
+          binding: "reconnecting",
+          raisedAt: "2026-01-01T00:01:00Z",
+          details: saved.details,
+          options: saved.options,
+        }),
+      ]);
+      verify.resolve(selected);
+      await permissionStep(root, server, "live load permission published", () => published.promise);
+      expect(
+        (await snapshot()).attentionItems.filter((item) => item.kind === "permission"),
+      ).toEqual([
+        expect.objectContaining({
+          requestId: "new-request",
+          binding: "live",
+          attemptId: "new-attempt",
+        }),
+      ]);
+      await vi.advanceTimersByTimeAsync(120_001);
+      expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+        status: "running",
+        recovery: { state: "resuming" },
+      });
+      const post = (requestId: string, attemptId: string) =>
+        server.app.request(`/api/stints/saved-phase/permissions/${requestId}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ optionId, attemptId }),
+        });
+      expect((await post("old-request", "old-attempt")).status).toBe(409);
+      const answer = post("new-request", "new-attempt");
+      await permissionStep(root, server, "fresh decision selected", () => selectedAnswer.promise);
+      expect(
+        (await snapshot()).attentionItems.filter((item) => item.kind === "permission"),
+      ).toHaveLength(1);
+      expect((await post("new-request", "new-attempt")).status).toBe(409);
+      write.resolve();
+      expect(
+        (await permissionStep(root, server, "current receipt written", () => answer)).status,
+      ).toBe(200);
+      expect(
+        (await snapshot()).attentionItems.filter((item) => item.kind === "permission"),
+      ).toEqual([]);
+      ready.resolve();
+      finish.resolve({ stopReason: "end_turn" });
+      expect(
+        (await permissionStep(root, server, "checkpoint and ending", () => waitForEnding(root)))
+          .events,
+      ).toContainEqual(
+        expect.objectContaining({ type: "permission_delivery", outcome: "written" }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test.each(["completion", "failure"] as const)(
+  "terminal %s before permission reconciliation releases preparation and shutdown during fallback checkpointing",
+  async (terminal) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    entries.push({
+      type: "event",
+      at: "2026-01-01T00:01:00Z",
+      event: {
+        type: "permission_request",
+        requestId: "saved",
+        attemptId: "old-attempt",
+        toolCallId: "tool",
+        title: "Manual request",
+        kind: "execute",
+        automatic: false,
+        options: [{ optionId: "allow", kind: "allow_once", name: "Allow" }],
+      },
+    });
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    registered.verifyRecovery = async () => selected;
+    const launched = permissionSignal();
+    const finish = permissionSignal();
+    const shutdownCaptured = permissionSignal();
+    registered.launch = () => {
+      launched.resolve();
+      return {
+        ready: Promise.resolve(),
+        done: finish.promise.then(() => {
+          if (terminal === "failure") throw new Error("Controlled continuation failure");
+          return { stopReason: "end_turn" };
+        }),
+        cancel: async () => {
+          shutdownCaptured.resolve();
+        },
+      };
+    };
+    const checkpointing = permissionSignal();
+    const releaseCheckpoint = permissionSignal();
+    const realCheckpoint = git.createCheckpoint;
+    const checkpoint = vi.spyOn(git, "createCheckpoint").mockImplementationOnce(async (...args) => {
+      checkpointing.resolve();
+      await releaseCheckpoint.promise;
+      return realCheckpoint(...args);
+    });
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    let shutdown: Promise<void> | undefined;
+    let shutdownFinished = false;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await server.app.request("/api/health");
+      await permissionStep(
+        root,
+        server,
+        "ready replacement awaiting saved callback",
+        () => launched.promise,
+      );
+      finish.resolve();
+      await permissionStep(
+        root,
+        server,
+        "terminal recovery enters fallback checkpoint",
+        () => checkpointing.promise,
+      );
+      shutdown = server.stop().then(() => {
+        shutdownFinished = true;
+      });
+      await permissionStep(
+        root,
+        server,
+        "shutdown captures ending state",
+        () => shutdownCaptured.promise,
+      );
+      releaseCheckpoint.resolve();
+      vi.useRealTimers();
+      await permissionStep(root, server, "fallback interrupted ending recorded", () =>
+        waitForEnding(root),
+      );
+      await permissionStep(
+        root,
+        server,
+        "shutdown releases terminal preparation without reconciliation",
+        () => shutdown,
+      );
+      const log = (await readFile(logged.path, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(log.filter((entry) => entry.type === "ended")).toEqual([
+        expect.objectContaining({ status: "interrupted", checkpointCommit: expect.any(String) }),
+      ]);
+      expect(
+        log
+          .slice(entries.length)
+          .filter((entry) => entry.kind === "resume" && entry.state === "resumed"),
+      ).toEqual([]);
+    } finally {
+      finish.resolve();
+      releaseCheckpoint.resolve();
+      vi.useRealTimers();
+      // No listener or real writer was started. A regression leaves an irrecoverable
+      // preparation promise; do not hide its named failure by hanging fixture teardown too.
+      if (shutdown && !shutdownFinished) server.stop = async () => {};
+      else await server.stop();
+      checkpoint.mockRestore();
+    }
+  },
+);
+
+test.each(["timeout", "turn", "stop", "shutdown"] as const)(
+  "saved callback reconciliation: %s retires attention without replaying consent",
+  async (outcome) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    const request = {
+      type: "permission_request" as const,
+      requestId: "saved",
+      attemptId: "old-attempt",
+      binding: "live" as const,
+      toolCallId: "tool",
+      title: "Manual request",
+      kind: "execute",
+      automatic: false,
+      details: "Full saved tool details",
+      options: [{ optionId: "allow", kind: "allow_once", name: "Allow" }],
+    };
+    entries.push({ type: "event", at: "2026-01-01T00:01:00Z", event: request });
+    // The selected record is deliberately ambiguous: there is no written receipt.
+    entries.push({
+      type: "event",
+      at: "2026-01-01T00:02:00Z",
+      event: {
+        type: "permission",
+        requestId: "saved",
+        attemptId: "old-attempt",
+        toolCallId: "tool",
+        title: request.title,
+        kind: request.kind,
+        automatic: false,
+        decision: { outcome: "selected", optionId: "allow", kind: "allow_once" },
+      },
+    });
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    registered.verifyRecovery = async () => selected;
+    const entered = permissionSignal();
+    const done = permissionSignal<AgentStintResult>();
+    let retire!: () => void;
+    registered.launch = (options) => {
+      options.onProcess?.({
+        id: "new",
+        owner: { pid: process.pid, startedAt: "2026-01-02T00:00:00Z" },
+        pid: process.pid,
+        marker: null,
+      });
+      retire = () =>
+        options.onEvent({
+          type: "permission_delivery",
+          requestId: "saved",
+          attemptId: "old-attempt",
+          outcome: "retired",
+        });
+      entered.resolve();
+      return {
+        ready: Promise.resolve(),
+        done: done.promise,
+        cancel: async () => {
+          done.resolve({ stopReason: "cancelled" });
+        },
+        suspend: async () => {
+          options.onCleanup?.("new");
+          done.resolve({ stopReason: "cancelled" });
+        },
+      };
+    };
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      const server = project({
+        agentRegistry: createAgentRegistry([registered]),
+        recoverySetupTimeoutMs: 60_000,
+      });
+      await server.app.request("/api/health");
+      await permissionStep(
+        root,
+        server,
+        "replacement launched for reconciliation",
+        () => entered.promise,
+      );
+      const queue = async () =>
+        (
+          (await (await server.app.request("/api/project")).json()) as ProjectSnapshot
+        ).attentionItems.filter((item) => item.kind === "permission");
+      expect(await queue()).toEqual([
+        expect.objectContaining({ requestId: "saved", binding: "reconnecting" }),
+      ]);
+      expect(
+        (
+          await server.app.request("/api/stints/saved-phase/permissions/saved", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: '{"optionId":"allow","attemptId":"old-attempt"}',
+          })
+        ).status,
+      ).toBe(409);
+      if (outcome === "timeout") await vi.advanceTimersByTimeAsync(60_001);
+      if (outcome === "turn") {
+        retire();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(await queue()).toEqual([]);
+        await vi.advanceTimersByTimeAsync(120_000);
+        expect(indexStints(createNodeRepoFiles(root)).stints[0].status).toBe("running");
+        done.resolve({ stopReason: "end_turn" });
+      }
+      if (outcome === "stop")
+        expect(
+          (await server.app.request("/api/stints/saved-phase/stop", { method: "POST" })).status,
+        ).toBe(202);
+      if (outcome === "shutdown") {
+        await server.stop();
+        const suspended = indexStints(createNodeRepoFiles(root)).stints[0];
+        expect(suspended).toMatchObject({ status: "running", recovery: { state: "suspended" } });
+        expect(suspended.events.filter((event) => event.type === "permission")).toHaveLength(1);
+        return;
+      }
+      const ended = await permissionStep(root, server, "reconciled ending and checkpoint", () =>
+        waitForEnding(root),
+      );
+      expect(ended.status).toBe(
+        outcome === "timeout" ? "interrupted" : outcome === "stop" ? "stopped" : "finished",
+      );
+      if (outcome === "timeout")
+        expect(ended.error).toContain("Recovery setup exceeded 60 seconds");
+      expect(await queue()).toEqual([]);
+      expect(ended.events.filter((event) => event.type === "permission")).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);

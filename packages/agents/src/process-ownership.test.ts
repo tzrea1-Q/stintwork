@@ -29,7 +29,8 @@ function processes(rows: ProcessIdentity[]) {
   const signal = vi.fn((pid: number, _signal: NodeJS.Signals) => {
     for (const row of table.values())
       if (pid === row.pid || -pid === row.group) {
-        if (_signal === "SIGSTOP") row.state = "T";
+        if (_signal === "SIGSTOP") table.set(row.pid, { ...row, state: "T" });
+        else if (_signal === "SIGCONT") table.set(row.pid, { ...row, state: "S" });
         else table.delete(row.pid);
       }
   });
@@ -43,6 +44,167 @@ function processes(rows: ProcessIdentity[]) {
   return { table, signal, control };
 }
 const adapter = { pid: 20, group: 20, identity: "adapter-start", command: "stintwork-attempt" };
+
+test.each(
+  ["deadline", "verification", "inspection", "stop-signal", "kill-signal"].flatMap((fault) =>
+    [20, 24].map((frozenPid) => ({ fault, frozenPid })),
+  ),
+)(
+  "a $fault failure after freezing PID $frozenPid never leaves the owned Codex tree stopped",
+  async ({ fault, frozenPid }) => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      const fake = processes([
+        adapter,
+        { pid: 21, parent: 20, group: 20, identity: "codex", command: "codex app-server" },
+        { pid: 22, parent: 21, group: 20, identity: "git", command: "git" },
+        { pid: 23, parent: 22, group: 20, identity: "remote", command: "git-remote-https" },
+        { pid: 24, parent: 21, group: 24, identity: "shell", command: "zsh -lc snapshot" },
+      ]);
+      const read = fake.control.read;
+      let stopped = false;
+      fake.control.read = () => {
+        if (stopped && fault === "inspection") throw new Error("ps failed after freeze");
+        const leader = fake.table.get(20);
+        if (stopped && fault === "verification" && leader) leader.command = "changed title";
+        return read();
+      };
+      const signal = fake.control.signal;
+      fake.control.signal = (pid, value) => {
+        const target = pid === (frozenPid === 20 ? -20 : frozenPid);
+        if (fault === "kill-signal" && target && value === "SIGKILL")
+          throw new Error("kill failed");
+        signal(pid, value);
+        if (value === "SIGSTOP" && target) {
+          stopped = true;
+          if (fault === "deadline") vi.setSystemTime(Date.now() + 1001);
+          if (fault === "stop-signal") throw new Error("uncertain stop delivery");
+        }
+      };
+      const result = stopStintProcesses(attempt, true, fake.control).catch((error) => error);
+      await vi.runAllTimersAsync();
+      expect(await result).toBeInstanceOf(Error);
+      expect(String(await result)).toMatch(/\)\. \S/);
+      expect(String(await result)).toContain("Cannot clean up current attempt");
+      expect(String(await result)).not.toContain("previous owner");
+      expect([...fake.table.values()].filter((row) => row.state?.includes("T"))).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  },
+);
+
+test("a real-shaped Codex tree with a separate-session shell fits the cleanup budget", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+  try {
+    const fake = processes([
+      adapter,
+      { pid: 10, group: 10, identity: "owner-start", command: "current server" },
+      { pid: 21, parent: 20, group: 20, identity: "codex", command: "codex app-server" },
+      { pid: 22, parent: 21, group: 20, identity: "git", command: "git" },
+      { pid: 23, parent: 22, group: 20, identity: "remote", command: "git-remote-https" },
+      { pid: 24, parent: 21, group: 24, identity: "shell", command: "zsh -lc snapshot" },
+    ]);
+    const read = fake.control.read;
+    fake.control.read = () => {
+      vi.setSystemTime(Date.now() + 150);
+      return read();
+    };
+    await expect(stopStintProcesses(attempt, true, fake.control)).resolves.toBeUndefined();
+    expect([...fake.table.keys()]).toEqual([10]);
+    expect(fake.signal.mock.calls).toContainEqual([24, "SIGKILL"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test.each(["exec", "exit"])(
+  "a separate-session tool can %s before its freeze without stranding its parent",
+  async (change) => {
+    const shell = {
+      pid: 21,
+      parent: 20,
+      group: 21,
+      identity: "shell-start",
+      command: "zsh -lc snapshot",
+    };
+    const fake = processes([adapter, shell]);
+    const signal = fake.control.signal;
+    fake.control.signal = (pid, value) => {
+      signal(pid, value);
+      if (value === "SIGSTOP" && pid === -20) {
+        if (change === "exit") fake.table.delete(21);
+        else fake.table.set(21, { ...shell, command: "zsh" });
+      }
+    };
+    await stopStintProcesses(attempt, true, fake.control);
+    expect([...fake.table.values()]).toEqual([]);
+  },
+);
+
+test.each([false, true])(
+  "a group member that creates its own session is never stranded (inspection fails: %s)",
+  async (inspectionFails) => {
+    const fake = processes([
+      adapter,
+      { pid: 21, parent: 20, group: 20, identity: "shell", command: "zsh -lc snapshot" },
+    ]);
+    let detached = false;
+    let now = 0;
+    const read = fake.control.read;
+    fake.control.read = () => {
+      if (detached && inspectionFails) throw new Error("ps unavailable");
+      return read();
+    };
+    const signal = fake.control.signal;
+    fake.control.signal = (pid, value) => {
+      signal(pid, value);
+      if (pid === -20 && value === "SIGSTOP") {
+        const shell = fake.table.get(21);
+        if (!shell) throw new Error("Expected shell");
+        fake.table.set(21, { ...shell, group: 21 });
+        detached = true;
+      }
+    };
+    const outcome = stopStintProcesses(attempt, true, fake.control, undefined, undefined, {
+      now: () => now,
+      wait: async (milliseconds) => {
+        now += milliseconds;
+      },
+    });
+    if (inspectionFails) await expect(outcome).rejects.toThrow("Cannot inspect");
+    else await expect(outcome).resolves.toBeUndefined();
+    expect([...fake.table.values()].filter((row) => row.state?.includes("T"))).toEqual([]);
+  },
+);
+
+test("an ignored descendant stop waits within the budget instead of spinning or killing a running PID", async () => {
+  const fake = processes([
+    adapter,
+    { pid: 21, parent: 20, group: 21, identity: "tool", command: "tool", state: "S" },
+  ]);
+  let now = 0;
+  const signal = fake.control.signal;
+  fake.control.signal = vi.fn((pid, value) => {
+    if (pid === 21 && value === "SIGSTOP") return;
+    signal(pid, value);
+  });
+  await expect(
+    stopStintProcesses(attempt, true, fake.control, undefined, undefined, {
+      now: () => now,
+      wait: async (milliseconds) => {
+        now += milliseconds;
+      },
+    }),
+  ).rejects.toThrow("waiting for writers to stop");
+  expect(
+    vi
+      .mocked(fake.control.signal)
+      .mock.calls.filter(([pid, value]) => pid === 21 && value === "SIGSTOP"),
+  ).toHaveLength(1);
+  expect(fake.signal.mock.calls).not.toContainEqual([21, "SIGKILL"]);
+  expect([...fake.table.values()].filter((row) => row.state?.includes("T"))).toEqual([]);
+});
 
 test("a dead server's verified attempt stops its adapter and tools before releasing writers", async () => {
   const fake = processes([
@@ -106,7 +268,7 @@ test("identity is rechecked immediately before signalling, including a PID reuse
   expect(fake.signal).not.toHaveBeenCalled();
 });
 
-test("cleanup is bounded and never retries a signal against a surviving or reused group", async () => {
+test("cleanup is bounded and continues an uncertain group after one normal kill attempt", async () => {
   vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
   try {
     const fake = processes([adapter]);
@@ -117,6 +279,8 @@ test("cleanup is bounded and never retries a signal against a surviving or reuse
     expect(fake.signal.mock.calls).toEqual([
       [-20, "SIGSTOP"],
       [-20, "SIGKILL"],
+      [20, "SIGCONT"],
+      [-20, "SIGCONT"],
     ]);
   } finally {
     vi.useRealTimers();
@@ -157,6 +321,9 @@ test("a detached parent reused during cleanup never authorizes signalling its un
     /No checkpoint or replacement/,
   );
   expect(fake.signal.mock.calls.some(([pid]) => pid === 22)).toBe(false);
+  expect(fake.signal.mock.calls).not.toContainEqual([21, "SIGKILL"]);
+  expect(fake.table.get(21)?.identity).toBe("reused-parent");
+  expect([...fake.table.values()].filter((row) => row.state?.includes("T"))).toEqual([]);
 });
 
 test.each([

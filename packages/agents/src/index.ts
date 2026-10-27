@@ -18,6 +18,7 @@ import { randomUUID } from "node:crypto";
 import { lstat, mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { isAbsolute, dirname, relative, resolve } from "node:path";
 import { Writable } from "node:stream";
+import { isDeepStrictEqual } from "node:util";
 import type { RequestPermissionRequest, RequestPermissionResponse } from "@agentclientprotocol/sdk";
 
 import { toAcpReadable } from "./stdio.js";
@@ -83,7 +84,11 @@ export type AgentStintOptions = {
   cwd: string;
   additionalDirectories?: string[];
   prompt: string;
-  resume?: { sessionId: string; progress: StintProgress };
+  resume?: {
+    sessionId: string;
+    progress: StintProgress;
+    permissions?: Extract<StintEvent, { type: "permission_request" }>[];
+  };
   onEvent: (event: StintLogEvent) => void;
   onProcess?: (attempt: StintProcessAttempt) => void;
   // Reports cleanup of the adapter group and traceable descendants; persistence failure must block the ending.
@@ -91,7 +96,11 @@ export type AgentStintOptions = {
   onSession?: (sessionId: string) => void;
   onPhase?: (phase: StintPhase, result: Partial<AgentStintResult>) => void;
   onPermission?: (
-    request: RequestPermissionRequest & { requestId: string; forwarded: Promise<void> },
+    request: RequestPermissionRequest & {
+      requestId: string;
+      attemptId?: string;
+      forwarded: Promise<void>;
+    },
   ) => Promise<RequestPermissionResponse>;
   handoffTimeoutMs?: number;
   afterTurnTimeoutMs?: number;
@@ -170,6 +179,23 @@ export function createAgentLauncher(
       });
     };
     let loading = !!resume;
+    const savedPermissions = new Map(
+      (resume?.permissions ?? []).map((request) => [request.requestId, request]),
+    );
+    let restoringManualPermission = savedPermissions.size > 0;
+    const livePermissions = new Set<Promise<void>>();
+    const humanPermissions = new Set<Promise<void>>();
+    let permissionWaitChanged: (waiting: boolean) => void = () => {};
+    function retirePermissions() {
+      for (const request of savedPermissions.values())
+        emitEvent({
+          type: "permission_delivery",
+          requestId: request.requestId,
+          attemptId: request.attemptId ?? "legacy",
+          outcome: "retired",
+        });
+      savedPermissions.clear();
+    }
     let child: ChildProcessWithoutNullStreams | undefined;
     let processAttempt: StintProcessAttempt | undefined;
     let connection: import("@agentclientprotocol/sdk").ClientSideConnection | undefined;
@@ -295,9 +321,62 @@ export function createAgentLauncher(
             chunk = undefined;
             const requestId = randomUUID();
             const receipt = forwarding.prepare();
+            const forwarded = receipt.forwarded.then(
+              () => {
+                if (!suspended)
+                  onEvent({
+                    type: "permission_delivery",
+                    requestId,
+                    attemptId,
+                    outcome: "written",
+                  });
+              },
+              (error) => {
+                if (!suspended)
+                  onEvent({ type: "permission_delivery", requestId, attemptId, outcome: "failed" });
+                throw error;
+              },
+            );
+            livePermissions.add(forwarded);
+            const received = () => {
+              livePermissions.delete(forwarded);
+              humanPermissions.delete(forwarded);
+              permissionWaitChanged(humanPermissions.size > 0);
+            };
+            void forwarded.then(received, received);
+            void forwarded.catch((error) => {
+              if (!suspended && !cancelled && event.decision.outcome !== "cancelled") fail(error);
+            });
+            let previous: Extract<StintEvent, { type: "permission_request" }> | undefined;
+            for (const saved of savedPermissions.values()) {
+              let details: unknown;
+              try {
+                details = JSON.parse(saved.details ?? "null");
+              } catch {
+                /* Unparseable details cannot establish a match. */
+              }
+              if (!details || typeof details !== "object" || Array.isArray(details)) continue;
+              const sorted = (options: typeof saved.options) =>
+                options
+                  .map(({ optionId, name, kind }) => ({ optionId, name, kind }))
+                  .sort((a, b) => a.optionId.localeCompare(b.optionId));
+              if (
+                // A continuation can reissue the same operation with a new provider ID.
+                isDeepStrictEqual(
+                  { ...details, toolCallId: undefined },
+                  { ...request.toolCall, toolCallId: undefined },
+                ) &&
+                isDeepStrictEqual(sorted(saved.options), sorted(request.options))
+              ) {
+                previous = saved;
+                savedPermissions.delete(saved.requestId);
+                break;
+              }
+            }
             const event: Extract<StintEvent, { type: "permission" }> = {
               type: "permission",
               requestId,
+              attemptId,
               toolCallId: request.toolCall.toolCallId,
               title: request.toolCall.title ?? null,
               kind: request.toolCall.kind ?? null,
@@ -317,19 +396,33 @@ export function createAgentLauncher(
                   () => false,
                 ));
               const allowed =
-                inside && request.options.find((option) => option.kind === "allow_once");
+                !restoringManualPermission &&
+                inside &&
+                request.options.find((option) => option.kind === "allow_once");
               event.automatic = !!allowed;
+              if (previous && !allowed && onPermission) {
+                humanPermissions.add(forwarded);
+                permissionWaitChanged(true);
+              }
               const answer = allowed
                 ? Promise.resolve({
                     outcome: { outcome: "selected" as const, optionId: allowed.optionId },
                   })
                 : onPermission
-                  ? onPermission({ ...request, requestId, forwarded: receipt.forwarded })
+                  ? onPermission({ ...request, requestId, attemptId, forwarded })
                   : permissionCancelled;
               void answer.catch(() => {});
               onEvent({
                 type: "permission_request",
                 requestId,
+                attemptId,
+                binding: "live",
+                ...(previous
+                  ? {
+                      logicalRequestId: previous.logicalRequestId ?? previous.requestId,
+                      raisedAt: previous.raisedAt,
+                    }
+                  : {}),
                 details: JSON.stringify(request.toolCall, null, 2),
                 toolCallId: event.toolCallId,
                 title: event.title,
@@ -341,6 +434,9 @@ export function createAgentLauncher(
                   kind,
                 })),
               });
+              // A different live request proves the recovered turn has moved on. Preserve
+              // manual consent for this request, but do not keep dead saved callbacks waiting.
+              if (!previous) retirePermissions();
               const selectedResponse = await Promise.race([answer, permissionCancelled, failure]);
               response = { outcome: { ...selectedResponse.outcome } };
               if (response.outcome.outcome === "selected") {
@@ -484,6 +580,8 @@ export function createAgentLauncher(
         });
         await Promise.race([initialize, failure, timeout]);
         clearTimeout(timer);
+        while (livePermissions.size)
+          await Promise.race([Promise.all([...livePermissions]), failure]);
         loading = false;
         if (cancelled) return { stopReason: "cancelled" };
         resolveReady();
@@ -510,6 +608,8 @@ export function createAgentLauncher(
             prompt: [{ type: "text", text: resume ? continuationInstruction : prompt }],
           });
           result = { ...result, ...(await Promise.race([workTurn, failure])) };
+          if (!suspended) retirePermissions();
+          restoringManualPermission = false;
         }
         if (suspended) return { stopReason: "cancelled" };
         if (afterTurnTimeoutMs === undefined) {
@@ -527,12 +627,24 @@ export function createAgentLauncher(
             timeoutMs: afterTurnTimeoutMs,
             failure,
             signal: afterTurnCancellation.signal,
+            onPermissionWait(listener) {
+              // A restored human wait has no answer deadline, including transport delivery.
+              if (resume) {
+                permissionWaitChanged = listener;
+                listener(humanPermissions.size > 0);
+              }
+              return () => {
+                permissionWaitChanged = () => {};
+              };
+            },
             retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
             onRequest(request, results) {
               if (request.resultField === "handoff" || request.resultField === "findings")
                 onPhase?.(request.resultField, { ...result, ...results });
             },
             onResult(request, results) {
+              if (!suspended) retirePermissions();
+              restoringManualPermission = false;
               if (request.resultField === "handoff" || request.resultField === "findings")
                 onPhase?.(request.resultField, { ...result, ...results });
             },

@@ -320,6 +320,8 @@ export const zhCN: Catalog = {
     },
   },
   needsYou: {
+    reconnectingPermission: "正在重新连接权限请求…",
+    waitingPermission: "等待你批准权限请求",
     yourAttention: "待处理事项",
     heading: "待你处理",
     close: "关闭待你处理",
@@ -1052,6 +1054,7 @@ export const zhCN: Catalog = {
     "ship.evidenceUnreadable": "无法读取交付证据。",
     "permission.stintEnded": "此权限请求所属的 Stint 已结束。",
     "permission.notPending": "此权限请求已不再待处理。",
+    "permission.attemptRequired": "回答此权限请求时，请提供当前的 attemptId。",
     "permission.alreadyAnswered": "此权限请求已答复。",
     "agent.authenticationRequired": "需要登录验证",
     "agent.codexTimeout": "Codex 可用性检查超时。请刷新 Agent 可用性。",
