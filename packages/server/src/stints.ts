@@ -536,7 +536,13 @@ export function addStintRoutes(
       state.recoveryBlocked = true;
       permissions.clear(id);
       rejectSetup(error instanceof Error ? error : new Error(String(error)));
-      warn({ path, message: errorText(error).text });
+      warn({
+        path,
+        ...coreTextFields(
+          "message",
+          coreText({ code: "recovery.blocked", params: { detail: errorText(error).text } }),
+        ),
+      });
       refresh();
     }
     async function failedRecovery(error: unknown) {
@@ -1253,7 +1259,14 @@ export function addStintRoutes(
     valid: boolean,
     path: string,
   ) {
-    const warning = (message: string) => warn({ path, message });
+    const warning = (message: string) =>
+      warn({
+        path,
+        ...coreTextFields(
+          "message",
+          coreText({ code: "recovery.blocked", params: { detail: message } }),
+        ),
+      });
     if (active.has(stint.workItem)) {
       const previous = active.get(stint.workItem);
       if (previous) previous.recoveryBlocked = true;

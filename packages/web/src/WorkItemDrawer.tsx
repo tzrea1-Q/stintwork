@@ -79,6 +79,7 @@ export function WorkItemDrawer({
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
   const type = item.type === "effort" ? t.card.effort : workflowName(workflow, t);
@@ -198,6 +199,33 @@ export function WorkItemDrawer({
             </a>
           </nav>
           <div className="drawer-content min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 py-6 sm:px-7 [&_section+section]:mt-8 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-6">
+            {item.activeStint && (
+              <section aria-labelledby="drawer-live-stint-title">
+                <h3
+                  id="drawer-live-stint-title"
+                  className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+                >
+                  {t.stints.liveStint}
+                </h3>
+                <p role="status">
+                  {activeProfile?.displayName ?? item.activeStint.agent}
+                  {item.activeStint.ticket !== null && (
+                    <> · {t.stints.ticket(item.activeStint.ticket)}</>
+                  )}{" "}
+                  · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
+                </p>
+                <StopStint
+                  key={`stop:${item.activeStint.id}`}
+                  stintId={item.activeStint.id}
+                  recovering={!!item.activeStint.recovery?.state}
+                />
+                <StintStream
+                  key={`stream:${item.activeStint.id}`}
+                  stint={item.activeStint}
+                  profile={activeProfile}
+                />
+              </section>
+            )}
             <ShipActions item={item} workflows={workflows} />
             {!item.merged && (
               <GateView
@@ -311,26 +339,6 @@ export function WorkItemDrawer({
                 <p className="muted text-muted">{t.stints.noTickets}</p>
               )}
             </section>
-            {item.activeStint && (
-              <section aria-labelledby="drawer-live-stint-title">
-                <h3
-                  id="drawer-live-stint-title"
-                  className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
-                >
-                  {t.stints.liveStint}
-                </h3>
-                <p role="status">
-                  {item.activeStint.agent} · {t.stints.ticket(item.activeStint.ticket)} ·{" "}
-                  <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
-                </p>
-                <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
-                <StintStream
-                  key={item.activeStint.id}
-                  stint={item.activeStint}
-                  profile={agents.find((agent) => agent.id === item.activeStint?.agent)}
-                />
-              </section>
-            )}
             <section aria-labelledby="drawer-stint-history-title">
               <h3
                 id="drawer-stint-history-title"

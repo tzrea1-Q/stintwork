@@ -14,6 +14,10 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "stints.recovery.checkpointFailedUnknown": [["disk full 原文"]],
+  "stints.recovery.saved": [["abc123"]],
+  "stints.recovery.checkpointFailed": [["/worktrees/工程", "disk full 原文"]],
+  "coreText.recovery.blocked": [[{ detail: "Possible writer 123 原文" }]],
   "stints.preparation.bundledNotice": [[136], [165]],
   "coreText.agent.executableDetails": [
     [{ path: "/cache/agent", version: "0.159.3", adapter: "2.1.1" }],

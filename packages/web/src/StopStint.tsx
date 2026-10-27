@@ -3,7 +3,13 @@ import { Button } from "./ui/Button";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import { useState } from "react";
 
-export function StopStint({ stintId }: { stintId: string }) {
+export function StopStint({
+  stintId,
+  recovering = false,
+}: {
+  stintId: string;
+  recovering?: boolean;
+}) {
   const { t } = useLanguage();
   const [requested, setRequested] = useState(false);
   const [error, setError] = useErrorText();
@@ -28,7 +34,7 @@ export function StopStint({ stintId }: { stintId: string }) {
   return (
     <div>
       <Button type="button" onClick={stop} disabled={requested}>
-        {requested ? t.stints.stopping : t.stints.stop}
+        {requested ? t.stints.stopping : recovering ? t.stints.stopStint : t.stints.stop}
       </Button>
       {error && (
         <p role="alert" className="warning text-warning">

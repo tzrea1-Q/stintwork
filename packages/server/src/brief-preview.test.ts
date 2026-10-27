@@ -111,12 +111,20 @@ test("recovery storage failures keep the API usable with a diagnostic warning an
       const snapshot: ProjectSnapshot = await response.json();
       return snapshot.warnings;
     })
-    .toContainEqual({
-      path: ".stintwork/local/stints/diagnostic.jsonl",
-      message: expect.stringContaining(
-        "Could not recover stint: Error: The local .gitignore must be a regular file.",
-      ),
-    });
+    .toContainEqual(
+      expect.objectContaining({
+        path: ".stintwork/local/stints/diagnostic.jsonl",
+        message: expect.stringContaining(
+          "Could not recover stint: Error: The local .gitignore must be a regular file.",
+        ),
+        messageMessage: {
+          code: "recovery.blocked",
+          params: {
+            detail: expect.stringContaining("The local .gitignore must be a regular file."),
+          },
+        },
+      }),
+    );
   expect((await project.app.request("/api/health")).status).toBe(200);
   const history = await project.app.request("/api/stints/diagnostic");
   expect(history.status).toBe(200);

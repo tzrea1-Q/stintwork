@@ -97,7 +97,9 @@ function StintBriefAction({
         aria-describedby={reason ? reasonId : undefined}
         onClick={() => setOpen(true)}
       >
-        {t.stints.startStint}
+        {item.stints.some((stint) => stint.recovery?.state === "fallback")
+          ? t.stints.startNewStint
+          : t.stints.startStint}
       </Button>
       {reason && (
         <p id={reasonId} className="muted text-muted">

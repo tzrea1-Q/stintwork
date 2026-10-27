@@ -23,7 +23,8 @@ type ChecksItem = Pick<
   | "merged"
   | "pullRequest"
   | "pullRequestChecks"
->;
+> &
+  Partial<Pick<ProjectSnapshot["workItems"][number], "activeStint" | "stints">>;
 
 export function ChecksPanel({ item }: { item: ChecksItem }) {
   const { t } = useLanguage();
@@ -103,7 +104,13 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
           <Button
             type="button"
             variant="primary"
-            disabled={busy || active || !data?.commands.length}
+            disabled={
+              busy ||
+              active ||
+              !!item.activeStint ||
+              item.stints?.some((stint) => stint.status === "running") ||
+              !data?.commands.length
+            }
             onClick={() => void action(false)}
           >
             {t.review.checks.run}

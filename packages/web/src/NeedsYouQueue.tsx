@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { StintRecovery } from "./StintRecovery";
 import { CodeBlock } from "./ui/CodeBlock";
 import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
 import { Bell, Inbox, X } from "lucide-react";
@@ -121,6 +122,10 @@ export function NeedsYouQueue({
             {snapshot.attentionItems.map((item) => {
               const profile = snapshot.agents.find((agent) => agent.id === item.agent);
               const workItem = snapshot.workItems.find((entry) => entry.slug === item.workItem);
+              const stint =
+                workItem?.activeStint?.id === item.stintId
+                  ? workItem.activeStint
+                  : workItem?.stints.find((entry) => entry.id === item.stintId);
               const workflow = workItem && snapshot.workflows[workItem.workflow];
               const stage =
                 item.kind === "gate-ready" && workflow
@@ -193,6 +198,7 @@ export function NeedsYouQueue({
                     {item.agent && ` · ${profile?.displayName ?? item.agent}`}
                   </p>
                   <h3>{title}</h3>
+                  {item.kind === "permission" && stint && <StintRecovery stint={stint} />}
                   {item.kind === "checkpoint-warning" && (
                     <>
                       <p>

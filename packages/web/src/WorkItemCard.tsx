@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { recoveryStatus } from "./StintRecovery";
 import { Button } from "./ui/Button";
 import type { Milestone, ProjectSnapshot, WorkflowDefinition } from "@stintwork/core";
 import { Bug, Info, Layers3, LockKeyhole, Sparkles, Zap } from "lucide-react";
@@ -98,7 +99,7 @@ export function WorkItemCard({
           role="status"
         >
           <span className="stint-running-dot size-1 rounded-full bg-current" aria-hidden="true" />
-          {t.card.running}
+          {recoveryStatus(item.activeStint, t) ?? t.card.running}
         </span>
       )}
       {item.merged && <Badge variant="success">{t.card.shipped}</Badge>}

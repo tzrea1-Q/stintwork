@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
-import type { EvidenceContext, ReviewDecision, StintSummary, RiskyPath } from "@stintwork/core";
+import type {
+  EvidenceContext,
+  ReviewDecision,
+  StintSummary,
+  RiskyPath,
+  Stint,
+} from "@stintwork/core";
 import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { Button } from "./ui/Button";
@@ -241,6 +247,7 @@ export function ReviewOverlay({
     slug: string;
     title: string;
     stints?: StintSummary[];
+    activeStint?: Stint | null;
     reviewDecisions?: ReviewDecision[];
     riskyPaths?: RiskyPath[];
     stage?: string | null;
@@ -273,7 +280,10 @@ export function ReviewOverlay({
     },
     reviewStageId,
   );
+  const stintActive =
+    !!item.activeStint || !!item.stints?.some((stint) => stint.status === "running");
   async function act(action: "decision" | "send-back" | "accept-risky-path", body: object) {
+    if (stintActive) return false;
     setSaving(true);
     setActionError("");
     setMessage("");
@@ -332,7 +342,7 @@ export function ReviewOverlay({
             finding={finding}
             anchor={anchor(finding)}
             onDecision={onDecision}
-            saving={saving}
+            saving={saving || stintActive}
           />
         ))
       : null;
@@ -354,7 +364,7 @@ export function ReviewOverlay({
             finding={finding}
             anchor={anchor(finding)}
             onDecision={onDecision}
-            saving={saving}
+            saving={saving || stintActive}
           />
         ))}
       </section>
@@ -447,6 +457,7 @@ export function ReviewOverlay({
               className="md:min-h-8 md:px-3"
               disabled={
                 saving ||
+                stintActive ||
                 sentBack ||
                 item.stage !== reviewStageId ||
                 !evidence.findings.some(
@@ -561,7 +572,7 @@ export function ReviewOverlay({
               <RiskyPaths
                 risks={item.riskyPaths}
                 decisions={decisions}
-                saving={saving}
+                saving={saving || stintActive}
                 onAccept={(risk, reason) =>
                   act("accept-risky-path", { id: risk.path, blob: risk.blob, reason })
                 }

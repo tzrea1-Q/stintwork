@@ -608,7 +608,7 @@ export const en = {
     blockedBy: "· Blocked by",
     noTickets: "No tickets yet.",
     liveStint: "Live stint",
-    ticket: (number: number | null) => `Ticket ${number}`,
+    ticket: (number: number) => `Ticket ${number}`,
     history: "Stint history",
     reviewFindings: "Review findings",
     recordedChecks: "Recorded checks",
@@ -738,6 +738,32 @@ export const en = {
     closeStint: (id: string) => `Close stint ${id}`,
     noCheckpoint: "No checkpoint recorded.",
     noStints: "No stints yet.",
+    recovery: {
+      states: {
+        resuming: "Resuming stint…",
+        resumed: "Stint resumed after server restart",
+        suspending: "Suspending stint…",
+        suspended: "Stint suspended",
+        fallback: "Saving interrupted stint…",
+      },
+      details: "Recovery details",
+      reason: "Recovery reason",
+      worktree: "Worktree",
+      diagnostic: "Recovery diagnostic",
+      selectionReason: "Source selection reason",
+      adapter: "Recorded adapter",
+      recordedSource: "Recorded Agent source",
+      saved: (commit: string) =>
+        `Could not resume stint. Changes saved at checkpoint ${commit}. Start a new stint from the recorded state.`,
+      unchanged:
+        "Could not resume stint. No new checkpoint was needed. Start a new stint from the recorded state.",
+      checkpointFailedUnknown: (reason: string) =>
+        `Could not resume stint or create a checkpoint. ${reason}`,
+      checkpointFailed: (path: string, reason: string) =>
+        `Could not resume stint or create a checkpoint. Your files remain in ${path}. ${reason}`,
+    },
+    startNewStint: "Start new stint",
+    stopStint: "Stop stint",
     stopFailed: "Could not stop stint.",
     stopping: "Stopping stint…",
     stop: "Stop",
