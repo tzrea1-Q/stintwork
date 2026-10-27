@@ -1,6 +1,6 @@
 # 06 — Restore a waiting permission to Needs you
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05
 
 ## What to build
@@ -182,3 +182,34 @@ pnpm --config.verify-deps-before-run=false test:e2e
 ```
 
 The unfiltered unit run must execute the nine excluded agent preparation cases and 59 excluded native/socket server cases, including the server-only SIGKILL matrix, failed-recovery matrix, saved handoff/findings recovery and WebSocket/HTTP delivery cases. Repeat real Claude/Codex Ask-level permission recovery across graceful restart and server-only SIGKILL; specifically hold an actually rebound handoff/findings callback unanswered beyond the default 90-second collector budget, then answer Allow/Reject with the current attemptId and verify output/finalization still completes, with independent proof of no denied side effect for Reject. The coordinator's currently running built CLI predates these source changes. No native full-suite, real-agent, socket, browser, build or smoke pass is claimed here.
+
+**Coordinator, 2026-10-26:** Verified on the native socket host (darwin-arm64, maintainer's machine, Node 22).
+
+- **Checks:** format:check, lint, typecheck and build pass. 2701 unit tests pass, including the 24-case server-only SIGKILL matrix; that matrix also passed 6 of 6 repeated runs after the fixture-race fix. smoke:package and 314 e2e tests pass. No stopped processes were left behind.
+- **Reviews:** five Codex reviews. Each finding was fixed with a regression test, and the fifth review was clean.
+
+Real Ask-level pending permission across a server restart, run through the built CLI in a scratch repo. The answers carry the live attemptId, as the UI does.
+
+| Agent | Restart | Answer | Result |
+|---|---|---|---|
+| Claude 2.1.295 installed | SIGTERM | Reject | The restored item showed `reconnecting` with its original age. The reissue bound live. Reject returned 200; a duplicate returned 409. One finished ending with a handoff. |
+| Claude | SIGTERM | Allow | The reissue joined the same logical item with its original `raisedAt`. Allow returned 200. The spec write ran (checkpoint `52a73fa`, +43 lines). |
+| Claude | SIGKILL | Allow | Restored as `reconnecting`. Claude did not reissue after continuation and finished without writing. The item was retired at the ending. |
+| Codex 0.163.0 installed | SIGTERM | Reject | One logical item with its original age. Reject (`cancel`) returned 200. The denied rewrite of `spec.md` never happened: no new checkpoint, and the spec equals the scope commit. |
+| Codex | SIGKILL | Allow | One logical item. Allow returned 200; the command ran and the stint finished with a handoff. |
+
+In every run the session was unchanged, there was exactly one ending, and no adapter or stopped process was left behind. Stale request IDs returned 409 and a foreign origin returned 403.
+
+**Defects found on the host and fixed:**
+
+- **Claude reissues with a new toolCallId.** Matching now compares normalized content, not provider IDs.
+- **A non-owner server showed the request as live.** Both Needs you and the drawer now show it as not answerable.
+- **Frozen process groups (ticket 05 code, merged).** Cleanup left real Codex trees SIGSTOPped after a deadline or verification failure. The cause was repeated native snapshots while freezing Codex's separate-session shell. Cleanup now shares snapshots and never leaves a frozen process: it kills processes it verified and froze, and resumes anything it cannot verify. Every block now names the check that failed.
+- **Smaller fixes:**
+  - Restart wrote `resuming` twice; it is now written once.
+  - Restored items now retire when the agent moves on.
+  - A missing attemptId now returns 400.
+
+**Coordinator harness bug:** my harness omitted attemptId, which produced the reported 409 "not pending". That was not a product defect.
+
+**Left over:** the maintainer must stop one frozen group, PID 32405 / 32456. It came from the pre-fix build; the coordinator's kill was blocked by a safety check. Resolved.
