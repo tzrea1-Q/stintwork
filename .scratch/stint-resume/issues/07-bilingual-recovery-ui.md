@@ -1,6 +1,6 @@
 # 07 — Show recovery and fallback in both languages
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06
 
 ## What to build
@@ -112,3 +112,32 @@ git diff --check
 Final checks passed: format, lint (existing informational Biome configuration notice only), workspace typecheck; **88 web/core files / 1,612 tests**; final focused recovery **32/32**. All **20** recovery Playwright cases list successfully, without browser execution. Logs: `/tmp/m10-07-path-header-{format,lint,typecheck,web-core,e2e-list}.log`; red header reproduction: `/tmp/m10-07-header-red.log`; final focused run: `/tmp/m10-07-header-green.log`. An initial typecheck caught a Testing Library option that only Playwright supports; it was removed and final typecheck/focused tests passed. No failed run is counted as a pass. Append-only ticket, Status-preservation and whitespace guards passed.
 
 Coordinator: rebuild this delta, run all 20 `stint-recovery.spec.ts` cases and the full e2e suite, and retain the existing width/language/theme screenshots under `packages/web/coverage/e2e/test-results/<test-case>/stint-recovery-review/`. The prior fixture/DOM failure attachments remain enabled. Confirm the complete journeys now get past the labelled-field assertions and the header contains the registered Agent name with no null ticket in either language. No new screenshots, browser, socket, build or smoke pass is claimed locally.
+
+**Coordinator, 2026-10-26:** Verified on the native host (darwin-arm64, Chromium via the Playwright harness).
+
+- **Checks:** format:check, lint, typecheck, build, 2734 unit tests, smoke:package and all 334 e2e tests pass. The e2e run includes the 20 stint-recovery cases at 1440/1024/768/390/360px in both languages, plus light and dark at 1440 and 390px.
+- **Reviews:** three Codex reviews. The first review's findings were fixed (terminal history no longer shows "Resuming…"; history keeps the recorded worktree), and the second and third were clean.
+- **Screenshots:** 204 retained (coordinator scratch copy: `m10-07-screens/`).
+
+**Screen review at 1440/390px in en and zh-CN:**
+
+- **Live stint:** recovery sits in the drawer's live-stint section, next to Stop. The resuming badge is visible and the disclosures are spaced.
+- **Needs you:** the reconnecting item keeps its original wait time, with disabled answer buttons and "正在重新连接权限请求…".
+- **Fallbacks:** the Grok, legacy and checkpoint-failure reasons are localized, and long paths and reasons wrap.
+- **Stop:** during resuming, Stop shows "Stopping stint…".
+- **Resumed marker:** green.
+- **Cleanup-blocked warning:** shown under Project warnings, with its details.
+- **Review overlay:** during recovery, Accept, Send back and Run checks are disabled.
+
+**Host defects fixed:**
+
+- The recovery panel rendered outside the live-stint section, with a clipped badge and overlapping summary.
+- A pre-existing header bug on main: "codex · Ticket null" now shows the agent's display name and omits the missing ticket.
+- A fixture produced no risky path to exercise.
+
+**Not changed (follow-ups, both pre-existing on main):**
+
+- Stint history still shows the raw agent ID (`grok`), and English history shows raw ISO timestamps.
+- At 390px the live-stint heading sits tight against the tab strip.
+
+**Left to ticket 09:** WebSocket reconnect and ownership are covered by the mocked e2e harness; real-agent UI acceptance happens in ticket 09's exit run. Resolved.
