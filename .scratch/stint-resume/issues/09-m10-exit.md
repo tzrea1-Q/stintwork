@@ -90,3 +90,12 @@ Pending Ask-level permission runs:
 **Coordinator, 2026-10-26:** The maintainer accepted the exit verdict (pass) on 2026-10-26, with the limits above. M10 is set to shipped. The follow-ups (Start right after a fallback ending; history raw agent ID and timestamps) are recorded for later work.
 
 **Coordinator, 2026-10-27:** M10 reopened, at the maintainer's choice. Linux CI (`checks` on ubuntu-latest) has failed since the stint-resume 05 merge: 16 server-only SIGKILL cases. On Linux, `readlink /proc/<pid>/cwd` returns EACCES for non-dumpable or other-user processes, and that EACCES failed the whole writer scan. The result was that crash recovery was blocked on Linux. My verdict summary above wrongly said Linux had CI coverage. The fix is on `codex/m10-linux`. M10 returns to shipped once Linux CI is green.
+
+**Coordinator, 2026-10-27:** Linux fix merged (`246d98f`, from `codex/m10-linux`). An unreadable `/proc/<pid>/cwd` (EACCES/EPERM) no longer fails the writer scan. Processes that started before the attempt are excluded before their cwd is read, and any other unreadable cwd stays bounded by the rescans. Evidence:
+- Reproduced in a Linux container (node:22-bookworm-slim, aarch64, non-root user, with a non-dumpable same-user `ssh-agent`). On `main` the same 16 server-only SIGKILL cases failed; on the fix branch they passed.
+- The full package suite passed in that container (103 files).
+- macOS verify passed: format, lint, typecheck, build, 2,758 unit tests, package smoke, 334 e2e.
+- A Codex review (gpt-6.1-terra) found no defects.
+- GitHub CI run 40472116168 passed: checks, browser, and package-smoke on ubuntu-latest and macos-latest.
+
+M10 is set back to shipped. Real-agent runs remain darwin-arm64 only.

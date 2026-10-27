@@ -58,7 +58,7 @@ Status: shipped
 
 ## M10 · Stints survive restarts
 Id: m10
-Status: active
+Status: shipped
 
 - stint-resume
 
