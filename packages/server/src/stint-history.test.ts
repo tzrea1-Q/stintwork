@@ -329,7 +329,12 @@ test("restart history and replay match every log, newest first, and recovery is 
     });
   }
   const unfinished = await log(root, "interrupted", "2026-10-09T10:00:04Z");
-  const endedBefore = await readFile(join(root, ".stintwork/local/stints/finished.jsonl"), "utf8");
+  const terminalBefore = await Promise.all(
+    ["finished", "stopped", "failed"].map(async (id) => ({
+      path: join(root, ".stintwork/local/stints", `${id}.jsonl`),
+      text: await readFile(join(root, ".stintwork/local/stints", `${id}.jsonl`), "utf8"),
+    })),
+  );
   const first = project();
   await first.app.request("/api/health");
   await expect
@@ -354,12 +359,13 @@ test("restart history and replay match every log, newest first, and recovery is 
   expect((await first.app.request("/api/stints/%2E%2E%2Foutside")).status).toBe(404);
   const recovered = await readFile(unfinished.path, "utf8");
   await first.stop();
-  const second = project();
-  expect(await (await second.app.request("/api/project")).json()).toEqual(snapshot);
-  expect(await readFile(unfinished.path, "utf8")).toBe(recovered);
-  expect(await readFile(join(root, ".stintwork/local/stints/finished.jsonl"), "utf8")).toBe(
-    endedBefore,
-  );
+  for (let restart = 1; restart <= 2; restart++) {
+    const next = project();
+    expect(await (await next.app.request("/api/project")).json()).toEqual(snapshot);
+    expect(await readFile(unfinished.path, "utf8")).toBe(recovered);
+    for (const { path, text } of terminalBefore) expect(await readFile(path, "utf8")).toBe(text);
+    await next.stop();
+  }
 });
 
 test("initializing another server and repeated API reads do not interrupt a stint owned by this process", async () => {
@@ -773,18 +779,34 @@ test.skipIf(!nativeProcessInspection).each(
         );
         await crashStep("delete unrelated cwd", () => rm(directory, { recursive: true }));
       }
-      const child = spawn(
-        process.execPath,
-        sourceNodeArgs(
-          "--input-type=module",
-          "--eval",
-          `
+      let original: Stint | undefined;
+      let stint!: Stint;
+      let path = "";
+      let before = "";
+      let oldAttempt!: StintProcessAttempt;
+      let toolPid: number | undefined;
+      // Reuse the same cold-server fixture for a second mid-work crash after a successful load.
+      const crashes = lifetime === "EOF" ? 2 : 1;
+      const npmCalls = await cache.calls();
+      for (let cycle = 0; cycle < crashes; cycle++) {
+        const previousAttempt = oldAttempt;
+        const child = spawn(
+          process.execPath,
+          sourceNodeArgs(
+            "--input-type=module",
+            "--eval",
+            `
       import { once } from 'node:events';
       import { createProjectServer } from ${JSON.stringify(new URL("./index.ts", import.meta.url).href)};
       import { createAgentRegistry, createClaudeCodeAgent, createCodexAgent } from ${JSON.stringify(new URL("../../agents/src/index.ts", import.meta.url).href)};
+      import { verifyRecordedAgent } from ${JSON.stringify(new URL("../../agents/src/adapter-cache.ts", import.meta.url).href)};
       const env = ${JSON.stringify({ ...env, TEST_RECOVERY: "crash", TEST_TOOL_WRITER: lifetime === "EOF" ? undefined : "1", TEST_EXIT_ON_EOF: lifetime === "surviving" ? undefined : "1" })};
       const agent = ${JSON.stringify(agent)} === 'claude' ? createClaudeCodeAgent(env) : createCodexAgent({ env });
-      agent.prepare = async () => (${JSON.stringify(selected)});
+      agent.prepare = async () => {
+        if (${cycle > 0}) throw new Error('Recovery must not prepare or reselect');
+        return (${JSON.stringify(selected)});
+      };
+      agent.verifyRecovery = (launch,cwd) => verifyRecordedAgent(launch,{...${JSON.stringify(cache.options)},cwd,env});
       const launch = agent.launch;
       agent.launch = options => launch({...options,onEvent(event) {
         options.onEvent(event);
@@ -801,82 +823,109 @@ test.skipIf(!nativeProcessInspection).each(
       }
       const request = {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({workItem:'first',ticket:1,agent:agent.id})};
       process.send({step:'cold start response'});
-      const response = url ? await fetch(url+'/api/stints',{...request,signal:AbortSignal.timeout(10000)}) : await project.app.request('/api/stints',request);
+      const endpoint = ${cycle > 0} ? '/api/stints/' + ${JSON.stringify(stint?.id ?? "")} : '/api/stints';
+      const init = ${cycle > 0} ? undefined : request;
+      const response = url ? await fetch(url+endpoint,{...init,signal:AbortSignal.timeout(10000)}) : await project.app.request(endpoint,init);
       process.send({status:response.status,body:await response.json()});
     `,
-        ),
-        { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
-      );
-      tracked.children.push(child);
-      child.stderr?.on("data", (bytes) => {
-        stderr = (stderr + String(bytes)).slice(-8000);
-      });
-      child.on("message", (message) => {
-        if (message && typeof message === "object" && "step" in message)
-          childStep = String(message.step);
-      });
-      const working = new Promise<void>((resolve) => {
-        child.on("message", (message) => {
-          if (message === "working") resolve();
+          ),
+          { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
+        );
+        tracked.children.push(child);
+        child.stderr?.on("data", (bytes) => {
+          stderr = (stderr + String(bytes)).slice(-8000);
         });
-      });
-      const message = await crashStep(
-        "cold server start response IPC",
-        () =>
-          new Promise<{ status: number; body: { stint: Stint } }>((resolve, reject) => {
-            child.on("message", (message) => {
-              if (message && typeof message === "object" && "status" in message)
-                resolve(message as { status: number; body: { stint: Stint } });
-            });
-            child.once("error", reject);
-            child.once("exit", (code, signal) =>
-              reject(new Error(`Server exited: ${code ?? signal}`)),
-            );
-          }),
-      );
-      expect(message.status).toBe(201);
-      const stint = message.body.stint;
-      const path = join(root, ".stintwork/local/stints", `${stint.id}.jsonl`);
-      diagnosticLog = path;
-      await crashStep("work started IPC", () => working);
-      const before = await crashStep("read log before crash", () => readFile(path, "utf8"));
-      const original = indexStints(createNodeRepoFiles(root)).stints[0];
-      expect(original.recovery?.sessionId).toBe("fake-session");
-      const oldAttempt = original.recovery?.attempt;
-      if (!oldAttempt) throw new Error("Expected recorded process ownership");
-      tracked.attempts.push(oldAttempt);
-      const toolPid =
-        lifetime === "EOF"
-          ? undefined
-          : Number(
-              await crashStep("read tool PID", () =>
-                readFile(join(stint.worktree.path, "tool.pid"), "utf8"),
+        child.on("message", (message) => {
+          if (message && typeof message === "object" && "step" in message)
+            childStep = `crash ${cycle + 1}: ${String(message.step)}`;
+        });
+        const working = new Promise<void>((resolve) => {
+          child.on("message", (message) => {
+            if (message === "working") resolve();
+          });
+        });
+        const message = await crashStep(
+          `crash ${cycle + 1}: cold server start response IPC`,
+          () =>
+            new Promise<{ status: number; body: { stint: Stint } }>((resolve, reject) => {
+              child.on("message", (message) => {
+                if (message && typeof message === "object" && "status" in message)
+                  resolve(message as { status: number; body: { stint: Stint } });
+              });
+              child.once("error", reject);
+              child.once("exit", (code, signal) =>
+                reject(new Error(`Server exited: ${code ?? signal}`)),
+              );
+            }),
+        );
+        expect(message.status).toBe(cycle ? 200 : 201);
+        stint = message.body.stint;
+        path = join(root, ".stintwork/local/stints", `${stint.id}.jsonl`);
+        diagnosticLog = path;
+        await crashStep(`crash ${cycle + 1}: work started IPC`, () => working);
+        const currentLog = await crashStep("read log before crash", () => readFile(path, "utf8"));
+        expect(currentLog.startsWith(before)).toBe(true);
+        before = currentLog;
+        const current = indexStints(createNodeRepoFiles(root)).stints[0];
+        original ??= current;
+        expect(current.recovery?.sessionId).toBe("fake-session");
+        if (!current.recovery?.attempt) throw new Error("Expected recorded process ownership");
+        oldAttempt = current.recovery.attempt;
+        if (cycle) {
+          await crashStep("second crash waits for established continuation", () =>
+            expect
+              .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
+              .toBe("resumed"),
+          );
+          expect(oldAttempt.id).not.toBe(previousAttempt.id);
+          expect(
+            systemProcesses
+              .read()
+              .some(
+                (row) =>
+                  row.pid === previousAttempt.pid && row.identity === previousAttempt.identity,
               ),
-            );
-      if (toolPid) {
-        const tool = systemProcesses
-          .read()
-          .find((row) => row.pid === toolPid && row.parent === oldAttempt.pid);
-        if (!tool) throw new Error("Expected tool ancestry before killing the server");
-        tracked.tools.push(tool);
+          ).toBe(false);
+          expect(current.status).toBe("running");
+          expect(current.checkpointCommit).toBeNull();
+          expect(await cache.calls()).toEqual(npmCalls);
+        }
+        tracked.attempts.push(oldAttempt);
+        toolPid =
+          lifetime === "EOF"
+            ? undefined
+            : Number(
+                await crashStep("read tool PID", () =>
+                  readFile(join(stint.worktree.path, "tool.pid"), "utf8"),
+                ),
+              );
+        if (toolPid) {
+          const tool = systemProcesses
+            .read()
+            .find((row) => row.pid === toolPid && row.parent === oldAttempt.pid);
+          if (!tool) throw new Error("Expected tool ancestry before killing the server");
+          tracked.tools.push(tool);
+        }
+        const exited = once(child, "exit");
+        // Explicitly kill only the server; EOF lifetime adapters exit from their stdin end signal.
+        child.kill("SIGKILL");
+        await crashStep(`crash ${cycle + 1}: server SIGKILL exit`, () => exited);
+        if (lifetime === "surviving") expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
+        else
+          await expect
+            .poll(
+              () =>
+                systemProcesses
+                  .read()
+                  .some(
+                    (row) => row.pid === oldAttempt.pid && row.identity === oldAttempt.identity,
+                  ),
+              { timeout: 10_000, message: "adapter stdin EOF exit" },
+            )
+            .toBe(false);
+        if (toolPid) expect(systemProcesses.exists(toolPid)).toBe(true);
       }
-      const exited = once(child, "exit");
-      // Explicitly kill only the server; EOF lifetime adapters exit from their stdin end signal.
-      child.kill("SIGKILL");
-      await crashStep("server SIGKILL exit", () => exited);
-      if (lifetime === "surviving") expect(systemProcesses.exists(oldAttempt.pid)).toBe(true);
-      else
-        await expect
-          .poll(
-            () =>
-              systemProcesses
-                .read()
-                .some((row) => row.pid === oldAttempt.pid && row.identity === oldAttempt.identity),
-            { timeout: 10_000, message: "adapter stdin EOF exit" },
-          )
-          .toBe(false);
-      if (toolPid) expect(systemProcesses.exists(toolPid)).toBe(true);
-      const npmCalls = await crashStep("read preparation trace", () => cache.calls());
+      if (!original) throw new Error("Expected original stint");
       let enteredVerification!: () => void;
       const verificationEntered = new Promise<void>((resolve) => {
         enteredVerification = resolve;
@@ -1025,12 +1074,15 @@ test.skipIf(!nativeProcessInspection).each(
         socket.close();
       }
       const messages = recovered.events.filter((event) => event.type === "message");
-      expect(messages.filter((event) => event.text === "Before crash")).toHaveLength(1);
+      expect(messages.filter((event) => event.text === "Before crash")).toHaveLength(crashes);
       expect(messages.filter((event) => event.text === "After restart")).toHaveLength(1);
       expect(new Set(messages.map((event) => event.id)).size).toBe(messages.length);
       const tools = recovered.events.filter((event) => event.type === "tool_call");
-      expect(tools.map((event) => event.title)).toEqual(["Old tool", "Fresh tool"]);
-      expect(new Set(tools.map((event) => event.toolCallId)).size).toBe(2);
+      expect(tools.map((event) => event.title)).toEqual([
+        ...Array(crashes).fill("Old tool"),
+        "Fresh tool",
+      ]);
+      expect(new Set(tools.map((event) => event.toolCallId)).size).toBe(crashes + 1);
       for (const name of [
         "partial.txt",
         ...(toolPid ? ["tool.txt"] : []),
@@ -1073,10 +1125,35 @@ test.skipIf(!nativeProcessInspection).each(
       );
       expect((await request(`/api/stints/${stint.id}`)).status).toBe(200);
       expect(
-        (await crashStep("verify a single session load", () => calls())).filter(
+        (await crashStep("verify one session load per restart", () => calls())).filter(
           (call) => call.method === "session/load",
         ),
-      ).toHaveLength(1);
+      ).toHaveLength(crashes);
+      const attempts = entries.filter(
+        (entry) => entry.type === "recovery" && entry.kind === "attempt",
+      );
+      expect(attempts).toHaveLength(crashes + 1);
+      expect(new Set(attempts.map((entry) => entry.attempt.id)).size).toBe(crashes + 1);
+      expect(trace.filter((call) => call.method === "session/new")).toHaveLength(1);
+      expect(
+        trace.filter(
+          (call) =>
+            call.method === "session/prompt" &&
+            call.params.prompt[0].text === continuationInstruction,
+        ),
+      ).toHaveLength(crashes);
+      expect(
+        trace
+          .filter((call) => call.method === "session/load")
+          .every(
+            (call) =>
+              call.params.sessionId === "fake-session" &&
+              call.params.cwd === stint.worktree.path &&
+              call.home === env.HOME &&
+              call.token === env.TEST_LAUNCH_ENV &&
+              call[agent] === selected.executable.path,
+          ),
+      ).toBe(true);
       if (unrelated) expect(unrelated.exitCode).toBeNull();
     } catch (error) {
       const diagnosticApp = restarted?.app;
@@ -2609,9 +2686,16 @@ test("cleanup during recovery stays proven through successive crashes and reused
   }
 });
 
-test.each(["finish", "Stop", "failure", "fallback"] as const)(
-  "a crash during %s checkpoint reuses durable cleanup proof and only finalizes",
-  async (outcome) => {
+test.each(
+  (["finish", "Stop", "failure", "fallback"] as const).flatMap((outcome) =>
+    ["before checkpoint", "after checkpoint before ended"].map((boundary) => ({
+      outcome,
+      boundary,
+    })),
+  ),
+)(
+  "a crash during $outcome finalization ($boundary) reuses durable cleanup proof and only finalizes",
+  async ({ outcome, boundary }) => {
     const { root, project, registered, selected, logged } = await savedRecovery("work");
     registered.verifyRecovery = async () => selected;
     const read = vi
@@ -2675,17 +2759,24 @@ test.each(["finish", "Stop", "failure", "fallback"] as const)(
       continueCheckpoint = resolve;
     });
     let crashLog = "";
+    let committed: Awaited<ReturnType<typeof git.createCheckpoint>> | undefined;
     const realCheckpoint = git.createCheckpoint;
     const checkpoint = vi.spyOn(git, "createCheckpoint").mockImplementationOnce(async (...args) => {
+      if (boundary === "after checkpoint before ended") committed = await realCheckpoint(...args);
       crashLog = await readFile(logged.path, "utf8");
       atCheckpoint();
       await held;
-      return realCheckpoint(...args);
+      return committed ?? realCheckpoint(...args);
     });
     const first = project({ agentRegistry: createAgentRegistry([registered]) });
     try {
       await first.app.request("/api/health");
-      await launching;
+      await permissionStep(
+        root,
+        first,
+        "replacement launched before finalization crash",
+        () => launching,
+      );
       if (outcome !== "fallback")
         await expect
           .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
@@ -2696,7 +2787,7 @@ test.each(["finish", "Stop", "failure", "fallback"] as const)(
         ).toBe(202);
       else if (outcome === "finish") complete();
       else fail();
-      await checkpointing;
+      await permissionStep(root, first, boundary, () => checkpointing);
       expect(crashLog).not.toContain('"type":"ended"');
       continueCheckpoint();
       await waitForEnding(root);
@@ -2722,7 +2813,8 @@ test.each(["finish", "Stop", "failure", "fallback"] as const)(
           );
         })
         .toBe(true);
-      expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      const ended = indexStints(createNodeRepoFiles(root)).stints[0];
+      expect(ended).toMatchObject({
         status: { finish: "finished", Stop: "stopped", failure: "failed", fallback: "interrupted" }[
           outcome
         ],
@@ -2732,11 +2824,17 @@ test.each(["finish", "Stop", "failure", "fallback"] as const)(
       expect(registered.launch).not.toHaveBeenCalled();
       expect(registered.verifyRecovery).not.toHaveBeenCalled();
       expect(signal).not.toHaveBeenCalled();
+      if (committed) expect(ended.checkpointCommit).toBe(committed);
       expect(
         (await readFile(logged.path, "utf8"))
           .split("\n")
           .filter((line) => line.includes('"type":"ended"')),
       ).toHaveLength(1);
+      const terminal = await readFile(logged.path, "utf8");
+      await restarted.stop();
+      const finalRestart = project({ agentRegistry: createAgentRegistry([registered]) });
+      await finalRestart.app.request("/api/health");
+      expect(await readFile(logged.path, "utf8")).toBe(terminal);
     } finally {
       continueCheckpoint();
       checkpoint.mockRestore();
@@ -3067,10 +3165,20 @@ test("a rejected shutdown closes server resources and a later stop retries succe
   }
 });
 
-test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const)(
+test.each([
+  "resume",
+  "reserved",
+  "loaded",
+  "fallback",
+  "detached-writer",
+  "missing-worktree",
+] as const)(
   "startup after an EOF-exited adapter uses a complete fake native writer scan: %s",
   async (scenario) => {
-    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    const { root, project, registered, selected, logged, entries, cache } =
+      await savedRecovery("work");
+    const npmBefore = await cache.calls();
+    const prepare = vi.spyOn(registered, "prepare");
     const old = entries.find((entry) => entry.type === "recovery" && entry.kind === "attempt");
     if (old?.type !== "recovery" || old.kind !== "attempt") throw new Error("Expected attempt");
     const uid = process.getuid?.() as number;
@@ -3080,10 +3188,34 @@ test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const
       processGroup: true,
       owner: { pid: 10, identity: `${uid}:old-owner`, startedAt: old.attempt.owner.startedAt },
     });
+    if (scenario === "reserved" || scenario === "loaded")
+      entries.push({ type: "recovery", version: 1, at: old.at, kind: "resume", state: "resuming" });
+    if (scenario === "loaded") {
+      const attempt = {
+        ...old.attempt,
+        id: "loaded-before-work",
+        pid: 22,
+        marker: "stintwork-loaded-before-work",
+      };
+      entries.push(
+        { type: "recovery", version: 1, at: old.at, kind: "attempt", attempt },
+        {
+          type: "recovery",
+          version: 1,
+          at: old.at,
+          kind: "session",
+          attemptId: attempt.id,
+          sessionId: "fake-session",
+        },
+      );
+    }
     await writeFile(
       logged.path,
       `${entries
-        .filter((entry) => !(entry.type === "recovery" && entry.kind === "resume"))
+        .filter(
+          (entry) =>
+            !(entry.type === "recovery" && entry.kind === "resume" && entry.state === "suspended"),
+        )
         .map((entry) => JSON.stringify(entry))
         .join("\n")}\n`,
     );
@@ -3134,6 +3266,7 @@ test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const
     let complete: () => void = () => {};
     registered.launch = vi.fn((options) => {
       expect(options.resume?.sessionId).toBe("fake-session");
+      expect(options.resume?.progress.phase).toBe("work");
       options.onProcess?.({
         id: "replacement",
         pid: 30,
@@ -3191,16 +3324,21 @@ test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const
         const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
         expect(snapshot.workItems[0].activeStint).toBeNull();
       } else {
-        if (scenario === "resume") {
-          await expect
-            .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
-            .toBe("resumed");
+        const resumes = ["resume", "reserved", "loaded"].includes(scenario);
+        if (resumes) {
+          await permissionStep(root, server, `${scenario}: continuation established`, () =>
+            expect
+              .poll(() => indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state)
+              .toBe("resumed"),
+          );
           complete();
         }
-        const ended = await waitForEnding(root);
+        const ended = await permissionStep(root, server, `${scenario}: checkpoint and ending`, () =>
+          waitForEnding(root),
+        );
         expect(ended, JSON.stringify(ended.recovery)).toMatchObject({
           id: "saved-phase",
-          status: scenario === "resume" ? "finished" : "interrupted",
+          status: resumes ? "finished" : "interrupted",
           checkpointCommit: expect.any(String),
         });
         expect(
@@ -3212,16 +3350,21 @@ test.each(["resume", "fallback", "detached-writer", "missing-worktree"] as const
         const after = await readFile(logged.path, "utf8");
         expect(after.startsWith(before)).toBe(true);
         expect(after.split("\n").filter((line) => line.includes('"type":"ended"'))).toHaveLength(1);
-        expect(registered.launch).toHaveBeenCalledTimes(scenario === "resume" ? 1 : 0);
+        expect(registered.launch).toHaveBeenCalledTimes(resumes ? 1 : 0);
       }
-      expect(directories).toHaveBeenCalledTimes(scenario === "detached-writer" ? 4 : 1);
+      expect(directories).toHaveBeenCalledTimes(
+        scenario === "detached-writer" ? 4 : scenario === "loaded" ? 2 : 1,
+      );
       expect(signal).not.toHaveBeenCalled();
+      expect(prepare).not.toHaveBeenCalled();
+      expect(await cache.calls()).toEqual(npmBefore);
     } finally {
       read.mockRestore();
       exists.mockRestore();
       directories.mockRestore();
       signal.mockRestore();
       checkpoint.mockRestore();
+      prepare.mockRestore();
       await server.stop();
     }
   },
