@@ -625,7 +625,7 @@ export const zhCN: Catalog = {
     blockedBy: "· 受阻于",
     noTickets: "尚无工单。",
     liveStint: "当前 Stint",
-    ticket: (number) => joinChinese("工单", number),
+    ticket: (number: number) => joinChinese("工单", number),
     history: "Stint 历史",
     reviewFindings: "审查发现",
     recordedChecks: "已记录的检查",

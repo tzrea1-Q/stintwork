@@ -90,3 +90,25 @@ git diff --check
 Final groups passed: web/core **88 files / 1,608 tests**; all brief-preview **9/9**; the three selected server files **114 passed / 44 native-or-socket cases skipped**. Format/lint/workspace typecheck passed, with only the existing informational Biome configuration notice. All **20** recovery Playwright cases listed; listing is not browser execution. Logs: `/tmp/m10-07-followup-{format,lint,typecheck,web-core,brief-preview,server,e2e-list}.log`. The initial six failing UI regressions are in `/tmp/m10-07-followup-ui-red.log`; no red/failed run is counted as passing. The final append-only ticket/Status and whitespace guards also passed.
 
 Coordinator: rebuild this delta, rerun `stint-recovery.spec.ts` (all 20 cases), then the complete e2e suite and unfiltered native unit suite. The 44 deferred history cases remain the native/socket cases enumerated in the preceding note; they were not newly passed here. Recheck the supplied 1440px zh-CN and 390px en failure states, all requested widths/languages/themes, and actual keyboard focus/scroll behavior. Retain review PNGs under `packages/web/coverage/e2e/test-results/<test-case>/stint-recovery-review/`, with failure DOM/fixture attachments if any assertion recurs. Record the coordinator's actual 1440/390px screen review in both languages before accepting the visuals.
+
+**Codex, 2026-10-26 — path assertions and stage-stint header:** Follow-up from `51c4df2` on `codex/m10-07` in the main checkout. No commit, `Status:` or acceptance-checkbox changes. Opened the supplied 1440px en / 390px zh-CN failure screenshots and their saved `slow-load-reconnecting.png` review shots. The coordinator's 2730 unit / smoke / clean review / 320 e2e passes belong to the preceding revision; this delta still needs native browser execution.
+
+- Traced the third path to `PermissionDetails`: the restored request's `rawInput.cwd` is rendered in its permission section. The other two occurrences are the recorded worktree and selected executable in recovery details. They describe separate facts, so no product content or agent-authored permission details were removed. Replaced the raw occurrence count with exact assertions on the definitions paired with the Worktree and Executable labels. A bilingual jsdom regression also verifies those labelled fields and the permission cwd remain in their respective contexts.
+- Fixed the live header to use the registered Agent `displayName`, falling back to its ID, and omit the ticket segment for a stage stint with `ticket: null`. Reused the same resolved Agent profile for the stream. Both-language browser cases now assert the exact stage-stint header (`Codex · running` / `Codex · 进行中`). Bilingual jsdom regressions cover a custom registered display name, null ticket, ticket 7 and missing-profile ID fallback. The header tests reproduced `codex · Ticket null` / `codex · 工单 null` before the fix.
+- Checked every `t.stints.ticket` caller: history already guards null; the live header was the only unsafe caller. The Needs you ticket formatter is also already guarded. Narrowed the stint ticket formatter's argument to `number` in both catalogs so future nullable callers fail typecheck. No new copy, settings or UI abstraction was added.
+
+Actual checks run:
+
+```sh
+pnpm --config.verify-deps-before-run=false format:check
+pnpm --config.verify-deps-before-run=false lint
+pnpm --config.verify-deps-before-run=false typecheck
+pnpm --config.verify-deps-before-run=false vitest run packages/web packages/core --configLoader native
+pnpm --config.verify-deps-before-run=false vitest run packages/web/src/Recovery.test.tsx --configLoader native
+NODE_OPTIONS=--conditions=development pnpm --dir packages/web --config.verify-deps-before-run=false exec playwright test stint-recovery.spec.ts --list
+git diff --check
+```
+
+Final checks passed: format, lint (existing informational Biome configuration notice only), workspace typecheck; **88 web/core files / 1,612 tests**; final focused recovery **32/32**. All **20** recovery Playwright cases list successfully, without browser execution. Logs: `/tmp/m10-07-path-header-{format,lint,typecheck,web-core,e2e-list}.log`; red header reproduction: `/tmp/m10-07-header-red.log`; final focused run: `/tmp/m10-07-header-green.log`. An initial typecheck caught a Testing Library option that only Playwright supports; it was removed and final typecheck/focused tests passed. No failed run is counted as a pass. Append-only ticket, Status-preservation and whitespace guards passed.
+
+Coordinator: rebuild this delta, run all 20 `stint-recovery.spec.ts` cases and the full e2e suite, and retain the existing width/language/theme screenshots under `packages/web/coverage/e2e/test-results/<test-case>/stint-recovery-review/`. The prior fixture/DOM failure attachments remain enabled. Confirm the complete journeys now get past the labelled-field assertions and the header contains the registered Agent name with no null ticket in either language. No new screenshots, browser, socket, build or smoke pass is claimed locally.

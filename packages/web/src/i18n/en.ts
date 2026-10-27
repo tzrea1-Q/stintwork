@@ -608,7 +608,7 @@ export const en = {
     blockedBy: "· Blocked by",
     noTickets: "No tickets yet.",
     liveStint: "Live stint",
-    ticket: (number: number | null) => `Ticket ${number}`,
+    ticket: (number: number) => `Ticket ${number}`,
     history: "Stint history",
     reviewFindings: "Review findings",
     recordedChecks: "Recorded checks",

@@ -79,6 +79,7 @@ export function WorkItemDrawer({
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
   const type = item.type === "effort" ? t.card.effort : workflowName(workflow, t);
@@ -207,8 +208,11 @@ export function WorkItemDrawer({
                   {t.stints.liveStint}
                 </h3>
                 <p role="status">
-                  {item.activeStint.agent} · {t.stints.ticket(item.activeStint.ticket)} ·{" "}
-                  <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
+                  {activeProfile?.displayName ?? item.activeStint.agent}
+                  {item.activeStint.ticket !== null && (
+                    <> · {t.stints.ticket(item.activeStint.ticket)}</>
+                  )}{" "}
+                  · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
                 </p>
                 <StopStint
                   key={`stop:${item.activeStint.id}`}
@@ -218,7 +222,7 @@ export function WorkItemDrawer({
                 <StintStream
                   key={`stream:${item.activeStint.id}`}
                   stint={item.activeStint}
-                  profile={agents.find((agent) => agent.id === item.activeStint?.agent)}
+                  profile={activeProfile}
                 />
               </section>
             )}

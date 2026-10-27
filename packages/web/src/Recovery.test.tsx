@@ -505,3 +505,81 @@ test.each(["en", "zh-CN"] as const)(
     ).toBeVisible();
   },
 );
+
+test.each(["en", "zh-CN"] as const)(
+  "%s live header uses registered Agent names, optional tickets and an id fallback",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const { en } = await import("./i18n/en");
+    const { zhCN } = await import("./i18n/zh-CN");
+    const t = language === "en" ? en : zhCN;
+    const { codexProfile } = await import("../../agents/src/profiles");
+    const profile = { ...codexProfile, displayName: "Registered Codex 原文" };
+    const item = recoverySnapshot().workItems[0];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise(() => {})),
+    );
+    const view = render(
+      <LanguageProvider>
+        <WorkItemDrawer item={item} agents={[profile]} onClose={() => {}} />
+      </LanguageProvider>,
+    );
+    const live = screen.getByRole("heading", { name: t.stints.liveStint }).closest("section");
+    if (!live) throw new Error("Expected live stint section");
+    const header = within(live).getAllByRole("status")[0];
+    expect(header).toHaveTextContent(`Registered Codex 原文 · ${t.stints.statuses.running}`);
+    expect(header).not.toHaveTextContent("null");
+    const active = item.activeStint;
+    if (!active) throw new Error("Expected active stint");
+    view.rerender(
+      <LanguageProvider>
+        <WorkItemDrawer
+          item={{ ...item, activeStint: { ...active, ticket: 7 } }}
+          agents={[profile]}
+          onClose={() => {}}
+        />
+      </LanguageProvider>,
+    );
+    expect(header).toHaveTextContent(
+      `Registered Codex 原文 · ${t.stints.ticket(7)} · ${t.stints.statuses.running}`,
+    );
+    view.rerender(
+      <LanguageProvider>
+        <WorkItemDrawer item={item} agents={[]} onClose={() => {}} />
+      </LanguageProvider>,
+    );
+    expect(header).toHaveTextContent(`codex · ${t.stints.statuses.running}`);
+    expect(header).not.toHaveTextContent("null");
+  },
+);
+
+test.each(["en", "zh-CN"] as const)(
+  "%s keeps the recorded worktree, executable and permission cwd in their own contexts",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const { en } = await import("./i18n/en");
+    const { zhCN } = await import("./i18n/zh-CN");
+    const t = language === "en" ? en : zhCN;
+    const { recoveryPermission } = await import("./recovery-test-fixtures");
+    const stint = recoveryStint();
+    stint.events.push(recoveryPermission());
+    render(
+      <LanguageProvider>
+        <StintStream stint={stint} />
+      </LanguageProvider>,
+    );
+    const summary = screen.getByText(t.stints.recovery.details, { exact: true });
+    await userEvent.setup().click(summary);
+    const disclosure = summary.closest("details");
+    if (!disclosure) throw new Error("Expected recovery details");
+    for (const label of [t.stints.recovery.worktree, t.stints.preparation.executable]) {
+      const field = within(disclosure).getByText(label, { exact: true }).parentElement;
+      if (!field) throw new Error(`Missing labelled field: ${label}`);
+      expect(within(field).getByRole("definition")).toHaveTextContent(recoveryPath);
+    }
+    expect(
+      screen.getByRole("region", { name: t.stints.permissionTitle("Agent command 原文") }),
+    ).toHaveTextContent(recoveryPath);
+  },
+);

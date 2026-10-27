@@ -114,6 +114,10 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.keyboard.press("Enter");
         const drawer = page.locator(".work-item-drawer");
         const live = drawer.locator('section[aria-labelledby="drawer-live-stint-title"]');
+        await expect(
+          live.locator(':scope > p[role="status"]'),
+          "Stage stint headers use the registered Agent name and omit absent tickets",
+        ).toHaveText(`Codex · ${t.stints.statuses.running}`);
         await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
         await expect(
           drawer.getByRole("button", { name: t.stints.startStint, exact: true }),
@@ -168,7 +172,10 @@ for (const language of ["en", "zh-CN"] as const) {
             .getByText(t.stints.recovery.states.resuming, { exact: true }),
           "Expanding details must not clip the recovery badge",
         ).toBeInViewport({ ratio: 1 });
-        await expect(live.getByText(recoveryPath, { exact: true })).toHaveCount(2);
+        for (const label of [t.stints.recovery.worktree, t.stints.preparation.executable]) {
+          const field = disclosure.getByText(label, { exact: true }).locator("..").locator("dd");
+          await expect(field, `Recorded ${label} must show the full path`).toHaveText(recoveryPath);
+        }
         await expect(live.getByText("0.163.0", { exact: true })).toBeAttached();
         await expect(live.getByText("2.1.1", { exact: true })).toBeAttached();
         await capture(page, info, "recorded-source-long-path", ".work-item-drawer");
