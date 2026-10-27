@@ -3733,12 +3733,23 @@ test.each(
         "continuation permission published",
         () => published.promise,
       );
+      const restartEntries = (await readFile(logged.path, "utf8"))
+        .trim()
+        .split("\n")
+        .slice(entries.length)
+        .map((line) => JSON.parse(line));
+      expect(
+        restartEntries.filter(
+          (entry) =>
+            entry.type === "recovery" && entry.kind === "resume" && entry.state === "resuming",
+        ),
+      ).toHaveLength(1);
       const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
       const items = snapshot.attentionItems.filter((item) => item.kind === "permission");
       const live = items.find((item) => item.binding === "live");
       expect(live).toBeDefined();
       if (!live) throw new Error("Expected live permission");
-      expect(items).toHaveLength(matching ? 1 : 2);
+      expect(items).toHaveLength(1);
       if (matching)
         expect(live).toMatchObject({ raisedAt, id: 'permission:["saved-phase","old-request"]' });
       const observer = project({ agentRegistry: createAgentRegistry([registered]) });
@@ -3748,6 +3759,11 @@ test.each(
       expect(
         observerSnapshot.attentionItems.find(
           (item) => item.kind === "permission" && item.requestId === live.requestId,
+        ),
+      ).toMatchObject({ binding: "reconnecting" });
+      expect(
+        observerSnapshot.workItems[0].activeStint?.events.find(
+          (event) => event.type === "permission_request" && event.requestId === live.requestId,
         ),
       ).toMatchObject({ binding: "reconnecting" });
       const observerHistory: { stint: Stint } = await (
@@ -3772,7 +3788,7 @@ test.each(
       const body = { optionId, attemptId: live.attemptId };
       const beforeRefusals = await readFile(logged.path, "utf8");
       expect((await post(observer, live.requestId, body)).status).toBe(409);
-      expect((await post(server, live.requestId, { optionId })).status).toBe(409);
+      expect((await post(server, live.requestId, { optionId })).status).toBe(400);
       expect(
         (await post(server, live.requestId, { optionId, attemptId: "old-attempt" })).status,
       ).toBe(409);
@@ -3803,9 +3819,7 @@ test.each(
       ).toEqual({ outcome: { outcome: "selected", optionId } });
       expect(effects).toEqual(optionId === "allow-once" ? ["execute"] : []);
       expect((await post(server, live.requestId, body)).status).toBe(409);
-      expect(indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state).toBe(
-        matching ? "resumed" : "resuming",
-      );
+      expect(indexStints(createNodeRepoFiles(root)).stints[0].recovery?.state).toBe("resumed");
       finish.resolve();
       const ended = await permissionStep(
         root,

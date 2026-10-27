@@ -702,7 +702,14 @@ test("a reused permission ID requires its current attempt even after suspension"
   const live = permissions.wait("stint", request);
   const path = "/api/stints/stint/permissions/reused";
   expect((await post(app, path, { optionId: "allow", attemptId: "old" })).status).toBe(409);
-  expect((await post(app, path, { optionId: "allow" })).status).toBe(409);
+  for (const attemptId of [undefined, "", null, 123]) {
+    const missing = await post(app, path, { optionId: "allow", attemptId });
+    expect(missing.status).toBe(400);
+    expect(await missing.json()).toEqual({
+      reason: "Include the current attemptId to answer this permission request.",
+      reasonMessage: { code: "permission.attemptRequired" },
+    });
+  }
   expect((await post(app, path, { optionId: "invalid", attemptId: "new" })).status).toBe(400);
   expect(
     (

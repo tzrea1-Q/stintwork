@@ -426,6 +426,9 @@ export function createAgentLauncher(
                   kind,
                 })),
               });
+              // A different live request proves the recovered turn has moved on. Preserve
+              // manual consent for this request, but do not keep dead saved callbacks waiting.
+              if (!previous) retirePermissions();
               const selectedResponse = await Promise.race([answer, permissionCancelled, failure]);
               response = { outcome: { ...selectedResponse.outcome } };
               if (response.outcome.outcome === "selected") {

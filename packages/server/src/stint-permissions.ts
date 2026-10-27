@@ -62,11 +62,24 @@ export function addStintPermissionRoute(app: Hono) {
       );
     const requestId = context.req.param("requestId");
     const stintId = context.req.param("stintId");
-    const requestKey = key(
-      stintId,
-      requestId,
-      "attemptId" in body && typeof body.attemptId === "string" ? body.attemptId : undefined,
-    );
+    const attemptId =
+      "attemptId" in body && typeof body.attemptId === "string" && body.attemptId.length
+        ? body.attemptId
+        : undefined;
+    if (
+      !attemptId &&
+      [...pending.values()].some(
+        (entry) =>
+          entry.stintId === stintId &&
+          entry.request.requestId === requestId &&
+          entry.request.attemptId,
+      )
+    )
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "permission.attemptRequired" }) }),
+        400,
+      );
+    const requestKey = key(stintId, requestId, attemptId);
     const permission = pending.get(requestKey);
     if (!permission)
       return context.json(

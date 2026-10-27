@@ -227,7 +227,7 @@ test.each([
   },
   { name: "options", tool: toolCall, changeOptions: true },
 ])(
-  "changed $name requires fresh manual consent and retires the old request when the turn resolves",
+  "changed $name requires fresh manual consent and retires the old request before the new answer",
   async ({ tool, changeOptions }) => {
     const f = fixture("work", { ...tool, toolCallId: "new-turn" }, changeOptions);
     await f.published.promise;
@@ -235,6 +235,12 @@ test.each([
     expect(request).toMatchObject({ automatic: false, binding: "live" });
     expect(request).not.toHaveProperty("logicalRequestId");
     expect(request).not.toHaveProperty("raisedAt");
+    expect(f.events).toContainEqual({
+      type: "permission_delivery",
+      requestId: "old",
+      attemptId: "old-attempt",
+      outcome: "retired",
+    });
     f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
     await f.received.promise;
     f.finish.resolve();

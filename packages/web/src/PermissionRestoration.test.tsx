@@ -69,3 +69,32 @@ test.each(["en", "zh-CN"])(
     expect(screen.getByRole("button", { name: /No/ })).toBeEnabled();
   },
 );
+
+test.each(["en", "zh-CN"])(
+  "%s translates the attempt-required permission refusal",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            reason: "Include the current attemptId to answer this permission request.",
+            reasonMessage: { code: "permission.attemptRequired" },
+          },
+          { status: 400 },
+        ),
+      ),
+    );
+    render(
+      <LanguageProvider>
+        <PermissionAnswer stintId="stint" request={{ ...request, binding: "live" }} />
+      </LanguageProvider>,
+    );
+    await userEvent.setup().click(screen.getByRole("button", { name: /No/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      t.coreText["permission.attemptRequired"],
+    );
+  },
+);

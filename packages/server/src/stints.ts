@@ -1311,28 +1311,8 @@ export function addStintRoutes(
       return;
     }
     const recovery = stint.recovery ?? { version: 1 as const };
-    // Saved data is never a live binding, including while old-writer inspection is pending.
-    if (
-      pendingStintPermissions({ ...stint, recovery: { ...recovery, state: "resuming" } }).length &&
-      !recovery.stopRequestedAt &&
-      recovery.state !== "fallback"
-    ) {
-      try {
-        appendRecovery({
-          type: "recovery",
-          version: 1,
-          at: new Date().toISOString(),
-          kind: "resume",
-          state: "resuming",
-        });
-      } catch (error) {
-        state.recoveryBlocked = true;
-        warning(
-          `Could not recover stint: ${String(error)}. Repair the ownership/log storage and restart Stintwork.`,
-        );
-        return;
-      }
-    }
+    // Snapshot/history project saved bindings as reconnecting until a local callback exists.
+    // The single durable resuming marker follows writer cleanup below.
     const agent = registry.get(stint.agent);
     let reason: string | undefined;
     let attemptId: string | undefined;

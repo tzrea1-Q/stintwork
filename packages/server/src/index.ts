@@ -17,7 +17,11 @@ import { addProjectPermissionRoute } from "./project-permissions.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { addStintRoutes, type StintServerOptions } from "./stints.js";
 import { createProjectFiles } from "./work-item-files.js";
-import { addStintHistoryRoute, recoverInterruptedStints } from "./stint-history.js";
+import {
+  addStintHistoryRoute,
+  recoverInterruptedStints,
+  projectStintPermissions,
+} from "./stint-history.js";
 import { addAgentAvailabilityRoute, refreshAgentRegistry } from "./agent-availability.js";
 import { addHandoffAnswerRoute } from "./handoff-answers.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
@@ -82,6 +86,9 @@ export function createProjectServer(
       ...(branch ? { branch } : {}),
     });
     readReviewEvidence(project, snapshot);
+    for (const item of snapshot.workItems)
+      if (item.activeStint)
+        item.activeStint = projectStintPermissions(item.activeStint, hasPermissionBinding);
     for (const item of snapshot.attentionItems)
       if (
         item.kind === "permission" &&
