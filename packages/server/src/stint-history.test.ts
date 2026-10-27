@@ -754,6 +754,7 @@ test.skipIf(!nativeProcessInspection).each(
     let socket: WebSocket | undefined;
     let childStep = "not spawned";
     let stderr = "";
+    let coldWarnings: (() => Promise<unknown>) | undefined;
     try {
       const { root, project, tracked, selected, env, registered, calls, cache } = await crashStep(
         "prepare warm recovery fixture",
@@ -813,6 +814,9 @@ test.skipIf(!nativeProcessInspection).each(
         if ('text' in event && event.text === 'Before crash') process.send('working');
       }});
       const project = createProjectServer(${JSON.stringify(root)}, ${JSON.stringify(join(root, "web"))}, {agentRegistry:createAgentRegistry([agent]),handoffTimeoutMs:3000});
+      process.on('message', async message => {
+        if (message === 'diagnose') process.send({warnings:(await (await project.app.request('/api/project')).json()).warnings});
+      });
       let url;
       if (${tcp}) {
         process.send({step:'cold server watcher ready'});
@@ -832,6 +836,25 @@ test.skipIf(!nativeProcessInspection).each(
           { detached: process.platform !== "win32", stdio: ["ignore", "ignore", "pipe", "ipc"] },
         );
         tracked.children.push(child);
+        coldWarnings = () =>
+          crashStep(
+            "cold child recovery warnings IPC",
+            () =>
+              new Promise((resolve, reject) => {
+                if (!child.connected) return reject(new Error("Cold child disconnected"));
+                const receive = (message: unknown) => {
+                  if (message && typeof message === "object" && "warnings" in message) {
+                    child.off("message", receive);
+                    resolve(message.warnings);
+                  }
+                };
+                child.on("message", receive);
+                child.send("diagnose", (error) => {
+                  if (error) reject(error);
+                });
+              }),
+            1000,
+          ).catch((failure) => `unavailable: ${String(failure)}`);
         child.stderr?.on("data", (bytes) => {
           stderr = (stderr + String(bytes)).slice(-8000);
         });
@@ -1166,7 +1189,7 @@ test.skipIf(!nativeProcessInspection).each(
             (snapshot) => snapshot.warnings,
             (failure) => `unavailable: ${String(failure)}`,
           )
-        : "restarted server not created";
+        : ((await coldWarnings?.()) ?? "cold server not created");
       const tail = await crashStep(
         "diagnostic stint log tail",
         async () => {
@@ -3171,6 +3194,9 @@ test.each([
   "loaded",
   "fallback",
   "detached-writer",
+  "pre-attempt-unreadable",
+  "unreadable",
+  "cwd-error",
   "missing-worktree",
 ] as const)(
   "startup after an EOF-exited adapter uses a complete fake native writer scan: %s",
@@ -3184,7 +3210,7 @@ test.each([
     const uid = process.getuid?.() as number;
     Object.assign(old.attempt, {
       pid: 20,
-      identity: `${uid}:old-adapter`,
+      identity: `${uid}:Mon Oct 26 11:08:55 2026`,
       processGroup: true,
       owner: { pid: 10, identity: `${uid}:old-owner`, startedAt: old.attempt.owner.startedAt },
     });
@@ -3231,14 +3257,16 @@ test.each([
     const before = await readFile(logged.path, "utf8");
     const rows = [
       { pid: process.pid, group: process.pid, uid, identity: `${uid}:server`, command: "server" },
-      ...(scenario === "detached-writer"
+      ...(["detached-writer", "pre-attempt-unreadable", "unreadable", "cwd-error"].includes(
+        scenario,
+      )
         ? [
             {
               pid: 21,
               parent: 1,
               group: 21,
               uid,
-              identity: `${uid}:tool`,
+              identity: `${uid}:Mon Oct 26 11:08:${scenario === "pre-attempt-unreadable" ? "54" : "55"} 2026`,
               command: "detached tool",
             },
           ]
@@ -3248,12 +3276,15 @@ test.each([
     const exists = vi
       .spyOn(systemProcesses, "exists")
       .mockImplementation((pid) => rows.some((row) => row.pid === pid));
-    const directories = vi.spyOn(systemProcesses, "workingDirectories").mockReturnValue(
-      new Map([
-        [process.pid, "/outside"],
-        [21, join(logged.worktree.path, "subdirectory")],
-      ]),
-    );
+    const directories = vi
+      .spyOn(systemProcesses, "workingDirectories")
+      .mockImplementation((pids) => {
+        if (scenario === "pre-attempt-unreadable") expect(pids).not.toContain(21);
+        if (scenario === "cwd-error") throw new Error("Native cwd scan failed");
+        return new Map(
+          scenario === "detached-writer" ? [[21, join(logged.worktree.path, "subdirectory")]] : [],
+        );
+      });
     const checkpoint = vi.spyOn(git, "createCheckpoint");
     const signal = vi.spyOn(systemProcesses, "signal").mockImplementation(() => {
       throw new Error("No process in this fixture is owned by the vanished adapter");
@@ -3296,7 +3327,7 @@ test.each([
     });
     try {
       await server.app.request("/api/health");
-      if (scenario === "detached-writer") {
+      if (["detached-writer", "unreadable", "cwd-error"].includes(scenario)) {
         await expect
           .poll(async () => {
             const snapshot: ProjectSnapshot = await (
@@ -3304,8 +3335,13 @@ test.each([
             ).json();
             return snapshot.warnings.map((warning) => warning.message).join("\n");
           })
-          .toContain("PID 21 (detached tool)");
+          .toContain(
+            scenario === "cwd-error"
+              ? "Working-directory inspection failed"
+              : "PID 21 (detached tool)",
+          );
         expect(await readFile(logged.path, "utf8")).toBe(before);
+        expect(checkpoint).not.toHaveBeenCalled();
         expect(registered.verifyRecovery).not.toHaveBeenCalled();
         expect(registered.launch).not.toHaveBeenCalled();
         expect(
@@ -3324,7 +3360,9 @@ test.each([
         const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
         expect(snapshot.workItems[0].activeStint).toBeNull();
       } else {
-        const resumes = ["resume", "reserved", "loaded"].includes(scenario);
+        const resumes = ["resume", "reserved", "loaded", "pre-attempt-unreadable"].includes(
+          scenario,
+        );
         if (resumes) {
           await permissionStep(root, server, `${scenario}: continuation established`, () =>
             expect
@@ -3353,7 +3391,11 @@ test.each([
         expect(registered.launch).toHaveBeenCalledTimes(resumes ? 1 : 0);
       }
       expect(directories).toHaveBeenCalledTimes(
-        scenario === "detached-writer" ? 4 : scenario === "loaded" ? 2 : 1,
+        ["detached-writer", "unreadable", "cwd-error"].includes(scenario)
+          ? 4
+          : scenario === "loaded"
+            ? 2
+            : 1,
       );
       expect(signal).not.toHaveBeenCalled();
       expect(prepare).not.toHaveBeenCalled();

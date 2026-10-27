@@ -78,9 +78,13 @@ export const systemProcesses: ProcessControl = {
         try {
           directories.set(pid, readlinkSync(`/proc/${pid}/cwd`));
         } catch (error) {
-          if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? ""))
+          if (
+            !["ENOENT", "ESRCH", "EACCES", "EPERM"].includes(
+              (error as NodeJS.ErrnoException).code ?? "",
+            )
+          )
             throw error;
-          // The caller rechecks identity and retries transient missing cwd records.
+          // Missing/denied records stay unreadable; the caller rechecks identity across bounded scans.
         }
       }
     } else if (platform === "darwin") {
@@ -443,6 +447,17 @@ export async function stopStintProcesses(
         };
         const rows = snapshot();
         const initial = new Map(rows.map((row) => [row.pid, row]));
+        const attemptStart = nativeStart(attempt.identity, uid);
+        const predatesAttempt = (row: ProcessIdentity) => {
+          const start = nativeStart(row.identity, uid);
+          // Only a stable identity in an earlier native start second proves this exclusion.
+          return (
+            initial.get(row.pid)?.identity === row.identity &&
+            start !== undefined &&
+            attemptStart !== undefined &&
+            start + 1000 <= attemptStart
+          );
+        };
         const serverIdentity = initial.get(process.pid)?.identity;
         // Parent PIDs alone are insufficient: each link must keep its identity and ancestry across snapshots.
         const localProcesses = (before: ProcessIdentity[], after: ProcessIdentity[]) => {
@@ -482,7 +497,7 @@ export async function stopStintProcesses(
           throw blocked("Process UID inspection is unavailable.");
         const candidates = new Map(
           rows
-            .filter((row) => row.uid === uid && !local.has(row.pid))
+            .filter((row) => row.uid === uid && !local.has(row.pid) && !predatesAttempt(row))
             .map((row) => [row.pid, row.identity]),
         );
         let directories: Map<number, string>;
@@ -503,6 +518,7 @@ export async function stopStintProcesses(
             (row) =>
               row.uid === uid &&
               !currentLocal.has(row.pid) &&
+              !predatesAttempt(row) &&
               (!directories.has(row.pid) || candidates.get(row.pid) !== row.identity),
           )
         ) {
@@ -539,7 +555,13 @@ export async function stopStintProcesses(
             );
             continue;
           }
-          if (row.uid !== uid || currentLocal.has(row.pid) || replaced.has(key(row))) continue;
+          if (
+            row.uid !== uid ||
+            currentLocal.has(row.pid) ||
+            replaced.has(key(row)) ||
+            predatesAttempt(row)
+          )
+            continue;
           const directory = directories.get(row.pid);
           if (candidates.get(row.pid) !== row.identity || !directory || !isAbsolute(directory)) {
             unreadable.set(
@@ -560,11 +582,6 @@ export async function stopStintProcesses(
               }),
             )
           ) {
-            const attemptStart = nativeStart(attempt.identity, uid);
-            const start = nativeStart(row.identity, uid);
-            // The same native start second may still belong to the attempt.
-            if (start !== undefined && attemptStart !== undefined && start + 1000 <= attemptStart)
-              continue;
             writers.set(
               key(row),
               blocked(
