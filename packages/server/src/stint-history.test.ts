@@ -4061,6 +4061,114 @@ test.each(
   },
 );
 
+test.each(["completion", "failure"] as const)(
+  "terminal %s before permission reconciliation releases preparation and shutdown during fallback checkpointing",
+  async (terminal) => {
+    const { root, project, registered, selected, logged, entries } = await savedRecovery("work");
+    entries.push({
+      type: "event",
+      at: "2026-01-01T00:01:00Z",
+      event: {
+        type: "permission_request",
+        requestId: "saved",
+        attemptId: "old-attempt",
+        toolCallId: "tool",
+        title: "Manual request",
+        kind: "execute",
+        automatic: false,
+        options: [{ optionId: "allow", kind: "allow_once", name: "Allow" }],
+      },
+    });
+    await writeFile(logged.path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    registered.verifyRecovery = async () => selected;
+    const launched = permissionSignal();
+    const finish = permissionSignal();
+    const shutdownCaptured = permissionSignal();
+    registered.launch = () => {
+      launched.resolve();
+      return {
+        ready: Promise.resolve(),
+        done: finish.promise.then(() => {
+          if (terminal === "failure") throw new Error("Controlled continuation failure");
+          return { stopReason: "end_turn" };
+        }),
+        cancel: async () => {
+          shutdownCaptured.resolve();
+        },
+      };
+    };
+    const checkpointing = permissionSignal();
+    const releaseCheckpoint = permissionSignal();
+    const realCheckpoint = git.createCheckpoint;
+    const checkpoint = vi.spyOn(git, "createCheckpoint").mockImplementationOnce(async (...args) => {
+      checkpointing.resolve();
+      await releaseCheckpoint.promise;
+      return realCheckpoint(...args);
+    });
+    const server = project({ agentRegistry: createAgentRegistry([registered]) });
+    let shutdown: Promise<void> | undefined;
+    let shutdownFinished = false;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      await server.app.request("/api/health");
+      await permissionStep(
+        root,
+        server,
+        "ready replacement awaiting saved callback",
+        () => launched.promise,
+      );
+      finish.resolve();
+      await permissionStep(
+        root,
+        server,
+        "terminal recovery enters fallback checkpoint",
+        () => checkpointing.promise,
+      );
+      shutdown = server.stop().then(() => {
+        shutdownFinished = true;
+      });
+      await permissionStep(
+        root,
+        server,
+        "shutdown captures ending state",
+        () => shutdownCaptured.promise,
+      );
+      releaseCheckpoint.resolve();
+      vi.useRealTimers();
+      await permissionStep(root, server, "fallback interrupted ending recorded", () =>
+        waitForEnding(root),
+      );
+      await permissionStep(
+        root,
+        server,
+        "shutdown releases terminal preparation without reconciliation",
+        () => shutdown,
+      );
+      const log = (await readFile(logged.path, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(log.filter((entry) => entry.type === "ended")).toEqual([
+        expect.objectContaining({ status: "interrupted", checkpointCommit: expect.any(String) }),
+      ]);
+      expect(
+        log
+          .slice(entries.length)
+          .filter((entry) => entry.kind === "resume" && entry.state === "resumed"),
+      ).toEqual([]);
+    } finally {
+      finish.resolve();
+      releaseCheckpoint.resolve();
+      vi.useRealTimers();
+      // No listener or real writer was started. A regression leaves an irrecoverable
+      // preparation promise; do not hide its named failure by hanging fixture teardown too.
+      if (shutdown && !shutdownFinished) server.stop = async () => {};
+      else await server.stop();
+      checkpoint.mockRestore();
+    }
+  },
+);
+
 test.each(["timeout", "turn", "stop", "shutdown"] as const)(
   "saved callback reconciliation: %s retires attention without replaying consent",
   async (outcome) => {

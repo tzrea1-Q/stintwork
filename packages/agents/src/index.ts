@@ -184,6 +184,8 @@ export function createAgentLauncher(
     );
     let restoringManualPermission = savedPermissions.size > 0;
     const livePermissions = new Set<Promise<void>>();
+    const humanPermissions = new Set<Promise<void>>();
+    let permissionWaitChanged: (waiting: boolean) => void = () => {};
     function retirePermissions() {
       for (const request of savedPermissions.values())
         emitEvent({
@@ -336,10 +338,12 @@ export function createAgentLauncher(
               },
             );
             livePermissions.add(forwarded);
-            void forwarded.then(
-              () => livePermissions.delete(forwarded),
-              () => livePermissions.delete(forwarded),
-            );
+            const received = () => {
+              livePermissions.delete(forwarded);
+              humanPermissions.delete(forwarded);
+              permissionWaitChanged(humanPermissions.size > 0);
+            };
+            void forwarded.then(received, received);
             void forwarded.catch((error) => {
               if (!suspended && !cancelled && event.decision.outcome !== "cancelled") fail(error);
             });
@@ -396,6 +400,10 @@ export function createAgentLauncher(
                 inside &&
                 request.options.find((option) => option.kind === "allow_once");
               event.automatic = !!allowed;
+              if (previous && !allowed && onPermission) {
+                humanPermissions.add(forwarded);
+                permissionWaitChanged(true);
+              }
               const answer = allowed
                 ? Promise.resolve({
                     outcome: { outcome: "selected" as const, optionId: allowed.optionId },
@@ -619,6 +627,16 @@ export function createAgentLauncher(
             timeoutMs: afterTurnTimeoutMs,
             failure,
             signal: afterTurnCancellation.signal,
+            onPermissionWait(listener) {
+              // A restored human wait has no answer deadline, including transport delivery.
+              if (resume) {
+                permissionWaitChanged = listener;
+                listener(humanPermissions.size > 0);
+              }
+              return () => {
+                permissionWaitChanged = () => {};
+              };
+            },
             retryAfterCancel: () => cancelled || result.stopReason === "cancelled",
             onRequest(request, results) {
               if (request.resultField === "handoff" || request.resultField === "findings")

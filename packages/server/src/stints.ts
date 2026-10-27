@@ -744,10 +744,15 @@ export function addStintRoutes(
         .catch((error: unknown) => {
           console.error("Could not record the end of a stint:", error);
         });
-      await Promise.race([Promise.all([state.handle.ready, reconciliation]), setupFailure]);
+      await Promise.race([
+        Promise.all([state.handle.ready, reconciliation]),
+        setupFailure,
+        ...(recovery ? [state.completion] : []),
+      ]);
       clearSetupTimer();
-      if (state.suspending || state.stopRequested) return;
+      if (state.suspending || state.stopRequested || state.recoveryBlocked) return;
       if (recovery) {
+        if (state.ending) return;
         recordRecovery({ kind: "resume", state: "resumed" });
         refresh();
       }

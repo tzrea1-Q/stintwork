@@ -11,7 +11,7 @@ import {
 } from "@agentclientprotocol/sdk";
 import type { StintLogEvent, StintEvent } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
-import { createAgentLauncher, type AgentStintOptions } from "./index.js";
+import { createAgentLauncher, findingsRequest, type AgentStintOptions } from "./index.js";
 import { fakeAgentProfiles } from "./profiles.js";
 import { toAcpReadable } from "./stdio.js";
 
@@ -47,7 +47,7 @@ const saved: Extract<StintEvent, { type: "permission_request" }> = {
   options: [...options].reverse(),
 };
 function fixture(
-  point: "load" | "load-detached" | "work" | "absent",
+  point: "load" | "load-detached" | "work" | "absent" | "after-turn",
   request: RequestPermissionRequest["toolCall"] = toolCall,
   changeOptions = false,
   failWrite = false,
@@ -80,6 +80,7 @@ function fixture(
   });
   const received = signal<RequestPermissionResponse>();
   const prompted = signal();
+  const beginPermission = signal();
   const finish = signal();
   const events: StintLogEvent[] = [];
   let callback!: Parameters<NonNullable<AgentStintOptions["onPermission"]>>[0];
@@ -131,7 +132,25 @@ function fixture(
           asks++;
           prompted.resolve();
           if (point === "work") await ask();
+          if (point === "after-turn") {
+            await beginPermission.promise;
+            await ask();
+          }
           await finish.promise;
+          if (phase !== "work")
+            await client.sessionUpdate({
+              sessionId: "same",
+              update: {
+                sessionUpdate: "agent_message_chunk",
+                content: {
+                  type: "text",
+                  text:
+                    phase === "findings"
+                      ? "No findings"
+                      : "## Where I stopped\nDone.\n## Unresolved\nNone.\n## Suggested next\nReview.",
+                },
+              },
+            });
           return { stopReason: "end_turn" as const };
         },
         async cancel() {
@@ -151,6 +170,7 @@ function fixture(
     permissionLevel: "edit-freely",
     resume: { sessionId: "same", progress: { phase }, permissions: restored },
     ...(phase !== "work" ? { afterTurnTimeoutMs: 1000 } : {}),
+    ...(phase === "findings" ? { afterTurnRequests: [findingsRequest] } : {}),
     onPermission(request) {
       callback = request;
       return answer.promise;
@@ -168,6 +188,7 @@ function fixture(
     received,
     answer,
     prompted,
+    beginPermission,
     finish,
     callback: () => callback,
     asks: () => asks,
@@ -289,6 +310,97 @@ test("a restored selection with a broken transport records failure and never rep
     expect.objectContaining({ type: "permission_delivery", outcome: "written" }),
   );
   expect(f.effects).toEqual([]);
+});
+
+test.each(
+  (["handoff", "findings"] as const).flatMap((phase) =>
+    (["output", "timeout"] as const).map((outcome) => ({ phase, outcome })),
+  ),
+)(
+  "a restored $phase callback has no human-answer timeout and retains the remaining after-turn budget: $outcome",
+  async ({ phase, outcome }) => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "performance"] });
+    const f = fixture("after-turn", { ...toolCall, toolCallId: "new-turn" }, false, false, phase);
+    let ended = false;
+    void f.stint.done.then(() => {
+      ended = true;
+    });
+    try {
+      await f.prompted.promise;
+      await vi.advanceTimersByTimeAsync(400);
+      f.beginPermission.resolve();
+      await f.published.promise;
+      expect(f.events).toContainEqual(
+        expect.objectContaining({
+          type: "permission_request",
+          logicalRequestId: "old",
+          raisedAt: saved.raisedAt,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(ended, "a live restored callback must still be waiting for consent").toBe(false);
+      expect(f.events.filter((event) => event.type === "permission")).toEqual([]);
+      f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
+      await f.callback().forwarded;
+      await expect(f.received.promise).resolves.toMatchObject({ outcome: { optionId: "no" } });
+      await vi.advanceTimersByTimeAsync(599);
+      expect(ended).toBe(false);
+      if (outcome === "timeout") {
+        await vi.advanceTimersByTimeAsync(1);
+        expect(await f.stint.done).toMatchObject({
+          [phase]: null,
+          [`${phase}Error`]: `${phase === "handoff" ? "Handoff" : "Findings"} timed out.`,
+        });
+      } else {
+        f.finish.resolve();
+        const result = await f.stint.done;
+        expect(result).toMatchObject(
+          phase === "findings"
+            ? { findings: [] }
+            : { handoff: { stoppedAt: "Done.", unresolved: "None.", nextStep: "Review." } },
+        );
+        expect(result).not.toHaveProperty(`${phase}Error`);
+      }
+      expect(f.effects).toEqual([]);
+    } finally {
+      f.beginPermission.resolve();
+      f.finish.resolve();
+      f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
+      await f.stint.cancel();
+      await f.stint.done;
+    }
+  },
+);
+
+test("a changed after-turn request keeps the ordinary budget instead of inheriting the restored callback's exemption", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout", "performance"] });
+  const f = fixture(
+    "after-turn",
+    { ...toolCall, rawInput: { path: "/tmp/changed" } },
+    false,
+    false,
+    "handoff",
+  );
+  let result: unknown;
+  void f.stint.done.then((value) => {
+    result = value;
+  });
+  try {
+    await f.prompted.promise;
+    f.beginPermission.resolve();
+    await f.published.promise;
+    expect(f.events.find((event) => event.type === "permission_request")).not.toHaveProperty(
+      "logicalRequestId",
+    );
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(result).toMatchObject({ handoff: null, handoffError: "Handoff timed out." });
+    expect(f.effects).toEqual([]);
+  } finally {
+    f.finish.resolve();
+    f.answer.resolve({ outcome: { outcome: "selected", optionId: "no" } });
+    await f.stint.cancel();
+    await f.stint.done;
+  }
 });
 
 test.each(["handoff", "findings"] as const)(

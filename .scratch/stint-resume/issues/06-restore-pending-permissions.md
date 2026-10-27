@@ -138,3 +138,47 @@ pnpm --config.verify-deps-before-run=false test:e2e
 ```
 
 Native real-agent acceptance still requires Codex (and a Claude regression) at Ask across graceful/server-only-kill restart, both source paths, current Allow/Reject delivery and independent proof of no denied side effect. Include the fresh preparation and separate-session/network-tool cleanup cases in ticket 05's note. Inspect two concurrent servers: only the owner can answer in both Needs you and the drawer, and the non-owner writes nothing. Verify changed-request retirement and exactly one resuming marker. Browser review: exercise disabled/active controls and the translated attempt-required error at 1440/1024/768/390px (minimum 360px), in en/zh-CN; record the required 1440/390px human review/screenshots. No native, real-agent, socket, browser, build or smoke pass is claimed for this uncommitted delta.
+
+
+**Codex, 2026-10-26 — fourth-review terminal recovery and after-turn human waits:** Implemented uncommitted from `86e511a` on `codex/m10-06`. No `Status:` line changed. Built CLI files, runtime assets and dependencies were left untouched; no build, smoke, browser or real-agent check was run alongside the coordinator's built-CLI checks. The reported **2694 unit / smoke / 314 e2e** green result belongs to the coordinator's preceding commit, not this delta.
+
+- **Terminal recovery releases preparation:** Confirmed that fallback/end removes the setup timer and abort listener while the old setup await still requires permission reconciliation. Recovery setup now also watches terminal completion, including its failure/fallback finalization. Once ending has begun it cannot append `resumed`. Two explicit-signal regressions resolve readiness, leave a saved request unreconciled, complete/reject the fake launcher, hold fallback checkpointing, capture shutdown during that checkpoint, then release it. Both assert shutdown settles, one interrupted checkpoint/ending exists, and no resumed marker appears. Before the fix both failed at the named shutdown step with an already recorded ending and empty warnings. Each server observation uses the existing step-name/warnings/log-tail diagnostic helper; failure teardown cannot itself hang on the deliberately leaked baseline promise.
+- **Restored human time is excluded from the after-turn budget:** The launcher tracks manual restored callbacks through their current response receipt; the collector pauses its deadline until the last such receipt settles, then restores only the unspent processing allowance. Its observer is detached during collector cleanup, including suspension/failure. Four fake-ACP regressions cover handoff/findings and successful output/processing timeout: spend 400 ms of a 1000 ms allowance, reissue with a new toolCallId, wait 180,000 injected milliseconds without cancelling or manufacturing consent, Reject, then either finish within the remaining 600 ms or expire exactly at its boundary. Both phase reproductions failed before the fix. A fifth control regression first exposed an overly broad exemption, then verifies changed requests retain their existing configured budget; automatic requests also do not pause it. No product copy changed.
+- **Fresh-launch compatibility:** An intermediate broad server run caught that an unconditional ended-state guard suppressed the availability update when a fresh launch became ready and finished together. Scoped terminal racing/ended-state handling to recovery; the existing readiness regression and both new terminal cases then passed. The first broad failure is retained in `/tmp/m10-06-review4-server.log`; subsequent complete and focused groups below passed.
+
+Actual local checks:
+
+- `pnpm --config.verify-deps-before-run=false format:check`, `lint`, workspace `typecheck`, and `git diff --check` passed. Lint reports only the existing informational Biome configuration migration notice. Logs: `/tmp/m10-06-review4-{format,lint,typecheck}.log`.
+- Agents: **25 files / 422 passed / 9 native preparation cases excluded**. Final log: `/tmp/m10-06-review4-agents-final.log`. Command:
+
+```sh
+pnpm --config.verify-deps-before-run=false vitest run packages/agents --configLoader native --testNamePattern='^(?![\s\S]*(?:installed preparation, handshake, cache-only launch|stint-start handshake receives the explicit executable|offline installed/bundled warm reuse|bundled smoke and cold/warm stint launches|real fake-ACP handshake failure))'
+```
+
+- Five affected server files: **5 files / 150 passed / 59 native/socket cases excluded**. Log: `/tmp/m10-06-review4-server-validated.log`. Command:
+
+```sh
+CHOKIDAR_USEPOLLING=1 pnpm --config.verify-deps-before-run=false vitest run packages/server/src/stint-history.test.ts packages/server/src/stint-permissions.test.ts packages/server/src/stop-and-failure.test.ts packages/server/src/checkpoint-handoff.test.ts packages/server/src/stints.test.ts --configLoader native --testNamePattern='^(?![\s\S]*(?:TCP: true|failed recovery |saved handoff phase|saved findings phase|slow startup leaves|fallback checkpoint errors|graceful suspension keeps|Needs-you snapshots reach both tabs|real HTTP answers|WebSocket|HTTP and|session write failure|rich events and pending permission frames|HTTP preparation disconnect))'
+```
+
+- After narrowing the pause exemption to matched restored requests, reran all available agents above and the server recovery/HTTP/readiness paths: **2 files / 11 selected server tests passed**. Log: `/tmp/m10-06-review4-http-final.log`. Command:
+
+```sh
+CHOKIDAR_USEPOLLING=1 pnpm --config.verify-deps-before-run=false vitest run packages/server/src/stint-history.test.ts packages/server/src/stints.test.ts --configLoader native --testNamePattern='terminal .* before permission reconciliation|real-shaped continuation reissue|saved callback reconciliation|package completion is not login readiness'
+```
+
+There are **seven new regression cases** (two server, five launcher). Earlier focused collector/readiness/restoration runs also passed; the red human-wait and exemption-boundary evidence is in `/tmp/m10-06-human-budget-red.log` and `/tmp/m10-06-review4-budget-scope-red.log`. No failed invocation is counted as passing.
+
+Coordinator: after the parallel real-Codex check has finished, validate this source delta on the native socket-enabled host and rebuild there:
+
+```sh
+pnpm --config.verify-deps-before-run=false format:check
+pnpm --config.verify-deps-before-run=false lint
+pnpm --config.verify-deps-before-run=false typecheck
+pnpm --config.verify-deps-before-run=false vitest run --configLoader native
+pnpm --config.verify-deps-before-run=false build
+pnpm --config.verify-deps-before-run=false smoke:package
+pnpm --config.verify-deps-before-run=false test:e2e
+```
+
+The unfiltered unit run must execute the nine excluded agent preparation cases and 59 excluded native/socket server cases, including the server-only SIGKILL matrix, failed-recovery matrix, saved handoff/findings recovery and WebSocket/HTTP delivery cases. Repeat real Claude/Codex Ask-level permission recovery across graceful restart and server-only SIGKILL; specifically hold an actually rebound handoff/findings callback unanswered beyond the default 90-second collector budget, then answer Allow/Reject with the current attemptId and verify output/finalization still completes, with independent proof of no denied side effect for Reject. The coordinator's currently running built CLI predates these source changes. No native full-suite, real-agent, socket, browser, build or smoke pass is claimed here.
