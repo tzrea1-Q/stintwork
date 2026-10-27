@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { StintRecovery, recoveryStatus } from "./StintRecovery";
 import { CodeBlock } from "./ui/CodeBlock";
 import { Markdown } from "./ui/Markdown";
 import { Badge } from "./ui/Badge";
@@ -110,6 +111,7 @@ export function StintStream({
   const waitingForPermission = pendingStintPermissions(stint).length > 0;
   return (
     <div className="stint-stream min-w-0 [overflow-wrap:anywhere]">
+      <StintRecovery stint={stint} />
       {stint.events
         .filter((event) => event.type === "plan")
         .map((event) => {
@@ -278,7 +280,7 @@ export function StintStream({
             </div>
           );
         })}
-        {stint.error && (
+        {stint.error && stint.recovery?.state !== "fallback" && (
           <p role="alert" className="warning text-warning">
             {renderCoreText(stint.errorMessage, stint.error, t)}
           </p>
@@ -286,7 +288,9 @@ export function StintStream({
       </div>
       <p className="stint-stream-status text-accent" role="status" aria-label={t.stints.stint}>
         {stint.status === "running" && !replay ? (
-          waitingForPermission ? (
+          stint.recovery?.state && stint.recovery.state !== "resumed" ? (
+            recoveryStatus(stint, t)
+          ) : waitingForPermission ? (
             t.stints.waitingPermission
           ) : (
             t.stints.streaming

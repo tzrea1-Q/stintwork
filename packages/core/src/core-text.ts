@@ -10,6 +10,12 @@ function template<const Shape extends Record<string, "string" | readonly string[
   return Object.assign(render, { shape });
 }
 export const coreTextEnglish = {
+  "recovery.legacy": "Missing recovery metadata (legacy or incomplete stint log).",
+  "recovery.grok":
+    "Grok Build is experimental; restart recovery uses a checkpoint and a new stint.",
+  "recovery.ownershipMetadata":
+    "Missing process ownership metadata in the recorded attempt; restart recovery uses a checkpoint and a new stint.",
+  "recovery.blocked": template({ detail: "string" }, ({ detail }) => detail),
   "agent.cliChanged": "Agent CLI changed during inspection. Retry preparation.",
   "agent.grokMissing": "Grok Build not found. Install Grok Build and sign in with grok login.",
   "agent.source.installed": "Agent source: Installed",

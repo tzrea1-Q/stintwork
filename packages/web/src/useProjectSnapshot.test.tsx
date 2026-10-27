@@ -941,3 +941,95 @@ test("times out a socket that never sends its initial snapshot", async () => {
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+test("recovery reconnect retains one history and logical permission; success alone adds no attention", async () => {
+  const { recoverySnapshot, recoveryPermission } = await import("./recovery-test-fixtures");
+  const next = recoverySnapshot();
+  const active = next.workItems[0].activeStint;
+  if (!active) throw new Error("Expected active recovery stint");
+  active.events.push(recoveryPermission());
+  next.attentionItems = deriveAttentionItems(next);
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() =>
+    expect(result.current.snapshot?.workItems[0].activeStint?.recovery?.state).toBe("resuming"),
+  );
+  act(() => TestSocket.instances[0].sendSnapshot(next));
+  const send = (sequence: number, entry: StintLogEntry) =>
+    act(() =>
+      TestSocket.instances.at(-1)?.onmessage?.({
+        data: JSON.stringify({
+          type: "stint",
+          stintId: active.id,
+          workItem: active.workItem,
+          sequence,
+          entry,
+        }),
+      }),
+    );
+  const entry: StintLogEntry = {
+    type: "event",
+    at: "2026-10-26T10:04:00Z",
+    event: { type: "message_delta", id: "new:message", text: "Continuation 原文" },
+  };
+  send(10, entry);
+  send(10, entry);
+  const current = result.current.snapshot;
+  if (!current) throw new Error("Expected recovery snapshot");
+  const saved = structuredClone(current);
+  vi.mocked(fetch).mockImplementation(async () => response(saved));
+  vi.useFakeTimers();
+  act(() => TestSocket.instances[0].onclose?.());
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  act(() => TestSocket.instances.at(-1)?.sendSnapshot(saved));
+  send(10, entry);
+  expect(
+    result.current.snapshot?.workItems[0].activeStint?.events.filter(
+      (event) => event.type === "message",
+    ),
+  ).toMatchObject([{ text: "Agent content 原文" }, { text: "Continuation 原文" }]);
+  expect(result.current.snapshot?.attentionItems).toHaveLength(1);
+  const live = recoveryPermission("live");
+  send(11, { type: "event", at: live.at, event: live });
+  send(12, { type: "recovery", version: 1, at: live.at, kind: "resume", state: "resumed" });
+  expect(result.current.snapshot?.attentionItems).toMatchObject([
+    { kind: "permission", attemptId: "current", raisedAt: "2026-10-26T10:00:02Z" },
+  ]);
+  expect(result.current.snapshot?.workItems[0].stints).toHaveLength(1);
+  send(13, {
+    type: "event",
+    at: live.at,
+    event: {
+      type: "permission",
+      requestId: live.requestId,
+      attemptId: live.attemptId,
+      toolCallId: live.toolCallId,
+      title: live.title,
+      kind: live.kind,
+      automatic: false,
+      decision: { outcome: "selected", optionId: "no", kind: "reject_once" },
+    },
+  });
+  send(14, {
+    type: "event",
+    at: live.at,
+    event: {
+      type: "permission_delivery",
+      requestId: live.requestId,
+      attemptId: live.attemptId,
+      outcome: "written",
+    },
+  });
+  expect(result.current.snapshot?.attentionItems).toEqual([]);
+  const final = result.current.snapshot;
+  if (!final) throw new Error("Expected final recovery snapshot");
+  act(() => TestSocket.instances.at(-1)?.sendSnapshot(final));
+  expect(result.current.snapshot?.attentionItems).toEqual([]);
+  expect(
+    result.current.snapshot?.workItems[0].activeStint?.events.filter(
+      (event) => event.type === "message",
+    ),
+  ).toHaveLength(2);
+});

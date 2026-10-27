@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { StintRecovery } from "./StintRecovery";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
 import {
@@ -13,7 +14,13 @@ import { useEffect, useId, useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import { StintStream } from "./StintStream";
 
-function StintHistoryEntry({ stint }: { stint: StintSummary }) {
+function StintHistoryEntry({
+  stint,
+  worktreePath,
+}: {
+  stint: StintSummary;
+  worktreePath?: string;
+}) {
   const { t, language } = useLanguage();
   const date = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" });
   const replayId = useId();
@@ -36,6 +43,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       try {
         const response = await fetch(`/api/stints/${encodeURIComponent(stint.id)}`, {
           signal: controller.signal,
+          ...(stint.recovery?.state ? { cache: "no-store" as const } : {}),
         });
         const body = await readResponseJson(response);
         if (!response.ok) throw new CoreTextError(body, "");
@@ -54,7 +62,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
       }
     })();
     return () => controller.abort();
-  }, [open, stint.id, stint.status, setError]);
+  }, [open, stint.id, stint.status, stint.recovery?.state, setError]);
 
   const recorded = open && replay?.status === stint.status ? replay : stint;
   return (
@@ -89,7 +97,8 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
           </>
         )}
       </p>
-      {recorded.error && (
+      {!(open && replay) && <StintRecovery stint={stint} worktreePath={worktreePath} />}
+      {recorded.error && recorded.recovery?.state !== "fallback" && (
         <p className="warning text-warning" role="alert">
           {renderCoreText(recorded.errorMessage, recorded.error, t)}
         </p>
@@ -124,12 +133,18 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   );
 }
 
-export function StintHistory({ stints }: { stints: StintSummary[] }) {
+export function StintHistory({
+  stints,
+  worktreePath,
+}: {
+  stints: StintSummary[];
+  worktreePath?: string;
+}) {
   const { t } = useLanguage();
   return stints.length ? (
     <ol aria-label={t.stints.history}>
       {stints.map((stint) => (
-        <StintHistoryEntry key={stint.id} stint={stint} />
+        <StintHistoryEntry key={stint.id} stint={stint} worktreePath={worktreePath} />
       ))}
     </ol>
   ) : (

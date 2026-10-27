@@ -323,9 +323,13 @@ export function WorkItemDrawer({
                   {item.activeStint.agent} · {t.stints.ticket(item.activeStint.ticket)} ·{" "}
                   <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
                 </p>
-                <StopStint key={item.activeStint.id} stintId={item.activeStint.id} />
+                <StopStint
+                  key={`stop:${item.activeStint.id}`}
+                  stintId={item.activeStint.id}
+                  recovering={!!item.activeStint.recovery?.state}
+                />
                 <StintStream
-                  key={item.activeStint.id}
+                  key={`stream:${item.activeStint.id}`}
                   stint={item.activeStint}
                   profile={agents.find((agent) => agent.id === item.activeStint?.agent)}
                 />
@@ -338,7 +342,7 @@ export function WorkItemDrawer({
               >
                 {t.stints.history}
               </h3>
-              <StintHistory stints={item.stints} />
+              <StintHistory stints={item.stints} worktreePath={item.worktreePath} />
             </section>
             {item.merged && (
               <>

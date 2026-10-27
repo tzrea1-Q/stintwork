@@ -754,6 +754,29 @@ export const zhCN: Catalog = {
     closeStint: (id) => `关闭 Stint ${id}`,
     noCheckpoint: "尚无检查点记录。",
     noStints: "尚无 Stint。",
+    recovery: {
+      states: {
+        resuming: "正在恢复 Stint…",
+        resumed: "服务器重启后已恢复 Stint",
+        suspending: "正在暂停 Stint…",
+        suspended: "Stint 已暂停",
+        fallback: "正在保存中断的 Stint…",
+      },
+      details: "恢复详情",
+      reason: "恢复原因",
+      worktree: "工作树",
+      diagnostic: "恢复诊断",
+      selectionReason: "来源选择原因",
+      adapter: "已记录的适配器",
+      recordedSource: "已记录的 Agent 来源",
+      saved: (commit: string) =>
+        `无法恢复 Stint。更改已保存到检查点 ${commit}。请从已记录的状态开始新的 Stint。`,
+      unchanged: "无法恢复 Stint。无需创建新的检查点。请从已记录的状态开始新的 Stint。",
+      checkpointFailed: (path: string, reason: string) =>
+        `无法恢复 Stint，也无法创建检查点。文件仍保留在 ${path}。${reason}`,
+    },
+    startNewStint: "开始新的 Stint",
+    stopStint: "停止 Stint",
     stopFailed: "无法停止 Stint。",
     stopping: "正在停止 Stint…",
     stop: "停止",
@@ -839,6 +862,13 @@ export const zhCN: Catalog = {
     progress: { pending: "待处理", in_progress: "进行中", completed: "已完成", failed: "失败" },
   },
   coreText: {
+    "recovery.legacy": "缺少恢复元数据（旧版或不完整的 Stint 日志）。",
+    "recovery.grok": "Grok Build 为实验性支持；重启后将通过检查点和新的 Stint 继续。",
+    "recovery.ownershipMetadata":
+      "已记录的尝试缺少进程所有权元数据；重启后将通过检查点和新的 Stint 继续。",
+    "recovery.blocked": ({ detail }) =>
+      `Stint 恢复已阻止。请核实旧进程和日志所有权，按详情完成清理后重启 Stintwork。详情：${detail}`,
+
     "agent.cliChanged": "检查期间 Agent CLI 已更改。请重试准备。",
     "agent.grokMissing": "未找到 Grok Build。请安装 Grok Build 并运行 grok login 登录。",
     "agent.source.installed": "Agent 来源：已安装",
