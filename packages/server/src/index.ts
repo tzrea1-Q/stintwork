@@ -345,6 +345,8 @@ export function createProjectServer(
 
   let localViewerCheck: Promise<string> | undefined;
   function localViewer() {
+    // Token authentication cannot prove its identity from local config while offline.
+    if ("GH_TOKEN" in process.env || "GITHUB_TOKEN" in process.env) return Promise.resolve("");
     localViewerCheck ??= githubLocalViewer(root)
       .catch(() => "")
       .finally(() => {
@@ -352,17 +354,25 @@ export function createProjectServer(
       });
     return localViewerCheck;
   }
-  function verifyOfflineViewer(): Promise<boolean> {
-    if (!offlineViewer || !githubSource) return Promise.resolve(false);
+  async function verifyOfflineViewer(): Promise<boolean> {
+    if (!offlineViewer || !githubSource) return false;
     const source = githubSource;
-    return localViewer().then((local) => {
-      if (githubSource !== source || !offlineViewer) return false;
-      if (local && local === source.viewer) return true;
+    const origin = await githubOrigin(root).catch(() => undefined);
+    if (githubSource !== source || !offlineViewer) return false;
+    if (!origin) return false;
+    if (origin.toLowerCase() !== source.origin.toLowerCase()) {
       trackerGeneration++;
       clearGithub();
       refresh();
       return false;
-    });
+    }
+    const local = await localViewer();
+    if (githubSource !== source || !offlineViewer) return false;
+    if (local && local === source.viewer) return true;
+    trackerGeneration++;
+    clearGithub();
+    refresh();
+    return false;
   }
 
   async function checkGithubViewer() {
@@ -401,7 +411,15 @@ export function createProjectServer(
       const wasOffline = offlineViewer;
       offlineViewer = false;
       if (failure.code === "offline" || failure.code === "server-error") {
-        const local = await localViewer();
+        const origin = await githubOrigin(root).catch(() => undefined);
+        if (lifetime.signal.aborted || githubSource !== source) return;
+        if (origin && origin.toLowerCase() !== source.origin.toLowerCase()) {
+          trackerGeneration++;
+          clearGithub();
+          refresh();
+          return;
+        }
+        const local = origin ? await localViewer() : "";
         if (lifetime.signal.aborted || githubSource !== source) return;
         if (wasOffline && local !== source.viewer) {
           trackerGeneration++;
@@ -496,6 +514,12 @@ export function createProjectServer(
     const changedIssues = new Set<number>();
     try {
       origin = await githubOrigin(root);
+      if (generation !== trackerGeneration) return;
+      if (githubSource && githubSource.origin.toLowerCase() !== origin.toLowerCase()) {
+        clearGithub();
+        refresh();
+        if (loadMore) throw new GithubReadError("identity");
+      }
       viewer = await githubViewer(root);
       if (generation !== trackerGeneration) return;
       if (
@@ -815,6 +839,12 @@ export function createProjectServer(
     let publish: ReturnType<typeof beginDetail> | undefined;
     try {
       const currentOrigin = await githubOrigin(root);
+      if (generation !== trackerGeneration || githubSource !== source) return 409;
+      if (currentOrigin.toLowerCase() !== source.origin.toLowerCase()) {
+        clearGithub();
+        refresh();
+        throw new GithubReadError("identity");
+      }
       const viewer = await githubViewer(root);
       if (
         currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||

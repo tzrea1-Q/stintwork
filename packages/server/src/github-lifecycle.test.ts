@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { WebSocket } from "ws";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
 
@@ -283,74 +283,183 @@ test("offline auth retains data only while the local account matches and coalesc
   }
 });
 
-test("new offline WebSocket connection redacts data after local account changes", async () => {
-  const root = await mkdtemp(join(tmpdir(), "github-offline-socket-"));
-  const oldPath = process.env.PATH;
-  let server: ReturnType<typeof createProjectServer> | undefined;
-  let socket: WebSocket | undefined;
-  try {
-    execFileSync("git", ["init", "-q", root]);
-    execFileSync("git", [
-      "-C",
-      root,
-      "remote",
-      "add",
-      "origin",
-      "https://github.com/example/project.git",
-    ]);
-    await mkdir(join(root, "docs/agents"), { recursive: true });
-    await mkdir(join(root, "web"));
-    await writeFile(join(root, "web/index.html"), "<!doctype html>");
-    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
-    const gh = await fakeGh(join(root, "bin"));
-    process.env.PATH = gh.path;
-    const replies = {
-      "auth status": {},
-      "api user": { stdout: "101" },
-      "api repos/example/project": {
-        stdout: {
-          node_id: "R_1",
-          full_name: "example/project",
-          html_url: "https://github.com/example/project",
+test.each(["changed", "case", "refresh", "token"])(
+  "offline cache protects origin and token identity: %s",
+  async (scenario) => {
+    const root = await mkdtemp(join(tmpdir(), "github-offline-origin-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: "101" },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
         },
-      },
-      "api graphql": { stdout: page },
-    };
-    await gh.script(replies);
-    let now = 100_000;
-    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
-    server = instance;
-    const http = await instance.start();
-    const get = async () => (await instance.app.request("/api/project")).json();
-    expect((await get()).github.items).toHaveLength(1);
-    now += 60_001;
-    await gh.script({
-      ...replies,
-      "auth status": { code: 1, effect: "process.stderr.write('network error')" },
-      "config get": { stdout: "101" },
-    });
-    await get();
-    await expect.poll(async () => (await get()).github?.items?.[0]?.title).toBe("Private");
-    http.listen(0, "127.0.0.1");
-    await once(http, "listening");
-    const address = http.address();
-    if (!address || typeof address === "string") throw new Error("Missing server address");
-    await gh.script({
-      ...replies,
-      "auth status": { code: 1, effect: "process.stderr.write('network error')" },
-      "config get": { stdout: "202" },
-    });
-    socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
-    const [message] = await once(socket, "message");
-    expect(message.toString()).not.toContain("Private");
-    expect(JSON.stringify(await get())).not.toContain("Private");
-  } finally {
-    socket?.terminate();
-    await server?.stop();
-    process.env.PATH = oldPath;
-    await rm(root, { recursive: true, force: true });
-  }
-});
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      let now = 100_000;
+      const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+      server = instance;
+      const get = async () => (await instance.app.request("/api/project")).json();
+      expect((await get()).github.items).toHaveLength(1);
+      now += 60_001;
+      await gh.script({
+        ...replies,
+        "auth status": { code: 1, effect: "process.stderr.write('network error')" },
+        "config get": { stdout: "101" },
+      });
+      if (scenario === "token") vi.stubEnv("GH_TOKEN", "test-token");
+      await get();
+      await expect.poll(async () => (await get()).github?.errorCode).toBe("offline");
+      if (scenario === "token") {
+        expect((await get()).github.items).toEqual([]);
+        expect((await gh.calls()).some(({ args }) => args[0] === "config")).toBe(false);
+        return;
+      }
+      await expect.poll(async () => (await get()).github?.items?.length).toBe(1);
+      const origin = scenario === "case" ? "EXAMPLE/PROJECT" : "other/repo";
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "set-url",
+        "origin",
+        `https://github.com/${origin}.git`,
+      ]);
+      if (scenario === "refresh")
+        await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+      if (scenario === "case") {
+        await expect.poll(async () => (await get()).github?.items?.length).toBe(1);
+      } else {
+        expect((await get()).github?.items ?? []).toHaveLength(0);
+      }
+      if (scenario !== "case") {
+        execFileSync("git", [
+          "-C",
+          root,
+          "remote",
+          "set-url",
+          "origin",
+          "https://github.com/example/project.git",
+        ]);
+        expect((await get()).github?.items ?? []).toHaveLength(0);
+      }
+    } finally {
+      await server?.stop();
+      process.env.PATH = oldPath;
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test.each(["account", "origin"])(
+  "new offline WebSocket connection redacts data after %s changes",
+  async (change) => {
+    const root = await mkdtemp(join(tmpdir(), "github-offline-socket-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    let socket: WebSocket | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: "101" },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
+        },
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      let now = 100_000;
+      const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+      server = instance;
+      const http = await instance.start();
+      const get = async () => (await instance.app.request("/api/project")).json();
+      expect((await get()).github.items).toHaveLength(1);
+      now += 60_001;
+      await gh.script({
+        ...replies,
+        "auth status": { code: 1, effect: "process.stderr.write('network error')" },
+        "config get": { stdout: "101" },
+      });
+      await get();
+      await expect.poll(async () => (await get()).github?.items?.[0]?.title).toBe("Private");
+      http.listen(0, "127.0.0.1");
+      await once(http, "listening");
+      const address = http.address();
+      if (!address || typeof address === "string") throw new Error("Missing server address");
+      await gh.script({
+        ...replies,
+        "auth status": { code: 1, effect: "process.stderr.write('network error')" },
+        "config get": { stdout: "202" },
+      });
+      if (change === "origin") {
+        await gh.script({
+          ...replies,
+          "auth status": { code: 1, effect: "process.stderr.write('network error')" },
+          "config get": { stdout: "101" },
+        });
+        execFileSync("git", [
+          "-C",
+          root,
+          "remote",
+          "set-url",
+          "origin",
+          "https://github.com/other/repo.git",
+        ]);
+      }
+      socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
+      const [message] = await once(socket, "message");
+      expect(message.toString()).not.toContain("Private");
+      expect(JSON.stringify(await get())).not.toContain("Private");
+    } finally {
+      socket?.terminate();
+      await server?.stop();
+      process.env.PATH = oldPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("viewer recovery cannot restore an obsolete failure after a failed repository refresh", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-viewer-recovery-"));
