@@ -1,6 +1,6 @@
 # 02 — Discover GitHub work items
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -37,3 +37,26 @@ Codex checks: 32 fake-`gh` discovery tests and 26 setup tests passed; the socket
 **Codex, 2026-10-27:** Fifth review follow-up: bound partial as well as cached discovery results to their viewer and origin, including during rate-limit waits, and refuse load-more after either changes. Transient relationship-page failures now retry from the issue-page checkpoint, including a null cursor for the first page; unavailable nodes and safety caps remain incomplete without retrying that page. Added fake-`gh` coverage for account and origin changes, same-viewer retries, network/server failures on labels and sub-issues, and permanent failures. Board-state work remains assigned to ticket 06.
 
 **Codex, 2026-10-27:** After coordinator browser review, added top spacing to the GitHub creation note and matched the existing external-link behavior.
+
+**Coordinator, 2026-10-27:** Resolved. Merged as `dbf7878`.
+- **Real `gh`, read-only:**
+  - On github/gh-aw, discovery scanned 500 issues in 15.4 s. Each issues page cost 102 GraphQL points, and a relationship page cost 1. It found 1 work item (#1433) and returned an incomplete result with a load-more cursor.
+  - A nonexistent repository gave `unavailable`, which does not claim the repository is absent.
+  - Recorded fixtures come from github/gh-aw, dotnet/aspire and github/spec-kit, with titles neutralised.
+- **Browser check:** a scratch repo tracked in GitHub, pointed at github/gh-aw.
+  - #1433 shows under Spec.
+  - Local creation is absent from the board and the command palette.
+  - The note links to the repository's issues in a new tab.
+  - zh-CN dark at 375 px wraps correctly with no horizontal overflow.
+  - The note's missing top spacing was found and fixed.
+- **Codex reviews (gpt-6.1-terra), six rounds.** Fixed:
+  - duplicate items after a failed load-more;
+  - a main identity record hidden when the worktree has none;
+  - known work items dropped on relationship failure;
+  - local work-item creation in GitHub-tracked projects;
+  - partial results not bound to their viewer (privacy);
+  - transient relationship failures not retried.
+  
+  Assigned to ticket 06: showing discovery failure and incompleteness on the board with Refresh and Load more, and starting discovery when the tracker changes at runtime.
+- **Full verify:** format, lint, typecheck, build, 2,824 unit tests, package smoke and all e2e passed. The Project setup regression (opt-in switch to local Markdown) was caught and fixed.
+- **CI** run 40635089317 passed: checks, browser, and package-smoke on ubuntu and macOS.
