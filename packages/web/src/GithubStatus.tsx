@@ -10,6 +10,12 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
   const copy = t.board.githubStatus;
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [retryAction, setRetryAction] = useState<"refresh" | "load-more">();
+  const [waiting, setWaiting] = useState<{
+    action: "refresh" | "load-more";
+    attempts: number;
+    snapshot: typeof github;
+  }>();
   const [now, setNow] = useState(Date.now());
   const retryAt = github?.retryAt ? Date.parse(github.retryAt) : 0;
   useEffect(() => {
@@ -31,19 +37,30 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
   const warnings = (github?.warnings ?? []) as unknown[];
   const incompleteCount = github?.items.filter((item) => !item.complete).length ?? 0;
   const unavailable = !!github?.error && !github.fetchedAt && !github.repositoryId;
-  async function act(action: "refresh" | "load-more") {
+  async function act(action: "refresh" | "load-more", attempts = 1) {
     setPending(true);
     setFailed(false);
+    setRetryAction(undefined);
     try {
       const response = await fetch(`/api/github/discovery/${action}`, { method: "POST" });
+      if (response.status === 409 && attempts < 3) {
+        setWaiting({ action, attempts, snapshot: github });
+        return;
+      }
       if (!response.ok) throw new Error();
       window.dispatchEvent(new Event("stintwork:refresh-project"));
     } catch {
       setFailed(true);
-    } finally {
-      setPending(false);
+      setRetryAction(action);
     }
+    setPending(false);
   }
+  useEffect(() => {
+    const retry = waiting;
+    if (!retry || retry.snapshot === github) return;
+    setWaiting(undefined);
+    void act(retry.action, retry.attempts + 1);
+  });
   return (
     <div
       role="status"
@@ -95,6 +112,7 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
         )}
       {error && !(error === copy.errors.incomplete && !unavailable) && <p>{error}</p>}
       {failed && <p>{copy.requestFailed}</p>}
+      {retryAction && <Button onClick={() => void act(retryAction)}>{copy.retry}</Button>}
       {retryAt > now && github?.retryAt && (
         <p>{copy.retryAt.replace("{time}", time(github.retryAt))}</p>
       )}

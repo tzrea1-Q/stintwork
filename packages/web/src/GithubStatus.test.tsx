@@ -1,9 +1,46 @@
 // SPDX-License-Identifier: Apache-2.0
-import { act, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { GithubStatus } from "./GithubStatus";
 
 afterEach(() => vi.useRealTimers());
+
+test.each([1, 3])(
+  "load more retries after snapshot updates, with %s conflicts",
+  async (conflicts) => {
+    const fetcher = vi.spyOn(window, "fetch");
+    for (let i = 0; i < conflicts; i++)
+      fetcher.mockResolvedValueOnce({ ok: false, status: 409 } as Response);
+    fetcher.mockResolvedValueOnce({ ok: true, status: 200 } as Response);
+    const github = {
+      repository: "a/b",
+      repositoryId: "R",
+      items: [],
+      scanned: 1,
+      cursor: "next",
+      complete: false,
+      pages: [],
+      warnings: [],
+    };
+    const { rerender } = render(<GithubStatus github={github} />);
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+    for (let i = 1; i < conflicts; i++) {
+      await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(i));
+      rerender(<GithubStatus github={{ ...github, scanned: i + 1 }} />);
+    }
+    await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(conflicts));
+    if (conflicts === 1) {
+      rerender(<GithubStatus github={{ ...github, scanned: 10 }} />);
+      await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+      expect(fetcher).toHaveBeenLastCalledWith("/api/github/discovery/load-more", {
+        method: "POST",
+      });
+    } else {
+      expect(await screen.findByRole("button", { name: "Retry" })).toBeEnabled();
+    }
+    fetcher.mockRestore();
+  },
+);
 
 test("retry and load more unlock at a retry time received after mount", () => {
   vi.useFakeTimers();

@@ -29,6 +29,160 @@ const page = {
   },
 };
 
+test.each(["changed", "logout", "offline"])(
+  "expired viewer is redacted and handles %s",
+  async (scenario) => {
+    const root = await mkdtemp(join(tmpdir(), "github-expiry-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: "101" },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
+        },
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      let now = 100_000;
+      const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+      server = instance;
+      const get = async () => (await instance.app.request("/api/project")).json();
+      expect((await get()).github.items).toHaveLength(1);
+      now += 60_001;
+      const newer = {
+        ...page,
+        data: {
+          ...page.data,
+          repository: {
+            ...page.data.repository,
+            issues: connection([
+              {
+                ...issue,
+                id: "I_2",
+                number: 2,
+                title: "New",
+                url: "https://github.com/example/project/issues/2",
+              },
+            ]),
+          },
+        },
+      };
+      await gh.script({
+        ...replies,
+        "auth status": scenario === "logout" ? { code: 1 } : {},
+        "api user":
+          scenario === "offline"
+            ? { code: 1, effect: "process.stderr.write('network error')" }
+            : { stdout: "202" },
+        "api graphql": { stdout: newer },
+      });
+      const redacted = await get();
+      expect(redacted.github).toMatchObject({ items: [], verifying: true });
+      expect(JSON.stringify(redacted)).not.toContain("Private");
+      if (scenario === "changed") {
+        await expect.poll(async () => (await get()).github?.items?.[0]?.title).toBe("New");
+      } else {
+        await expect
+          .poll(async () => (await get()).github?.errorCode)
+          .toBe(scenario === "logout" ? "login" : "offline");
+        const failed = await get();
+        expect(failed.github.discoveryFailed).toBe(true);
+        expect(failed.github.items).toEqual([]);
+        if (scenario === "offline") {
+          const start = await instance.app.request("/api/stints", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ workItem: "github-1", ticket: 2, agent: "codex" }),
+          });
+          expect(start.status).toBe(409);
+          await gh.script(replies);
+          await expect.poll(async () => (await get()).github?.items?.[0]?.title).toBe("Private");
+        }
+      }
+    } finally {
+      await server?.stop();
+      process.env.PATH = oldPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("discovery returns conflict while a detail read is in flight", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-busy-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    });
+    server = createProjectServer(root, join(root, "web"));
+    await server.app.request("/api/project");
+    await gh.script({
+      "auth status": {
+        effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)",
+      },
+      "api user": { stdout: "101" },
+    });
+    const detail = server.app.request("/api/github/items/1/refresh", { method: "POST" });
+    await expect
+      .poll(async () => (await gh.calls()).filter((call) => call.args[0] === "auth").length)
+      .toBeGreaterThan(1);
+    expect(
+      (await server.app.request("/api/github/discovery/refresh", { method: "POST" })).status,
+    ).toBe(409);
+    await detail;
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("tracker changes start and clear discovery without restarting", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-lifecycle-"));
   const oldPath = process.env.PATH;
@@ -196,7 +350,11 @@ test("viewer polling is client-scoped, preserves data on failure, and stops with
       "api graphql": { stdout: page },
     };
     await gh.script(replies);
-    server = createProjectServer(root, join(root, "web"), { githubViewerIntervalMs: 200 });
+    let now = 100_000;
+    server = createProjectServer(root, join(root, "web"), {
+      githubViewerIntervalMs: 200,
+      githubViewerNow: () => now,
+    });
     const http = await server.start();
     const count = async () =>
       (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length;
@@ -207,24 +365,53 @@ test("viewer polling is client-scoped, preserves data on failure, and stops with
     await once(http, "listening");
     const address = http.address();
     if (!address || typeof address === "string") throw new Error("Missing server address");
+    now += 60_001;
     await gh.script({
       ...replies,
       "api user": { code: 1, effect: "process.stderr.write('offline')" },
     });
     socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
-    const messages: { github?: { items: unknown[] } }[] = [];
+    const messages: { github?: { items: { title: string }[]; verifying?: boolean } }[] = [];
     socket.on("message", (data) => messages.push(JSON.parse(data.toString())));
     await once(socket, "open");
+    await expect.poll(() => messages.length).toBeGreaterThan(0);
+    expect(messages[0].github).toMatchObject({ items: [], verifying: true });
     await expect.poll(count, { timeout: 5000 }).toBeGreaterThan(before);
-    expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(1);
+    expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(0);
     await gh.script({
       ...replies,
       "api user": { stdout: "202" },
-      "api repos/example/project": { code: 1, effect: "process.stderr.write('HTTP 500')" },
+      "api graphql": {
+        stdout: {
+          ...page,
+          data: {
+            ...page.data,
+            repository: {
+              ...page.data.repository,
+              issues: connection([
+                {
+                  ...issue,
+                  id: "I_2",
+                  number: 2,
+                  title: "New",
+                  url: "https://github.com/example/project/issues/2",
+                },
+              ]),
+            },
+          },
+        },
+      },
     });
     await expect
-      .poll(() => messages.some((message) => message.github?.items.length === 0), { timeout: 5000 })
+      .poll(
+        () =>
+          messages.some((message) => message.github?.items.some((item) => item.title === "New")),
+        { timeout: 5000 },
+      )
       .toBe(true);
+    expect(
+      messages.every((message) => !message.github?.items.some((item) => item.title === "Private")),
+    ).toBe(true);
     await server.stop();
     const stopped = await count();
     await new Promise((resolve) => setTimeout(resolve, 500));

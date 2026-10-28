@@ -217,6 +217,7 @@ export type GithubDiscovery = {
   retryAt?: string;
   stale?: boolean;
   discoveryFailed?: boolean;
+  verifying?: boolean;
   fetchedAt?: string;
 };
 
