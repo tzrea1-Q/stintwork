@@ -83,8 +83,34 @@ export function createProjectServer(
   const knownIssues = new Map<number, string>();
   let discoveryRunning = false;
   let detailRunning = false;
-  const detailFailures = new Set<string>();
-  let detailOnlyStale = false;
+  const detailFailures = new Map<string, GithubReadError>();
+  let discoveryFailure:
+    | Pick<GithubDiscovery, "error" | "errorCode" | "retryAt" | "retryable">
+    | undefined;
+  function updateGithubFreshness() {
+    if (!github) return;
+    const detailFailure = github.items.map((item) => detailFailures.get(item.id)).find(Boolean);
+    const failure = discoveryFailure ?? detailFailure;
+    github.stale =
+      (!!discoveryFailure && !!githubSource) ||
+      github.items.some((item) => item.detail?.stale || detailFailures.has(item.id));
+    if (failure instanceof GithubReadError || failure?.error) {
+      github.error = failure instanceof GithubReadError ? failure.message : failure.error;
+      github.errorCode = failure instanceof GithubReadError ? failure.code : failure.errorCode;
+    } else {
+      delete github.error;
+      delete github.errorCode;
+    }
+    const retryAt = [
+      discoveryFailure?.retryAt,
+      ...github.items.map((item) => detailFailures.get(item.id)?.retryAt),
+    ]
+      .filter((value): value is string => !!value)
+      .sort()
+      .at(-1);
+    if (retryAt) github.retryAt = retryAt;
+    else delete github.retryAt;
+  }
   function bindGithubIdentities(
     data: GithubDiscovery,
     project: ReturnType<typeof readProjectFiles>,
@@ -218,6 +244,8 @@ export function createProjectServer(
       github = undefined;
       githubSource = undefined;
       cached = undefined;
+      discoveryFailure = undefined;
+      detailFailures.clear();
       return;
     }
     if (
@@ -241,10 +269,13 @@ export function createProjectServer(
         cached = undefined;
         github = undefined;
         githubSource = undefined;
+        discoveryFailure = undefined;
+        detailFailures.clear();
         if (loadMore) throw new GithubReadError("identity");
       }
       if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
       const previous = github;
+      const previousDiscoveryFailure = discoveryFailure;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
       if (
         knownRepository &&
@@ -280,10 +311,12 @@ export function createProjectServer(
                   }
                 : {}),
               warnings: [...previous.warnings, ...next.warnings],
-              ...(previous.membershipIncomplete || (previous.error && !previous.retryable)
+              ...(previous.membershipIncomplete ||
+              (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)
                 ? { membershipIncomplete: true }
                 : {}),
-              ...((previous.membershipIncomplete || (previous.error && !previous.retryable)) &&
+              ...((previous.membershipIncomplete ||
+                (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)) &&
               !next.error
                 ? {
                     error: "Results are incomplete; dependencies and approvals may be unknown.",
@@ -293,7 +326,7 @@ export function createProjectServer(
                 : {}),
               complete:
                 !previous.membershipIncomplete &&
-                (!previous.error || previous.retryable === true) &&
+                (!previousDiscoveryFailure?.error || previousDiscoveryFailure.retryable === true) &&
                 retained.every((item) => item.discoveryComplete ?? item.complete) &&
                 next.complete,
             }
@@ -316,8 +349,17 @@ export function createProjectServer(
       knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
       for (const item of next.items) knownIssues.set(item.number, item.id);
       github = next;
-      detailFailures.clear();
-      detailOnlyStale = false;
+      for (const id of detailFailures.keys()) {
+        if (!github.items.some((item) => item.id === id)) detailFailures.delete(id);
+      }
+      discoveryFailure = github.error
+        ? {
+            error: github.error,
+            errorCode: github.errorCode,
+            retryAt: github.retryAt,
+            retryable: github.retryable,
+          }
+        : undefined;
       githubSource = { viewer, origin };
       if (!github.error) {
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
@@ -352,6 +394,12 @@ export function createProjectServer(
       }
     } catch (error) {
       const failure = classifyGithubError(error);
+      discoveryFailure = {
+        error: failure.message,
+        errorCode: failure.code,
+        retryAt: failure.retryAt,
+        retryable: failure.code !== "identity",
+      };
       if (
         viewer &&
         origin &&
@@ -398,6 +446,7 @@ export function createProjectServer(
         };
       }
     } finally {
+      updateGithubFreshness();
       discoveryRunning = false;
     }
   }
@@ -513,13 +562,7 @@ export function createProjectServer(
       item.detail = { ...detail, fetchedAt: new Date().toISOString() };
       item.complete = item.discoveryComplete && detail.complete;
       detailFailures.delete(item.id);
-      if (detailOnlyStale && detailFailures.size === 0) {
-        github.stale = false;
-        delete github.error;
-        delete github.errorCode;
-        delete github.retryAt;
-        detailOnlyStale = false;
-      }
+      updateGithubFreshness();
       refresh();
       return context.json(coreTextWire(snapshot));
     } catch (error) {
@@ -528,6 +571,8 @@ export function createProjectServer(
         github = undefined;
         githubSource = undefined;
         cached = undefined;
+        discoveryFailure = undefined;
+        detailFailures.clear();
       }
       if (github) {
         if (failure.code === "identity") {
@@ -543,12 +588,9 @@ export function createProjectServer(
           }
         }
         item.complete = false;
-        if (!github.stale) detailOnlyStale = true;
-        detailFailures.add(item.id);
-        github.error = failure.message;
-        github.errorCode = failure.code;
-        if (failure.retryAt) github.retryAt = failure.retryAt;
-        github.stale = true;
+        if (item.detail) item.detail.stale = true;
+        detailFailures.set(item.id, failure);
+        updateGithubFreshness();
       } else {
         github = {
           repository: "",

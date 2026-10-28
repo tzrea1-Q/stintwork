@@ -6,7 +6,18 @@ import { join } from "node:path";
 import { expect, test } from "vitest";
 import { fakeGh } from "../test/fake-gh.js";
 
-test.each(["same", "load-more", "removed", "identity", "viewer", "origin"] as const)(
+const scenarios = [
+  "same",
+  "load-more",
+  "removed",
+  "identity",
+  "viewer",
+  "origin",
+  "detail-first",
+  "discovery-first",
+] as const;
+
+test.each(scenarios)(
   "discovery refresh handles previously fetched details: %s",
   async (scenario) => {
     const root = await mkdtemp(join(tmpdir(), "github-detail-refresh-"));
@@ -112,11 +123,61 @@ test.each(["same", "load-more", "removed", "identity", "viewer", "origin"] as co
         ).json();
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
+        if (scenario === "detail-first" || scenario === "discovery-first") {
+          const detailFailure = async () => {
+            await gh.script({
+              ...replies,
+              "api repos/github/gh-aw/issues/1433": {
+                effect: "process.stderr.write('network is unreachable')",
+                code: 1,
+              },
+            });
+            return (
+              await server.app.request("/api/github/items/1433/refresh", { method: "POST" })
+            ).json();
+          };
+          const discoveryFailure = async () => {
+            await gh.script({
+              ...replies,
+              "api repos/github/gh-aw": { effect: "process.stderr.write('HTTP 500')", code: 1 },
+            });
+            return (
+              await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+            ).json();
+          };
+          if (scenario === "detail-first") {
+            await detailFailure();
+            await discoveryFailure();
+          } else {
+            await discoveryFailure();
+            await detailFailure();
+          }
+          await gh.script(replies);
+          const detailRecovered = await (
+            await server.app.request("/api/github/items/1433/refresh", { method: "POST" })
+          ).json();
+          expect(detailRecovered.github.stale).toBe(true);
+          expect(detailRecovered.github.errorCode).toBe("server-error");
+          expect(detailRecovered.github.items[0].detail.stale).not.toBe(true);
+          const discoveryRecovered = await (
+            await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+          ).json();
+          expect(discoveryRecovered.github.stale).toBe(true);
+          expect(discoveryRecovered.github.items[0].detail.stale).toBe(true);
+          const fullyRecovered = await (
+            await server.app.request("/api/github/items/1433/refresh", { method: "POST" })
+          ).json();
+          expect(fullyRecovered.github.stale).toBe(false);
+          expect(fullyRecovered.github.error).toBeUndefined();
+          return;
+        }
         if (scenario === "origin")
           execFileSync(
             "git",
             ["remote", "set-url", "origin", "https://github.com/other/repo.git"],
-            { cwd: root },
+            {
+              cwd: root,
+            },
           );
         const newRepo =
           scenario === "origin"
@@ -152,7 +213,7 @@ test.each(["same", "load-more", "removed", "identity", "viewer", "origin"] as co
           )
         ).json();
         if (scenario === "same" || scenario === "load-more") {
-          expect(refreshed.github.stale).toBe(false);
+          expect(refreshed.github.stale).toBe(true);
           expect(refreshed.github.items[0].detail).toMatchObject({
             spec: "Recorded body",
             fetchedAt,
@@ -175,7 +236,7 @@ test.each(["same", "load-more", "removed", "identity", "viewer", "origin"] as co
             const last = await (
               await server.app.request("/api/github/discovery/load-more", { method: "POST" })
             ).json();
-            expect(last.github).toMatchObject({ complete: true, stale: false });
+            expect(last.github).toMatchObject({ complete: true, stale: true });
             expect(last.github.items[0].detail.stale).toBe(true);
           }
           await gh.script(replies);

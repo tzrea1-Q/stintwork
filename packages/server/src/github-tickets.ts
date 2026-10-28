@@ -215,32 +215,29 @@ export async function readGithubTickets(
     const sections = [
       ...body.matchAll(/^## Blocked by[ \t]*\r?$([\s\S]*?)(?=^##[ \t]|$(?![\s\S]))/gim),
     ].map((match) => match[1].trim());
-    const issueUrl =
-      /(?:^|[^a-z0-9./-])(?:https?:\/\/)?(?:www\.)?github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+\/(?:issues|pull)\/\d+\b/i;
+    const ambiguousDescription =
+      /\b\d+\b|\b(?:issue|issues|ticket|tickets|pr|pull|depends|blocked|blocker|requires|after)\b|#|\b[a-z][a-z0-9+.-]*:\/\/|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b/i;
     const text = [...lines, ...sections];
     let textUnknown = text.length > 1;
     let textNumbers: number[] = [];
+    const noneMatch =
+      text.length === 1 ? /^(?:[-*][ \t]+)?none(?:[ \t]*\(([^()\r\n]*)\))?$/i.exec(text[0]) : null;
     const none =
-      text.length === 1 &&
-      /^(?:[-*][ \t]+)?none(?:[ \t]*\([^()\r\n]*\))?$/i.test(text[0]) &&
-      !/#\d+/.test(text[0]) &&
-      !/\b(?:ticket|issue|pull request|pr)[ \t]+\d+\b/i.test(text[0]) &&
-      !issueUrl.test(text[0]) &&
+      noneMatch &&
+      !ambiguousDescription.test(noneMatch[1] ?? "") &&
       (sections.length === 1 || !/^[-*]/.test(text[0]));
     if (text.length === 1 && !none) {
       const value = text[0];
       const exact = /^(?:\s*(?:[-*]\s*)?#\d+\s*(?:,|\n|$))+$/i.test(value);
-      const sectionLines =
-        sections.length === 1 &&
+      const descriptionLines = sections.length === 1 ? value.split("\n") : [value];
+      const described =
         value.length > 0 &&
-        value
-          .split("\n")
-          .every(
-            (line) =>
-              !line.trim() ||
-              (/^\s*(?:[-*]\s*)?#\d+(?:\s+[^#]*)?\s*$/.test(line) && !issueUrl.test(line)),
-          );
-      if (!exact && !sectionLines) textUnknown = true;
+        descriptionLines.every((line) => {
+          if (!line.trim()) return sections.length === 1;
+          const match = /^[ \t]*(?:[-*][ \t]*)?#\d+(?:[ \t]+(.+?))?[ \t]*$/.exec(line);
+          return !!match && !ambiguousDescription.test(match[1] ?? "");
+        });
+      if (!exact && !described) textUnknown = true;
       else
         textNumbers = [...new Set([...value.matchAll(/#(\d+)/g)].map((match) => Number(match[1])))];
     }
