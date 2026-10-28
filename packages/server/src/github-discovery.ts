@@ -173,6 +173,7 @@ export type GithubDiscovery = {
     discoveryComplete?: boolean;
     detail?: {
       fetchedAt: string;
+      stale?: boolean;
       spec: string;
       comments: string[];
       tickets: {

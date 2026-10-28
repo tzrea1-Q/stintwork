@@ -354,3 +354,16 @@ test("this repo's tickets parse without warnings and stay in dependency order", 
     }
   }
 });
+
+test("local cycle fallback retains numeric order even after an acyclic dependency was ordered", () => {
+  const { workItems, warnings } = indexTickets(
+    ticket(1, "open", "02"),
+    ticket(2),
+    ticket(3, "open", "04"),
+    ticket(4, "open", "03"),
+  );
+  expect(workItems[0].tickets.map(({ number }) => number)).toEqual([1, 2, 3, 4]);
+  expect(warnings).toEqual([
+    { path: ticket(3)[0], message: "Dependency cycle; falling back to numeric ticket order" },
+  ]);
+});

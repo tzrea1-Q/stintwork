@@ -493,3 +493,106 @@ test("an unreadable GitHub triage mapping does not invent an open ticket state",
   );
   expect(snapshot.workItems[0].tickets[0].status).toBe("unknown");
 });
+
+test("GitHub cycle fallback keeps already ordered tickets before blocked cycle members", () => {
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub",
+  });
+  const ticket = (number: number, blockedBy: number[]) => ({
+    number,
+    title: `Ticket ${number}`,
+    state: "open",
+    stateReason: null,
+    labels: [],
+    body: "",
+    comments: [],
+    blockedBy,
+    blocked: false,
+  });
+  const github = {
+    repository: "example/project",
+    repositoryId: "R",
+    scanned: 1,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    items: [
+      {
+        id: "I",
+        number: 1,
+        title: "Parent",
+        url: "https://github.com/example/project/issues/1",
+        complete: true,
+        detail: {
+          spec: "",
+          tickets: [ticket(1, [2]), ticket(2, []), ticket(3, [4]), ticket(4, [3]), ticket(5, [3])],
+        },
+      },
+    ],
+  };
+  const snapshot = indexProject(files, { name: "Remote", github });
+  expect(snapshot.workItems[0].tickets.map(({ number, blocked }) => [number, blocked])).toEqual([
+    [2, false],
+    [1, false],
+    [3, true],
+    [4, true],
+    [5, true],
+  ]);
+  expect(snapshot.warnings.some(({ message }) => /cycle/i.test(message))).toBe(true);
+});
+
+test("stale GitHub detail blocks only its own tickets", () => {
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub",
+  });
+  const ticket = {
+    number: 2,
+    title: "Ticket",
+    state: "closed",
+    stateReason: "completed",
+    labels: [],
+    body: "",
+    comments: [],
+    blockedBy: [],
+    blocked: false,
+  };
+  const github = {
+    repository: "example/project",
+    repositoryId: "R",
+    scanned: 2,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    items: [
+      {
+        id: "I1",
+        number: 1,
+        title: "Stale",
+        url: "https://github.com/example/project/issues/1",
+        complete: false,
+        detail: { spec: "Old", stale: true, tickets: [ticket] },
+      },
+      {
+        id: "I3",
+        number: 3,
+        title: "Fresh",
+        url: "https://github.com/example/project/issues/3",
+        complete: true,
+        detail: { spec: "New", tickets: [ticket] },
+      },
+    ],
+  };
+  const snapshot = indexProject(files, { name: "Remote", github });
+  expect(
+    snapshot.workItems.map((item) => [
+      item.tickets[0].status,
+      item.tickets[0].resolved,
+      item.tickets[0].blocked,
+    ]),
+  ).toEqual([
+    ["unknown", false, true],
+    ["resolved", true, false],
+  ]);
+});

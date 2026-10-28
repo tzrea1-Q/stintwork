@@ -139,9 +139,14 @@ export function orderTickets(tickets: Ticket[], warnings: Warning[], remote = fa
     if (!next) {
       warnings.push({
         path: [...pending.values()][0].path,
-        message: "Dependency cycle; falling back to numeric ticket order",
+        message: remote
+          ? "Dependency cycle; remaining tickets are blocked in numeric order"
+          : "Dependency cycle; falling back to numeric ticket order",
       });
-      if (remote) for (const ticket of pending.values()) ticket.blocked = true;
+      if (remote) {
+        for (const ticket of pending.values()) ticket.blocked = true;
+        return [...ordered, ...pending.values()];
+      }
       return tickets;
     }
     ordered.push(next);

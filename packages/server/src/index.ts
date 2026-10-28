@@ -229,6 +229,7 @@ export function createProjectServer(
     discoveryRunning = true;
     let viewer: string | undefined;
     let origin: string | undefined;
+    const changedIssues = new Set<number>();
     try {
       origin = await githubOrigin(root);
       viewer = await githubViewer(root);
@@ -253,8 +254,9 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       for (const item of next.items) {
         const earlier = knownIssues.get(item.number);
-        if (earlier && earlier !== item.id) throw new GithubReadError("identity");
+        if (earlier && earlier !== item.id) changedIssues.add(item.number);
       }
+      if (changedIssues.size) throw new GithubReadError("identity");
       const retained =
         previous?.items.filter(
           (item) => !item.provisional || (next.retryable && next.cursor === previous.cursor),
@@ -292,10 +294,24 @@ export function createProjectServer(
               complete:
                 !previous.membershipIncomplete &&
                 (!previous.error || previous.retryable === true) &&
-                retained.every((item) => item.complete) &&
+                retained.every((item) => item.discoveryComplete ?? item.complete) &&
                 next.complete,
             }
           : next;
+      if (previous) {
+        const previousItems = new Map(previous.items.map((item) => [item.number, item]));
+        next.items = next.items.map((item) => {
+          const earlier = previousItems.get(item.number);
+          return earlier?.id === item.id && earlier.detail
+            ? {
+                ...item,
+                discoveryComplete: item.discoveryComplete ?? item.complete,
+                complete: false,
+                detail: { ...earlier.detail, stale: true },
+              }
+            : item;
+        });
+      }
       next = bindGithubIdentities(next, readProjectFiles());
       knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
       for (const item of next.items) knownIssues.set(item.number, item.id);
@@ -343,6 +359,19 @@ export function createProjectServer(
         cached.origin.toLowerCase() === origin.toLowerCase()
       ) {
         githubSource = { viewer, origin };
+        if (failure.code === "identity") {
+          cached = {
+            ...cached,
+            data: {
+              ...cached.data,
+              items: cached.data.items.map((item) => {
+                if (changedIssues.size && !changedIssues.has(item.number)) return item;
+                const { detail: _detail, ...rest } = item;
+                return rest;
+              }),
+            },
+          };
+        }
         github = {
           ...cached.data,
           stale: true,

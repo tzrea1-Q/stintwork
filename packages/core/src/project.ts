@@ -33,6 +33,7 @@ export type GithubDiscovery = {
     detail?: {
       spec: string;
       fetchedAt?: string;
+      stale?: boolean;
       comments?: string[];
       complete?: boolean;
       warnings?: string[];
@@ -102,6 +103,7 @@ export type ProjectSnapshot = {
       url: string;
       complete: boolean;
       bound?: boolean;
+      stale?: boolean;
     };
   })[];
   setup: SetupReport;
@@ -169,9 +171,9 @@ export function indexProject(
                   return {
                     ...ticket,
                     slug: `github-${ticket.number}`,
-                    status: meta.github?.stale ? "unknown" : status,
-                    resolved: status === "resolved" && !meta.github?.stale,
-                    blocked: ticket.blocked || !!meta.github?.stale,
+                    status: meta.github?.stale || item.detail?.stale ? "unknown" : status,
+                    resolved: status === "resolved" && !meta.github?.stale && !item.detail?.stale,
+                    blocked: ticket.blocked || !!meta.github?.stale || !!item.detail?.stale,
                     path,
                   };
                 }),
@@ -259,8 +261,9 @@ export function indexProject(
                       issueId: remote.id,
                       number: remote.number,
                       url: remote.url,
-                      complete: remote.complete,
+                      complete: remote.complete && !remote.detail?.stale,
                       bound: remote.bound === true,
+                      ...(remote.detail?.stale ? { stale: true } : {}),
                     },
                   }
                 : {};
