@@ -25,6 +25,7 @@ import { githubSnapshotFiles } from "./github-snapshot.js";
 import { validateGithubIdentities, type GithubDiscovery } from "./github-discovery.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { parse, stringify } from "yaml";
+import { createDetailPublisher, readGithubTickets } from "./github-tickets.js";
 
 const roots: string[] = [];
 const oldPath = process.env.PATH;
@@ -163,6 +164,7 @@ async function setup(
   let snapshot = indexProject(project().files, { name: "test", github });
   let failures = 0;
   const source: GithubBriefSource = {
+    beginDetail: createDetailPublisher(),
     getGithub: () => github,
     getSnapshot: () => snapshot,
     discoveryFailed: () => false,
@@ -251,6 +253,53 @@ async function setup(
     ghReplies,
   };
 }
+
+test.each(["older-ready", "older-blocked"] as const)(
+  "overlapping detail reads keep the newest publication and each decision (%s)",
+  async (order) => {
+    const fixture = await setup();
+    const ready = await readGithubTickets(fixture.root, "Example/Project", "I_1", 1);
+    const blocked = {
+      ...ready,
+      tickets: ready.tickets.map((ticket) => ({
+        ...ticket,
+        blocked: true,
+        blockedBy: [3],
+        blockers: [{ id: "I_3", number: 3, state: "open" }],
+      })),
+    };
+    let release!: (detail: typeof ready) => void;
+    let entered!: () => void;
+    const waiting = new Promise<typeof ready>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let count = 0;
+    fixture.source.readDetail = async () => {
+      if (++count === 1) {
+        entered();
+        return waiting;
+      }
+      return order === "older-ready" ? blocked : ready;
+    };
+    const older = order === "older-ready" ? fixture.preview() : fixture.start();
+    await started;
+    const newer = await (order === "older-ready" ? fixture.start() : fixture.preview());
+    expect(newer.status).toBe(order === "older-ready" ? 409 : 200);
+    if (order === "older-ready")
+      expect(await newer.json()).toMatchObject({ reasonMessage: { code: "brief.blockedBy" } });
+    release(order === "older-ready" ? ready : blocked);
+    const oldResponse = await older;
+    expect(oldResponse.status).toBe(order === "older-ready" ? 200 : 409);
+    if (order === "older-blocked")
+      expect(await oldResponse.json()).toMatchObject({
+        reasonMessage: { code: "brief.blockedBy" },
+      });
+    expect(fixture.github.items[0].detail?.tickets[0].blocked).toBe(order === "older-ready");
+  },
+);
 
 test("failed discovery blocks preview and start until discovery recovers", async () => {
   const { root, git, gh, ghReplies } = await setup();

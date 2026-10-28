@@ -40,7 +40,7 @@ import {
   githubTrackerRepository,
   type GithubDiscovery,
 } from "./github-discovery.js";
-import { readGithubTickets } from "./github-tickets.js";
+import { createDetailPublisher, readGithubTickets } from "./github-tickets.js";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
@@ -576,6 +576,7 @@ export function createProjectServer(
     refresh();
     return context.json(coreTextWire(snapshot));
   });
+  const beginDetail = createDetailPublisher();
   async function refreshGithubDetail(number: number) {
     const item = github?.items.find((entry) => entry.number === number);
     if (
@@ -614,13 +615,16 @@ export function createProjectServer(
         verified = false;
         throw new GithubReadError("identity");
       }
+      const publish = beginDetail(number);
       const detail = await readGithubTickets(root, github.repository, item.id, number);
       if (github !== current || githubSource !== source) throw new GithubReadError("identity");
       registerDetailIdentities(detail);
-      item.detail = { ...detail, fetchedAt: new Date().toISOString() };
-      item.complete = item.discoveryComplete && detail.complete;
-      detailFailures.delete(item.id);
-      updateGithubFreshness();
+      publish(() => {
+        item.detail = { ...detail, fetchedAt: new Date().toISOString() };
+        item.complete = (item.discoveryComplete ?? item.complete) && detail.complete;
+        detailFailures.delete(item.id);
+        updateGithubFreshness();
+      });
       refresh();
       return 200;
     } catch (error) {
@@ -666,6 +670,7 @@ export function createProjectServer(
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   const githubBriefSource = {
+    beginDetail,
     getGithub: () => github,
     getSnapshot: () => snapshot,
     discoveryFailed: () => !!discoveryFailure,

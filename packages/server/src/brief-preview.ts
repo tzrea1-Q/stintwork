@@ -23,14 +23,20 @@ import {
 import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince, workItemDiff, worktreePath } from "@stintwork/git";
-import { readGithubTickets } from "./github-tickets.js";
+import { readGithubTickets, type createDetailPublisher } from "./github-tickets.js";
 import { classifyGithubError, GithubReadError, type GithubDiscovery } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
-import { projectGithubGates, resolveGithubWorkflow } from "./github-snapshot.js";
+import {
+  githubSnapshotFiles,
+  projectGithubGates,
+  resolveGithubWorkflow,
+} from "./github-snapshot.js";
 import { githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export type GithubBriefSource = {
   getGithub: () => GithubDiscovery | undefined;
+  beginDetail: ReturnType<typeof createDetailPublisher>;
+  readDetail?: typeof readGithubTickets;
   getSnapshot: () => ProjectSnapshot;
   discoveryFailed: () => boolean;
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>;
@@ -105,6 +111,9 @@ export async function prepareStintBrief(
   let snapshot = indexProject(files, { name: "" });
   const github = githubSource?.getGithub();
   const remote = github?.items.find((item) => slug === `github-${item.number}`);
+  let ownDetail:
+    | (Awaited<ReturnType<typeof readGithubTickets>> & { fetchedAt: string })
+    | undefined;
   if (remote && github && githubSource) {
     if (
       !github.repositoryId ||
@@ -114,13 +123,22 @@ export async function prepareStintBrief(
       return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
     if (githubSource.discoveryFailed())
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
+    const publish = githubSource.beginDetail(remote.number);
     try {
-      const detail = await readGithubTickets(root, github.repository, remote.id, remote.number);
+      const detail = await (githubSource.readDetail ?? readGithubTickets)(
+        root,
+        github.repository,
+        remote.id,
+        remote.number,
+      );
       if (!detail.complete) throw new GithubReadError("incomplete");
       githubSource.registerDetailIdentities(github, detail);
-      remote.detail = { ...detail, fetchedAt: new Date().toISOString() };
-      remote.complete = remote.discoveryComplete ?? remote.complete;
-      githubSource.detailSucceeded?.(github, remote.number);
+      ownDetail = { ...detail, fetchedAt: new Date().toISOString() };
+      publish(() => {
+        remote.detail = ownDetail;
+        remote.complete = remote.discoveryComplete ?? remote.complete;
+        githubSource.detailSucceeded?.(github, remote.number);
+      });
     } catch (error) {
       githubSource.detailFailed(github, remote.number, error);
       return {
@@ -133,7 +151,7 @@ export async function prepareStintBrief(
         status: 409 as const,
       };
     }
-    if (!remote.complete)
+    if (!(remote.discoveryComplete ?? remote.complete))
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     let valid = false;
     try {
@@ -160,6 +178,27 @@ export async function prepareStintBrief(
       })
     )
       return { reason: coreText({ code: "gate.validWorkflowRequired" }), status: 409 as const };
+    const ownGithub = {
+      ...github,
+      items: github.items.map((item) =>
+        item.number === remote.number
+          ? { ...item, detail: ownDetail, complete: item.discoveryComplete ?? item.complete }
+          : item,
+      ),
+    };
+    const ownItem = indexProject(githubSnapshotFiles(project, ownGithub), {
+      name: "",
+      github: ownGithub,
+    }).workItems.find((item) => item.slug === slug);
+    snapshot = {
+      ...snapshot,
+      github: ownGithub,
+      workItems: snapshot.workItems.map((item) =>
+        item.slug === slug && ownItem
+          ? { ...item, tickets: ownItem.tickets, spec: ownItem.spec }
+          : item,
+      ),
+    };
   }
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
   if (!workItem)
@@ -309,7 +348,7 @@ export async function prepareStintBrief(
     checkpointCommit,
     changedPaths,
     reviewRange,
-    ...(remote && github && remote.detail?.fetchedAt
+    ...(remote && github && ownDetail?.fetchedAt
       ? {
           github: {
             repository: github.repository,
@@ -318,12 +357,12 @@ export async function prepareStintBrief(
             ticket: ticket
               ? {
                   number: ticket.number,
-                  id: remote.detail.tickets.find((t) => t.number === ticket.number)?.id ?? "",
+                  id: ownDetail.tickets.find((t) => t.number === ticket.number)?.id ?? "",
                   url: ticket.path,
                 }
               : null,
             blockers: ticket?.blockedBy ?? [],
-            fetchedAt: remote.detail.fetchedAt,
+            fetchedAt: ownDetail.fetchedAt,
             worktreePath:
               project.worktreePaths.get(slug) ??
               (await worktreePath(root, slug).catch(() => undefined)),
