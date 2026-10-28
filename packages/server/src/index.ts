@@ -635,7 +635,25 @@ export function createProjectServer(
     }
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
-  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
+  const githubBriefSource = {
+    getGithub: () => github,
+    getSnapshot: () => snapshot,
+    verifyIdentity: async (expected: GithubDiscovery) => {
+      const source = githubSource;
+      if (!source || github !== expected) return false;
+      const valid = await verifyGithubGateIdentity(root, expected, source);
+      return valid && github === expected && githubSource === source;
+    },
+    detailFailed: failGithubDetail,
+    detailSucceeded: (current: GithubDiscovery, number: number) => {
+      if (github !== current) return;
+      const item = current.items.find((entry) => entry.number === number);
+      if (item) detailFailures.delete(item.id);
+      updateGithubFreshness();
+    },
+    refresh,
+  };
+  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh, githubBriefSource);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles);
@@ -657,6 +675,7 @@ export function createProjectServer(
     checks.isActive,
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
+    githubBriefSource,
   );
   addGithubGateRoutes(
     app,

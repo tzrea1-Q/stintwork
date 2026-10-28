@@ -6,6 +6,9 @@ import {
   briefAvailability,
   compileBrief,
   indexProject,
+  readWorkflow,
+  createMemoryRepoFiles,
+  loadWorkflows,
   indexStints,
   pendingDeveloperNotes,
   parseReviewDeveloperNotes,
@@ -14,11 +17,27 @@ import {
   permissionPolicy,
   type PermissionLevel,
   type DeveloperNote,
+  type ProjectSnapshot,
 } from "@stintwork/core";
 
 import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince, workItemDiff } from "@stintwork/git";
+import { readGithubTickets } from "./github-tickets.js";
+import { GithubReadError, type GithubDiscovery } from "./github-discovery.js";
+import { requireCurrentGithubApproval } from "./github-gates.js";
+import { resolveGithubWorkflow } from "./github-snapshot.js";
+import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+
+export type GithubBriefSource = {
+  getGithub: () => GithubDiscovery | undefined;
+  getSnapshot: () => ProjectSnapshot;
+  verifyIdentity: (github: GithubDiscovery) => Promise<boolean>;
+  detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void;
+  refresh: () => void;
+  detailSucceeded?: (github: GithubDiscovery, number: number) => void;
+};
+
 import type { ProjectFilesReader } from "./work-item-files.js";
 
 export function addBriefPreviewRoute(
@@ -27,6 +46,7 @@ export function addBriefPreviewRoute(
   root: string,
   registry: AgentRegistry,
   refresh: () => void = () => {},
+  githubSource?: GithubBriefSource,
 ) {
   app.get("/api/work-items/:slug/brief-preview", async (context) => {
     context.header("Cache-Control", "no-store");
@@ -36,6 +56,9 @@ export function addBriefPreviewRoute(
       null,
       root,
       registry,
+      undefined,
+      undefined,
+      githubSource,
     );
     refresh();
     if ("reason" in result)
@@ -51,6 +74,9 @@ export function addBriefPreviewRoute(
       /^\d+$/.test(number) ? Number(number) : NaN,
       root,
       registry,
+      undefined,
+      undefined,
+      githubSource,
     );
     refresh();
     if ("reason" in result)
@@ -67,10 +93,50 @@ export async function prepareStintBrief(
   registry: AgentRegistry,
   chosenAgent?: string,
   chosenLevel?: PermissionLevel,
+  githubSource?: GithubBriefSource,
 ) {
   const project = readProjectFiles();
   const files = project.files;
-  const snapshot = indexProject(files, { name: "" });
+  let snapshot = indexProject(files, { name: "" });
+  const github = githubSource?.getGithub();
+  const remote = github?.items.find((item) => slug === `github-${item.number}`);
+  if (remote && github && githubSource) {
+    try {
+      const detail = await readGithubTickets(root, github.repository, remote.id, remote.number);
+      if (!detail.complete) throw new GithubReadError("incomplete");
+      remote.detail = { ...detail, fetchedAt: new Date().toISOString() };
+      remote.complete = remote.discoveryComplete ?? remote.complete;
+      githubSource.detailSucceeded?.(github, remote.number);
+    } catch (error) {
+      githubSource.detailFailed(github, remote.number, error);
+      return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
+    }
+    let valid = false;
+    try {
+      valid = await githubSource.verifyIdentity(github);
+    } catch {
+      /* Refuse unverified identity. */
+    }
+    githubSource.refresh();
+    snapshot = githubSource.getSnapshot();
+    const item = snapshot.workItems.find((entry) => entry.slug === slug);
+    const relative = `.stintwork/github/${github.repository.toLowerCase()}/${remote.number}/workflow.yaml`;
+    const record = resolveGithubWorkflow(project, relative, project.worktreePaths.get(slug));
+    if (
+      !valid ||
+      snapshot.github?.errorCode === "identity" ||
+      (record !== undefined && !item?.github?.bound)
+    )
+      return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
+    if (
+      record !== undefined &&
+      !readWorkflow(createMemoryRepoFiles({ [relative]: record }), relative, [], {
+        ...loadWorkflows(files),
+        workflows: snapshot.workflows,
+      })
+    )
+      return { reason: coreText({ code: "gate.validWorkflowRequired" }), status: 409 as const };
+  }
   const workItem = snapshot.workItems.find((item) => item.slug === slug);
   if (!workItem)
     return { reason: coreText({ code: "server.workItemNotFound" }), status: 404 as const };
@@ -78,12 +144,68 @@ export async function prepareStintBrief(
     number === null ? null : workItem.tickets.find((candidate) => candidate.number === number);
   if (ticket === undefined)
     return { reason: coreText({ code: "server.ticketNotFound" }), status: 404 as const };
+  if (remote && ticket && ["cancelled", "unknown"].includes(ticket.status))
+    return {
+      reason: coreText({
+        code: ticket.status === "cancelled" ? "brief.ticketCancelled" : "brief.ticketUnknown",
+      }),
+      status: 409 as const,
+    };
+  if (remote && ticket?.resolved)
+    return { reason: coreText({ code: "brief.ticketResolved" }), status: 409 as const };
+  if (remote && ticket?.blocked)
+    return {
+      reason: coreText({
+        code: "brief.blockedBy",
+        params: {
+          tickets: ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", "),
+        },
+      }),
+      status: 409 as const,
+    };
   const unavailable = briefAvailability(workItem, ticket, snapshot.workflows);
   if (unavailable)
     return {
       reason: unavailable,
       status: 409 as const,
     };
+  if (remote && github && githubSource) {
+    const stages = snapshot.workflows[workItem.workflow].stages;
+    const position = stages.findIndex((stage) => stage.id === workItem.stage);
+    const labels = new Map(
+      ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(
+        (role) => [role, role],
+      ),
+    );
+    for (const line of (files.read("docs/agents/triage-labels.md") ?? "").split(/\r?\n/)) {
+      const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
+      if (match && labels.has(match[1])) labels.set(match[1], match[2]);
+    }
+    for (const prior of stages
+      .slice(0, position)
+      .filter((stage) => stage.gate === "spec" || stage.gate === "tickets")) {
+      const approval = await requireCurrentGithubApproval(
+        project.worktreePaths.get(slug) ?? root,
+        github.repository,
+        remote.id,
+        remote.number,
+        githubGateIncludesTickets(stages, prior.id),
+        [...labels.values()],
+        workItem.stages[prior.id],
+        (error) => githubSource.detailFailed(github, remote.number, error),
+      );
+      if (!approval.ok)
+        return {
+          reason: coreText({
+            code:
+              approval.code === "detail-unavailable"
+                ? "gate.detailUnavailable"
+                : "gate.evidenceChanged",
+          }),
+          status: 409 as const,
+        };
+    }
+  }
   if (workItem.activeStint)
     return {
       reason: coreText({ code: "stint.alreadyActive" }),
@@ -153,6 +275,24 @@ export async function prepareStintBrief(
     checkpointCommit,
     changedPaths,
     reviewRange,
+    ...(remote && github && remote.detail?.fetchedAt
+      ? {
+          github: {
+            repository: github.repository,
+            repositoryId: github.repositoryId,
+            parent: { number: remote.number, id: remote.id, url: remote.url },
+            ticket: ticket
+              ? {
+                  number: ticket.number,
+                  id: remote.detail.tickets.find((t) => t.number === ticket.number)?.id ?? "",
+                  url: ticket.path,
+                }
+              : null,
+            blockers: ticket?.blockedBy ?? [],
+            fetchedAt: remote.detail.fetchedAt,
+          },
+        }
+      : {}),
   });
   const policy = registered ? permissionPolicy(registered, permissionLevel) : undefined;
   return {

@@ -962,6 +962,8 @@ export const zhCN: Catalog = {
     "brief.decision": ({ title }) => joinChinese("决策记录：", title),
     "brief.noSkill": "此阶段没有 Stint 技能。",
     "brief.ticketResolved": "此工单已解决。",
+    "brief.ticketCancelled": "此工单已取消。",
+    "brief.ticketUnknown": "此工单的状态未知。",
     "brief.blockedBy": ({ tickets }) => joinChinese("被工单", tickets, "阻塞。"),
     "permission.codexSandbox":
       "Codex 的沙盒可以不经问询执行命令。Stintwork 只能控制 Codex 发出的请求；命令和工作树外的访问可能不会产生请求。",
