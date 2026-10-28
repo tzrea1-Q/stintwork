@@ -74,3 +74,75 @@ test("irrelevant metadata and parent comments are excluded, ticket comments are 
   expect(githubEvidenceJson(input, true)).not.toBe(before);
   expect(githubEvidenceJson(input, false)).not.toContain("changed");
 });
+
+test("digest covers each evidence field and is independent of collection order", async () => {
+  const ticket = {
+    id: "I_2",
+    body: "ticket",
+    state: "open",
+    stateReason: null as string | null,
+    labels: ["ready", "needs-info"],
+    blockers: [
+      { id: "I_4", state: "closed" },
+      { id: "I_3", state: "open" },
+    ],
+    commentRecords: [
+      { id: "C_2", body: "two" },
+      { id: "C_1", body: "one" },
+    ],
+  };
+  const input = { parentId: "I_1", body: "spec", tickets: [ticket, { ...ticket, id: "I_5" }] };
+  const labels = ["ready", "needs-info"];
+  const original = await githubEvidenceDigest(input, true, labels);
+  const reordered = structuredClone(input);
+  reordered.tickets.reverse();
+  for (const entry of reordered.tickets) {
+    entry.labels.reverse();
+    entry.blockers.reverse();
+    entry.commentRecords.reverse();
+  }
+  expect(await githubEvidenceDigest(reordered, true, labels)).toBe(original);
+  const changes: ((value: typeof input) => void)[] = [
+    (v) => {
+      v.parentId = "I_changed";
+    },
+    (v) => {
+      v.body = "changed";
+    },
+    (v) => {
+      v.tickets.pop();
+    },
+    (v) => {
+      v.tickets[0].id = "I_changed";
+    },
+    (v) => {
+      v.tickets[0].body = "changed";
+    },
+    (v) => {
+      v.tickets[0].state = "closed";
+    },
+    (v) => {
+      v.tickets[0].stateReason = "completed";
+    },
+    (v) => {
+      v.tickets[0].labels.pop();
+    },
+    (v) => {
+      v.tickets[0].blockers[0].id = "I_changed";
+    },
+    (v) => {
+      v.tickets[0].blockers[0].state = "open";
+    },
+    (v) => {
+      v.tickets[0].commentRecords[0].id = "C_changed";
+    },
+    (v) => {
+      v.tickets[0].commentRecords[0].body = "changed";
+    },
+  ];
+  for (const change of changes) {
+    const changed = structuredClone(input);
+    change(changed);
+    expect(await githubEvidenceDigest(changed, true, labels)).not.toBe(original);
+  }
+});

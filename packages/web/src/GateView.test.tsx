@@ -398,6 +398,8 @@ for (const language of ["en", "zh-CN"] as const) {
     async (state) => {
       localStorage.setItem(languageStorageKey, language);
       const item = project().workItems[0];
+      for (const stage of ["clarify", "spec", "tickets"])
+        item.stages[stage] = { approved: { remoteState: "current" } };
       item.github = {
         repository: "Example/Project",
         repositoryId: "R",
@@ -481,6 +483,8 @@ for (const language of ["en", "zh-CN"] as const) {
     async (code) => {
       localStorage.setItem(languageStorageKey, language);
       const item = project().workItems[0];
+      for (const stage of ["clarify", "spec", "tickets"])
+        item.stages[stage] = { approved: { remoteState: "current" } };
       item.github = {
         repository: "Example/Project",
         repositoryId: "R",

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { githubEvidenceDigest, indexProject, createMemoryRepoFiles } from "@stintwork/core";
@@ -233,6 +233,41 @@ test("concurrent approvals create only one commit", async () => {
   const { request, git } = await setup();
   const responses = await Promise.all([request(), request()]);
   expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+  expect(git("rev-list", "--count", "HEAD")).toBe("2");
+});
+
+test("concurrent reopen and approval have one winner and leave a valid workflow", async () => {
+  const { request, git, reviewedHead, root } = await setup({}, "tickets");
+  const reviewedDigest = await githubEvidenceDigest(
+    { parentId: "I_1", body: "Spec", tickets: [] },
+    true,
+  );
+  const responses = await Promise.all([
+    request({ stage: "tickets", reviewedDigest, reviewedHead }),
+    request({ stage: "spec", reviewedDigest, reviewedHead }, "reopen"),
+  ]);
+  expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+  expect(git("rev-list", "--count", "HEAD")).toBe("3");
+  expect(parse(readFileSync(join(root, path), "utf8"))).toEqual(parse(git("show", `HEAD:${path}`)));
+});
+
+test("failed reopen commit restores workflow and index", async () => {
+  const { request, git, reviewedHead, root } = await setup({}, "tickets");
+  const before = readFileSync(join(root, path), "utf8");
+  const index = git("ls-files", "--stage", "--", path);
+  const hooks = join(root, "hooks");
+  mkdirSync(hooks);
+  writeFileSync(join(hooks, "pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  git("config", "core.hooksPath", hooks);
+  const reviewedDigest = await githubEvidenceDigest(
+    { parentId: "I_1", body: "Spec", tickets: [] },
+    true,
+  );
+  expect((await request({ stage: "spec", reviewedDigest, reviewedHead }, "reopen")).status).toBe(
+    503,
+  );
+  expect(readFileSync(join(root, path), "utf8")).toBe(before);
+  expect(git("ls-files", "--stage", "--", path)).toBe(index);
   expect(git("rev-list", "--count", "HEAD")).toBe("2");
 });
 
