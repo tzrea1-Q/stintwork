@@ -15,7 +15,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { parseDocument } from "yaml";
-import { githubTrackerRepository, githubViewer, type GithubDiscovery } from "./github-discovery.js";
+import {
+  githubTrackerRepository,
+  githubViewer,
+  GithubReadError,
+  type GithubDiscovery,
+} from "./github-discovery.js";
 import { readGithubTickets } from "./github-tickets.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
@@ -53,6 +58,7 @@ export async function requireCurrentGithubApproval(
         reopened?: { at?: string };
       }
     | undefined,
+  onFailure?: (error: unknown) => void,
 ): Promise<
   | { ok: true }
   | {
@@ -63,13 +69,14 @@ export async function requireCurrentGithubApproval(
   let digest: string;
   try {
     const detail = await readGithubTickets(directory, repository, parentId, number);
-    if (!detail.complete) return { ok: false, code: "detail-unavailable" };
+    if (!detail.complete) throw new GithubReadError("incomplete");
     digest = await githubEvidenceDigest(
       { parentId, body: detail.spec, tickets: detail.tickets },
       includeTickets,
       labels,
     );
-  } catch {
+  } catch (error) {
+    onFailure?.(error);
     return { ok: false, code: "detail-unavailable" };
   }
   if (!record?.approved) return { ok: false, code: "approval-missing" };
@@ -98,6 +105,7 @@ export function addGithubGateRoutes(
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>,
+  detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void,
 ) {
   const writing = new Set<string>();
   for (const action of ["approve", "reopen"] as const)
@@ -255,13 +263,13 @@ export function addGithubGateRoutes(
         }
         const readDigests = async () => {
           const detail = await readGithubTickets(directory, github.repository, item.id, number);
-          if (!detail.complete) throw new Error("Incomplete detail");
+          if (!detail.complete) throw new GithubReadError("incomplete");
           if (
             action === "approve" &&
             stage.gate === "tickets" &&
             (!detail.tickets.length || detail.tickets.some((ticket) => ticket.blocked))
           )
-            throw new Error("Incomplete detail");
+            throw new GithubReadError("incomplete");
           const input = { parentId: item.id, body: detail.spec, tickets: detail.tickets };
           const [spec, tickets] = await Promise.all([
             githubEvidenceDigest(input, false, [...labels.values()]),
@@ -284,6 +292,10 @@ export function addGithubGateRoutes(
                 githubGateIncludesTickets(stages, prior.id),
                 [...labels.values()],
                 record,
+                (error) => {
+                  detailFailed(github, number, error);
+                  refresh();
+                },
               );
               if (!currentApproval.ok)
                 return refuse(
@@ -317,7 +329,9 @@ export function addGithubGateRoutes(
               }
             }
           }
-        } catch {
+        } catch (error) {
+          detailFailed(github, number, error);
+          refresh();
           return refuse("gate.detailUnavailable");
         }
         if (observed !== body.reviewedDigest) return refuse("gate.evidenceChanged");
@@ -370,8 +384,8 @@ export function addGithubGateRoutes(
         let approval: "current" | "stale" | "unknown" = "unknown";
         try {
           approval = (await readDigests())(current as string) === observed ? "current" : "stale";
-        } catch {
-          /* The committed approval remains unverified. */
+        } catch (error) {
+          detailFailed(github, number, error);
         }
         if (approval !== "current" && item.detail) item.detail.stale = true;
         refresh();

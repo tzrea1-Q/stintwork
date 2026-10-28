@@ -113,6 +113,26 @@ export function createProjectServer(
     if (retryAt) github.retryAt = retryAt;
     else delete github.retryAt;
   }
+  function failGithubDetail(current: GithubDiscovery, number: number, error: unknown) {
+    if (github !== current) return;
+    const item = current.items.find((entry) => entry.number === number);
+    if (!item) return;
+    const failure = classifyGithubError(error);
+    if (failure.code === "identity") {
+      delete item.detail;
+      const cachedItem =
+        cached?.viewer === githubSource?.viewer &&
+        cached?.origin.toLowerCase() === githubSource?.origin.toLowerCase()
+          ? cached?.data.items.find((entry) => entry.id === item.id && entry.number === item.number)
+          : undefined;
+      if (cachedItem) delete cachedItem.detail;
+    }
+    item.discoveryComplete ??= item.complete;
+    item.complete = false;
+    if (item.detail) item.detail.stale = true;
+    detailFailures.set(item.id, failure);
+    updateGithubFreshness();
+  }
   function bindGithubIdentities(
     data: GithubDiscovery,
     project: ReturnType<typeof readProjectFiles>,
@@ -592,22 +612,7 @@ export function createProjectServer(
         detailFailures.clear();
       }
       if (github) {
-        if (failure.code === "identity") {
-          delete item.detail;
-          if (
-            cached?.viewer === source.viewer &&
-            cached.origin.toLowerCase() === source.origin.toLowerCase()
-          ) {
-            const cachedItem = cached.data.items.find(
-              (entry) => entry.id === item.id && entry.number === item.number,
-            );
-            if (cachedItem) delete cachedItem.detail;
-          }
-        }
-        item.complete = false;
-        if (item.detail) item.detail.stale = true;
-        detailFailures.set(item.id, failure);
-        updateGithubFreshness();
+        failGithubDetail(current, number, failure);
       } else {
         github = {
           repository: "",
@@ -667,6 +672,7 @@ export function createProjectServer(
       const valid = await verifyGithubGateIdentity(root, expected, source);
       return valid && github === expected && githubSource === source;
     },
+    failGithubDetail,
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);

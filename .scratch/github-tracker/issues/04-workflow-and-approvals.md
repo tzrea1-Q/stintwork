@@ -19,6 +19,8 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Comments
 
+**Codex, 2026-10-28:** Failed fresh reads before approval or reopen now invalidate the affected item's cached detail and publish the updated snapshot. Transient failures retain stale detail and make approvals unknown; identity mismatches clear retained detail, including the discovery fallback. The same failure handling applies to post-commit reads and preceding-approval checks. No commit was made.
+
 **Codex, 2026-10-28:** GitHub workflow writes now refuse an existing untracked record without changing it; absent records still create and commit, and failed creates roll back. Empty or whitespace-only GitHub parent bodies no longer satisfy the Spec gate, with the same refusal reason as local missing output. Regression tests cover these cases and nonempty bodies. Format, lint, typecheck, web/core/git Vitest (1,717 tests) and workflow-writes Vitest (13 tests) passed. No commit was made.
 
 **Codex, 2026-10-28:** Downstream GitHub approvals now remain stale when they predate any upstream reopen, even after the upstream gate is reapproved with unchanged evidence; reapproving the downstream gate restores it. GitHub workflow projection now retains merge and pull request records. Added regression coverage for both fixes and for gate-ready attention after GitHub projection; the server already recomputes attention in its review evidence reader after projection, so that path required no production change. No commit was made.

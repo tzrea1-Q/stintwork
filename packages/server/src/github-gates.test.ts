@@ -22,6 +22,8 @@ import { createNodeRepoFiles } from "./repo-files.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
 import { readGithubTickets } from "./github-tickets.js";
+import { classifyGithubError, type GithubDiscovery } from "./github-discovery.js";
+import { projectGithubGates } from "./github-snapshot.js";
 
 const roots: string[] = [];
 const oldPath = process.env.PATH;
@@ -89,6 +91,7 @@ async function setup(
     ...replies,
   });
   const app = new Hono();
+  const github: GithubDiscovery = structuredClone(discovery);
   const snapshot = indexProject(
     createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n" }),
     { name: "test" },
@@ -142,16 +145,29 @@ async function setup(
     },
   ];
   snapshot.workItems = [workItem];
+  const project = createProjectFiles(root, createNodeRepoFiles(root));
+  let published = 0;
   addGithubGateRoutes(
     app,
     root,
-    () => discovery,
+    () => github,
     () => snapshot,
-    createProjectFiles(root, createNodeRepoFiles(root)),
-    () => {},
+    project,
+    () => {
+      published++;
+      snapshot.github = github;
+      projectGithubGates(snapshot, root, project());
+    },
     () => false,
     (expected) =>
       verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
+    (_github, number, error) => {
+      const item = github.items.find((entry) => entry.number === number);
+      if (!item) throw new Error("Missing item");
+      if (classifyGithubError(error).code === "identity") delete item.detail;
+      item.complete = false;
+      if (item.detail) item.detail.stale = true;
+    },
   );
   if (initialStage) {
     const digest = await githubEvidenceDigest(
@@ -186,9 +202,60 @@ async function setup(
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  return { git, request, reviewedHead, reviewedDigest, root, snapshot, worktree };
+  return {
+    git,
+    request,
+    reviewedHead,
+    reviewedDigest,
+    root,
+    snapshot,
+    worktree,
+    github,
+    published: () => published,
+  };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
+
+test.each(["approve", "reopen"] as const)(
+  "%s publishes unknown approvals on a failed fresh read",
+  async (action) => {
+    for (const failure of ["network", "identity"] as const) {
+      const reply =
+        failure === "network"
+          ? { code: 1, effect: "process.stderr.write('network unreachable')" }
+          : { stdout: { ...parent, node_id: "I_changed" } };
+      const { request, reviewedHead, reviewedDigest, github, snapshot, published, git, root } =
+        await setup({ [issue]: reply }, "spec");
+      github.items[0].detail = {
+        spec: "Spec",
+        comments: [],
+        tickets: [],
+        complete: true,
+        fetchedAt: new Date().toISOString(),
+        warnings: [],
+      };
+      snapshot.github = github;
+      snapshot.workItems[0].stages = parse(readFileSync(join(root, path), "utf8")).stages;
+      projectGithubGates(snapshot, root, createProjectFiles(root, createNodeRepoFiles(root))());
+      expect(snapshot.workItems[0].stages.clarify.approved).toMatchObject({
+        remoteState: "current",
+      });
+      const response = await request(
+        { stage: action === "approve" ? "spec" : "clarify", reviewedHead, reviewedDigest },
+        action,
+      );
+      expect(response.status).toBe(409);
+      expect((await response.json()).code).toBe("detail-unavailable");
+      expect(published()).toBe(1);
+      expect(snapshot.workItems[0].stages.clarify.approved).toMatchObject({
+        remoteState: "unknown",
+      });
+      if (failure === "identity") expect(github.items[0].detail).toBeUndefined();
+      else expect(github.items[0].detail).toMatchObject({ spec: "Spec", stale: true });
+      expect(git("rev-list", "--count", "HEAD")).toBe("2");
+    }
+  },
+);
 
 test.each(["closed", "open", "inaccessible"] as const)(
   "external %s blocker determines GitHub tickets readiness",
