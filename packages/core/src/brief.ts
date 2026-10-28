@@ -104,7 +104,6 @@ export function compileBrief({
   if (github) {
     const handoff = lastHandoff ? { ...lastHandoff } : null;
     const changed = [...new Set(changedPaths)].sort();
-    const safe = (text: string) => text.replace(/\.scratch\/(?:[^\s`]+)?/g, "[local path omitted]");
     const issues = [
       github.parent.number,
       ...(github.ticket ? [github.ticket.number] : []),
@@ -199,9 +198,7 @@ export function compileBrief({
           ? ["- Leave gate approval to the developer."]
           : []),
       ].join("\n"),
-    ]
-      .map(safe)
-      .join("\n\n");
+    ].join("\n\n");
     return {
       skill: stage.skill,
       pointers,

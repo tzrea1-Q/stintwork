@@ -142,6 +142,29 @@ test("GitHub ticket brief uses issue identities and read-only explicit-repositor
     expect(brief.prompt).not.toContain(forbidden);
 });
 
+test("GitHub briefs preserve paths supplied in handoffs, notes, changes and worktrees", () => {
+  const path = ".scratch/notes/x.md";
+  const brief = compileBrief({
+    ...input(),
+    stage: builtInWorkflows.feature.stages[4],
+    lastHandoff: { stint: "s", agent: "codex", stoppedAt: path, unresolved: path, nextStep: path },
+    developerNotes: [{ id: "note", at: "2026-10-28", text: path }],
+    changedPaths: [path],
+    github: {
+      repository: "owner/repo",
+      repositoryId: "R_1",
+      parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+      blockers: [],
+      fetchedAt: "2026-10-28",
+      worktreePath: "/tmp/.scratch/project",
+    },
+  });
+  expect(brief.prompt.match(/\.scratch\/notes\/x\.md/g)).toHaveLength(5);
+  expect(brief.prompt).toContain("/tmp/.scratch/project");
+  expect(brief.pointers.map((pointer) => pointer.path)).not.toContain(specPath);
+  expect(brief.pointers.map((pointer) => pointer.path)).not.toContain(ticketPath);
+});
+
 test("GitHub review and planning briefs respect stage ownership", () => {
   const github = {
     repository: "owner/repo",

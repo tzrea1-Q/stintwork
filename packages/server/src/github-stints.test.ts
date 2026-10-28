@@ -692,3 +692,122 @@ test("failed detail invokes the shared failure handler", async () => {
   });
   expect(fixture.failures()).toBe(1);
 });
+
+test.each(["updated", "failed", "local"] as const)(
+  "stint completion refreshes GitHub detail (%s)",
+  async (scenario) => {
+    const { root, git, gh, ghReplies } = await setup();
+    mkdirSync(join(root, "web"));
+    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+    if (scenario === "local") {
+      writeFileSync(
+        join(root, "docs/agents/issue-tracker.md"),
+        "# Issue tracker: Local Markdown\n",
+      );
+      mkdirSync(join(root, ".scratch/local/issues"), { recursive: true });
+      writeFileSync(join(root, ".scratch/local/spec.md"), "# Local\n");
+      writeFileSync(
+        join(root, ".scratch/local/issues/01-local.md"),
+        "# Local\nStatus: ready-for-agent\nBlocked by: none\n",
+      );
+      git("add", ".");
+      git("commit", "-qm", "local tracker");
+    }
+    const page = JSON.parse(
+      readFileSync(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const item = page.data.repository.issues.nodes[0];
+    Object.assign(item, {
+      id: "I_1",
+      number: 1,
+      title: "Parent",
+      url: parent.html_url,
+      parent: null,
+      labels: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+      subIssues: {
+        nodes: [{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }],
+        totalCount: 1,
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    });
+    page.data.repository.id = "R_1";
+    page.data.repository.nameWithOwner = "Example/Project";
+    page.data.repository.issues.nodes = [item];
+    page.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+    const replies = { ...ghReplies, "api graphql": { stdout: page } };
+    await gh.script(replies);
+    let finish = () => {};
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"), {
+      launchAgent: () => ({
+        done: new Promise((resolve) => {
+          finish = () => resolve({ stopReason: "end_turn" });
+        }),
+        cancel: async () => finish(),
+      }),
+    });
+    try {
+      const slug = scenario === "local" ? "local" : "github-1";
+      const start = await server.app.request("/api/stints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          workItem: slug,
+          ticket: scenario === "local" ? 1 : 2,
+          agent: "codex",
+        }),
+      });
+      expect(start.status, await start.clone().text()).toBe(201);
+      const before = (await gh.calls()).length;
+      if (scenario === "updated")
+        await gh.script({
+          ...replies,
+          [`${issue}/sub_issues?per_page=100&page=1`]: {
+            stdout: [{ ...child, state: "closed", state_reason: "completed" }],
+          },
+        });
+      if (scenario === "failed")
+        await gh.script({
+          ...replies,
+          [issue]: { code: 1, effect: "process.stderr.write('network is unreachable')" },
+        });
+      finish();
+      await expect
+        .poll(
+          async () =>
+            (await (await server.app.request("/api/project")).json()).workItems.find(
+              (entry: { slug: string }) => entry.slug === slug,
+            )?.stints[0]?.status,
+          { timeout: 10000 },
+        )
+        .toBe("finished");
+      if (scenario === "local") {
+        expect((await gh.calls()).length).toBe(before);
+      } else {
+        await expect
+          .poll(async () =>
+            (await gh.calls())
+              .slice(before)
+              .some((call) => call.args.slice(0, 2).join(" ") === issue),
+          )
+          .toBe(true);
+        await expect
+          .poll(
+            async () => {
+              const snapshot = await (await server.app.request("/api/project")).json();
+              return scenario === "failed"
+                ? snapshot.github.items[0].detail?.stale
+                : snapshot.workItems[0].tickets[0].resolved;
+            },
+            { timeout: 10000 },
+          )
+          .toBe(true);
+      }
+    } finally {
+      await server.stop();
+    }
+  },
+);

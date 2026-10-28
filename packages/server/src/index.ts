@@ -96,6 +96,28 @@ export function createProjectServer(
   }
   let discoveryRunning = false;
   let detailRunning = false;
+  const pendingStintDetails = new Set<number>();
+  function drainStintDetails() {
+    if (discoveryRunning || detailRunning) return;
+    const number = pendingStintDetails.values().next().value;
+    if (number === undefined) return;
+    pendingStintDetails.delete(number);
+    void refreshGithubDetail(number)
+      .then((status) => {
+        if (status === 429 && github) {
+          failGithubDetail(github, number, new GithubReadError("rate-limited", github.retryAt));
+          refresh();
+        }
+        drainStintDetails();
+      })
+      .catch((error: unknown) => {
+        if (github) {
+          failGithubDetail(github, number, error);
+          refresh();
+        }
+        drainStintDetails();
+      });
+  }
   const detailFailures = new Map<string, GithubReadError>();
   let discoveryFailure:
     | Pick<GithubDiscovery, "error" | "errorCode" | "retryAt" | "retryable">
@@ -496,6 +518,7 @@ export function createProjectServer(
     } finally {
       updateGithubFreshness();
       discoveryRunning = false;
+      drainStintDetails();
     }
   }
   let initialization: Promise<void> | undefined;
@@ -553,11 +576,7 @@ export function createProjectServer(
     refresh();
     return context.json(coreTextWire(snapshot));
   });
-  app.post("/api/github/items/:number/refresh", async (context) => {
-    const origin = context.req.header("origin");
-    if (origin && origin !== new URL(context.req.url).origin)
-      return context.text("Origin mismatch", 403);
-    const number = Number(context.req.param("number"));
+  async function refreshGithubDetail(number: number) {
     const item = github?.items.find((entry) => entry.number === number);
     if (
       !item ||
@@ -567,7 +586,7 @@ export function createProjectServer(
       detailRunning ||
       discoveryRunning
     )
-      return context.text("Work item unavailable", 409);
+      return 409;
     detailRunning = true;
     const source = githubSource;
     const current = github;
@@ -586,8 +605,7 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       }
       verified = true;
-      if (github.retryAt && Date.parse(github.retryAt) > Date.now())
-        return context.json(coreTextWire(snapshot), 429);
+      if (github.retryAt && Date.parse(github.retryAt) > Date.now()) return 429;
       const repository = await githubTrackerRepository(root);
       if (
         repository.repositoryId !== current.repositoryId ||
@@ -604,7 +622,7 @@ export function createProjectServer(
       detailFailures.delete(item.id);
       updateGithubFreshness();
       refresh();
-      return context.json(coreTextWire(snapshot));
+      return 200;
     } catch (error) {
       const failure = classifyGithubError(error);
       if (!verified) {
@@ -632,10 +650,19 @@ export function createProjectServer(
         };
       }
       refresh();
-      return context.json(coreTextWire(snapshot), 503);
+      return 503;
     } finally {
       detailRunning = false;
+      drainStintDetails();
     }
+  }
+  app.post("/api/github/items/:number/refresh", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.text("Origin mismatch", 403);
+    const status = await refreshGithubDetail(Number(context.req.param("number")));
+    if (status === 409) return context.text("Work item unavailable", 409);
+    return context.json(coreTextWire(snapshot), status as 200 | 429 | 503);
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   const githubBriefSource = {
@@ -687,6 +714,10 @@ export function createProjectServer(
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
     githubBriefSource,
+    async (number) => {
+      pendingStintDetails.add(number);
+      drainStintDetails();
+    },
   );
   addGithubGateRoutes(
     app,

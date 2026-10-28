@@ -131,6 +131,7 @@ export function addStintRoutes(
   readReviewEvidence?: ReviewEvidenceReader,
   warn: (warning: Warning) => void = () => {},
   githubSource?: GithubBriefSource,
+  refreshGithubDetail?: (number: number) => Promise<unknown>,
 ) {
   const registry = options.agentRegistry ?? createAgentRegistry();
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
@@ -425,6 +426,15 @@ export function addStintRoutes(
         state.releaseOwnership = undefined;
         active.delete(workItem);
         refresh();
+        const githubNumber = /^github-(\d+)$/.exec(workItem)?.[1];
+        if (
+          githubNumber &&
+          githubSource?.getSnapshot().setup.tracker === "github-issues" &&
+          refreshGithubDetail
+        )
+          void refreshGithubDetail(Number(githubNumber)).catch((error: unknown) => {
+            console.error("Could not refresh GitHub detail after stint:", error);
+          });
       }
     }
     let attempt: StintProcessAttempt | undefined = recovery?.attempt;
