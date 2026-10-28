@@ -202,6 +202,8 @@ test.each([
       "href",
       "https://github.com/example/project/issues",
     );
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("rel", "noreferrer");
     expect(screen.queryByRole("button", { name: create })).not.toBeInTheDocument();
     expect(screen.queryByText(".scratch/<work-item>/spec.md")).not.toBeInTheDocument();
     await user.keyboard("c");

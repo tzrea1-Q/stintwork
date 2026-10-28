@@ -264,10 +264,15 @@ export function Board({
           </div>
         </div>
         {githubTracker && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 text-sm text-muted sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm text-muted sm:px-6">
             <span>{t.board.githubCreation}</span>
             {repository && /^[a-z\d-]+\/[a-z\d_.-]+$/i.test(repository) && (
-              <a className="underline" href={`https://github.com/${repository}/issues`}>
+              <a
+                className="underline"
+                href={`https://github.com/${repository}/issues`}
+                target="_blank"
+                rel="noreferrer"
+              >
                 {t.board.githubIssues}
               </a>
             )}
