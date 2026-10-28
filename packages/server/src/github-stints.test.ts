@@ -62,6 +62,7 @@ async function setup(
   replies: Record<string, GhReply | GhReply[]> = {},
   stage = "clarify",
   record = false,
+  approvedTicket: Omit<typeof child, "state_reason"> & { state_reason: string | null } = child,
 ) {
   const root = mkdtempSync(join(tmpdir(), "github-stints-"));
   roots.push(root, `${root}-worktrees`);
@@ -83,8 +84,8 @@ async function setup(
           {
             id: "I_2",
             body: "Ticket body",
-            state: "open",
-            stateReason: null,
+            state: approvedTicket.state,
+            stateReason: approvedTicket.state_reason,
             labels: [],
             blockers: [],
             commentRecords: [],
@@ -409,6 +410,25 @@ test("first start commits identity in its worktree and concurrent start refuses"
   expect(readFileSync(join(worktree, path), "utf8")).toContain("repositoryId: R_1");
   expect(git("show", `stintwork/github-1:${path}`)).toContain("issueId: I_1");
   expect((await start()).status).toBe(409);
+});
+
+test.each([
+  ["review", 200],
+  ["implement", 409],
+] as const)("resolved ticket preview at %s stage returns %i", async (stage, status) => {
+  const resolved = { ...child, state: "closed", state_reason: "completed" };
+  const { preview } = await setup(
+    { [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [resolved] } },
+    stage,
+    true,
+    resolved,
+  );
+  const response = await preview();
+  expect(response.status, await response.clone().text()).toBe(status);
+  if (status === 409)
+    expect(await response.json()).toMatchObject({
+      reasonMessage: { code: "brief.ticketResolved" },
+    });
 });
 
 test.each([

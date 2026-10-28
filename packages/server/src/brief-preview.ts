@@ -155,22 +155,18 @@ export async function prepareStintBrief(
     number === null ? null : workItem.tickets.find((candidate) => candidate.number === number);
   if (ticket === undefined)
     return { reason: coreText({ code: "server.ticketNotFound" }), status: 404 as const };
-  if (remote && ticket && ["cancelled", "unknown"].includes(ticket.status))
+  const stage = snapshot.workflows[workItem.workflow]?.stages.find(
+    (candidate) => candidate.id === workItem.stage,
+  );
+  const implementation =
+    stage?.column === "implement" ||
+    (workItem.workflow === undefined &&
+      workItem.stage !== undefined &&
+      ["implement", "fix", "do"].includes(workItem.stage));
+  if (remote && ticket && implementation && ["cancelled", "unknown"].includes(ticket.status))
     return {
       reason: coreText({
         code: ticket.status === "cancelled" ? "brief.ticketCancelled" : "brief.ticketUnknown",
-      }),
-      status: 409 as const,
-    };
-  if (remote && ticket?.resolved)
-    return { reason: coreText({ code: "brief.ticketResolved" }), status: 409 as const };
-  if (remote && ticket?.blocked)
-    return {
-      reason: coreText({
-        code: "brief.blockedBy",
-        params: {
-          tickets: ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", "),
-        },
       }),
       status: 409 as const,
     };
@@ -231,9 +227,6 @@ export async function prepareStintBrief(
       reason: coreText({ code: "stint.alreadyActive" }),
       status: 409 as const,
     };
-  const stage = snapshot.workflows[workItem.workflow].stages.find(
-    (candidate) => candidate.id === workItem.stage,
-  );
   if (!stage) return { reason: coreText({ code: "server.stageNotFound" }), status: 409 as const };
   const agent =
     chosenAgent ?? stageAgent(workItem, stage.id, [...registry.values()], snapshot.workflows);
