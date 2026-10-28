@@ -245,24 +245,57 @@ test("preview refreshes GitHub detail without writing a record or worktree", asy
   expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
 });
 
-test.each(["item", "snapshot", "stale", "error"])(
-  "incomplete or stale discovery (%s) refuses preview and start after successful detail",
+test("item marked incomplete by discovery refuses preview and start", async () => {
+  const { github, preview, start, root, git } = await setup();
+  github.items[0].discoveryComplete = false;
+  for (const response of [await preview(), await start()]) {
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reasonMessage: { code: "gate.detailUnavailable" },
+    });
+  }
+  expect(existsSync(join(root, path))).toBe(false);
+  expect(existsSync(join(root, ".stintwork/local/stints"))).toBe(false);
+  expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+  expect(git("branch", "--list", "stintwork/github-1")).toBe("");
+});
+
+test("unscanned discovery pages do not block a complete item", async () => {
+  const { github, preview, start } = await setup();
+  github.complete = false;
+  github.cursor = "next-page";
+  expect((await preview()).status).toBe(200);
+  const response = await start();
+  expect(response.status, await response.clone().text()).toBe(201);
+});
+
+test("another item's failed detail does not block start", async () => {
+  const { github, start } = await setup();
+  github.items.push({
+    id: "I_3",
+    number: 3,
+    title: "Other",
+    url: "https://github.com/Example/Project/issues/3",
+    complete: false,
+  });
+  github.stale = true;
+  github.errorCode = "offline";
+  const response = await start();
+  expect(response.status, await response.clone().text()).toBe(201);
+});
+
+test.each(["identity", "missing repository ID"])(
+  "%s refuses preview and start with identity reason",
   async (state) => {
-    const { github, preview, start, root, git } = await setup();
-    if (state === "item") github.items[0].discoveryComplete = false;
-    if (state === "snapshot") github.complete = false;
-    if (state === "stale") github.stale = true;
-    if (state === "error") github.errorCode = "offline";
+    const { github, preview, start } = await setup();
+    if (state === "identity") github.errorCode = "identity";
+    else github.repositoryId = "";
     for (const response of [await preview(), await start()]) {
       expect(response.status).toBe(409);
       expect(await response.json()).toMatchObject({
-        reasonMessage: { code: "gate.detailUnavailable" },
+        reasonMessage: { code: "gate.identityAmbiguous" },
       });
     }
-    expect(existsSync(join(root, path))).toBe(false);
-    expect(existsSync(join(root, ".stintwork/local/stints"))).toBe(false);
-    expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
-    expect(git("branch", "--list", "stintwork/github-1")).toBe("");
   },
 );
 

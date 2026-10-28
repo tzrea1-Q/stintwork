@@ -101,6 +101,12 @@ export async function prepareStintBrief(
   const github = githubSource?.getGithub();
   const remote = github?.items.find((item) => slug === `github-${item.number}`);
   if (remote && github && githubSource) {
+    if (
+      !github.repositoryId ||
+      github.errorCode === "identity" ||
+      githubSource.getSnapshot().github?.errorCode === "identity"
+    )
+      return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
     try {
       const detail = await readGithubTickets(root, github.repository, remote.id, remote.number);
       if (!detail.complete) throw new GithubReadError("incomplete");
@@ -111,7 +117,7 @@ export async function prepareStintBrief(
       githubSource.detailFailed(github, remote.number, error);
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     }
-    if (!remote.complete || !github.complete || github.stale || github.errorCode)
+    if (!remote.complete)
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     let valid = false;
     try {
