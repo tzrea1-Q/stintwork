@@ -54,6 +54,11 @@ const execute = promisify(execFile);
  * concurrent stints on different work items must not create worktrees at the same time.
  */
 const repoLocks = new Map<string, Promise<unknown>>();
+export async function worktreePath(repoRoot: string, workItemSlug: string): Promise<string> {
+  const root = await realpath(resolve(repoRoot));
+  return join(dirname(root), `${basename(root)}-worktrees`, workItemSlug);
+}
+
 export async function withRepoLock<T>(repoRoot: string, task: () => Promise<T>): Promise<T> {
   const root = await realpath(repoRoot);
   const run = (repoLocks.get(root) ?? Promise.resolve()).catch(() => {}).then(task);
@@ -75,7 +80,7 @@ async function ensureWorktreeLocked(
   root: string,
   workItemSlug: string,
 ): Promise<{ path: string; branch: string }> {
-  const path = join(dirname(root), `${basename(root)}-worktrees`, workItemSlug);
+  const path = await worktreePath(root, workItemSlug);
   const branch = `stintwork/${workItemSlug}`;
   await execute("git", ["check-ref-format", `refs/heads/${branch}`], { cwd: root });
   const { stdout } = await execute("git", ["worktree", "list", "--porcelain", "-z"], { cwd: root });

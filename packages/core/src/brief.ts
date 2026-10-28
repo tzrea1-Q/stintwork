@@ -43,6 +43,7 @@ export type BriefInput = {
     ticket?: { number: number; url: string; id: string } | null;
     blockers: readonly number[];
     fetchedAt: string;
+    worktreePath?: string;
   };
 };
 
@@ -161,7 +162,9 @@ export function compileBrief({
       [
         "Working instructions:",
         "- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
-        `- Work in the work item worktree on branch stintwork/${workItem.slug}.`,
+        github.worktreePath
+          ? `- Work in the worktree at ${github.worktreePath} on branch stintwork/${workItem.slug}.`
+          : `- Work in the work item worktree on branch stintwork/${workItem.slug}.`,
         ...(stage.gate === "spec"
           ? [
               "- Publish the spec to the parent issue body through the configured tracker skill and gh.",
@@ -188,7 +191,9 @@ export function compileBrief({
               "- Leave stage gate approval to the developer.",
               "- Do not push.",
             ]),
-        "- Update issue status and comments through the configured tracker skill and gh; Stintwork does not write issues.",
+        stage.gate === "evidence"
+          ? "- Do not change GitHub issues; findings are requested after the handoff."
+          : "- Update issue status and comments through the configured tracker skill and gh; Stintwork does not write issues.",
         "- Record only checks actually run, with their results.",
         ...(github.ticket && stage.column === "implement"
           ? ["- Leave gate approval to the developer."]

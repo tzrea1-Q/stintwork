@@ -1,12 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+import {
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
 import { afterEach, expect, test } from "vitest";
 import { createAgentRegistry } from "@stintwork/agents";
 import { githubEvidenceDigest, indexProject } from "@stintwork/core";
+import { ensureWorktree } from "@stintwork/git";
 import { fakeGh, type GhReply } from "../test/fake-gh.js";
 import { addBriefPreviewRoute, type GithubBriefSource } from "./brief-preview.js";
 import { addStintRoutes } from "./stints.js";
@@ -318,9 +327,23 @@ test("preview refreshes GitHub detail without writing a record or worktree", asy
   const { preview, root } = await setup();
   const response = await preview();
   expect(response.status).toBe(200);
-  expect((await response.json()).prompt).toContain("https://github.com/Example/Project/issues/2");
+  const { prompt } = await response.json();
+  expect(prompt).toContain("https://github.com/Example/Project/issues/2");
+  expect(prompt).toContain(
+    `- Work in the worktree at ${realpathSync(root)}-worktrees/github-1 on branch stintwork/github-1.`,
+  );
   expect(existsSync(join(root, path))).toBe(false);
   expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+});
+
+test("preview includes the existing worktree path", async () => {
+  const { preview, root } = await setup();
+  const worktree = await ensureWorktree(root, "github-1");
+  const response = await preview();
+  expect(response.status).toBe(200);
+  expect((await response.json()).prompt).toContain(
+    `- Work in the worktree at ${worktree.path} on branch stintwork/github-1.`,
+  );
 });
 
 test("item marked incomplete by discovery refuses preview and start", async () => {

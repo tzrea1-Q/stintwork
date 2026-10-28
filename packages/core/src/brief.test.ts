@@ -110,7 +110,15 @@ test("GitHub ticket brief uses issue identities and read-only explicit-repositor
     blockers: [9, 10],
     fetchedAt: "2026-10-28T12:00:00Z",
   };
-  const brief = compileBrief({ ...input(), workItem: { slug: "github-7", spec: null }, github });
+  const brief = compileBrief({
+    ...input(),
+    workItem: { slug: "github-7", spec: null },
+    github: { ...github, worktreePath: "/tmp/worktree" },
+  });
+  expect(brief.prompt).toContain(
+    "- Work in the worktree at /tmp/worktree on branch stintwork/github-7.",
+  );
+  expect(brief.prompt).toContain("- Update issue status and comments");
   expect(brief.prompt.startsWith(`/implement ${github.ticket.url}\n`)).toBe(true);
   expect(brief.prompt).toContain(
     "Working instructions:\n- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
@@ -155,6 +163,10 @@ test("GitHub review and planning briefs respect stage ownership", () => {
     "Do not implement fixes or change project files. Findings will be requested after the handoff.",
   );
   expect(review).not.toContain(`/code-review ${github.parent.url}`);
+  expect(review).not.toContain("Update issue status");
+  expect(review).toContain(
+    "- Do not change GitHub issues; findings are requested after the handoff.",
+  );
 
   const ticketReview = compileBrief({
     ...base,

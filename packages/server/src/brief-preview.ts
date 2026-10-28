@@ -22,7 +22,7 @@ import {
 
 import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
-import { changedSince, workItemDiff } from "@stintwork/git";
+import { changedSince, workItemDiff, worktreePath } from "@stintwork/git";
 import { readGithubTickets } from "./github-tickets.js";
 import { GithubReadError, type GithubDiscovery } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
@@ -310,6 +310,9 @@ export async function prepareStintBrief(
               : null,
             blockers: ticket?.blockedBy ?? [],
             fetchedAt: remote.detail.fetchedAt,
+            worktreePath:
+              project.worktreePaths.get(slug) ??
+              (await worktreePath(root, slug).catch(() => undefined)),
           },
         }
       : {}),
