@@ -36,6 +36,14 @@ export type BriefInput = {
   changedPaths?: readonly string[];
   checkpointCommit?: string | null;
   reviewRange?: { mergeBase: string; headCommit: string };
+  github?: {
+    repository: string;
+    repositoryId: string;
+    parent: { number: number; url: string; id: string };
+    ticket?: { number: number; url: string; id: string } | null;
+    blockers: readonly number[];
+    fetchedAt: string;
+  };
 };
 
 export function briefAvailability(
@@ -73,6 +81,7 @@ export function compileBrief({
   changedPaths = [],
   checkpointCommit = null,
   reviewRange,
+  github,
 }: BriefInput): Brief {
   const pointers: BriefPointer[] = [];
   function addPointer(path: string, reason: CoreText) {
@@ -90,6 +99,84 @@ export function compileBrief({
       path,
       reason: coreText({ code: "brief.decision", params: { title: decisionTitle } }),
     });
+  }
+  if (github) {
+    const handoff = lastHandoff ? { ...lastHandoff } : null;
+    const changed = [...new Set(changedPaths)].sort();
+    const safe = (text: string) => text.replace(/\.scratch\/(?:[^\s`]+)?/g, "[local path omitted]");
+    const issues = [
+      github.parent.number,
+      ...(github.ticket ? [github.ticket.number] : []),
+      ...github.blockers,
+    ];
+    const prompt = [
+      ...(stage.skill ? [`${stage.skill} ${github.parent.url}`] : [github.parent.url]),
+      `Repository: github.com/${github.repository} (repository node ID: ${github.repositoryId})`,
+      `Parent issue #${github.parent.number}: ${github.parent.url} (node ID: ${github.parent.id})`,
+      ...(github.ticket
+        ? [
+            `Selected ticket #${github.ticket.number}: ${github.ticket.url} (node ID: ${github.ticket.id})`,
+          ]
+        : []),
+      `Snapshot time: ${github.fetchedAt}`,
+      [
+        "Refetch the issues before work:",
+        ...[...new Set(issues)].map(
+          (number) => `- gh issue view ${number} -R ${github.repository} --comments`,
+        ),
+        ...(["spec", "tickets"].includes(stage.gate ?? "") || stage.column === "clarify"
+          ? [`- gh api repos/${github.repository}/issues/${github.parent.number}/sub_issues`]
+          : []),
+      ].join("\n"),
+      ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason.text}`)].join(
+        "\n",
+      ),
+      handoff
+        ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
+        : "Last handoff: none — start from the project conventions and work item scope.",
+      ...developerNotes.map(
+        (note) =>
+          `${note.source === "review" ? "Review" : "Developer"} note (${note.at}):\n${note.text}`,
+      ),
+      ...(checkpointCommit ? [`Checkpoint commit: ${checkpointCommit}`] : []),
+      [
+        "Changed since the last handoff:",
+        ...(changed.length ? changed.map((path) => `- ${path}`) : ["- none"]),
+        "Where the handoff and the files disagree, the files win.",
+      ].join("\n"),
+      [
+        "Working instructions:",
+        `- Work in the work item worktree on branch stintwork/${workItem.slug}.`,
+        ...(stage.gate === "spec" || stage.column === "clarify"
+          ? [
+              "- Publish the spec to the parent issue body through the configured tracker skill and gh.",
+            ]
+          : []),
+        ...(stage.gate === "tickets" || stage.column === "clarify"
+          ? ["- Publish tickets as direct sub-issues through the configured tracker skill and gh."]
+          : []),
+        ...(github.ticket
+          ? [
+              `- Finish only selected ticket #${github.ticket.number}.`,
+              `- Commit referencing the issue (#${github.ticket.number}); do not push.`,
+            ]
+          : ["- Do not push."]),
+        "- Update issue status and comments through the configured tracker skill and gh; Stintwork does not write issues.",
+        "- Record only checks actually run, with their results.",
+        "- Leave gate approval to the developer.",
+      ].join("\n"),
+    ]
+      .map(safe)
+      .join("\n\n");
+    return {
+      skill: stage.skill,
+      pointers,
+      lastHandoff: handoff,
+      developerNotes: developerNotes.map((note) => ({ ...note })),
+      changedPaths: changed,
+      checkpointCommit,
+      prompt,
+    };
   }
   if (workItem.spec) addPointer(workItem.spec.path, coreText({ code: "brief.scope" }));
   if (ticket) addPointer(ticket.path, coreText({ code: "brief.ticketScope" }));

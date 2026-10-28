@@ -101,6 +101,53 @@ function input(files: Record<string, string> = contents): BriefInput {
   };
 }
 
+test("GitHub ticket brief uses issue identities and read-only explicit-repository commands", () => {
+  const github = {
+    repository: "owner/repo",
+    repositoryId: "R_1",
+    parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+    ticket: { number: 8, url: "https://github.com/owner/repo/issues/8", id: "I_8" },
+    blockers: [9, 10],
+    fetchedAt: "2026-10-28T12:00:00Z",
+  };
+  const brief = compileBrief({ ...input(), workItem: { slug: "github-7", spec: null }, github });
+  for (const expected of [
+    "github.com/owner/repo",
+    "R_1",
+    "I_7",
+    "I_8",
+    github.parent.url,
+    github.ticket.url,
+    github.fetchedAt,
+    "stintwork/github-7",
+    ...[7, 8, 9, 10].map((number) => `gh issue view ${number} -R owner/repo --comments`),
+  ])
+    expect(brief.prompt).toContain(expected);
+  for (const forbidden of [".scratch", "Status", "Brief preview", "The first stint"])
+    expect(brief.prompt).not.toContain(forbidden);
+});
+
+test("GitHub tickets gate publishes direct sub-issues through the configured skill", () => {
+  const brief = compileBrief({
+    ...input(),
+    workItem: { slug: "github-7", spec: null },
+    ticket: null,
+    stage: builtInWorkflows.feature.stages[2],
+    github: {
+      repository: "owner/repo",
+      repositoryId: "R_1",
+      parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+      blockers: [],
+      fetchedAt: "2026-10-28T12:00:00Z",
+    },
+  });
+  expect(brief.prompt).toContain(
+    "Publish tickets as direct sub-issues through the configured tracker skill and gh",
+  );
+  expect(brief.prompt).toContain("gh api repos/owner/repo/issues/7/sub_issues");
+  expect(brief.prompt).not.toContain(".scratch");
+});
+
 test("compiles real file pointers with reasons and the validated prompt order", () => {
   const brief = compileBrief(input());
   expect(brief.skill).toBe("/implement");

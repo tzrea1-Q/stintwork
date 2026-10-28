@@ -16,6 +16,8 @@ Connect the selected GitHub ticket to the existing stint and brief flow using th
 
 ## Comments
 
+**Codex, 2026-10-28:** Added a GitHub-specific brief compiler branch and focused prompt tests; existing local brief assertions remain unchanged. Ran `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm vitest run packages/core/src/brief.test.ts`. Server integration, first-write and concurrency protection, and the requested server tests remain unfinished; no acceptance criteria are checked.
+
 Coordinator browser check, 2026-10-28: the drawer offers an enabled Start stint for GitHub items; the start path (`prepareStintBrief`) indexes without GitHub discovery, so it refuses as not found. Ticket 05 must make this start work, or disable it with a reason until it does.
 
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
