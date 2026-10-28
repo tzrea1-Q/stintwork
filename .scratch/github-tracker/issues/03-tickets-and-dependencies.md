@@ -1,6 +1,6 @@
 # 03 — Read tickets and blockers
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -38,3 +38,19 @@ Checks: 1,620 web/core tests passed; 62 focused server tests passed (60 discover
 **Codex, 2026-10-28:** Fifth review follow-up: discovery and per-item detail failures now have separate freshness state, so a detail retry cannot clear a discovery error; retained details become stale until individually re-read. Fake-gh tests cover both failure orders and recovery. Blocker descriptions and `None` notes use one conservative ambiguity rule for standalone numbers, dependency words and URLs or references. This deliberately accepts false positives: for example, `#12 — Support 3 languages` is unknown and blocked, while `#12 — Support v2 API` remains a valid description. URLs in descriptions are now ambiguous, including repository-only and non-GitHub URLs; plain descriptions in the single-line form are accepted.
 
 **Codex, 2026-10-28:** Sixth review follow-up: ticket statuses and blockers now depend on their own work item's detail freshness. The aggregate snapshot can remain stale because discovery or another item's detail failed without hiding freshly read ticket statuses; discovery errors remain visible through detail retries. Fake-gh coverage exercises two retained details, an unrelated detail failure, and a discovery failure with fresh details.
+
+**Coordinator, 2026-10-28:** Resolved. Merged as `380355c`.
+- **Real `gh`, read-only:** reading github/gh-aw #1433 (4 tickets) was complete. It took 23.2 s with sequential reads and 10.3–12.6 s after bounded concurrency of 4.
+  - Recorded fixtures come from gh-aw #1433 (parent, sub-issues, comments) and github/spec-kit #5073 and #5071 (native blockers), sanitized.
+  - Through the snapshot, the #1433 tickets order as #1472, #1473, #1474, #1475, all cancelled.
+- **Real skill output:** the `to-tickets` template's blocker forms were checked against the parser, including `**Blocked by:** None (can start immediately)`.
+- **Codex reviews (gpt-6.1-terra), seven rounds; the last was clean.** Fixed:
+  - acyclic order kept around GitHub cycles (local Markdown unchanged);
+  - fetched details carried across refresh as stale;
+  - an identity change clears retained details;
+  - blocker lines naming another issue, and empty blocker sections, are unknown;
+  - one conservative rule for blocker text (accepted false positive: "Support 3 languages");
+  - discovery and per-item detail freshness are tracked separately, and ticket status follows each item's own freshness.
+- **No UI changes,** so no browser check was needed.
+- **Full verify:** format, lint, typecheck, build, 2,901 unit tests, package smoke and all e2e passed.
+- **CI:** run 40658962155 passed. Its browser job hit the old 15-minute limit on the first attempt with no failing test, then passed on re-run. The browser job is now split into two shards (`f24cca5`, run 40661148669 green, shards about 5 and 7 minutes).
