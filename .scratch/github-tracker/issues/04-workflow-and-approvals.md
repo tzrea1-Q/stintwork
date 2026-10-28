@@ -20,3 +20,7 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 ## Comments
 
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
+
+**Codex, 2026-10-28:** Started a test-first evidence serialization slice. Version 1 canonical JSON and SHA-256 helpers have focused tests, but are not connected to the GitHub gate or workflow record. Identity creation, worktree writes, approval/reopen revalidation, invalidation, concurrency and UI behavior remain unimplemented; no acceptance criterion is complete. The coordinator must not treat these helpers as approval evidence until the remaining boundary and fail-closed validation are implemented and tested.
+
+Checks for this partial slice: web/core 1,626 tests passed, including three new evidence tests; format, lint, typecheck and `git diff --check` passed. Lint reported the existing Biome deprecation. No server test files were changed or run. The coordinator must run the full server suite outside the socket-restricted sandbox, the nine adapter-cache tests with native process inspection, and the real-repository and bilingual browser acceptance after the remaining implementation. No GitHub reads or writes were made.

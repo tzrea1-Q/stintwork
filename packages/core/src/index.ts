@@ -1,4 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
+export {
+  githubEvidenceJson,
+  githubEvidenceDigest,
+  type GithubEvidenceInput,
+} from "./github-evidence.js";
 export { type RiskyPath, isRiskyPaths } from "./stints.js";
 export { riskyPathAccepted } from "./review-evidence.js";
 export {
