@@ -171,14 +171,30 @@ test("removed-line metadata matches the diff, including an unterminated appended
   });
 });
 
-test("GitHub configuration is preserved and agent instructions point to the existing tracker", () => {
-  const plan = planSetup(
-    createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n" }),
-  );
-  expect(plan.changes.find(({ path }) => path === setupPaths[0])).toBeUndefined();
-  expect(plan.changes.find(({ path }) => path === "AGENTS.md")).toMatchObject({
-    content: expect.not.stringContaining("Issues and specs are local Markdown"),
-    selectedByDefault: true,
+test("GitHub setup preserves its tracker by default and requires an explicit switch for pointers", () => {
+  const content = "# Issue tracker: GitHub\n\nUse gh issue list.\n";
+  const plan = planSetup(createMemoryRepoFiles({ [setupPaths[0]]: content }));
+  expect(plan.tracker).toBe("github-issues");
+  expect(plan.changes.find(({ path }) => path === setupPaths[0])).toMatchObject({
+    before: content,
+    content: expect.stringContaining("Local Markdown"),
+    selectedByDefault: false,
   });
-  expect(plan.checks[0]).toMatchObject({ ready: false, status: "needs-change" });
+  expect(plan.changes.filter(({ checkId }) => checkId === "agents")).toEqual([
+    expect.objectContaining({
+      path: "AGENTS.md",
+      requires: setupPaths[0],
+      selectedByDefault: false,
+      content: expect.stringContaining("local Markdown"),
+    }),
+    expect.objectContaining({
+      path: "CLAUDE.md",
+      requires: setupPaths[0],
+      selectedByDefault: false,
+    }),
+  ]);
+  expect(
+    plan.changes.filter(({ selectedByDefault }) => selectedByDefault).map(({ path }) => path),
+  ).toEqual([".gitignore", ".stintwork/roadmap.md"]);
+  expect(plan.checks[0]).toMatchObject({ ready: false, status: "other-tracker" });
 });

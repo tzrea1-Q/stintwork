@@ -74,8 +74,7 @@ export function planSetup(files: RepoFiles): SetupPlan {
     warnings: [...setup.warnings],
     checks: [],
   };
-  const github = setup.tracker === "github-issues";
-  const switching = setup.hasIssueTracker && !setup.usesLocalMarkdown && !github;
+  const switching = setup.hasIssueTracker && !setup.usesLocalMarkdown;
   let hasPointer = false;
   let hasOtherPointer = false;
   let ignoresLocalRunData = false;
@@ -86,19 +85,13 @@ export function planSetup(files: RepoFiles): SetupPlan {
       if (before !== null && /[\p{Cc}\uFFFD]/u.test(before.replace(/[\t\r\n]/g, "")))
         throw new Error("File contains binary or invalid text");
       let content = before;
-      if (path === setupPaths[0] && !setup.usesLocalMarkdown && !github) content = tracker;
+      if (path === setupPaths[0] && !setup.usesLocalMarkdown) content = tracker;
       if (path === "AGENTS.md") {
         hasPointer = before?.includes(setupPaths[0]) ?? false;
         hasOtherPointer =
           !hasPointer &&
           /\b(?:issue|ticket)[ -]tracker\b|\bgithub\s+issues\b|\bgh\s+issue\b/i.test(before ?? "");
-        if (!hasPointer && !hasOtherPointer)
-          content = append(
-            before,
-            github
-              ? "## Agent skills\n\n### Issue tracker\n\nSee `docs/agents/issue-tracker.md`.\n"
-              : agentSkills,
-          );
+        if (!hasPointer && !hasOtherPointer) content = append(before, agentSkills);
       }
       if (path === "CLAUDE.md" && before === null) content = "@AGENTS.md\n";
       if (path === ".gitignore") {
@@ -125,7 +118,7 @@ export function planSetup(files: RepoFiles): SetupPlan {
           0,
         );
         const requires =
-          !setup.usesLocalMarkdown && !github && (path === "AGENTS.md" || path === "CLAUDE.md")
+          !setup.usesLocalMarkdown && (path === "AGENTS.md" || path === "CLAUDE.md")
             ? setupPaths[0]
             : undefined;
         plan.changes.push({

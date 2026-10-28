@@ -219,8 +219,8 @@ test("project snapshot exposes discovered work items through the configured GitH
     expect(setup.github).toMatchObject({ repository: "Example/Project", repositoryId: "R_test" });
     expect(setup.checks[0]).toMatchObject({ ready: true, status: "ready" });
     expect(
-      setup.changes.some(({ path }: { path: string }) => path === "docs/agents/issue-tracker.md"),
-    ).toBe(false);
+      setup.changes.find(({ path }: { path: string }) => path === "docs/agents/issue-tracker.md"),
+    ).toMatchObject({ selectedByDefault: false });
     expect(snapshot.setup.tracker).toBe("github-issues");
     expect(snapshot.github).toMatchObject({
       repositoryId: "R_test",
