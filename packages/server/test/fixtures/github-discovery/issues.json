@@ -1,0 +1,128 @@
+{
+  "data": {
+    "repository": {
+      "id": "R_test",
+      "nameWithOwner": "Example/Project",
+      "issues": {
+        "nodes": [
+          {
+            "id": "I_1",
+            "number": 1,
+            "title": "Parent",
+            "url": "https://github.com/Example/Project/issues/1",
+            "parent": null,
+            "labels": {
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            },
+            "subIssues": {
+              "totalCount": 1,
+              "nodes": [
+                {
+                  "repository": {
+                    "id": "R_test"
+                  },
+                  "subIssues": {
+                    "totalCount": 0
+                  }
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            }
+          },
+          {
+            "id": "I_2",
+            "number": 2,
+            "title": "Standalone",
+            "url": "https://github.com/Example/Project/issues/2",
+            "parent": null,
+            "labels": {
+              "nodes": [
+                {
+                  "name": "Stintwork:Work-Item"
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            },
+            "subIssues": {
+              "totalCount": 0,
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            }
+          },
+          {
+            "id": "I_3",
+            "number": 3,
+            "title": "Child",
+            "url": "https://github.com/Example/Project/issues/3",
+            "parent": {
+              "id": "I_1"
+            },
+            "labels": {
+              "nodes": [
+                {
+                  "name": "stintwork:work-item"
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            },
+            "subIssues": {
+              "totalCount": 0,
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            }
+          },
+          {
+            "id": "I_4",
+            "number": 4,
+            "title": "Unrelated",
+            "url": "https://github.com/Example/Project/issues/4",
+            "parent": null,
+            "labels": {
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            },
+            "subIssues": {
+              "totalCount": 0,
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": null
+        }
+      }
+    },
+    "rateLimit": {
+      "cost": 102,
+      "remaining": 4898,
+      "resetAt": "2026-10-28T00:00:00Z"
+    }
+  }
+}

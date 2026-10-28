@@ -1,0 +1,69 @@
+{
+  "data": {
+    "repository": {
+      "id": "R_kgDOPiFCnQ",
+      "nameWithOwner": "github/spec-kit",
+      "issues": {
+        "nodes": [
+          {
+            "id": "I_kwDOPiFCnc7JXCwK",
+            "number": 6,
+            "title": "Example issue 1",
+            "url": "https://github.com/github/spec-kit/issues/6",
+            "parent": null,
+            "labels": {
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            },
+            "subIssues": {
+              "totalCount": 0,
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            }
+          },
+          {
+            "id": "I_kwDOPiFCnc7JdYJL",
+            "number": 9,
+            "title": "Example issue 2",
+            "url": "https://github.com/github/spec-kit/issues/9",
+            "parent": null,
+            "labels": {
+              "nodes": [
+                {
+                  "name": "enhancement"
+                }
+              ],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": "MQ"
+              }
+            },
+            "subIssues": {
+              "totalCount": 0,
+              "nodes": [],
+              "pageInfo": {
+                "hasNextPage": false,
+                "endCursor": null
+              }
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": true,
+          "endCursor": "Y3Vyc29yOnYyOpK0MjAyNS0wOS0xMVQwODo1OToxOVrOyvxtkw=="
+        }
+      }
+    },
+    "rateLimit": {
+      "cost": 102,
+      "remaining": 4661,
+      "resetAt": "2026-10-28T02:18:19Z"
+    }
+  }
+}

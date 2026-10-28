@@ -119,6 +119,41 @@ test("previews and creates a Chinese-only title with an explicit slug in one com
   expect(snapshot.workItems.find(({ slug }) => slug === "fix-login")?.title).toBe("修复登录");
 });
 
+test("GitHub tracker refuses local creation without changing the repository", async () => {
+  const { root, project } = fixture();
+  mkdirSync(join(root, "docs/agents"), { recursive: true });
+  writeFileSync(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  git(root, "add", "docs/agents/issue-tracker.md");
+  git(root, "commit", "-qm", "Configure GitHub tracker");
+  writeFileSync(join(root, "unrelated.txt"), "Developer work\n");
+  git(root, "add", "unrelated.txt");
+  writeFileSync(join(root, "untracked.txt"), "Untracked work\n");
+  const before = git(root, "rev-parse", "HEAD");
+  const status = git(root, "status", "--porcelain");
+  for (const preview of [true, false]) {
+    const response = await action(project, undefined, preview);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reasonMessage: { code: "creation.githubTracker" },
+    });
+  }
+  expect(existsSync(join(root, ".scratch"))).toBe(false);
+  expect(readFileSync(join(root, ".stintwork/roadmap.md"), "utf8")).toBe(roadmap);
+  expect(git(root, "rev-parse", "HEAD")).toBe(before);
+  expect(git(root, "status", "--porcelain")).toBe(status);
+});
+
+test.each(["Local Markdown", "External tracker"])(
+  "%s tracker still permits local creation",
+  async (tracker) => {
+    const { root, project } = fixture();
+    mkdirSync(join(root, "docs/agents"), { recursive: true });
+    writeFileSync(join(root, "docs/agents/issue-tracker.md"), `# Issue tracker: ${tracker}\n`);
+    expect((await action(project)).status).toBe(201);
+    expect(existsSync(join(root, ".scratch/new-idea/workflow.yaml"))).toBe(true);
+  },
+);
+
 test.each(["", "修复登录", "Fix-login", "fix--login", "../login", "a".repeat(49), null, 42])(
   "preview and create refuse invalid explicit slug %j without writes",
   async (slug) => {

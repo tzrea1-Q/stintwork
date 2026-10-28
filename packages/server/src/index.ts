@@ -30,6 +30,15 @@ import { createReviewEvidenceReader } from "./review-evidence.js";
 import { addRoadmapRoute } from "./roadmap.js";
 import { addWorkItemCreationRoutes } from "./create-work-item.js";
 import { addSetupRoutes } from "./setup.js";
+import {
+  classifyGithubError,
+  GithubReadError,
+  validateGithubIdentities,
+  discoverGithubWorkItems,
+  githubOrigin,
+  githubViewer,
+  type GithubDiscovery,
+} from "./github-discovery.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -65,6 +74,43 @@ export function createProjectServer(
   const readReviewEvidence = createReviewEvidenceReader(root, checks);
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
+  let github: GithubDiscovery | undefined;
+  let githubSource: { viewer: string; origin: string } | undefined;
+  let cached: { viewer: string; origin: string; data: GithubDiscovery } | undefined;
+  let knownRepository: { repository: string; repositoryId: string } | undefined;
+  const knownIssues = new Map<number, string>();
+  let discoveryRunning = false;
+  function bindGithubIdentities(
+    data: GithubDiscovery,
+    project: ReturnType<typeof readProjectFiles>,
+  ) {
+    const worktreeFiles = new Map<number, ReturnType<typeof createNodeRepoFiles>>();
+    const overridden = new Set<string>();
+    for (const item of data.items) {
+      const worktree = project.worktreePaths.get(`github-${item.number}`);
+      if (!worktree) continue;
+      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+      const source = createNodeRepoFiles(worktree);
+      if (source.read(path) !== undefined) {
+        worktreeFiles.set(item.number, source);
+        overridden.add(path);
+      }
+    }
+    const mainFiles = {
+      read: (path: string) => files.read(path),
+      list: (prefix: string) => files.list(prefix).filter((path) => !overridden.has(path)),
+    };
+    data = validateGithubIdentities(mainFiles, data);
+    for (const item of data.items) {
+      const source = worktreeFiles.get(item.number);
+      if (!source) continue;
+      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+      const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
+      const validated = validateGithubIdentities(exactFiles, { ...data, items: [item] });
+      item.bound = validated.items[0].bound;
+    }
+    return data;
+  }
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
     let branchWarning: Warning | undefined;
@@ -80,9 +126,24 @@ export function createProjectServer(
     }
     const project = readProjectFiles(changedPaths);
     watchedPaths = new Set(project.watchPaths);
+    let safeGithub = github;
+    if (safeGithub?.repositoryId) {
+      try {
+        safeGithub = bindGithubIdentities(safeGithub, project);
+      } catch {
+        safeGithub = {
+          ...safeGithub,
+          items: [],
+          complete: false,
+          error: "GitHub identity is ambiguous. Developer resolution is required.",
+          errorCode: "identity",
+        };
+      }
+    }
     const snapshot = indexProject(project.files, {
       name,
       agents: describeAgents(agentRegistry),
+      ...(safeGithub ? { github: safeGithub } : {}),
       ...(branch ? { branch } : {}),
     });
     readReviewEvidence(project, snapshot);
@@ -147,6 +208,162 @@ export function createProjectServer(
 
   const app = new Hono();
   addProjectPermissionRoute(app, root, () => refresh());
+  async function refreshGithub(loadMore = false) {
+    if (snapshot.setup.tracker !== "github-issues") {
+      github = undefined;
+      githubSource = undefined;
+      cached = undefined;
+      return;
+    }
+    if (
+      discoveryRunning ||
+      (!githubSource && github?.retryAt && Date.parse(github.retryAt) > Date.now())
+    )
+      return;
+    discoveryRunning = true;
+    let viewer: string | undefined;
+    let origin: string | undefined;
+    try {
+      origin = await githubOrigin(root);
+      viewer = await githubViewer(root);
+      if (
+        githubSource &&
+        (githubSource.viewer !== viewer ||
+          githubSource.origin.toLowerCase() !== origin.toLowerCase())
+      ) {
+        cached = undefined;
+        github = undefined;
+        githubSource = undefined;
+        if (loadMore) throw new GithubReadError("identity");
+      }
+      if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
+      const previous = github;
+      let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
+      if (
+        knownRepository &&
+        (knownRepository.repositoryId !== next.repositoryId ||
+          knownRepository.repository.toLowerCase() !== next.repository.toLowerCase())
+      )
+        throw new GithubReadError("identity");
+      for (const item of next.items) {
+        const earlier = knownIssues.get(item.number);
+        if (earlier && earlier !== item.id) throw new GithubReadError("identity");
+      }
+      const retained =
+        previous?.items.filter(
+          (item) => !item.provisional || (next.retryable && next.cursor === previous.cursor),
+        ) ?? [];
+      const mergedItems = [
+        ...new Map([...retained, ...next.items].map((item) => [item.id, item])).values(),
+      ].sort((a, b) => a.number - b.number);
+      next =
+        loadMore && previous
+          ? {
+              ...next,
+              items: mergedItems,
+              scanned: previous.scanned + next.scanned,
+              pages: [...previous.pages, ...next.pages],
+              ...(previous.discardedPages || next.discardedPages
+                ? {
+                    discardedPages: [
+                      ...(previous.discardedPages ?? []),
+                      ...(next.discardedPages ?? []),
+                    ],
+                  }
+                : {}),
+              warnings: [...previous.warnings, ...next.warnings],
+              ...(previous.membershipIncomplete || (previous.error && !previous.retryable)
+                ? { membershipIncomplete: true }
+                : {}),
+              ...((previous.membershipIncomplete || (previous.error && !previous.retryable)) &&
+              !next.error
+                ? {
+                    error: "Results are incomplete; dependencies and approvals may be unknown.",
+                    errorCode: "incomplete" as const,
+                    membershipIncomplete: true,
+                  }
+                : {}),
+              complete:
+                !previous.membershipIncomplete &&
+                (!previous.error || previous.retryable === true) &&
+                retained.every((item) => item.complete) &&
+                next.complete,
+            }
+          : next;
+      next = bindGithubIdentities(next, readProjectFiles());
+      knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
+      for (const item of next.items) knownIssues.set(item.number, item.id);
+      github = next;
+      githubSource = { viewer, origin };
+      if (!github.error) {
+        github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
+        cached = { viewer, origin, data: github };
+      } else if (
+        github.retryable &&
+        cached &&
+        cached.viewer === viewer &&
+        cached.origin.toLowerCase() === origin.toLowerCase()
+      ) {
+        github = {
+          ...cached.data,
+          items: [
+            ...new Map(
+              [...cached.data.items, ...github.items.filter((item) => item.provisional)].map(
+                (item) => [item.id, item],
+              ),
+            ).values(),
+          ].sort((a, b) => a.number - b.number),
+          stale: true,
+          complete: false,
+          warnings: github.warnings,
+          error: github.error,
+          errorCode: github.errorCode,
+          retryable: true,
+          discardedPages: [
+            ...(github.discardedPages ?? []),
+            ...github.pages.slice(cached.data.pages.length),
+          ],
+          ...(github.retryAt ? { retryAt: github.retryAt } : {}),
+        };
+      }
+    } catch (error) {
+      const failure = classifyGithubError(error);
+      if (
+        viewer &&
+        origin &&
+        cached?.viewer === viewer &&
+        cached.origin.toLowerCase() === origin.toLowerCase()
+      ) {
+        githubSource = { viewer, origin };
+        github = {
+          ...cached.data,
+          stale: true,
+          complete: false,
+          error: failure.message,
+          errorCode: failure.code,
+          ...(failure.code !== "identity" ? { retryable: true } : {}),
+          ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
+        };
+      } else {
+        githubSource = undefined;
+        github = {
+          repository: "",
+          repositoryId: "",
+          items: [],
+          scanned: 0,
+          cursor: null,
+          complete: false,
+          pages: [],
+          warnings: [],
+          error: failure.message,
+          errorCode: failure.code,
+          ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
+        };
+      }
+    } finally {
+      discoveryRunning = false;
+    }
+  }
   let initialization: Promise<void> | undefined;
   function initialize() {
     initialization ??= Promise.all([
@@ -164,6 +381,7 @@ export function createProjectServer(
         (warning) => recoveryWarnings.push(warning),
       ),
       refreshAgentRegistry(agentRegistry),
+      refreshGithub(),
     ]).then(() => refresh());
     return initialization;
   }
@@ -186,6 +404,21 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(coreTextWire(snapshot));
   });
+  app.post("/api/github/discovery/:action", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.text("Origin mismatch", 403);
+    const action = context.req.param("action");
+    if (
+      snapshot.setup.tracker !== "github-issues" ||
+      !["refresh", "load-more"].includes(action) ||
+      (action === "load-more" && !github?.cursor && !github?.retryable)
+    )
+      return context.text("Discovery unavailable", 409);
+    await refreshGithub(action === "load-more");
+    refresh();
+    return context.json(coreTextWire(snapshot));
+  });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
@@ -194,7 +427,7 @@ export function createProjectServer(
   addRoadmapRoute(app, root, readProjectFiles, refresh);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
   addWorkflowCustomisationRoutes(app, root, refresh);
-  addSetupRoutes(app, root, files, agentRegistry, refresh);
+  addSetupRoutes(app, root, files, agentRegistry, refresh, undefined, () => github);
   const stopStints = addStintRoutes(
     app,
     root,

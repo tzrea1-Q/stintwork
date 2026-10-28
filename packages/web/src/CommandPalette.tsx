@@ -75,15 +75,17 @@ export function CommandPalette({
               {t.planning.palette.empty}
             </Command.Empty>
             <Command.Group heading={t.planning.palette.actions}>
-              <Command.Item
-                value={t.planning.palette.create}
-                onSelect={() => {
-                  onClose();
-                  onCreateItem();
-                }}
-              >
-                {t.planning.palette.create}
-              </Command.Item>
+              {snapshot.setup.tracker !== "github-issues" && (
+                <Command.Item
+                  value={t.planning.palette.create}
+                  onSelect={() => {
+                    onClose();
+                    onCreateItem();
+                  }}
+                >
+                  {t.planning.palette.create}
+                </Command.Item>
+              )}
               {Object.values(builtInWorkflows).map((workflow) => (
                 <Command.Item
                   key={workflow.id}

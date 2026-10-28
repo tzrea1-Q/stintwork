@@ -31,6 +31,11 @@ export function createReviewEvidenceReader(root: string, checks: ReturnType<type
   return (project: ReturnType<ProjectFilesReader>, snapshot: ProjectSnapshot) => {
     readMemoryProposals(project.files, snapshot);
     for (const item of snapshot.workItems) {
+      if (
+        snapshot.setup.tracker === "github-issues" &&
+        !(item as { github?: { bound?: boolean } }).github?.bound
+      )
+        continue;
       const path = project.worktreePaths.get(item.slug);
       if (path) item.worktreePath = path;
       try {

@@ -163,3 +163,89 @@ test("indexes this repository's real project files read from disk", () => {
   expect(snapshot.setup).toMatchObject({ hasAgents: true, hasGlossary: true, hasAdrs: true });
   expect(snapshot.warnings).toEqual([]);
 });
+
+test("GitHub discovery supplies board work items without importing local Markdown", () => {
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+    ".scratch/local/spec.md": "# Local draft",
+  });
+  const github = {
+    repository: "Example/Project",
+    repositoryId: "R_test",
+    scanned: 1,
+    cursor: null,
+    complete: false,
+    pages: [],
+    warnings: ["incomplete"],
+    items: [
+      {
+        id: "I_1",
+        number: 1,
+        title: "Remote work",
+        url: "https://github.com/Example/Project/issues/1",
+        complete: false,
+      },
+    ],
+  };
+  const project = indexProject(files, { name: "project", github });
+  expect(project.github).toEqual(github);
+  expect(project.workItems).toMatchObject([
+    {
+      slug: "github-1",
+      title: "Remote work",
+      github: { repositoryId: "R_test", issueId: "I_1", number: 1, complete: false },
+    },
+  ]);
+  expect(project.workItems).toHaveLength(1);
+});
+
+test("local stint history is associated only with a validated GitHub identity", () => {
+  const log = {
+    type: "started",
+    at: "2026-10-27T10:00:00Z",
+    stint: {
+      id: "first",
+      workItem: "github-1",
+      stage: "spec",
+      ticket: null,
+      agent: "codex",
+      worktree: { path: "/project-worktrees/github-1", branch: "stintwork/github-1" },
+      baseCommit: "base",
+      brief: {
+        skill: null,
+        pointers: [],
+        lastHandoff: null,
+        changedPaths: [],
+        prompt: "Read the spec",
+      },
+    },
+  };
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+    ".stintwork/local/stints/first.jsonl": `${JSON.stringify(log)}\n`,
+  });
+  const item = {
+    id: "I_1",
+    number: 1,
+    title: "Parent",
+    url: "https://github.com/Example/Project/issues/1",
+    complete: true,
+  };
+  const github = {
+    repository: "Example/Project",
+    repositoryId: "R_test",
+    scanned: 1,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    items: [item],
+  };
+  expect(indexProject(files, { name: "project", github }).workItems[0].stints).toHaveLength(0);
+  expect(
+    indexProject(files, {
+      name: "project",
+      github: { ...github, items: [{ ...item, bound: true }] },
+    }).workItems[0].stints,
+  ).toHaveLength(1);
+});

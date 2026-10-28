@@ -4,6 +4,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const files = {
   ".stintwork/roadmap.md":
@@ -159,6 +160,59 @@ test("shows an empty state for a repo without .scratch", () => {
   expect(screen.getByText(".scratch/<work-item>/issues/")).toBeInTheDocument();
   expect(screen.queryByRole("article")).not.toBeInTheDocument();
 });
+
+test.each([
+  [
+    "en",
+    "GitHub work items are issues created through agent skills, such as to-spec.",
+    "View repository issues",
+    "Create work item",
+    "Open command palette",
+  ],
+  [
+    "zh-CN",
+    "GitHub 工作项是 Issue，请通过智能体技能（如 to-spec）创建。",
+    "查看仓库 Issue",
+    "创建工作项",
+    "打开命令面板",
+  ],
+])(
+  "GitHub tracker explains creation and hides local creation in %s",
+  async (language, guidance, link, create, palette) => {
+    localStorage.setItem(languageStorageKey, language);
+    const snapshot = project({ "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n" });
+    snapshot.github = {
+      repository: "example/project",
+      repositoryId: "repo-id",
+      items: [],
+      scanned: 0,
+      cursor: null,
+      complete: true,
+      pages: [],
+      warnings: [],
+    };
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(guidance)).toBeVisible();
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute(
+      "href",
+      "https://github.com/example/project/issues",
+    );
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("rel", "noreferrer");
+    expect(screen.queryByRole("button", { name: create })).not.toBeInTheDocument();
+    expect(screen.queryByText(".scratch/<work-item>/spec.md")).not.toBeInTheDocument();
+    await user.keyboard("c");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: palette }));
+    expect(screen.queryByText(create)).not.toBeInTheDocument();
+    localStorage.removeItem(languageStorageKey);
+  },
+);
 
 test("keeps shipped work collapsed and separate from active stages", async () => {
   const user = userEvent.setup();

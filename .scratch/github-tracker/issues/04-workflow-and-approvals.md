@@ -9,6 +9,8 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Acceptance criteria
 
+- [ ] Create and commit each durable issue-keyed workflow identity record with the repository and parent node IDs, issue number and canonical URL, and validate it before binding existing branches, stints or worktrees.
+
 - [ ] The committed path, identity and YAML evidence follow the spec and worktree authority; unsafe paths, invalid YAML, conflicts and concurrent writes refuse safely.
 - [ ] Canonical versioned digests cover the defined spec and ticket data, excluding irrelevant changes, with stable deterministic serialization.
 - [ ] Approval requires complete current evidence and unchanged reviewed HEAD; remote changes or fetch failures before/after commit cannot appear current.

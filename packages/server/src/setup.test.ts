@@ -177,39 +177,39 @@ test("all selected files share one commit, and repeated or fully completed setup
   expect(git(root, "status", "--porcelain")).toBe("");
 });
 
-test.each([
-  ["# Issue tracker: GitHub\n\nUse gh issue list to find work.\n", "github-issues"],
-  ["# Issue tracker: Team queue\n\nUse our queue for triage.\n", "other"],
-])("default setup preserves a declared tracker and its instructions: %s", async (tracker, kind) => {
-  const instructions =
-    "# Agent instructions\n\n### Issue tracker\nSee docs/agents/issue-tracker.md.\n";
-  const { app, root } = fixture({
-    "docs/agents/issue-tracker.md": tracker,
-    "AGENTS.md": instructions,
-  });
-  const guide = await (await app.request("/api/setup")).json();
-  expect(guide.tracker).toBe(kind);
-  expect(guide.checks[0]).toMatchObject({ status: "other-tracker" });
-  expect(guide.changes.find(({ path }: SetupChange) => path === setupPaths[0])).toMatchObject({
-    selectedByDefault: false,
-    removedLines: 2,
-  });
-  expect(
-    (
-      await apply(
-        app,
-        guide.changes.filter(({ selectedByDefault }: SetupChange) => selectedByDefault),
-      )
-    ).status,
-  ).toBe(200);
-  expect(readFileSync(join(root, setupPaths[0]), "utf8")).toBe(tracker);
-  expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe(instructions);
-  expect(existsSync(join(root, "CLAUDE.md"))).toBe(false);
-});
+test.each([["# Issue tracker: Team queue\n\nUse our queue for triage.\n", "other"]])(
+  "default setup preserves a declared tracker and its instructions: %s",
+  async (tracker, kind) => {
+    const instructions =
+      "# Agent instructions\n\n### Issue tracker\nSee docs/agents/issue-tracker.md.\n";
+    const { app, root } = fixture({
+      "docs/agents/issue-tracker.md": tracker,
+      "AGENTS.md": instructions,
+    });
+    const guide = await (await app.request("/api/setup")).json();
+    expect(guide.tracker).toBe(kind);
+    expect(guide.checks[0]).toMatchObject({ status: "other-tracker" });
+    expect(guide.changes.find(({ path }: SetupChange) => path === setupPaths[0])).toMatchObject({
+      selectedByDefault: false,
+      removedLines: 2,
+    });
+    expect(
+      (
+        await apply(
+          app,
+          guide.changes.filter(({ selectedByDefault }: SetupChange) => selectedByDefault),
+        )
+      ).status,
+    ).toBe(200);
+    expect(readFileSync(join(root, setupPaths[0]), "utf8")).toBe(tracker);
+    expect(readFileSync(join(root, "AGENTS.md"), "utf8")).toBe(instructions);
+    expect(existsSync(join(root, "CLAUDE.md"))).toBe(false);
+  },
+);
 
 test("switching is explicit and the server enforces pointer dependencies without trusting metadata", async () => {
   const { app, root } = fixture({
-    [setupPaths[0]]: "# Issue tracker: GitHub\n\nUse gh issue list.\n",
+    [setupPaths[0]]: "# Issue tracker: Team queue\n\nUse our queue.\n",
   });
   const changes = await preview(app);
   const pointer = changes.find(({ path }) => path === "AGENTS.md");
@@ -226,8 +226,8 @@ test("switching is explicit and the server enforces pointer dependencies without
 });
 
 test("a destructive opt-in still refuses an uncommitted tracker guide", async () => {
-  const { app, root } = fixture({ [setupPaths[0]]: "# Issue tracker: GitHub\n" });
-  const content = "# Issue tracker: GitHub\n\nUncommitted tracker rules.\n";
+  const { app, root } = fixture({ [setupPaths[0]]: "# Issue tracker: Team queue\n" });
+  const content = "# Issue tracker: Team queue\n\nUncommitted tracker rules.\n";
   write(root, setupPaths[0], content);
   const head = git(root, "rev-parse", "HEAD");
   const changes = (await preview(app)).filter(({ path }) => path === setupPaths[0]);

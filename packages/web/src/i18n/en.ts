@@ -59,6 +59,8 @@ export const en = {
     allMilestones: "All milestones",
     counts: (active: number, shipped: number) => `${active} active · ${shipped} shipped`,
     createWorkItem: "Create work item",
+    githubCreation: "GitHub work items are issues created through agent skills, such as to-spec.",
+    githubIssues: "View repository issues",
     stageNavigation: "Stage navigation",
     previousStages: "Previous stages",
     nextStages: "Next stages",

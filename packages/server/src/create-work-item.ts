@@ -3,6 +3,7 @@ import {
   coreTextWire,
   errorText,
   coreText,
+  detectSetup,
   deriveWorkItemSlug,
   indexProject,
   prepareWorkItemCreation,
@@ -51,6 +52,8 @@ export function addWorkItemCreationRoutes(
       let validated = false;
       try {
         const prepare = () => {
+          if (detectSetup(createNodeRepoFiles(root)).tracker === "github-issues")
+            throw new WorkItemCreationRefusal({ code: "creation.githubTracker" });
           const slug = deriveWorkItemSlug(
             input && typeof input === "object" && "title" in input ? input.title : undefined,
             input && typeof input === "object" && "slug" in input ? input.slug : undefined,

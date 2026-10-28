@@ -66,16 +66,16 @@ test("an existing Agent skills heading without the tracker pointer still gets a 
 
 test("a nonlocal tracker offers only an opt-in destructive local replacement", () => {
   const plan = planSetup(
-    createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "Use GitHub Issues." }),
+    createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "Use team queue." }),
   );
   expect(plan.changes[0]).toMatchObject({
     checkId: "tracker",
-    before: "Use GitHub Issues.",
+    before: "Use team queue.",
     content: expect.stringContaining(".scratch/"),
     removedLines: 1,
     selectedByDefault: false,
   });
-  expect(plan.tracker).toBe("github-issues");
+  expect(plan.tracker).toBe("other");
   expect(plan.checks[0].status).toBe("other-tracker");
   expect(plan.changes.filter(({ checkId }) => checkId === "agents")).toEqual([
     expect.objectContaining({
@@ -120,19 +120,18 @@ test("unreadable and binary targets are warnings, not replacement proposals", ()
   expect(plan.warnings.map(({ path }) => path)).toEqual(["AGENTS.md", ".gitignore"]);
 });
 
-test.each([
-  "# Issue tracker: GitHub\n\nUse gh issue list.\nKeep labels and triage in GitHub.\n",
-  "# Issue tracker: Team queue\n\nUse the team's queue.\nKeep its routing rules.\n",
-  "",
-])("existing trackers are never switched by default: %j", (content) => {
-  const plan = planSetup(createMemoryRepoFiles({ [setupPaths[0]]: content }));
-  const replacement = plan.changes.find(({ path }) => path === setupPaths[0]);
-  expect(replacement).toMatchObject({ before: content, selectedByDefault: false });
-  expect(replacement?.removedLines).toBe(content ? 3 : 0);
-  const defaults = plan.changes.filter(({ selectedByDefault }) => selectedByDefault);
-  expect(defaults.map(({ path }) => path)).toEqual([".gitignore", ".stintwork/roadmap.md"]);
-  expect(defaults.every(({ removedLines }) => removedLines === 0)).toBe(true);
-});
+test.each(["# Issue tracker: Team queue\n\nUse the team's queue.\nKeep its routing rules.\n", ""])(
+  "existing trackers are never switched by default: %j",
+  (content) => {
+    const plan = planSetup(createMemoryRepoFiles({ [setupPaths[0]]: content }));
+    const replacement = plan.changes.find(({ path }) => path === setupPaths[0]);
+    expect(replacement).toMatchObject({ before: content, selectedByDefault: false });
+    expect(replacement?.removedLines).toBe(content ? 3 : 0);
+    const defaults = plan.changes.filter(({ selectedByDefault }) => selectedByDefault);
+    expect(defaults.map(({ path }) => path)).toEqual([".gitignore", ".stintwork/roadmap.md"]);
+    expect(defaults.every(({ removedLines }) => removedLines === 0)).toBe(true);
+  },
+);
 
 test("a local guide is preserved, appends remove no lines, and new pointers require a tracker", () => {
   const content = "# Issue tracker: Local Markdown\n\nTickets live in .scratch/.\n";
@@ -170,4 +169,32 @@ test("removed-line metadata matches the diff, including an unterminated appended
     removedLines: 1,
     selectedByDefault: false,
   });
+});
+
+test("GitHub setup preserves its tracker by default and requires an explicit switch for pointers", () => {
+  const content = "# Issue tracker: GitHub\n\nUse gh issue list.\n";
+  const plan = planSetup(createMemoryRepoFiles({ [setupPaths[0]]: content }));
+  expect(plan.tracker).toBe("github-issues");
+  expect(plan.changes.find(({ path }) => path === setupPaths[0])).toMatchObject({
+    before: content,
+    content: expect.stringContaining("Local Markdown"),
+    selectedByDefault: false,
+  });
+  expect(plan.changes.filter(({ checkId }) => checkId === "agents")).toEqual([
+    expect.objectContaining({
+      path: "AGENTS.md",
+      requires: setupPaths[0],
+      selectedByDefault: false,
+      content: expect.stringContaining("local Markdown"),
+    }),
+    expect.objectContaining({
+      path: "CLAUDE.md",
+      requires: setupPaths[0],
+      selectedByDefault: false,
+    }),
+  ]);
+  expect(
+    plan.changes.filter(({ selectedByDefault }) => selectedByDefault).map(({ path }) => path),
+  ).toEqual([".gitignore", ".stintwork/roadmap.md"]);
+  expect(plan.checks[0]).toMatchObject({ ready: false, status: "other-tracker" });
 });

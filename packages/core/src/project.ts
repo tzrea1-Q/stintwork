@@ -19,7 +19,35 @@ import {
 } from "./permission-levels.js";
 import type { RiskyPath } from "./stints.js";
 
+export type GithubDiscovery = {
+  repository: string;
+  repositoryId: string;
+  items: {
+    id: string;
+    number: number;
+    title: string;
+    url: string;
+    complete: boolean;
+    bound?: boolean;
+    provisional?: boolean;
+  }[];
+  scanned: number;
+  cursor: string | null;
+  complete: boolean;
+  pages: { cost: number; remaining: number; resetAt: string }[];
+  discardedPages?: { cost: number; remaining: number; resetAt: string }[];
+  retryable?: boolean;
+  membershipIncomplete?: boolean;
+  warnings: string[];
+  error?: string;
+  errorCode?: string;
+  retryAt?: string;
+  stale?: boolean;
+  fetchedAt?: string;
+};
+
 export type ProjectSnapshot = {
+  github?: GithubDiscovery;
   permissionLevel?: PermissionLevel;
   name: string;
   agents: AgentProfile[];
@@ -44,6 +72,15 @@ export type ProjectSnapshot = {
     evidenceChangedPaths?: Record<string, string[] | null>;
     reviewEvidenceError?: string;
     riskyPaths?: RiskyPath[];
+    github?: {
+      repository: string;
+      repositoryId: string;
+      issueId: string;
+      number: number;
+      url: string;
+      complete: boolean;
+      bound?: boolean;
+    };
   })[];
   setup: SetupReport;
   warnings: Warning[];
@@ -51,10 +88,30 @@ export type ProjectSnapshot = {
 
 export function indexProject(
   files: RepoFiles,
-  meta: { name: string; branch?: string; agents?: AgentProfile[] },
+  meta: { name: string; branch?: string; agents?: AgentProfile[]; github?: GithubDiscovery },
 ): ProjectSnapshot {
   const loaded = loadWorkflows(files);
-  const staged = resolveStages(indexWorkItems(files), files, loaded);
+  const setup = detectSetup(files);
+  const staged =
+    setup.tracker === "github-issues"
+      ? {
+          warnings: [],
+          workItems: (meta.github?.items ?? []).map(
+            (item): StagedWorkItem => ({
+              slug: `github-${item.number}`,
+              title: item.title,
+              type: "feature",
+              spec: null,
+              tickets: [],
+              workflow: "feature",
+              stage: undefined,
+              column: "spec",
+              inferred: false,
+              stages: {},
+            }),
+          ),
+        }
+      : resolveStages(indexWorkItems(files), files, loaded);
   const warnings = [...staged.warnings];
   let permissionLevel = defaultPermissionLevel;
   try {
@@ -71,7 +128,6 @@ export function indexProject(
   }
   const roadmap = parseRoadmap(roadmapText);
   const assigned = assignMilestones(staged.workItems, roadmap.milestones);
-  const setup = detectSetup(files);
   const stintIndex = indexStints(files);
   const snapshot: ProjectSnapshot = {
     ...meta,
@@ -81,17 +137,47 @@ export function indexProject(
     workflows: loaded.workflows,
     milestones: roadmap.milestones,
     workItems: staged.workItems.map((item) => {
-      const milestone = assigned.assignments.get(item.slug);
-      const stints = stintIndex.stints.filter((stint) => stint.workItem === item.slug);
+      const bound =
+        meta.github?.items.find(({ number }) => item.slug === `github-${number}`)?.bound === true;
+      const milestone =
+        setup.tracker === "github-issues" && !bound
+          ? undefined
+          : assigned.assignments.get(item.slug);
+      const stints =
+        setup.tracker === "github-issues" && !bound
+          ? []
+          : stintIndex.stints.filter((stint) => stint.workItem === item.slug);
       const reviewPath = `.scratch/${item.slug}/review.yaml`;
       let reviewDecisions: ReviewDecision[] = [];
-      try {
-        reviewDecisions = parseReviewDecisions(files.read(reviewPath));
-      } catch (error) {
-        warnings.push({ path: reviewPath, message: String(error) });
+      if (setup.tracker !== "github-issues" || bound) {
+        try {
+          reviewDecisions = parseReviewDecisions(files.read(reviewPath));
+        } catch (error) {
+          warnings.push({ path: reviewPath, message: String(error) });
+        }
       }
       return {
         ...item,
+        ...(meta.github && setup.tracker === "github-issues"
+          ? (() => {
+              const remote = meta.github.items.find(
+                ({ number }) => item.slug === `github-${number}`,
+              );
+              return remote
+                ? {
+                    github: {
+                      repository: meta.github.repository,
+                      repositoryId: meta.github.repositoryId,
+                      issueId: remote.id,
+                      number: remote.number,
+                      url: remote.url,
+                      complete: remote.complete,
+                      bound: remote.bound === true,
+                    },
+                  }
+                : {};
+            })()
+          : {}),
         ...(milestone === undefined ? {} : { milestone }),
         stints: stints.map(summarizeStint),
         activeStint: stints.find((stint) => stint.status === "running") ?? null,
