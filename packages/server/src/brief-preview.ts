@@ -176,6 +176,14 @@ export async function prepareStintBrief(
     (workItem.workflow === undefined &&
       workItem.stage !== undefined &&
       ["implement", "fix", "do"].includes(workItem.stage));
+  if (remote && ticket?.blocked)
+    return {
+      reason: coreText({
+        code: "brief.blockedBy",
+        params: { tickets: ticket.blockedBy.map((n) => String(n).padStart(2, "0")).join(", ") },
+      }),
+      status: 409 as const,
+    };
   if (remote && ticket && implementation && ["cancelled", "unknown"].includes(ticket.status))
     return {
       reason: coreText({

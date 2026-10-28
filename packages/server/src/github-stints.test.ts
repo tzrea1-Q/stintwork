@@ -63,6 +63,7 @@ async function setup(
   stage = "clarify",
   record = false,
   approvedTicket: Omit<typeof child, "state_reason"> & { state_reason: string | null } = child,
+  approvedBlockers: { id: string; state: string }[] = [],
 ) {
   const root = mkdtempSync(join(tmpdir(), "github-stints-"));
   roots.push(root, `${root}-worktrees`);
@@ -87,7 +88,7 @@ async function setup(
             state: approvedTicket.state,
             stateReason: approvedTicket.state_reason,
             labels: [],
-            blockers: [],
+            blockers: approvedBlockers,
             commentRecords: [],
           },
         ],
@@ -439,6 +440,89 @@ test("preview refreshes GitHub detail without writing a record or worktree", asy
   );
   expect(existsSync(join(root, path))).toBe(false);
   expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+});
+
+test("unknown dependencies refuse review preview and start", async () => {
+  const { preview, start } = await setup(
+    {
+      [`${issue}/sub_issues?per_page=100&page=1`]: {
+        stdout: [{ ...child, body: "Blocked by: unclear" }],
+      },
+    },
+    "review",
+    true,
+  );
+  for (const response of [await preview(), await start()]) {
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reasonMessage: { code: "gate.detailUnavailable" },
+    });
+  }
+});
+
+test.each(["open", "closed"] as const)(
+  "review refuses an open blocker when the ticket is %s",
+  async (state) => {
+    const ticket = {
+      ...child,
+      state,
+      state_reason: state === "closed" ? "completed" : null,
+      issue_dependencies_summary: { total_blocked_by: 1 },
+    };
+    const blocker = {
+      ...child,
+      node_id: "I_3",
+      number: 3,
+      html_url: "https://github.com/Example/Project/issues/3",
+    };
+    const { preview, start } = await setup(
+      {
+        [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [ticket] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [blocker] },
+      },
+      "review",
+      true,
+      ticket,
+      [{ id: "I_3", state: "open" }],
+    );
+    for (const response of [await preview(), await start()]) {
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        reasonMessage: { code: "brief.blockedBy", params: { tickets: "03" } },
+      });
+    }
+  },
+);
+
+test("review allows a resolved ticket with a closed blocker", async () => {
+  const ticket = {
+    ...child,
+    state: "closed",
+    state_reason: "completed",
+    issue_dependencies_summary: { total_blocked_by: 1 },
+  };
+  const blocker = {
+    ...child,
+    node_id: "I_3",
+    number: 3,
+    state: "closed",
+    state_reason: "completed",
+    html_url: "https://github.com/Example/Project/issues/3",
+  };
+  const { preview, start } = await setup(
+    {
+      [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [ticket] },
+      [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [blocker] },
+    },
+    "review",
+    true,
+    ticket,
+    [{ id: "I_3", state: "closed" }],
+  );
+  const response = await preview();
+  expect(response.status, await response.clone().text()).toBe(200);
+  const started = await start();
+  expect(started.status, await started.clone().text()).toBe(201);
 });
 
 test("preview includes the existing worktree path", async () => {
