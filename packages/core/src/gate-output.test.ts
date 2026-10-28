@@ -12,6 +12,87 @@ const specPath = ".scratch/first/spec.md";
 const ticketPath = ".scratch/first/issues/01-first.md";
 const ticket = "# First\nStatus: ready-for-agent\nBlocked by: none";
 
+test.each([
+  ["", false],
+  [" \n\t", false],
+  ["A spec", true],
+] as const)("GitHub Spec gate requires a nonempty parent body (%j)", (body, ready) => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub",
+      ".stintwork/github/a/b/1/workflow.yaml": "workflow: feature\nstage: spec",
+    }),
+    {
+      name: "Remote",
+      github: {
+        repository: "a/b",
+        repositoryId: "R",
+        scanned: 1,
+        cursor: null,
+        complete: true,
+        pages: [],
+        warnings: [],
+        items: [
+          {
+            id: "I",
+            number: 1,
+            title: "Parent",
+            url: "https://github.com/a/b/issues/1",
+            complete: true,
+            bound: true,
+            detail: { spec: body, tickets: [] },
+          },
+        ],
+      },
+    },
+  );
+  const item = snapshot.workItems[0];
+  if (!item.github) throw new Error("Missing GitHub metadata");
+  item.github.reviewDigest = "digest";
+  item.stages.clarify = { approved: { remoteState: "current" } };
+  item.stints = project("spec").item.stints;
+  const gate = gateReadiness(item);
+  expect(gate.ready).toBe(ready);
+  if (!ready) {
+    expect(gate.reason?.code).toBe("gate.githubSpecRequired");
+    expect(gate.conditions[0].label.code).toBe("gate.githubSpecOutput");
+    expect(gateReadiness(project("spec").item).reason?.code).toBe("gate.writeSpec");
+  }
+  expect(gateReadiness(project("spec", { [specPath]: "# Spec" }).item).ready).toBe(true);
+});
+
+test("GitHub tickets gate uses resolved external blockers and requires fresh direct tickets", () => {
+  const { item } = project("tickets", { [ticketPath]: ticket });
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/a/b/issues/1",
+    complete: true,
+    reviewDigest: "digest",
+  };
+  item.stages.clarify = { approved: { remoteState: "current" } };
+  item.stages.spec = { approved: { remoteState: "current" } };
+  item.tickets[0].blockedBy = [99];
+  expect(gateReadiness(item).ready).toBe(true);
+  item.tickets[0].blocked = true;
+  expect(gateReadiness(item).ready).toBe(false);
+  item.tickets[0].blocked = false;
+  item.tickets[0].status = "unknown";
+  expect(gateReadiness(item).ready).toBe(false);
+  item.tickets = [];
+  expect(gateReadiness(item)).toMatchObject({
+    ready: false,
+    reason: { code: "gate.githubTicketsRequired" },
+  });
+  item.github.stale = true;
+  expect(gateReadiness(item).reason?.code).toBe("gate.detailUnavailable");
+  const local = project("tickets", { [ticketPath]: ticket }).item;
+  local.tickets[0].blockedBy = [99];
+  expect(gateReadiness(local).ready).toBe(false);
+});
+
 function project(stage: string, output: Record<string, string> = {}, workflow = "feature") {
   const snapshot = indexProject(
     createMemoryRepoFiles({

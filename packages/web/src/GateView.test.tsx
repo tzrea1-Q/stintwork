@@ -82,6 +82,46 @@ test("Chinese gate translates its required path but keeps parser warnings verbat
   expect(screen.getByText("spec.md 存在且可解析")).toBeInTheDocument();
 });
 
+test.each([
+  [
+    "en",
+    "The GitHub parent issue body is empty",
+    "Edit parent issue on GitHub",
+    "Refresh GitHub evidence",
+  ],
+  ["zh-CN", "GitHub 父 Issue 的正文为空", "在 GitHub 上编辑父 Issue", "刷新 GitHub 证据"],
+])(
+  "empty GitHub Spec offers an issue link and refresh in %s",
+  (language, reason, link, refresh) => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = project("spec").workItems[0];
+    item.spec = null;
+    item.github = {
+      repository: "a/b",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://github.com/a/b/issues/1",
+      complete: true,
+      reviewDigest: "digest",
+      reviewHead: "head",
+    };
+    item.stages.clarify = { approved: { remoteState: "current" } };
+    item.stints = [{ ...stint, stage: "spec", ticket: null }];
+    render(
+      <LanguageProvider>
+        <GateView item={item} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(reason);
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("href", item.github.url);
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("rel", "noreferrer");
+    expect(screen.getByRole("button", { name: refresh })).toBeEnabled();
+    expect(screen.queryByText(/\.scratch\/github-1\/spec\.md/)).not.toBeInTheDocument();
+  },
+);
+
 function reviewItem() {
   const item = project("review").workItems[0];
   item.headCommit = "head";
@@ -390,4 +430,270 @@ test.each([
   expect(screen.getByRole("status")).toHaveTextContent(path);
   expect(screen.getByRole("list", { name: `${name} gate conditions` })).toHaveTextContent(path);
   expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
+});
+
+for (const language of ["en", "zh-CN"] as const) {
+  test(`${language} GitHub Spec gate enables approval with current prior evidence`, () => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = project("spec").workItems[0];
+    item.stints = [{ ...stint, stage: "spec", ticket: null }];
+    item.stages = { clarify: { approved: { remoteState: "current" } } };
+    item.github = {
+      repository: "Example/Project",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://github.com/Example/Project/issues/1",
+      complete: true,
+      reviewDigest: "digest",
+      reviewHead: "head",
+    };
+    render(
+      <LanguageProvider>
+        <GateView item={item} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: language === "en" ? "Approve Spec" : "批准规格说明" }),
+    ).toBeEnabled();
+  });
+  test.each(["current", "stale", "unknown"] as const)(
+    `${language} GitHub approval sends reviewed evidence and shows %s`,
+    async (state) => {
+      localStorage.setItem(languageStorageKey, language);
+      const item = project().workItems[0];
+      for (const stage of ["clarify", "spec", "tickets"])
+        item.stages[stage] = { approved: { remoteState: "current" } };
+      item.github = {
+        repository: "Example/Project",
+        repositoryId: "R",
+        issueId: "I",
+        number: 1,
+        url: "https://github.com/Example/Project/issues/1",
+        complete: true,
+        reviewDigest: "digest",
+        reviewHead: "head",
+      };
+      const fetcher = vi
+        .fn()
+        .mockResolvedValue(new Response(JSON.stringify({ approval: state }), { status: 200 }));
+      vi.stubGlobal("fetch", fetcher);
+      render(
+        <LanguageProvider>
+          <GateView item={item} />
+        </LanguageProvider>,
+      );
+      const button = screen.getByRole("button", {
+        name: language === "en" ? "Approve Implement" : "批准实现",
+      });
+      expect(button).toBeEnabled();
+      await userEvent.click(button);
+      expect(fetcher).toHaveBeenCalledWith(
+        "/api/github/items/1/gates/approve",
+        expect.objectContaining({
+          body: JSON.stringify({
+            stage: "implement",
+            reviewedDigest: "digest",
+            reviewedHead: "head",
+          }),
+        }),
+      );
+      expect(
+        screen.getByText(
+          (language === "en"
+            ? {
+                current: "Approval is current.",
+                stale: "Approval is stale; GitHub evidence changed.",
+                unknown: "Approval status is unknown; GitHub evidence is unavailable.",
+              }
+            : {
+                current: "批准仍然有效。",
+                stale: "GitHub 证据已变化，批准已过期。",
+                unknown: "无法获取 GitHub 证据，批准状态未知。",
+              })[state],
+        ),
+      ).toBeInTheDocument();
+    },
+  );
+  test(`${language} GitHub gate explains unavailable evidence`, () => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = project().workItems[0];
+    item.github = {
+      repository: "Example/Project",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://github.com/Example/Project/issues/1",
+      complete: false,
+    };
+    render(
+      <LanguageProvider>
+        <GateView item={item} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: language === "en" ? "Approve Implement" : "批准实现" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        language === "en"
+          ? "Refresh complete GitHub evidence before approving."
+          : "批准前请刷新 GitHub 证据，获取完整信息。",
+      ),
+    ).toBeInTheDocument();
+  });
+  test.each(["detail-unavailable", "evidence-changed", "head-changed"] as const)(
+    `${language} GitHub gate offers refresh after %s`,
+    async (code) => {
+      localStorage.setItem(languageStorageKey, language);
+      const item = project().workItems[0];
+      for (const stage of ["clarify", "spec", "tickets"])
+        item.stages[stage] = { approved: { remoteState: "current" } };
+      item.github = {
+        repository: "Example/Project",
+        repositoryId: "R",
+        issueId: "I",
+        number: 1,
+        url: "https://github.com/Example/Project/issues/1",
+        complete: true,
+        reviewDigest: "digest",
+        reviewHead: "head",
+      };
+      const codes = {
+        "detail-unavailable": "gate.detailUnavailable",
+        "evidence-changed": "gate.evidenceChanged",
+        "head-changed": "gate.headChanged",
+      } as const;
+      const { coreText, coreTextWire } = await import("@stintwork/core");
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify(
+              coreTextWire({
+                code,
+                reason: coreText({ code: codes[code as keyof typeof codes] }),
+              }),
+            ),
+            { status: 409 },
+          ),
+        ),
+      );
+      render(
+        <LanguageProvider>
+          <GateView item={item} />
+        </LanguageProvider>,
+      );
+      await userEvent.click(
+        screen.getByRole("button", { name: language === "en" ? "Approve Implement" : "批准实现" }),
+      );
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        language === "en"
+          ? {
+              "detail-unavailable": "Complete GitHub evidence is unavailable.",
+              "evidence-changed": "GitHub evidence changed since review.",
+              "head-changed": "The worktree HEAD changed since review.",
+            }[code]
+          : {
+              "detail-unavailable": "无法获取完整的 GitHub 证据。",
+              "evidence-changed": "GitHub 证据在审阅后发生了变化。",
+              "head-changed": "工作树 HEAD 在审阅后发生了变化。",
+            }[code],
+      );
+      expect(
+        screen.getByRole("button", {
+          name: language === "en" ? "Refresh GitHub evidence" : "刷新 GitHub 证据",
+        }),
+      ).toBeEnabled();
+    },
+  );
+}
+
+test.each(["en", "zh-CN"] as const)(
+  "%s shows stored stale and unknown GitHub approvals",
+  (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = project().workItems[0];
+    item.github = {
+      repository: "Example/Project",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://github.com/Example/Project/issues/1",
+      complete: true,
+      reviewDigest: "digest",
+      reviewHead: "head",
+    };
+    item.stages = {
+      clarify: { approved: { remoteState: "stale" } },
+      spec: { approved: { remoteState: "unknown" } },
+    };
+    render(
+      <LanguageProvider>
+        <GateView item={item} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByText(
+        language === "en"
+          ? /Approval is stale; GitHub evidence changed/
+          : /GitHub 证据已变化，批准已过期/,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        language === "en" ? /Approval status is unknown/ : /无法获取 GitHub 证据，批准状态未知/,
+      ),
+    ).toBeInTheDocument();
+  },
+);
+
+test("local gate keeps its original request and confirmation", async () => {
+  const item = project().workItems[0];
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ stage: "review" }), { status: 200 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<GateView item={item} />);
+  await userEvent.click(screen.getByRole("button", { name: "Approve Implement" }));
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/work-items/first/gates/implement/approve",
+    expect.objectContaining({ body: "{}" }),
+  );
+  expect(screen.getByText("Gate approved. Stage advances to Review.")).toBeInTheDocument();
+});
+
+test("GitHub refresh recovery requests fresh detail", async () => {
+  const item = project().workItems[0];
+  item.github = {
+    repository: "Example/Project",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/Example/Project/issues/1",
+    complete: false,
+  };
+  const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status: 200 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(<GateView item={item} />);
+  await userEvent.click(screen.getByRole("button", { name: "Refresh GitHub evidence" }));
+  expect(fetcher).toHaveBeenCalledWith("/api/github/items/1/refresh", { method: "POST" });
+});
+
+test("GitHub refresh failure re-enables the action", async () => {
+  const item = project().workItems[0];
+  item.github = {
+    repository: "Example/Project",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/Example/Project/issues/1",
+    complete: false,
+  };
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network failure")));
+  render(<GateView item={item} />);
+  const button = screen.getByRole("button", { name: "Refresh GitHub evidence" });
+  await userEvent.click(button);
+  expect(screen.getByRole("alert")).toHaveTextContent("Network failure");
+  expect(button).toBeEnabled();
 });

@@ -633,6 +633,7 @@ export const zhCN: Catalog = {
     recordedChecks: "已记录的检查",
     checks: "检查",
     tracker: "本地 Markdown 跟踪器",
+    githubTracker: "GitHub Issues 跟踪器",
     returnToPipeline: " 返回流水线",
     changeGateFailed: "无法更改关卡。",
     gateApproved: (name) => joinChinese("关卡已批准。阶段推进至", name, "。"),
@@ -640,6 +641,14 @@ export const zhCN: Catalog = {
     gate: (name) => joinChinese(name, "关卡"),
     gateConditions: (name) => joinChinese(name, "关卡条件"),
     readyToApprove: "可批准",
+    githubDetailRequired: "批准前请刷新 GitHub 证据，获取完整信息。",
+    githubRefresh: "刷新 GitHub 证据",
+    githubOpenIssue: "在 GitHub 上编辑父 Issue",
+    githubApproval: {
+      current: "批准仍然有效。",
+      stale: "GitHub 证据已变化，批准已过期。",
+      unknown: "无法获取 GitHub 证据，批准状态未知。",
+    },
     ready: "已就绪",
     blocked: "受阻",
     noAction: "无需操作。",
@@ -916,9 +925,14 @@ export const zhCN: Catalog = {
     "gate.manualApproval": "由开发者批准，无需输出文件",
     "gate.approve": "审阅此阶段，确认满意后批准。",
     "gate.specOutput": "spec.md 存在且可解析",
+    "gate.githubSpecOutput": "GitHub 父 Issue 的正文不为空",
+    "gate.githubSpecRequired":
+      "GitHub 父 Issue 的正文为空。请在 GitHub 上编辑正文，然后刷新 GitHub 证据。",
     "gate.writeSpec": ({ path, warning }) =>
       joinChinese("编写或编辑 ", path, "，加入非空的 # 标题。", warning ? ` ${warning}` : ""),
     "gate.ticketsOutput": "至少有一个工单，没有工单警告，且依赖顺序有效",
+    "gate.githubTicketsOutput": "至少有一个工单，状态已知且没有未解决的阻塞项",
+    "gate.githubTicketsRequired": "批准前请添加直接工单，并解决所有未知状态或阻塞项。",
     "gate.writeTickets": ({ path, warning }) =>
       joinChinese(
         "编写或修正 ",
@@ -997,6 +1011,11 @@ export const zhCN: Catalog = {
     "memory.activeWrite": "此工作项有活跃的 Stint 或审查写入。",
     "agent.activeWrite": "此工作项已有活跃的 Stint 或工作流写入。",
     "review.activeWrite": "此工作项有活跃的 Stint、检查或审查写入。",
+    "gate.identityAmbiguous":
+      "GitHub 账号或仓库与 Stintwork 的记录不再一致。请检查 gh 登录的是哪个账号，以及仓库是否已重命名或转移，然后刷新 GitHub 证据。",
+    "gate.detailUnavailable": "无法获取完整的 GitHub 证据。",
+    "gate.evidenceChanged": "GitHub 证据在审阅后发生了变化。",
+    "gate.headChanged": "工作树 HEAD 在审阅后发生了变化。",
     "gate.activeWrite": "此工作项有活跃的 Stint、检查或工作流写入。",
     "ship.activeWrite": "此工作项有活跃的工作流或审查写入。",
     "ship.memoryUndecided": "请先接受或拒绝每项待处理的记忆提案，再交付。",
@@ -1152,6 +1171,7 @@ export const zhCN: Catalog = {
     "ship.recordedCiInvalid": "记录的拉取请求 CI 证据无效。",
     "workflow.regularFile": "workflow.yaml 必须是普通文件。",
     "workflow.resolveIndexConflict": "更改 workflow.yaml 前，请先解决其索引冲突。",
+    "workflow.dirtyFile": "更改 workflow.yaml 前，请先提交或放弃对该文件的更改。",
     "workflow.commitIgnored": "无法提交 workflow.yaml。请检查它是否被 Git 忽略。",
     "workflow.invalidId": "工作流标识无效。",
     "server.workItemDirectories": "工作项目录必须是真实目录。",

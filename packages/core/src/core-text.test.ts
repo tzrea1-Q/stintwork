@@ -244,6 +244,7 @@ test.each([
   ["ship.recordedCiInvalid", "Invalid recorded pull request CI evidence."],
   ["workflow.regularFile", "workflow.yaml must be a regular file."],
   ["workflow.resolveIndexConflict", "Resolve workflow.yaml's index conflict before changing it."],
+  ["workflow.dirtyFile", "Commit or discard changes to workflow.yaml before changing it."],
   [
     "workflow.commitIgnored",
     "workflow.yaml could not be committed. Check whether it is ignored by Git.",

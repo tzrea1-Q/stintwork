@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CoreTextError } from "@stintwork/core";
+import { CoreTextError, githubWorkflowPath } from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
@@ -49,7 +49,7 @@ export async function commitStintworkSetup(
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
     throw new CoreTextError({ code: "git.invalidSlug" });
   const allowed = new Set([".gitignore", `.scratch/${workItem}/workflow.yaml`]);
-  if (files.some((file) => !allowed.has(file)))
+  if (files.some((file) => !allowed.has(file) && !githubWorkflowPath(file)))
     throw new CoreTextError({ code: "git.invalidSetupFile" });
   if (!files.length) return null;
 

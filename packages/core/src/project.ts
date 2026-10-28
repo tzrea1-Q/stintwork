@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { assignMilestones, type Milestone, parseRoadmap } from "./roadmap.js";
 import { detectSetup, type SetupReport } from "./setup.js";
-import { resolveStages, type StagedWorkItem } from "./stages.js";
+import { readWorkflow, resolveStages, type StagedWorkItem } from "./stages.js";
 import { indexStints, type Stint, type StintSummary, summarizeStint } from "./stints.js";
 import { indexWorkItems, orderTickets, type RepoFiles, type Warning } from "./work-items.js";
 import { loadWorkflows, type WorkflowDefinitions } from "./workflows.js";
@@ -104,6 +104,8 @@ export type ProjectSnapshot = {
       complete: boolean;
       bound?: boolean;
       stale?: boolean;
+      reviewDigest?: string;
+      reviewHead?: string;
     };
   })[];
   setup: SetupReport;
@@ -140,12 +142,18 @@ export function indexProject(
     setup.tracker === "github-issues"
       ? {
           warnings: [],
-          workItems: (meta.github?.items ?? []).map(
-            (item): StagedWorkItem => ({
+          workItems: (meta.github?.items ?? []).map((item): StagedWorkItem => {
+            const path = `.stintwork/github/${meta.github?.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+            const record = item.bound
+              ? readWorkflow(files, path, remoteWarnings, loaded)
+              : undefined;
+            const workflow = record?.workflow ?? "feature";
+            const stage = record?.stage ?? loaded.workflows.feature.stages[0].id;
+            return {
               slug: `github-${item.number}`,
               title: item.title,
               type: "feature",
-              spec: item.detail ? { path: item.url, text: item.detail.spec } : null,
+              spec: item.detail?.spec.trim() ? { path: item.url, text: item.detail.spec } : null,
               tickets: orderTickets(
                 (item.detail?.tickets ?? []).map((ticket) => {
                   const path = `https://github.com/${meta.github?.repository}/issues/${ticket.number}`;
@@ -180,13 +188,15 @@ export function indexProject(
                 remoteWarnings,
                 true,
               ),
-              workflow: "feature",
-              stage: undefined,
-              column: "spec",
+              workflow,
+              stage,
+              column: loaded.workflows[workflow].stages.find((entry) => entry.id === stage)?.column,
               inferred: false,
-              stages: {},
-            }),
-          ),
+              stages: record?.stages ?? {},
+              ...(record?.merged ? { merged: record.merged } : {}),
+              ...(record?.pullRequest ? { pullRequest: record.pullRequest } : {}),
+            };
+          }),
         }
       : resolveStages(indexWorkItems(files), files, loaded);
   const warnings = [...staged.warnings, ...remoteWarnings];

@@ -24,29 +24,35 @@ export function outputGateConditions(
     const warning = warnings.find(({ path }) => path === `${prefix}spec.md`);
     output = {
       id: "output",
-      label: coreText({ code: "gate.specOutput" }),
+      label: coreText({ code: item.github ? "gate.githubSpecOutput" : "gate.specOutput" }),
       ready: item.spec !== null && !warning,
-      action: coreText({
-        code: "gate.writeSpec",
-        params: { path: `${prefix}spec.md`, warning: warning?.message ?? "" },
-      }),
+      action: item.github
+        ? coreText({ code: "gate.githubSpecRequired" })
+        : coreText({
+            code: "gate.writeSpec",
+            params: { path: `${prefix}spec.md`, warning: warning?.message ?? "" },
+          }),
     };
   } else if (stage.gate === "tickets") {
     const warning = warnings.find(({ path }) => path.startsWith(`${prefix}issues/`));
     const positions = new Map(item.tickets.map((ticket, index) => [ticket.number, index]));
     output = {
       id: "output",
-      label: coreText({ code: "gate.ticketsOutput" }),
+      label: coreText({ code: item.github ? "gate.githubTicketsOutput" : "gate.ticketsOutput" }),
       ready:
         item.tickets.length > 0 &&
-        !warning &&
-        item.tickets.every((ticket, index) =>
-          ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
-        ),
-      action: coreText({
-        code: "gate.writeTickets",
-        params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },
-      }),
+        (item.github
+          ? item.tickets.every((ticket) => ticket.status !== "unknown" && !ticket.blocked)
+          : !warning &&
+            item.tickets.every((ticket, index) =>
+              ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
+            )),
+      action: item.github
+        ? coreText({ code: "gate.githubTicketsRequired" })
+        : coreText({
+            code: "gate.writeTickets",
+            params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },
+          }),
     };
   }
   const conditions: GateCondition[] = [output];

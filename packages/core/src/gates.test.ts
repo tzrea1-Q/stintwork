@@ -2,7 +2,7 @@
 import { expect, test } from "vitest";
 import { parse } from "yaml";
 import { deriveAttentionItems } from "./attention.js";
-import { gateReadiness, workflowGate } from "./gates.js";
+import { gateReadiness, workflowGate, type GateRecord } from "./gates.js";
 import { indexProject } from "./project.js";
 import type { StintSummary } from "./stints.js";
 import { createMemoryRepoFiles } from "./work-items.js";
@@ -44,6 +44,62 @@ function stint(stage: StageId, overrides: Partial<StintSummary> = {}): StintSumm
     ...overrides,
   };
 }
+
+test("GitHub readiness requires fresh complete detail and current preceding approvals", () => {
+  const workItem = item("implement");
+  workItem.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/a/b/issues/1",
+    complete: true,
+    reviewDigest: "digest",
+  };
+  const preceding = ["clarify", "spec", "tickets"];
+  for (const stage of preceding) workItem.stages[stage] = { approved: { remoteState: "current" } };
+  expect(gateReadiness(workItem).ready).toBe(true);
+  for (const state of ["stale", "unknown"]) {
+    workItem.stages.spec = { approved: { remoteState: state } };
+    expect(gateReadiness(workItem).ready).toBe(false);
+  }
+  workItem.stages.spec = { approved: { remoteState: "current" } };
+  workItem.github.complete = false;
+  expect(gateReadiness(workItem).ready).toBe(false);
+  workItem.github.complete = true;
+  delete workItem.github.reviewDigest;
+  expect(gateReadiness(workItem).ready).toBe(false);
+});
+
+test("GitHub reopen and re-approval preserve the reopened record", () => {
+  const remote = { version: 1 as const, parentId: "I", digest: "sha256:test" };
+  const original = { by: "Developer", at: "2026-01-01T00:00:00Z", commit: "a", remote };
+  const reopened = { by: "Developer", at: "2026-01-02T00:00:00Z", commit: "b", remote };
+  const approved = { by: "Developer", at: "2026-01-03T00:00:00Z", commit: "c", remote };
+  const initial = workflowGate(
+    undefined,
+    { workflow: "feature", stage: "clarify" },
+    "clarify",
+    "approve",
+    original,
+  );
+  const afterReopen = workflowGate(
+    initial,
+    { workflow: "feature", stage: "spec" },
+    "clarify",
+    "reopen",
+    reopened,
+  );
+  expect(parse(afterReopen).stages.clarify).toEqual({ approved: original, reopened });
+  const afterApproval = workflowGate(
+    afterReopen,
+    { workflow: "feature", stage: "clarify" },
+    "clarify",
+    "approve",
+    approved,
+  );
+  expect(parse(afterApproval).stages.clarify).toEqual({ approved, reopened });
+});
 
 test("gate refusal carries a stable message without changing its English reason", () => {
   const workItem = item("implement");
@@ -260,4 +316,20 @@ test("gate writes preserve YAML preferences, record evidence and create inferred
     "valid",
   );
   expect(() => workflowGate(text, workItem, "review", "approve", record)).toThrow("current");
+});
+
+test("gate records preserve versioned GitHub evidence in YAML", () => {
+  const record: GateRecord = {
+    by: "Developer",
+    at: "2026-10-28T12:00:00.000Z",
+    commit: "a".repeat(40),
+    remote: { version: 1, parentId: "I_1", digest: `sha256:${"b".repeat(64)}` },
+  };
+  const text = "workflow: feature\nstage: implement\ngithub:\n  issueId: I_1\n";
+  expect(parse(workflowGate(text, item("implement"), "implement", "approve", record))).toEqual({
+    workflow: "feature",
+    stage: "review",
+    github: { issueId: "I_1" },
+    stages: { implement: { approved: record } },
+  });
 });

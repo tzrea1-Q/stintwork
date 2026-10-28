@@ -73,12 +73,18 @@ export const coreTextEnglish = {
   "gate.manualApproval": "Developer approval; no file output required",
   "gate.approve": "Review the stage and approve when satisfied.",
   "gate.specOutput": "spec.md exists and parses",
+  "gate.githubSpecOutput": "The GitHub parent issue body is not empty",
+  "gate.githubSpecRequired":
+    "The GitHub parent issue body is empty. Edit it on GitHub, then refresh GitHub evidence.",
   "gate.writeSpec": template(
     { path: "string", warning: "string" },
     ({ path, warning }) =>
       `Write or edit ${path} with a nonempty # heading.${warning ? ` ${warning}` : ""}`,
   ),
   "gate.ticketsOutput": "At least one ticket, no ticket warnings, valid dependency order",
+  "gate.githubTicketsOutput": "At least one ticket with known status and no unresolved blockers",
+  "gate.githubTicketsRequired":
+    "Add a direct ticket and resolve any unknown statuses or blockers before approving.",
   "gate.writeTickets": template(
     { path: "string", warning: "string" },
     ({ path, warning }) =>
@@ -188,6 +194,11 @@ export const coreTextEnglish = {
   "memory.activeWrite": "A stint or review write is active for this work item.",
   "agent.activeWrite": "A stint or workflow write is already active for this work item.",
   "review.activeWrite": "A stint, check or review write is active for this work item.",
+  "gate.identityAmbiguous":
+    "The GitHub account or repository no longer matches Stintwork's records. Check which account gh is signed in to and whether the repository was renamed or transferred, then refresh GitHub evidence.",
+  "gate.detailUnavailable": "Complete GitHub evidence is unavailable.",
+  "gate.evidenceChanged": "GitHub evidence changed since review.",
+  "gate.headChanged": "The worktree HEAD changed since review.",
   "gate.activeWrite": "A stint, check or workflow write is active for this work item.",
   "ship.activeWrite": "A workflow or review write is active for this work item.",
   "ship.memoryUndecided": "Accept or reject every open memory proposal before shipping.",
@@ -359,6 +370,7 @@ export const coreTextEnglish = {
   "ship.recordedCiInvalid": "Invalid recorded pull request CI evidence.",
   "workflow.regularFile": "workflow.yaml must be a regular file.",
   "workflow.resolveIndexConflict": "Resolve workflow.yaml's index conflict before changing it.",
+  "workflow.dirtyFile": "Commit or discard changes to workflow.yaml before changing it.",
   "workflow.commitIgnored":
     "workflow.yaml could not be committed. Check whether it is ignored by Git.",
   "workflow.invalidId": "Invalid workflow id.",

@@ -583,7 +583,7 @@ test("workflow identity binds only the same repository and parent after a restar
       },
     ],
   };
-  const identity = `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: I_1\n  number: 1\n`;
+  const identity = `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: I_1\n  number: 1\n  url: https://github.com/Example/Project/issues/1\n`;
   const files = createMemoryRepoFiles({
     ".stintwork/github/example/project/1/workflow.yaml": identity,
   });
@@ -1322,6 +1322,7 @@ test.each([
   ["main conflict", "I_other", undefined, "identity", false],
   ["main match", "I_1", undefined, undefined, true],
   ["worktree wins", "I_other", "I_1", undefined, true],
+  ["worktree mismatch", "I_1", "I_other", "identity", false],
 ] as const)("identity fallback with %s", async (_case, mainId, worktreeId, errorCode, bound) => {
   const { root, gh } = await project("https://github.com/Example/Project.git");
   const { mkdir, readFile, writeFile } = await import("node:fs/promises");
@@ -1349,7 +1350,7 @@ test.each([
   });
   const path = ".stintwork/github/example/project/1/workflow.yaml";
   const identity = (id: string) =>
-    `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: ${id}\n  number: 1\n`;
+    `workflow: feature\nstage: spec\nstages:\n  clarify:\n    approved: {by: Test, at: '2026-01-01', commit: abc}\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: ${id}\n  number: 1\n  url: https://github.com/Example/Project/issues/1\n`;
   await mkdir(join(root, ".stintwork/github/example/project/1"), { recursive: true });
   await writeFile(join(root, path), identity(mainId));
   if (worktreeId) {
@@ -1383,8 +1384,19 @@ test.each([
   const server = createProjectServer(root, join(root, "web"));
   try {
     const snapshot = await (await server.app.request("/api/project")).json();
-    if (errorCode) expect(snapshot.github).toMatchObject({ errorCode, complete: false, items: [] });
-    else expect(snapshot.workItems).toMatchObject([{ github: { issueId: "I_1", bound } }]);
+    if (errorCode && worktreeId) {
+      expect(snapshot.github).toMatchObject({ errorCode, complete: false });
+      expect(snapshot.workItems).toMatchObject([{ github: { issueId: "I_1", bound: false } }]);
+    } else if (errorCode)
+      expect(snapshot.github).toMatchObject({ errorCode, complete: false, items: [] });
+    else {
+      expect(snapshot.workItems).toMatchObject([{ github: { issueId: "I_1", bound } }]);
+      if (bound)
+        expect(snapshot.workItems[0]).toMatchObject({
+          stage: "spec",
+          stages: { clarify: { approved: { by: "Test" } } },
+        });
+    }
   } finally {
     await server.stop();
   }

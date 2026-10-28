@@ -3,8 +3,28 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import type { WebSocket } from "ws";
 import { fakeGh } from "../test/fake-gh.js";
+
+const live = vi.hoisted(() => ({ messages: [] as string[] }));
+vi.mock("ws", async (importOriginal) => {
+  const ws = await importOriginal<typeof import("ws")>();
+  return {
+    ...ws,
+    WebSocketServer: class extends ws.WebSocketServer {
+      constructor(options: ConstructorParameters<typeof ws.WebSocketServer>[0]) {
+        super(options);
+        const client = {
+          readyState: ws.WebSocket.OPEN,
+          send: (message: string) => live.messages.push(message),
+          terminate: () => this.clients.delete(client as WebSocket),
+        } as unknown as WebSocket;
+        this.clients.add(client);
+      }
+    },
+  };
+});
 
 const scenarios = [
   "same",
@@ -155,9 +175,25 @@ test.each(scenarios)(
       const { createProjectServer } = await import("./index.js");
       const server = createProjectServer(root, join(root, "web"));
       try {
+        live.messages.length = 0;
         const initial = await (
           await server.app.request("/api/github/items/1433/refresh", { method: "POST" })
         ).json();
+        const broadcast = live.messages
+          .map((message) => JSON.parse(message))
+          .find((message) => message.workItems[0]?.tickets.length === 4);
+        expect(
+          broadcast?.workItems[0].tickets.map((ticket: { number: number; status: string }) => [
+            ticket.number,
+            ticket.status,
+          ]),
+        ).toEqual([
+          [1472, "cancelled"],
+          [1473, "cancelled"],
+          [1474, "cancelled"],
+          [1475, "cancelled"],
+        ]);
+        expect(broadcast?.workItems[0]).toEqual(initial.workItems[0]);
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
         if (scenario === "isolated-details") {

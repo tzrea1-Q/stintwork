@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+export { githubWorkflowPath } from "./github-workflow-path.js";
+export {
+  githubEvidenceJson,
+  githubEvidenceDigest,
+  type GithubEvidenceInput,
+} from "./github-evidence.js";
 export { type RiskyPath, isRiskyPaths } from "./stints.js";
 export { riskyPathAccepted } from "./review-evidence.js";
 export {
@@ -119,6 +125,7 @@ export {
 } from "./work-items.js";
 
 export {
+  readWorkflow,
   resolveStages,
   workflowMerge,
   type StageRecords,

@@ -96,6 +96,47 @@ for (const language of ["en", "zh-CN"] as const) {
           );
         });
 
+        test("GitHub gate sends reviewed evidence and displays a stale approval", async ({
+          page,
+        }, info) => {
+          snapshot.workItems[0].github = {
+            repository: "fixture/project",
+            repositoryId: "R",
+            issueId: "I",
+            number: 1,
+            url: "https://github.com/fixture/project/issues/1",
+            complete: true,
+            reviewDigest: "digest",
+            reviewHead: "head",
+          };
+          snapshot.workItems[0].stages = { clarify: { approved: { remoteState: "current" } } };
+          await page.route("**/api/github/items/1/gates/approve", async (route) => {
+            expect(route.request().postDataJSON()).toEqual({
+              stage: "spec",
+              reviewedDigest: "digest",
+              reviewedHead: "head",
+            });
+            await route.fulfill({ json: { approval: "stale" } });
+          });
+          await page.goto("/");
+          await page
+            .getByRole("button", {
+              name: t.card.open(dialogItem.slug, dialogItem.title),
+              exact: true,
+            })
+            .click();
+          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const gate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.spec),
+          });
+          await gate
+            .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
+            .click();
+          await expect(gate.getByText(t.stints.githubApproval.stale)).toBeVisible();
+          await expect(gate.getByRole("button", { name: t.stints.githubRefresh })).toBeVisible();
+          await capture(page, drawer, info, "github-gate-stale");
+        });
+
         test("gate, handoff and replay keep long code inside their own boxes", async ({
           page,
         }, info) => {

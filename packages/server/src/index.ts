@@ -41,6 +41,8 @@ import {
   type GithubDiscovery,
 } from "./github-discovery.js";
 import { readGithubTickets } from "./github-tickets.js";
+import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
+import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -111,6 +113,26 @@ export function createProjectServer(
     if (retryAt) github.retryAt = retryAt;
     else delete github.retryAt;
   }
+  function failGithubDetail(current: GithubDiscovery, number: number, error: unknown) {
+    if (github !== current) return;
+    const item = current.items.find((entry) => entry.number === number);
+    if (!item) return;
+    const failure = classifyGithubError(error);
+    if (failure.code === "identity") {
+      delete item.detail;
+      const cachedItem =
+        cached?.viewer === githubSource?.viewer &&
+        cached?.origin.toLowerCase() === githubSource?.origin.toLowerCase()
+          ? cached?.data.items.find((entry) => entry.id === item.id && entry.number === item.number)
+          : undefined;
+      if (cachedItem) delete cachedItem.detail;
+    }
+    item.discoveryComplete ??= item.complete;
+    item.complete = false;
+    if (item.detail) item.detail.stale = true;
+    detailFailures.set(item.id, failure);
+    updateGithubFreshness();
+  }
   function bindGithubIdentities(
     data: GithubDiscovery,
     project: ReturnType<typeof readProjectFiles>,
@@ -137,8 +159,19 @@ export function createProjectServer(
       if (!source) continue;
       const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
       const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
-      const validated = validateGithubIdentities(exactFiles, { ...data, items: [item] });
-      item.bound = validated.items[0].bound;
+      try {
+        const validated = validateGithubIdentities(exactFiles, {
+          ...data,
+          complete: false,
+          items: [item],
+        });
+        item.bound = validated.items[0].bound;
+      } catch {
+        item.bound = false;
+        data.complete = false;
+        data.error = new GithubReadError("identity").message;
+        data.errorCode = "identity";
+      }
     }
     return data;
   }
@@ -166,17 +199,21 @@ export function createProjectServer(
           ...safeGithub,
           items: [],
           complete: false,
-          error: "GitHub identity is ambiguous. Developer resolution is required.",
+          error: new GithubReadError("identity").message,
           errorCode: "identity",
         };
       }
     }
-    const snapshot = indexProject(project.files, {
-      name,
-      agents: describeAgents(agentRegistry),
-      ...(safeGithub ? { github: safeGithub } : {}),
-      ...(branch ? { branch } : {}),
-    });
+    const snapshot = indexProject(
+      safeGithub ? githubSnapshotFiles(project, safeGithub) : project.files,
+      {
+        name,
+        agents: describeAgents(agentRegistry),
+        ...(safeGithub ? { github: safeGithub } : {}),
+        ...(branch ? { branch } : {}),
+      },
+    );
+    projectGithubGates(snapshot, root, project);
     readReviewEvidence(project, snapshot);
     for (const item of snapshot.workItems)
       if (item.activeStint)
@@ -575,22 +612,7 @@ export function createProjectServer(
         detailFailures.clear();
       }
       if (github) {
-        if (failure.code === "identity") {
-          delete item.detail;
-          if (
-            cached?.viewer === source.viewer &&
-            cached.origin.toLowerCase() === source.origin.toLowerCase()
-          ) {
-            const cachedItem = cached.data.items.find(
-              (entry) => entry.id === item.id && entry.number === item.number,
-            );
-            if (cachedItem) delete cachedItem.detail;
-          }
-        }
-        item.complete = false;
-        if (item.detail) item.detail.stale = true;
-        detailFailures.set(item.id, failure);
-        updateGithubFreshness();
+        failGithubDetail(current, number, failure);
       } else {
         github = {
           repository: "",
@@ -635,6 +657,24 @@ export function createProjectServer(
     checks.isActive,
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
+  );
+  addGithubGateRoutes(
+    app,
+    root,
+    () => github,
+    () => snapshot,
+    readProjectFiles,
+    refresh,
+    (slug) => stopStints.isActive(slug) || checks.isActive(slug),
+    stopStints.workflowWrites,
+    async (expected) => {
+      const source = githubSource;
+      if (!source || github !== expected) return false;
+      const valid = await verifyGithubGateIdentity(root, expected, source);
+      return valid && github === expected && githubSource === source;
+    },
+    failGithubDetail,
+    readReviewEvidence,
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);

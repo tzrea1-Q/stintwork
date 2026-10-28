@@ -86,6 +86,8 @@ export function createProjectFiles(root: string, main: RepoFiles = createNodeRep
         overlays.set(slug, createNodeRepoFiles(worktree.path));
         worktreePaths.set(slug, worktree.path);
         watchPaths.push(join(worktree.path, ".scratch", slug));
+        if (slug.startsWith("github-"))
+          watchPaths.push(join(worktree.path, ".stintwork", "github"));
         const mainScope = join(root, ".scratch", slug);
         if (
           !divergence.has(slug) ||

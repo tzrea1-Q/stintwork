@@ -240,6 +240,7 @@ export function useProjectSnapshot() {
     let attempts = 0;
     let socket: WebSocket | undefined;
     let request: AbortController | undefined;
+    let reloadRequested = false;
     let requestTimeout: ReturnType<typeof setTimeout> | undefined;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -284,6 +285,10 @@ export function useProjectSnapshot() {
         clearTimeout(timeout);
         requestTimeout = undefined;
         request = undefined;
+        if (reloadRequested) {
+          reloadRequested = false;
+          void load();
+        }
       }
     }
 
@@ -410,11 +415,17 @@ export function useProjectSnapshot() {
 
     void load();
     connect();
+    const refresh = () => {
+      if (request) reloadRequested = true;
+      else void load();
+    };
+    window.addEventListener("stintwork:refresh-project", refresh);
     const poll = setInterval(() => {
       if (!live) void load();
     }, 5000);
     return () => {
       disposed = true;
+      window.removeEventListener("stintwork:refresh-project", refresh);
       clearInterval(poll);
       clearTimeout(reconnect);
       clearTimeout(requestTimeout);

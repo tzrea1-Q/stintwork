@@ -62,6 +62,8 @@ Scan at most 500 issues (five issue pages) per discovery refresh; Load more resu
 
 ### Workflow, revision and gates
 
+Until a GitHub work item has a record, it is shown read-only at the project's default workflow and its first stage. The first per-item write requiring a record (a gate approval or reopen, or, in ticket 05, the first stint start) creates it in the same commit as that write, using the project's default workflow; viewing or refreshing never creates a record.
+
 Store `.stintwork/github/<owner>/<repo>/<parent-number>/workflow.yaml` using lowercase canonical owner/repo path segments validated as GitHub names, no traversal or symlinks. It uses existing `workflow`, `stage`, `stages.<stage>.approved/reopened` format, plus a top-level `github` identity (`host`, `repositoryId`, `repository`, `issueId`, `number`) and each approval's existing `by`, `at`, `commit` plus `remote` evidence. Example:
 
 ```yaml

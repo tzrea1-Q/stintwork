@@ -8,7 +8,12 @@ import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./work
 import { reviewGateConditions } from "./review-evidence.js";
 import { outputGateConditions, type GateCondition } from "./gate-output.js";
 
-export type GateRecord = { by: string; at: string; commit: string };
+export type GateRecord = {
+  by: string;
+  at: string;
+  commit: string;
+  remote?: { version: 1; parentId: string; digest: string };
+};
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
 
 export function gateReadiness(
@@ -23,6 +28,21 @@ export function gateReadiness(
   if (item.merged) reason = coreText({ code: "workItem.shipped" });
   else if (position < 0 || !nextStage || stages[position].gate === "merge")
     reason = coreText({ code: "gate.noApproval" });
+  else if (item.github && (!item.github.complete || item.github.stale || !item.github.reviewDigest))
+    reason = coreText({ code: "gate.detailUnavailable" });
+  else if (
+    item.github &&
+    stages.slice(0, position).some(({ id }) => {
+      const approval = item.stages[id]?.approved;
+      return (
+        !approval ||
+        typeof approval !== "object" ||
+        !("remoteState" in approval) ||
+        approval.remoteState !== "current"
+      );
+    })
+  )
+    reason = coreText({ code: "gate.evidenceChanged" });
   else if (item.activeStint || item.stints.some(({ status }) => status === "running"))
     reason = coreText({ code: "gate.running" });
   else if (

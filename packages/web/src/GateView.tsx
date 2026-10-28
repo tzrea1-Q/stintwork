@@ -35,7 +35,14 @@ export function GateView({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useErrorText();
+  const [refreshNeeded, setRefreshNeeded] = useState(false);
+  const github = item.github;
+  const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
   const gate = gateReadiness(item, workflows);
+  const emptyGithubSpec =
+    !!github &&
+    item.spec === null &&
+    gate.conditions.some((condition) => condition.action.code === "gate.githubSpecRequired");
   const stages = workflows[item.workflow].stages;
   const position = stages.findIndex(({ id }) => id === item.stage);
   const current = stages[position];
@@ -50,15 +57,36 @@ export function GateView({
     setError("");
     try {
       const response = await fetch(
-        `/api/work-items/${encodeURIComponent(item.slug)}/gates/${encodeURIComponent(stage)}/${action}`,
+        github
+          ? `/api/github/items/${github.number}/gates/${action}`
+          : `/api/work-items/${encodeURIComponent(item.slug)}/gates/${encodeURIComponent(stage)}/${action}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify(
+            github
+              ? { stage, reviewedDigest: github.reviewDigest, reviewedHead: github.reviewHead }
+              : {},
+          ),
         },
       );
       const result = await readResponseJson(response);
-      if (!response.ok) throw new CoreTextError(result, t.stints.changeGateFailed);
+      if (!response.ok) {
+        if (
+          github &&
+          ["detail-unavailable", "evidence-changed", "head-changed"].includes(result.code)
+        )
+          setRefreshNeeded(true);
+        throw new CoreTextError(result, t.stints.changeGateFailed);
+      }
+      if (github) {
+        setMessage(
+          t.stints.githubApproval[result.approval as "current" | "stale" | "unknown"] ??
+            t.stints.githubApproval.unknown,
+        );
+        setRefreshNeeded(true);
+        return;
+      }
       const next = stages.find(({ id }) => id === result.stage);
       const name = next ? stageName(workflows[item.workflow], next, t) : result.stage;
       setMessage(action === "approve" ? t.stints.gateApproved(name) : t.stints.gateReopened(name));
@@ -119,11 +147,41 @@ export function GateView({
       ) : (
         <p>{t.stints.noWarnings}</p>
       )}
+      {emptyGithubSpec && github && (
+        <p>
+          <a href={github.url} target="_blank" rel="noreferrer">
+            {t.stints.githubOpenIssue}
+          </a>
+        </p>
+      )}
+      {github && !reviewAvailable && <p>{t.stints.githubDetailRequired}</p>}
+      {github &&
+        stages
+          .filter(({ id }) => item.stages[id]?.approved)
+          .map((stage) => {
+            const approval = item.stages[stage.id]?.approved;
+            const state =
+              approval && typeof approval === "object" && "remoteState" in approval
+                ? approval.remoteState
+                : "unknown";
+            return (
+              <p key={stage.id}>
+                {stageName(workflows[item.workflow], stage, t)}:{" "}
+                {
+                  t.stints.githubApproval[
+                    state === "current" || state === "stale" ? state : "unknown"
+                  ]
+                }
+              </p>
+            );
+          })}
       {gate.nextStage && (
         <Button
           type="button"
           variant="primary"
-          disabled={!gate.ready || saving || !!message}
+          disabled={
+            !gate.ready || saving || !!message || refreshNeeded || (!!github && !reviewAvailable)
+          }
           onClick={() => void act(current.id, "approve")}
         >
           {t.stints.approve(stageName(workflows[item.workflow], current, t))}
@@ -133,12 +191,46 @@ export function GateView({
         <Button
           key={stage.id}
           type="button"
-          disabled={saving || !!message || !!item.activeStint}
+          disabled={
+            saving ||
+            !!message ||
+            !!item.activeStint ||
+            (!!github && (!reviewAvailable || refreshNeeded))
+          }
           onClick={() => void act(stage.id, "reopen")}
         >
           {t.stints.reopen(stageName(workflows[item.workflow], stage, t))}
         </Button>
       ))}
+      {github && (refreshNeeded || !reviewAvailable || emptyGithubSpec) && (
+        <Button
+          type="button"
+          disabled={saving}
+          onClick={async () => {
+            setSaving(true);
+            try {
+              const response = await fetch(`/api/github/items/${github.number}/refresh`, {
+                method: "POST",
+              });
+              if (!response.ok)
+                throw new CoreTextError(
+                  await readResponseJson(response),
+                  t.stints.changeGateFailed,
+                );
+              setRefreshNeeded(false);
+              setMessage("");
+              setError("");
+            } catch (cause) {
+              setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
+            } finally {
+              window.dispatchEvent(new Event("stintwork:refresh-project"));
+              setSaving(false);
+            }
+          }}
+        >
+          {t.stints.githubRefresh}
+        </Button>
+      )}
       {message && <p role="status">{message}</p>}
       {error && (
         <p role="alert" className="warning text-warning">

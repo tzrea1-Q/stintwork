@@ -199,6 +199,61 @@ test("GitHub discovery supplies board work items without importing local Markdow
   expect(project.workItems).toHaveLength(1);
 });
 
+test("GitHub workflow projects the same shipped and pull request records as local workflow", () => {
+  const merged = { at: "2026-10-28T10:00:00Z", commit: "a".repeat(40), pr: "12", method: "squash" };
+  const pullRequest = {
+    number: 12,
+    url: "https://github.com/example/project/pull/12",
+    repo: "example/project",
+    remote: "origin",
+    remoteUrl: "git@github.com:example/project.git",
+    branch: "stintwork/first",
+    base: "main",
+    headCommit: "a".repeat(40),
+    mergeMethod: "squash",
+  };
+  const workflow = `workflow: feature\nstage: ship\nmerged: ${JSON.stringify(merged)}\npullRequest: ${JSON.stringify(pullRequest)}\n`;
+  const local = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/spec.md": "# First",
+      ".scratch/first/workflow.yaml": workflow,
+    }),
+    { name: "Local" },
+  );
+  const github = {
+    repository: "example/project",
+    repositoryId: "R",
+    scanned: 1,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    items: [
+      {
+        id: "I",
+        number: 1,
+        title: "First",
+        url: "https://github.com/example/project/issues/1",
+        bound: true,
+        complete: true,
+      },
+    ],
+  };
+  const remote = indexProject(
+    createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+      ".stintwork/github/example/project/1/workflow.yaml": workflow,
+    }),
+    { name: "Remote", github },
+  );
+  expect(local.workItems[0]).toMatchObject({ merged, pullRequest });
+  expect(remote.workItems[0]).toMatchObject({
+    merged: local.workItems[0].merged,
+    pullRequest: local.workItems[0].pullRequest,
+  });
+  expect(remote.attentionItems.some((entry) => entry.kind === "gate-ready")).toBe(false);
+});
+
 test("local stint history is associated only with a validated GitHub identity", () => {
   const log = {
     type: "started",

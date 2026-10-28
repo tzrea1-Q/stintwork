@@ -21,6 +21,18 @@ const finding = {
   title: "Missing limit",
   body: "Bound the input.",
 };
+
+test("GitHub workflow bookkeeping preserves checks, while code changes invalidate them", () => {
+  const context = {
+    slug: "github-1",
+    github: { repository: "Example/Project", number: 1 },
+    headCommit: head,
+    evidenceChangedPaths: { [commit]: [".stintwork/github/example/project/1/workflow.yaml"] },
+  };
+  expect(evidenceStale(context, commit)).toBe(false);
+  context.evidenceChangedPaths[commit].push("src/code.ts");
+  expect(evidenceStale(context, commit)).toBe(true);
+});
 const review: StintSummary = {
   id: "review",
   workItem: "first",

@@ -1525,6 +1525,7 @@ export function addStintRoutes(
     },
     {
       isActive: (slug: string) => active.has(slug) || workflowWrites.has(slug),
+      workflowWrites,
       hasPermissionBinding: permissions.has,
       recover,
     },

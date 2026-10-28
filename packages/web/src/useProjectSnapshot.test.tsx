@@ -11,9 +11,11 @@ import {
   type ReviewFindings,
   type CheckExecution,
 } from "@stintwork/core";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useProjectSnapshot } from "./useProjectSnapshot";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import {
   attentionProfile,
@@ -326,6 +328,102 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+test("an open GitHub drawer applies refreshed live evidence and clears pending state", async () => {
+  const initial = structuredClone(snapshot);
+  const item = initial.workItems[0];
+  item.github = {
+    repository: "github/gh-aw",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1433,
+    url: "https://github.com/github/gh-aw/issues/1433",
+    complete: false,
+  };
+  const updated = structuredClone(initial);
+  updated.workItems[0].tickets = [1472, 1473, 1474, 1475].map((number) => ({
+    number,
+    slug: `github-${number}`,
+    title: `Ticket ${number}`,
+    status: "cancelled",
+    body: "",
+    path: `https://github.com/github/gh-aw/issues/${number}`,
+    blockedBy: [],
+    blocked: false,
+    resolved: false,
+    comments: [],
+  }));
+  if (updated.workItems[0].github) updated.workItems[0].github.complete = true;
+  let finish!: (response: Response) => void;
+  vi.mocked(fetch).mockImplementation((input) =>
+    input === "/api/project"
+      ? Promise.resolve(response(initial))
+      : new Promise((resolve) => {
+          finish = resolve;
+        }),
+  );
+  function Drawer() {
+    const { snapshot: current } = useProjectSnapshot();
+    return current && <WorkItemDrawer item={current.workItems[0]} onClose={() => {}} />;
+  }
+  render(
+    <LanguageProvider>
+      <Drawer />
+    </LanguageProvider>,
+  );
+  const button = await screen.findByRole("button", { name: "Refresh GitHub evidence" });
+  await userEvent.click(button);
+  expect(button).toBeDisabled();
+  act(() => TestSocket.instances[0].sendSnapshot(updated));
+  vi.mocked(fetch).mockResolvedValue(response(updated));
+  await act(async () => finish(response(updated)));
+  const gate = screen.getByRole("region", { name: /spec gate/i });
+  expect(within(gate).getByText(/1472 · Ticket 1472 · Cancelled/i)).toBeInTheDocument();
+  expect(button).toBeEnabled();
+});
+
+test("a finished GitHub refresh reloads the snapshot when no live update arrives", async () => {
+  const initial = structuredClone(snapshot);
+  initial.workItems[0].github = {
+    repository: "github/gh-aw",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1433,
+    url: "https://github.com/github/gh-aw/issues/1433",
+    complete: false,
+  };
+  const updated = structuredClone(initial);
+  updated.workItems[0].tickets = [
+    {
+      number: 1472,
+      slug: "github-1472",
+      title: "Refreshed ticket",
+      status: "cancelled",
+      body: "",
+      path: "https://github.com/github/gh-aw/issues/1472",
+      blockedBy: [],
+      blocked: false,
+      resolved: false,
+      comments: [],
+    },
+  ];
+  let projectReads = 0;
+  vi.mocked(fetch).mockImplementation(async (input) =>
+    input === "/api/project" ? response(projectReads++ ? updated : initial) : response(updated),
+  );
+  function Drawer() {
+    const { snapshot: current } = useProjectSnapshot();
+    return current && <WorkItemDrawer item={current.workItems[0]} onClose={() => {}} />;
+  }
+  render(
+    <LanguageProvider>
+      <Drawer />
+    </LanguageProvider>,
+  );
+  await userEvent.click(await screen.findByRole("button", { name: "Refresh GitHub evidence" }));
+  expect(await screen.findByText(/1472 · Refreshed ticket · cancelled/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Refresh GitHub evidence" })).toBeEnabled();
 });
 
 test("reads the initial project and replaces it with live snapshots", async () => {

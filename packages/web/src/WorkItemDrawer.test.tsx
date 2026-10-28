@@ -5,8 +5,41 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 afterEach(() => vi.unstubAllGlobals());
+
+test.each([
+  ["en", "Local Markdown tracker", "GitHub Issues tracker"],
+  ["zh-CN", "本地 Markdown 跟踪器", "GitHub Issues 跟踪器"],
+])("%s drawer footer identifies the tracker", (language, local, github) => {
+  localStorage.setItem(languageStorageKey, language);
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const { rerender } = render(
+    <LanguageProvider>
+      <WorkItemDrawer item={item} onClose={() => {}} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(local)).toBeInTheDocument();
+  item.github = {
+    repository: "github/gh-aw",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1433,
+    url: "https://github.com/github/gh-aw/issues/1433",
+    complete: false,
+  };
+  rerender(
+    <LanguageProvider>
+      <WorkItemDrawer item={item} onClose={() => {}} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(github)).toBeInTheDocument();
+  expect(screen.queryByText(local)).not.toBeInTheDocument();
+  localStorage.removeItem(languageStorageKey);
+});
 
 function DrawerExample({ worktree = false }: { worktree?: boolean }) {
   const [open, setOpen] = useState(false);
