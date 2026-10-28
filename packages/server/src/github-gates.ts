@@ -20,6 +20,58 @@ import { readGithubTickets } from "./github-tickets.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
 
+export async function requireCurrentGithubApproval(
+  directory: string,
+  repository: string,
+  parentId: string,
+  number: number,
+  includeTickets: boolean,
+  labels: string[],
+  record:
+    | {
+        approved?: {
+          at?: string;
+          remote?: { version?: number; parentId?: string; digest?: string };
+        };
+        reopened?: { at?: string };
+      }
+    | undefined,
+): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      code: "detail-unavailable" | "approval-stale" | "approval-unknown" | "approval-missing";
+    }
+> {
+  let digest: string;
+  try {
+    const detail = await readGithubTickets(directory, repository, parentId, number);
+    if (!detail.complete) return { ok: false, code: "detail-unavailable" };
+    digest = await githubEvidenceDigest(
+      { parentId, body: detail.spec, tickets: detail.tickets },
+      includeTickets,
+      labels,
+    );
+  } catch {
+    return { ok: false, code: "detail-unavailable" };
+  }
+  if (!record?.approved) return { ok: false, code: "approval-missing" };
+  const approval = record.approved;
+  if (
+    approval.remote?.version !== 1 ||
+    approval.remote.parentId !== parentId ||
+    typeof approval.remote.digest !== "string" ||
+    (record.reopened?.at && !approval.at)
+  )
+    return { ok: false, code: "approval-unknown" };
+  if (
+    approval.remote.digest !== digest ||
+    (record.reopened?.at && approval.at && record.reopened.at >= approval.at)
+  )
+    return { ok: false, code: "approval-stale" };
+  return { ok: true };
+}
+
 export function addGithubGateRoutes(
   app: Hono,
   root: string,
@@ -73,6 +125,13 @@ export function addGithubGateRoutes(
           404,
         );
       const slug = `github-${number}`;
+      if (getSnapshot().github?.errorCode === "identity")
+        return context.json(
+          coreTextWire({
+            reason: "GitHub identity is ambiguous. Developer resolution is required.",
+          }),
+          409,
+        );
       if (writing.has(slug) || isStintActive(slug))
         return context.json(coreTextWire({ reason: coreText({ code: "gate.activeWrite" }) }), 409);
       writing.add(slug);
@@ -99,7 +158,18 @@ export function addGithubGateRoutes(
         );
       try {
         const project = readProjectFiles();
-        const directory = project.worktreePaths.get(slug) ?? root;
+        const worktree = project.worktreePaths.get(slug);
+        if (
+          worktree &&
+          !getSnapshot().workItems.find((entry) => entry.slug === slug)?.github?.bound
+        )
+          return context.json(
+            coreTextWire({
+              reason: "GitHub identity is ambiguous. Developer resolution is required.",
+            }),
+            409,
+          );
+        const directory = worktree ?? root;
         const relative = `.stintwork/github/${github.repository.toLowerCase()}/${number}/workflow.yaml`;
         let text: string | undefined;
         try {
@@ -173,15 +243,22 @@ export function addGithubGateRoutes(
           if (action === "approve") {
             for (const prior of stages.slice(0, position)) {
               const record = records[prior.id];
-              const evidence = record?.approved?.remote;
-              if (
-                evidence?.version !== 1 ||
-                evidence.parentId !== item.id ||
-                evidence.digest !== digest(prior.id) ||
-                (record.reopened?.at &&
-                  (!record.approved?.at || record.reopened.at >= record.approved.at))
-              )
-                return refuse("gate.evidenceChanged");
+              const currentApproval = await requireCurrentGithubApproval(
+                directory,
+                github.repository,
+                item.id,
+                number,
+                stages.findIndex((entry) => entry.id === prior.id) >
+                  stages.findIndex((entry) => entry.column === "spec"),
+                [...labels.values()],
+                record,
+              );
+              if (!currentApproval.ok)
+                return refuse(
+                  currentApproval.code === "detail-unavailable"
+                    ? "gate.detailUnavailable"
+                    : "gate.evidenceChanged",
+                );
               if (prior.gate === "evidence") {
                 const priorCommit = record.approved?.commit;
                 if (!priorCommit) return refuse("gate.evidenceChanged");

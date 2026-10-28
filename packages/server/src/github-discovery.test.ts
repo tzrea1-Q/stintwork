@@ -1320,8 +1320,9 @@ test("retry does not clear an earlier unresolved membership decision", async () 
 
 test.each([
   ["main conflict", "I_other", undefined, "identity", false],
-  ["main match", "I_1", undefined, undefined, true],
+  ["main match", "I_1", undefined, undefined, false],
   ["worktree wins", "I_other", "I_1", undefined, true],
+  ["worktree mismatch", "I_1", "I_other", "identity", false],
 ] as const)("identity fallback with %s", async (_case, mainId, worktreeId, errorCode, bound) => {
   const { root, gh } = await project("https://github.com/Example/Project.git");
   const { mkdir, readFile, writeFile } = await import("node:fs/promises");
@@ -1383,7 +1384,11 @@ test.each([
   const server = createProjectServer(root, join(root, "web"));
   try {
     const snapshot = await (await server.app.request("/api/project")).json();
-    if (errorCode) expect(snapshot.github).toMatchObject({ errorCode, complete: false, items: [] });
+    if (errorCode && worktreeId) {
+      expect(snapshot.github).toMatchObject({ errorCode, complete: false });
+      expect(snapshot.workItems).toMatchObject([{ github: { issueId: "I_1", bound: false } }]);
+    } else if (errorCode)
+      expect(snapshot.github).toMatchObject({ errorCode, complete: false, items: [] });
     else expect(snapshot.workItems).toMatchObject([{ github: { issueId: "I_1", bound } }]);
   } finally {
     await server.stop();

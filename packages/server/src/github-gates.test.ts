@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { afterEach, expect, test } from "vitest";
 import { parse } from "yaml";
 import { fakeGh, type GhReply } from "../test/fake-gh.js";
-import { addGithubGateRoutes } from "./github-gates.js";
+import { addGithubGateRoutes, requireCurrentGithubApproval } from "./github-gates.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
@@ -105,7 +105,7 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  return { git, request, reviewedHead, reviewedDigest, root };
+  return { git, request, reviewedHead, reviewedDigest, root, snapshot };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
 
@@ -318,4 +318,75 @@ test.each([
   const response = await request({ stage, reviewedHead, reviewedDigest });
   expect(response.status).toBe(200);
   expect(await response.json()).toEqual({ approval: expected });
+});
+
+test("fresh approval check distinguishes missing, unknown, stale, current and unavailable", async () => {
+  const { root, reviewedDigest } = await setup();
+  const check = (record: Parameters<typeof requireCurrentGithubApproval>[6]) =>
+    requireCurrentGithubApproval(root, "Example/Project", "I_1", 1, false, [], record);
+  expect(await check(undefined)).toEqual({ ok: false, code: "approval-missing" });
+  expect(await check({ approved: {} })).toEqual({ ok: false, code: "approval-unknown" });
+  const approval = {
+    at: "2026-01-01",
+    remote: { version: 1, parentId: "I_1", digest: reviewedDigest },
+  };
+  expect(
+    await check({ approved: { ...approval, remote: { ...approval.remote, digest: "old" } } }),
+  ).toEqual({ ok: false, code: "approval-stale" });
+  expect(await check({ approved: approval, reopened: { at: "2026-01-02" } })).toEqual({
+    ok: false,
+    code: "approval-stale",
+  });
+  expect(await check({ approved: approval })).toEqual({ ok: true });
+  const failed = await setup({ [issue]: { code: 1 } });
+  expect(
+    await requireCurrentGithubApproval(failed.root, "Example/Project", "I_1", 1, false, [], {
+      approved: approval,
+    }),
+  ).toEqual({ ok: false, code: "detail-unavailable" });
+});
+
+test("HTTP approve reopen reapprove retains the reopen and makes approval current", async () => {
+  const { root, git, request, reviewedDigest, snapshot } = await setup();
+  expect((await request()).status).toBe(200);
+  const reopened = await request(
+    { stage: "clarify", reviewedDigest, reviewedHead: git("rev-parse", "HEAD") },
+    "reopen",
+  );
+  expect(reopened.status).toBe(200);
+  const workItem = indexProject(createMemoryRepoFiles({ ".scratch/github-1/spec.md": "# Spec" }), {
+    name: "test",
+  }).workItems[0];
+  workItem.stage = "clarify";
+  workItem.stints = [
+    {
+      id: "finished",
+      workItem: "github-1",
+      stage: "clarify",
+      ticket: null,
+      agent: "codex",
+      status: "finished",
+      startedAt: "2099-01-01T00:00:00Z",
+      endedAt: "2099-01-01T00:01:00Z",
+      checkpointCommit: "checkpoint",
+      handoff: {
+        stint: "finished",
+        agent: "codex",
+        stoppedAt: "Done",
+        unresolved: "None",
+        nextStep: "Approve",
+      },
+    },
+  ];
+  snapshot.workItems = [workItem];
+  const response = await request({
+    stage: "clarify",
+    reviewedDigest,
+    reviewedHead: git("rev-parse", "HEAD"),
+  });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ approval: "current" });
+  const result = parse(readFileSync(join(root, path), "utf8"));
+  expect(result.stages.clarify.reopened).toBeDefined();
+  expect(result.stages.clarify.approved.at > result.stages.clarify.reopened.at).toBe(true);
 });

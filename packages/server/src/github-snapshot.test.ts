@@ -179,6 +179,7 @@ test("worktree workflow overrides main only when present", () => {
           title: "Parent",
           url: "https://github.com/Example/Project/issues/1",
           complete: true,
+          bound: true,
         },
       ],
       scanned: 1,
@@ -191,6 +192,8 @@ test("worktree workflow overrides main only when present", () => {
     mkdirSync(join(root, ".stintwork/github/example/project/1"), { recursive: true });
     writeFileSync(join(root, path), "worktree");
     expect(githubSnapshotFiles(project, github).read(path)).toBe("worktree");
+    github.items[0].bound = false;
+    expect(githubSnapshotFiles(project, github).read(path)).toBe("main");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

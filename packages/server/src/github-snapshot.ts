@@ -36,7 +36,7 @@ export function projectGithubGates(
   }
   for (const item of snapshot.workItems) {
     if (!item.github) continue;
-    const worktree = project.worktreePaths.get(item.slug);
+    const worktree = item.github.bound ? project.worktreePaths.get(item.slug) : undefined;
     if (worktree && snapshot.github) {
       const path = `.stintwork/github/${snapshot.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
       const main = project.files.read(path);
@@ -132,7 +132,8 @@ export function projectGithubGates(
         try {
           if (!("commit" in approval) || typeof approval.commit !== "string") state = "unknown";
           else {
-            const directory = project.worktreePaths.get(item.slug) ?? root;
+            const directory =
+              (item.github.bound ? project.worktreePaths.get(item.slug) : undefined) ?? root;
             const headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
               cwd: directory,
               encoding: "utf8",
@@ -165,7 +166,7 @@ export function projectGithubGates(
     if (reviewDigest) {
       try {
         const reviewHead = execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: project.worktreePaths.get(item.slug) ?? root,
+          cwd: (item.github.bound ? project.worktreePaths.get(item.slug) : undefined) ?? root,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         }).trim();
@@ -184,7 +185,7 @@ export function githubSnapshotFiles(
 ) {
   const overrides = new Map<string, string>();
   for (const item of github.items) {
-    const worktree = project.worktreePaths.get(`github-${item.number}`);
+    const worktree = item.bound ? project.worktreePaths.get(`github-${item.number}`) : undefined;
     if (!worktree) continue;
     const path = `.stintwork/github/${github.repository.toLowerCase()}/${item.number}/workflow.yaml`;
     const text = createNodeRepoFiles(worktree).read(path);

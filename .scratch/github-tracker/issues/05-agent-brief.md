@@ -11,7 +11,7 @@ Connect the selected GitHub ticket to the existing stint and brief flow using th
 
 - [ ] The brief gives repo, issue identities, URLs, read commands, worktree, scope, handoff and checkpoint without credentials or local ticket instructions.
 - [ ] Planning and ticket prompts direct issue updates to the configured skill and `gh`; no issue content is mirrored or written by Stintwork.
-- [ ] A fresh complete snapshot is required to start a ticket; resolved, blocked, unknown and changed identities refuse safely.
+- [ ] A fresh complete snapshot is required to start a ticket; resolved, blocked, unknown and changed identities refuse safely. Starting a stint or creating a worktree or branch for a GitHub item validates its identity record first and refuses on mismatch; it uses the shared current-approval check from ticket 04.
 - [ ] Fake-gh tests verify scope, refresh/failure and unchanged local Markdown briefs and stints without network.
 
 ## Comments

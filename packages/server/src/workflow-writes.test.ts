@@ -8,6 +8,7 @@ import { createNodeRepoFiles } from "./repo-files.js";
 import { validateGithubIdentities } from "./github-discovery.js";
 import { saveGithubWorkflow, saveWorkItemWorkflow } from "./workflow-writes.js";
 import { commitStintworkSetup } from "@stintwork/git";
+import { workflowGate } from "@stintwork/core";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -188,4 +189,42 @@ test("accepts a merged record and refuses an unresolved index conflict", async (
   ).rejects.toThrow();
   expect(readFileSync(join(root, path), "utf8")).toBe(recorded);
   expect(git("ls-files", "-u", "--", path).split("\n")).toHaveLength(3);
+});
+
+test("local approve reopen approve matches main workflow bytes", async () => {
+  const root = repo();
+  mkdirSync(join(root, ".scratch/local"), { recursive: true });
+  const path = join(root, ".scratch/local/workflow.yaml");
+  writeFileSync(path, "workflow: feature\nstage: spec\n");
+  const operations = [
+    ["spec", "approve", "2026-01-01T00:00:00Z", "a"],
+    ["tickets", "reopen", "2026-01-02T00:00:00Z", "b"],
+    ["spec", "approve", "2026-01-03T00:00:00Z", "c"],
+  ] as const;
+  for (const [stage, action, at, commit] of operations)
+    await saveWorkItemWorkflow(
+      root,
+      "local",
+      (text) =>
+        workflowGate(text, { workflow: "feature", stage }, "spec", action, {
+          by: "Test",
+          at,
+          commit,
+        }),
+      action,
+    );
+  // main's workflowGate writes these exact bytes for the same fixed inputs.
+  expect(readFileSync(path, "utf8")).toBe(`workflow: feature
+stage: tickets
+stages:
+  spec:
+    approved:
+      by: Test
+      at: 2026-01-03T00:00:00Z
+      commit: c
+    reopened:
+      by: Test
+      at: 2026-01-02T00:00:00Z
+      commit: b
+`);
 });

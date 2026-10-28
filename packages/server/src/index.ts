@@ -136,11 +136,25 @@ export function createProjectServer(
     data = validateGithubIdentities(mainFiles, data);
     for (const item of data.items) {
       const source = worktreeFiles.get(item.number);
-      if (!source) continue;
+      if (!source) {
+        if (project.worktreePaths.has(`github-${item.number}`)) item.bound = false;
+        continue;
+      }
       const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
       const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
-      const validated = validateGithubIdentities(exactFiles, { ...data, items: [item] });
-      item.bound = validated.items[0].bound;
+      try {
+        const validated = validateGithubIdentities(exactFiles, {
+          ...data,
+          complete: false,
+          items: [item],
+        });
+        item.bound = validated.items[0].bound;
+      } catch {
+        item.bound = false;
+        data.complete = false;
+        data.error = "GitHub identity is ambiguous. Developer resolution is required.";
+        data.errorCode = "identity";
+      }
     }
     return data;
   }
