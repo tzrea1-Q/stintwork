@@ -654,6 +654,7 @@ test("unavailable and rate limited discovery never looks empty", () => {
     repositoryId: "",
     error: "limit",
     errorCode: "rate-limited",
+    discoveryFailed: true,
     retryAt: "2099-01-01T00:00:00Z",
   };
   render(<Board snapshot={snapshot} />);
@@ -706,6 +707,7 @@ test("retry becomes available after the rate limit expires", async () => {
     fetchedAt: undefined,
     error: "limit",
     errorCode: "rate-limited",
+    discoveryFailed: true,
     retryAt: new Date(Date.now() + 200).toISOString(),
   };
   render(<Board snapshot={snapshot} />);

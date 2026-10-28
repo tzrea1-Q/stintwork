@@ -17,6 +17,7 @@ test("retry and load more unlock at a retry time received after mount", () => {
     pages: [],
     warnings: [],
     error: "rate limit",
+    discoveryFailed: true,
   };
   const { rerender } = render(<GithubStatus github={github} />);
   act(() => vi.advanceTimersByTime(600_000));
@@ -33,3 +34,42 @@ test("retry and load more unlock at a retry time received after mount", () => {
   expect(retry).toBeEnabled();
   expect(more).toBeEnabled();
 });
+
+test.each([false, true])(
+  "discovery failure %s controls board freshness and retry",
+  (discoveryFailed) => {
+    render(
+      <GithubStatus
+        github={{
+          repository: "example/project",
+          repositoryId: "R_1",
+          items: [
+            {
+              id: "A",
+              number: 1,
+              title: "A",
+              url: "https://example.com/1",
+              complete: true,
+              detail: { spec: "", tickets: [], stale: true },
+            },
+          ],
+          scanned: 1,
+          cursor: "next",
+          complete: false,
+          pages: [],
+          warnings: [],
+          fetchedAt: "2026-10-28T00:00:00Z",
+          stale: true,
+          discoveryFailed,
+          error: "detail or discovery failure",
+        }}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Load more" })).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: discoveryFailed ? "Retry" : "Refresh" }),
+    ).toBeEnabled();
+    if (discoveryFailed) expect(screen.getByText(/Last successful fetch:/)).toBeInTheDocument();
+    else expect(screen.queryByText(/Last successful fetch:/)).not.toBeInTheDocument();
+  },
+);

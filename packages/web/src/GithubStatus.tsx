@@ -50,17 +50,17 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
       className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3 text-sm text-muted sm:px-6"
     >
       {unavailable && <strong>{copy.unavailable}</strong>}
-      {github?.stale && github.fetchedAt && (
+      {github?.discoveryFailed && github.fetchedAt && (
         <p>{copy.stale.replace("{time}", time(github.fetchedAt))}</p>
       )}
-      {github && !unavailable && !github.stale && github.fetchedAt && (
+      {github && !unavailable && !github.discoveryFailed && github.fetchedAt && (
         <p>
           {copy.fetched
             .replace("{time}", time(github.fetchedAt))
             .replace("{count}", String(github.scanned))}
         </p>
       )}
-      {github && !unavailable && (github.stale || !github.fetchedAt) && (
+      {github && !unavailable && (github.discoveryFailed || !github.fetchedAt) && (
         <p>{copy.scanned.replace("{count}", String(github.scanned))}</p>
       )}
       {github && !unavailable && (!github.complete || github.cursor) && (
@@ -72,9 +72,9 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
         <p>{copy.retryAt.replace("{time}", time(github.retryAt))}</p>
       )}
       <Button disabled={pending || retryAt > now} onClick={() => void act("refresh")}>
-        {pending ? copy.pending : github?.error ? copy.retry : copy.refresh}
+        {pending ? copy.pending : github?.discoveryFailed ? copy.retry : copy.refresh}
       </Button>
-      {github?.cursor && !github.stale && (
+      {github?.cursor && (
         <Button disabled={pending || retryAt > now} onClick={() => void act("load-more")}>
           {copy.loadMore}
         </Button>
