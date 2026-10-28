@@ -471,19 +471,7 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       }
       const detail = await readGithubTickets(root, github.repository, item.id, number);
-      verified = false;
-      const afterOrigin = await githubOrigin(root);
-      const afterViewer = await githubViewer(root);
-      const afterRepository = await githubTrackerRepository(root);
-      if (
-        afterRepository.repositoryId !== current.repositoryId ||
-        github !== current ||
-        githubSource !== source ||
-        afterOrigin.toLowerCase() !== source.origin.toLowerCase() ||
-        afterViewer !== source.viewer
-      )
-        throw new GithubReadError("identity");
-      verified = true;
+      if (github !== current || githubSource !== source) throw new GithubReadError("identity");
       const identities = new Map<number, string>();
       for (const ticket of detail.tickets) {
         for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {

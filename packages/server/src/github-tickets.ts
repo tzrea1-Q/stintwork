@@ -21,15 +21,26 @@ type Issue = {
 };
 type Comment = { id: number; node_id: string; body: string };
 
-/** Read one work item. All requests are sequential, and a failed connection aborts the snapshot. */
+/** Read one work item. A failed connection aborts the snapshot. */
 export async function readGithubTickets(
   root: string,
   repository: string,
   parentId: string,
   number: number,
 ) {
-  async function get(path: string): Promise<{ value: unknown; next: boolean }> {
+  let failure: unknown;
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  let waitingIndex = 0;
+  async function get(path: string, optional = false): Promise<{ value: unknown; next: boolean }> {
+    await new Promise<void>((resolve) => {
+      if (active < 4) {
+        active++;
+        resolve();
+      } else waiting.push(resolve);
+    });
     try {
+      if (failure) throw failure;
       const { stdout } = await execute("gh", ["api", path, "--include"], {
         cwd: root,
         timeout: 60_000,
@@ -52,7 +63,20 @@ export async function readGithubTickets(
         next: /^link:.*rel="next"/im.test(headers),
       };
     } catch (error) {
-      throw classifyGithubError(error);
+      const readError = classifyGithubError(error);
+      if (!failure && (!optional || readError.code !== "unavailable")) {
+        const connection =
+          /\/(labels|comments|blocked_by|sub_issues)\?per_page=100&page=(\d+)$/.exec(path);
+        if (connection) readError.message += ` Connection ${connection[1]} page ${connection[2]}.`;
+        failure = readError;
+      }
+      throw readError;
+    } finally {
+      const next = waiting[waitingIndex];
+      if (next) {
+        waitingIndex++;
+        next();
+      } else active--;
     }
   }
   function incomplete(connection: string): GithubReadError {
@@ -92,9 +116,11 @@ export async function readGithubTickets(
         if (nodes.length >= 1000) throw new GithubReadError("cap");
         if (!result.next) return nodes;
       } catch (error) {
-        const failure = classifyGithubError(error);
-        failure.message += ` Connection ${path.split("/").slice(-1)[0]} page ${page}.`;
-        throw failure;
+        const readError = classifyGithubError(error);
+        if (!readError.message.includes(" Connection "))
+          readError.message += ` Connection ${path.split("/").slice(-1)[0]} page ${page}.`;
+        failure ??= readError;
+        throw readError;
       }
     }
     throw new GithubReadError("cap");
@@ -130,10 +156,9 @@ export async function readGithubTickets(
     )
   )
     throw incomplete("comments");
-  const warnings: string[] = [];
-  let complete = true;
-  const tickets = [];
-  for (const child of children) {
+  async function readChild(child: Issue) {
+    const warnings: string[] = [];
+    let complete = true;
     if (
       !valid(child) ||
       !child.sub_issues_summary ||
@@ -141,23 +166,31 @@ export async function readGithubTickets(
     ) {
       complete = false;
       warnings.push(`Issue #${child?.number ?? "?"}: unsupported or invalid child.`);
-      continue;
+      return { warnings, complete, ticket: undefined };
     }
     if (child.sub_issues_summary.total > 0) {
       complete = false;
       warnings.push(`Issue #${child.number}: nested children excluded.`);
     }
-    const labels = await pages<{ name: string }>(`${issuePath}${child.number}/labels`);
+    const connections = await Promise.allSettled([
+      pages<{ name: string }>(`${issuePath}${child.number}/labels`),
+      pages<Comment>(`${issuePath}${child.number}/comments`),
+      pages<Issue>(`${issuePath}${child.number}/dependencies/blocked_by`),
+    ] as const);
+    if (connections[0].status === "rejected") throw connections[0].reason;
+    if (connections[1].status === "rejected") throw connections[1].reason;
+    if (connections[2].status === "rejected") throw connections[2].reason;
+    const labels = connections[0].value;
+    const comments = connections[1].value;
+    const blockers = connections[2].value;
     if (labels.some((label) => typeof label.name !== "string")) throw incomplete("labels");
     if (labels.some((label) => label.name.toLowerCase() === "stintwork:work-item"))
       warnings.push(`Issue #${child.number}: labelled child is only a ticket.`);
-    const comments = await pages<Comment>(`${issuePath}${child.number}/comments`);
     if (
       new Set(comments.map((comment) => comment.node_id)).size !== comments.length ||
       comments.length !== child.comments
     )
       throw incomplete("comments");
-    const blockers = await pages<Issue>(`${issuePath}${child.number}/dependencies/blocked_by`);
     if (
       !child.issue_dependencies_summary ||
       !Number.isSafeInteger(child.issue_dependencies_summary.total_blocked_by) ||
@@ -209,13 +242,14 @@ export async function readGithubTickets(
       effective = [];
       for (const reference of textNumbers) {
         try {
-          const blocker = (await get(`${issuePath}${reference}`)).value as Issue;
+          const blocker = (await get(`${issuePath}${reference}`, true)).value as Issue;
           if (!valid(blocker) || blocker.number !== reference)
             throw new GithubReadError("identity");
           effective.push(blocker);
         } catch (error) {
-          const failure = classifyGithubError(error);
-          if (failure.code !== "unavailable" && failure.code !== "identity") throw failure;
+          if (failure) throw failure;
+          const readError = classifyGithubError(error);
+          if (readError.code !== "unavailable" && readError.code !== "identity") throw readError;
           textUnknown = true;
           warnings.push(`Issue #${child.number}: blocker #${reference} unavailable.`);
         }
@@ -225,7 +259,7 @@ export async function readGithubTickets(
       complete = false;
       warnings.push(`Issue #${child.number}: text blockers unknown.`);
     }
-    tickets.push({
+    const ticket = {
       id: child.node_id,
       url: child.html_url,
       number: child.number,
@@ -245,13 +279,29 @@ export async function readGithubTickets(
       blocked:
         (!blockers.length && textUnknown) ||
         effective.some((blocker) => blocker.state !== "closed"),
-    });
+    };
+    return { warnings, complete, ticket };
   }
+  const settled = await Promise.allSettled(
+    children.map(async (child) => {
+      try {
+        return await readChild(child);
+      } catch (error) {
+        failure ??= error;
+        throw error;
+      }
+    }),
+  );
+  if (failure) throw failure;
+  const results = settled.map((result) => {
+    if (result.status === "rejected") throw result.reason;
+    return result.value;
+  });
   return {
     spec: parent.body ?? "",
     comments: parentComments.map((comment) => comment.body),
-    tickets,
-    complete,
-    warnings,
+    tickets: results.flatMap(({ ticket }) => (ticket ? [ticket] : [])),
+    complete: results.every((result) => result.complete),
+    warnings: results.flatMap((result) => result.warnings),
   };
 }

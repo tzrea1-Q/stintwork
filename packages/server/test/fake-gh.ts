@@ -22,7 +22,7 @@ const key = args.slice(0, 2).join(' ');
 const reply = replies[key];
 if (!reply) { console.error('Unscripted gh invocation: ' + args.join(' ')); process.exit(99); }
 const next = Array.isArray(reply) ? (reply.length > 1 ? reply.shift() : reply[0]) : reply;
-fs.writeFileSync(script, JSON.stringify(replies));
+if (Array.isArray(reply)) fs.writeFileSync(script, JSON.stringify(replies));
 if (next.effect) new Function('execFileSync', 'args', 'fs', 'script', next.effect)(execFileSync, args, fs, script);
 process.stdout.write(typeof next.stdout === 'string' ? next.stdout : JSON.stringify(next.stdout ?? {}));
 process.exit(next.code ?? 0);

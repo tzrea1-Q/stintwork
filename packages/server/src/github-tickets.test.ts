@@ -43,6 +43,9 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       pageInfo: { hasNextPage: false, endCursor: null },
     });
     const repoId = "R_test";
+    const eventsPath = join(root, "concurrency.jsonl");
+    const delay = (number: number) =>
+      `fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "start", pid: process.pid, child: ${number} }) + "\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${number === 1472 ? 350 : 200}); fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "end", pid: process.pid, child: ${number} }) + "\\n");`;
     await gh.script({
       "auth status": {},
       "api user": { stdout: "101" },
@@ -85,15 +88,15 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
         children.flatMap((child: { number: number }) => [
           [
             `api repos/github/gh-aw/issues/${child.number}/dependencies/blocked_by?per_page=100&page=1`,
-            { stdout: [] },
+            { stdout: [], effect: delay(child.number) },
           ],
           [
             `api repos/github/gh-aw/issues/${child.number}/comments?per_page=100&page=1`,
-            { stdout: child.number === 1472 ? childComments : [] },
+            { stdout: child.number === 1472 ? childComments : [], effect: delay(child.number) },
           ],
           [
             `api repos/github/gh-aw/issues/${child.number}/labels?per_page=100&page=1`,
-            { stdout: [] },
+            { stdout: [], effect: delay(child.number) },
           ],
         ]),
       ),
@@ -101,11 +104,59 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
     const { createProjectServer } = await import("./index.js");
     const server = createProjectServer(root, join(root, "web"));
     try {
+      await server.app.request("/api/project");
+      const callsBefore = (await gh.calls()).length;
       const response = await server.app.request("/api/github/items/1433/refresh", {
         method: "POST",
       });
       expect(response.status).toBe(200);
       const snapshot = await response.json();
+      const calls = (await gh.calls()).slice(callsBefore);
+      expect(calls.filter(({ args }) => args[0] === "api" && args[1] === "user")).toHaveLength(1);
+      expect(
+        calls.filter(({ args }) => args[0] === "api" && args[1] === "repos/github/gh-aw"),
+      ).toHaveLength(1);
+      const events = (await readFile(eventsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(events).toHaveLength(children.length * 3 * 2);
+      let active = 0;
+      let peak = 0;
+      let firstChildActive = 0;
+      let firstChildPeak = 0;
+      for (const event of events) {
+        const change = event.event === "start" ? 1 : -1;
+        active += change;
+        peak = Math.max(peak, active);
+        if (event.child === 1472) {
+          firstChildActive += change;
+          firstChildPeak = Math.max(firstChildPeak, firstChildActive);
+        }
+      }
+      expect(firstChildPeak).toBeGreaterThan(1);
+      expect(active).toBe(0);
+      expect(peak).toBeGreaterThan(1);
+      expect(peak).toBeLessThanOrEqual(4);
+      expect(
+        snapshot.github.items[0].detail.tickets.map(
+          (ticket: { number: number; id: string; state: string; stateReason: string | null }) => [
+            ticket.number,
+            ticket.id,
+            ticket.state,
+            ticket.stateReason,
+          ],
+        ),
+      ).toEqual(
+        children.map(
+          (child: {
+            number: number;
+            node_id: string;
+            state: string;
+            state_reason: string | null;
+          }) => [child.number, child.node_id, child.state, child.state_reason],
+        ),
+      );
       expect(snapshot.workItems[0].spec.text).toBe("Recorded body");
       expect(Date.parse(snapshot.github.items[0].detail.fetchedAt)).toBeGreaterThan(0);
       expect(
@@ -119,6 +170,57 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
         [1474, "cancelled"],
         [1475, "cancelled"],
       ]);
+      await writeFile(eventsPath, "");
+      const slow = `fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "start", pid: process.pid }) + "\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800); fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "end", pid: process.pid }) + "\\n");`;
+      await gh.script({
+        "auth status": {},
+        "api user": { stdout: "101" },
+        "api repos/github/gh-aw": {
+          stdout: {
+            node_id: "R_test",
+            full_name: "github/gh-aw",
+            html_url: "https://github.com/github/gh-aw",
+          },
+        },
+        "api repos/github/gh-aw/issues/1433": { stdout: parent },
+        "api repos/github/gh-aw/issues/1433/sub_issues?per_page=100&page=1": { stdout: children },
+        "api repos/github/gh-aw/issues/1433/comments?per_page=100&page=1": { stdout: comments },
+        ...Object.fromEntries(
+          children.flatMap((child: { number: number }) => [
+            [
+              `api repos/github/gh-aw/issues/${child.number}/labels?per_page=100&page=1`,
+              child.number === 1472
+                ? {
+                    code: 1,
+                    effect:
+                      "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200); process.stderr.write('network unreachable')",
+                  }
+                : { stdout: [], effect: slow },
+            ],
+            [
+              `api repos/github/gh-aw/issues/${child.number}/comments?per_page=100&page=1`,
+              { stdout: child.number === 1472 ? childComments : [], effect: slow },
+            ],
+            [
+              `api repos/github/gh-aw/issues/${child.number}/dependencies/blocked_by?per_page=100&page=1`,
+              { stdout: [], effect: slow },
+            ],
+          ]),
+        ),
+      });
+      const failedChild = await server.app.request("/api/github/items/1433/refresh", {
+        method: "POST",
+      });
+      expect(failedChild.status).toBe(503);
+      const childEvents = (await readFile(eventsPath, "utf8"))
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      expect(childEvents.filter((event) => event.event === "start").length).toBeGreaterThan(0);
+      expect(childEvents.filter((event) => event.event === "start").length).toBe(
+        childEvents.filter((event) => event.event === "end").length,
+      );
       children[3].state = "open";
       expect(snapshot.workItems[0].tickets[0].comments).toEqual([
         "Recorded comment",
