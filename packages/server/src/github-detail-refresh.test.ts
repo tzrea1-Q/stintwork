@@ -15,6 +15,7 @@ const scenarios = [
   "origin",
   "detail-first",
   "discovery-first",
+  "isolated-details",
 ] as const;
 
 test.each(scenarios)(
@@ -67,6 +68,27 @@ test.each(scenarios)(
           totalCount: 4,
         },
       };
+      const secondParent = {
+        ...parent,
+        node_id: "I_second",
+        number: 1533,
+        html_url: "https://github.com/github/gh-aw/issues/1533",
+        sub_issues_summary: { total: 1 },
+        comments: 0,
+      };
+      const secondChild = {
+        ...children[0],
+        node_id: "I_second_child",
+        number: 1572,
+        html_url: "https://github.com/github/gh-aw/issues/1572",
+      };
+      const secondIssue = {
+        ...issue,
+        id: secondParent.node_id,
+        number: 1533,
+        url: secondParent.html_url,
+        subIssues: { ...issue.subIssues, totalCount: 1 },
+      };
       const page = (nodes: unknown[], repository = "github/gh-aw") => ({
         data: {
           repository: { id: "R_test", nameWithOwner: repository, issues: connection(nodes) },
@@ -108,10 +130,25 @@ test.each(scenarios)(
         "auth status": {},
         "api user": { stdout: "101" },
         "api repos/github/gh-aw": { stdout: repo },
-        "api graphql": scenario === "load-more" ? firstPages : { stdout: page([issue]) },
+        "api graphql":
+          scenario === "load-more"
+            ? firstPages
+            : { stdout: page(scenario === "isolated-details" ? [issue, secondIssue] : [issue]) },
         "api repos/github/gh-aw/issues/1433": { stdout: parent },
         "api repos/github/gh-aw/issues/1433/sub_issues?per_page=100&page=1": { stdout: children },
         "api repos/github/gh-aw/issues/1433/comments?per_page=100&page=1": { stdout: comments },
+        "api repos/github/gh-aw/issues/1533": { stdout: secondParent },
+        "api repos/github/gh-aw/issues/1533/sub_issues?per_page=100&page=1": {
+          stdout: [secondChild],
+        },
+        "api repos/github/gh-aw/issues/1533/comments?per_page=100&page=1": { stdout: [] },
+        "api repos/github/gh-aw/issues/1572/labels?per_page=100&page=1": { stdout: [] },
+        "api repos/github/gh-aw/issues/1572/comments?per_page=100&page=1": {
+          stdout: childComments,
+        },
+        "api repos/github/gh-aw/issues/1572/dependencies/blocked_by?per_page=100&page=1": {
+          stdout: [],
+        },
         ...detailReplies,
       };
       await gh.script(replies);
@@ -123,6 +160,76 @@ test.each(scenarios)(
         ).json();
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
+        if (scenario === "isolated-details") {
+          type Snapshot = {
+            github: { stale: boolean; complete: boolean; errorCode?: string };
+            workItems: {
+              github: { number: number };
+              tickets: { status: string; blocked: boolean }[];
+            }[];
+          };
+          const post = async (path: string): Promise<Snapshot> =>
+            (await server.app.request(path, { method: "POST" })).json();
+          const byNumber = (snapshot: Snapshot, number: number) => {
+            const item = snapshot.workItems.find((entry) => entry.github.number === number);
+            if (!item) throw new Error(`Missing work item #${number}`);
+            return item;
+          };
+          const expectKnown = (snapshot: Snapshot, number: number) => {
+            const tickets = byNumber(snapshot, number).tickets;
+            expect(tickets.length).toBeGreaterThan(0);
+            expect(
+              tickets.every((ticket) => ticket.status === "cancelled" && !ticket.blocked),
+            ).toBe(true);
+          };
+          const expectUnknown = (snapshot: Snapshot, number: number) => {
+            const tickets = byNumber(snapshot, number).tickets;
+            expect(tickets.length).toBeGreaterThan(0);
+            expect(tickets.every((ticket) => ticket.status === "unknown" && ticket.blocked)).toBe(
+              true,
+            );
+          };
+          await post("/api/github/items/1533/refresh");
+          await post("/api/github/discovery/refresh");
+          const oneRefreshed = await post("/api/github/items/1433/refresh");
+          expect(oneRefreshed.github.stale).toBe(true);
+          expectKnown(oneRefreshed, 1433);
+          expectUnknown(oneRefreshed, 1533);
+          await post("/api/github/items/1533/refresh");
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1533": {
+              effect: "process.stderr.write('network is unreachable')",
+              code: 1,
+            },
+          });
+          const detailFailed = await post("/api/github/items/1533/refresh");
+          expectKnown(detailFailed, 1433);
+          expectUnknown(detailFailed, 1533);
+          await gh.script(replies);
+          await post("/api/github/items/1533/refresh");
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw": { effect: "process.stderr.write('HTTP 500')", code: 1 },
+          });
+          const discoveryFailed = await post("/api/github/discovery/refresh");
+          expect(discoveryFailed.github).toMatchObject({
+            stale: true,
+            complete: false,
+            errorCode: "server-error",
+          });
+          expectKnown(discoveryFailed, 1433);
+          expectKnown(discoveryFailed, 1533);
+          await gh.script(replies);
+          const retryWithDiscoveryFailure = await post("/api/github/items/1433/refresh");
+          expect(retryWithDiscoveryFailure.github).toMatchObject({
+            stale: true,
+            complete: false,
+            errorCode: "server-error",
+          });
+          expectKnown(retryWithDiscoveryFailure, 1433);
+          return;
+        }
         if (scenario === "detail-first" || scenario === "discovery-first") {
           const detailFailure = async () => {
             await gh.script({

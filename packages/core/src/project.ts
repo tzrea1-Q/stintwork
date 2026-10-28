@@ -171,9 +171,9 @@ export function indexProject(
                   return {
                     ...ticket,
                     slug: `github-${ticket.number}`,
-                    status: meta.github?.stale || item.detail?.stale ? "unknown" : status,
-                    resolved: status === "resolved" && !meta.github?.stale && !item.detail?.stale,
-                    blocked: ticket.blocked || !!meta.github?.stale || !!item.detail?.stale,
+                    status: item.detail?.stale ? "unknown" : status,
+                    resolved: status === "resolved" && !item.detail?.stale,
+                    blocked: ticket.blocked || !!item.detail?.stale,
                     path,
                   };
                 }),
