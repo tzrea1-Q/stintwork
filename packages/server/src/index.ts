@@ -83,29 +83,28 @@ export function createProjectServer(
     data: GithubDiscovery,
     project: ReturnType<typeof readProjectFiles>,
   ) {
-    const worktreeNumbers = new Set(
-      data.items
-        .filter((item) => project.worktreePaths.has(`github-${item.number}`))
-        .map((item) => item.number),
-    );
-    const mainFiles = {
-      read: (path: string) => files.read(path),
-      list: (prefix: string) =>
-        files.list(prefix).filter((path) => {
-          const number = /\/([1-9]\d*)\/workflow\.yaml$/.exec(path)?.[1];
-          return !number || !worktreeNumbers.has(Number(number));
-        }),
-    };
-    data = validateGithubIdentities(mainFiles, data);
+    const worktreeFiles = new Map<number, ReturnType<typeof createNodeRepoFiles>>();
+    const overridden = new Set<string>();
     for (const item of data.items) {
       const worktree = project.worktreePaths.get(`github-${item.number}`);
       if (!worktree) continue;
-      const worktreeFiles = createNodeRepoFiles(worktree);
       const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
-      const exactFiles = {
-        read: (name: string) => worktreeFiles.read(name),
-        list: () => (worktreeFiles.read(path) === undefined ? [] : [path]),
-      };
+      const source = createNodeRepoFiles(worktree);
+      if (source.read(path) !== undefined) {
+        worktreeFiles.set(item.number, source);
+        overridden.add(path);
+      }
+    }
+    const mainFiles = {
+      read: (path: string) => files.read(path),
+      list: (prefix: string) => files.list(prefix).filter((path) => !overridden.has(path)),
+    };
+    data = validateGithubIdentities(mainFiles, data);
+    for (const item of data.items) {
+      const source = worktreeFiles.get(item.number);
+      if (!source) continue;
+      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+      const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
       const validated = validateGithubIdentities(exactFiles, { ...data, items: [item] });
       item.bound = validated.items[0].bound;
     }
@@ -240,11 +239,18 @@ export function createProjectServer(
         const earlier = knownIssues.get(item.number);
         if (earlier && earlier !== item.id) throw new GithubReadError("identity");
       }
+      const retained =
+        previous?.items.filter(
+          (item) => !item.provisional || (next.retryable && next.cursor === previous.cursor),
+        ) ?? [];
+      const mergedItems = [
+        ...new Map([...retained, ...next.items].map((item) => [item.id, item])).values(),
+      ].sort((a, b) => a.number - b.number);
       next =
         loadMore && previous
           ? {
               ...next,
-              items: [...previous.items, ...next.items].sort((a, b) => a.number - b.number),
+              items: mergedItems,
               scanned: previous.scanned + next.scanned,
               pages: [...previous.pages, ...next.pages],
               ...(previous.discardedPages || next.discardedPages
@@ -270,7 +276,7 @@ export function createProjectServer(
               complete:
                 !previous.membershipIncomplete &&
                 (!previous.error || previous.retryable === true) &&
-                previous.items.every((item) => item.complete) &&
+                retained.every((item) => item.complete) &&
                 next.complete,
             }
           : next;
@@ -282,14 +288,23 @@ export function createProjectServer(
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
         cached = { viewer, origin, data: github };
       } else if (
+        github.retryable &&
         cached &&
         cached.viewer === viewer &&
         cached.origin.toLowerCase() === origin.toLowerCase()
       ) {
         github = {
           ...cached.data,
+          items: [
+            ...new Map(
+              [...cached.data.items, ...github.items.filter((item) => item.provisional)].map(
+                (item) => [item.id, item],
+              ),
+            ).values(),
+          ].sort((a, b) => a.number - b.number),
           stale: true,
           complete: false,
+          warnings: github.warnings,
           error: github.error,
           errorCode: github.errorCode,
           retryable: true,

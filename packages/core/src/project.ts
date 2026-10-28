@@ -29,6 +29,7 @@ export type GithubDiscovery = {
     url: string;
     complete: boolean;
     bound?: boolean;
+    provisional?: boolean;
   }[];
   scanned: number;
   cursor: string | null;

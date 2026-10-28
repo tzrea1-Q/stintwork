@@ -534,8 +534,11 @@ test("marks a 1,000-label connection incomplete at the safety cap", async () => 
   });
   const { discoverGithubWorkItems } = await import("./github-discovery.js");
   const result = await discoverGithubWorkItems(root);
-  expect(result).toMatchObject({ complete: false, errorCode: "cap" });
-  expect(result.items).toHaveLength(0);
+  expect(result).toMatchObject({
+    complete: false,
+    errorCode: "cap",
+    items: [{ number: 1, complete: false }],
+  });
 });
 
 test("does not retry before a secondary limit's Retry-After", async () => {
@@ -854,6 +857,7 @@ test.each(["success", "failure", "identity"] as const)(
       title: "Third",
       url: "https://github.com/Example/Project/issues/3",
     };
+    third.labels.nodes = [];
     third.labels.pageInfo = { hasNextPage: true, endCursor: "labels-3" };
     second.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[1], third];
     second.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
@@ -887,7 +891,10 @@ test.each(["success", "failure", "identity"] as const)(
         data: {
           node: {
             id: "I_3",
-            labels: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+            labels: {
+              nodes: [{ name: "stintwork:work-item" }],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
           },
           rateLimit: { cost: 1, remaining: 4800, resetAt: "2026-10-28T00:00:00Z" },
         },
@@ -1101,9 +1108,296 @@ test("retry does not clear an earlier unresolved membership decision", async () 
       cursor: null,
       membershipIncomplete: true,
       errorCode: "incomplete",
-      items: [{ number: 2 }],
+      items: [{ number: 1, complete: false }, { number: 2 }],
     });
   } finally {
     await server.stop();
   }
+});
+
+test.each([
+  ["main conflict", "I_other", undefined, "identity", false],
+  ["main match", "I_1", undefined, undefined, true],
+  ["worktree wins", "I_other", "I_1", undefined, true],
+] as const)("identity fallback with %s", async (_case, mainId, worktreeId, errorCode, bound) => {
+  const { root, gh } = await project("https://github.com/Example/Project.git");
+  const { mkdir, readFile, writeFile } = await import("node:fs/promises");
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.invalid",
+      "commit",
+      "--allow-empty",
+      "--quiet",
+      "-m",
+      "init",
+    ],
+    { cwd: root },
+  );
+  const parent = `${root}-worktrees`;
+  directories.push(parent);
+  await mkdir(parent);
+  const worktree = join(parent, "github-1");
+  execFileSync("git", ["worktree", "add", "--quiet", "-b", "stintwork/github-1", worktree], {
+    cwd: root,
+  });
+  const path = ".stintwork/github/example/project/1/workflow.yaml";
+  const identity = (id: string) =>
+    `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: ${id}\n  number: 1\n`;
+  await mkdir(join(root, ".stintwork/github/example/project/1"), { recursive: true });
+  await writeFile(join(root, path), identity(mainId));
+  if (worktreeId) {
+    await mkdir(join(worktree, ".stintwork/github/example/project/1"), { recursive: true });
+    await writeFile(join(worktree, path), identity(worktreeId));
+  }
+  await mkdir(join(root, "web"));
+  await writeFile(join(root, "web/index.html"), "<!doctype html>");
+  await mkdir(join(root, "docs/agents"), { recursive: true });
+  await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  const fixture = JSON.parse(
+    await readFile(
+      new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  fixture.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[0]];
+  await gh.script({
+    "auth status": {},
+    "api user": { stdout: "101" },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_test",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": { stdout: fixture },
+  });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  try {
+    const snapshot = await (await server.app.request("/api/project")).json();
+    if (errorCode) expect(snapshot.github).toMatchObject({ errorCode, complete: false, items: [] });
+    else expect(snapshot.workItems).toMatchObject([{ github: { issueId: "I_1", bound } }]);
+  } finally {
+    await server.stop();
+  }
+});
+
+test.each([
+  ["labelled", true, false, true],
+  ["same-repo child", false, true, true],
+  ["child with failed labels", false, true, true],
+  ["unknown membership", false, false, false],
+  ["labelled cap", true, false, true],
+  ["labelled rate limit", true, false, true],
+] as const)(
+  "retains %s parent when child pagination is incomplete",
+  async (kind, labelled, child, retained) => {
+    const { root, gh } = await project("https://github.com/Example/Project.git");
+    const { readFile } = await import("node:fs/promises");
+    const fixture = JSON.parse(
+      await readFile(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const issue = fixture.data.repository.issues.nodes[0];
+    issue.labels.nodes = labelled ? [{ name: "stintwork:work-item" }] : [];
+    if (kind === "child with failed labels")
+      issue.labels.pageInfo = { hasNextPage: true, endCursor: "labels-next" };
+    issue.subIssues = {
+      totalCount: 1001,
+      nodes:
+        kind === "labelled cap"
+          ? Array.from({ length: 1000 }, () => ({
+              repository: { id: "R_other" },
+              subIssues: { totalCount: 0 },
+            }))
+          : child
+            ? [{ repository: { id: "R_test" }, subIssues: { totalCount: 0 } }]
+            : [],
+      pageInfo: { hasNextPage: true, endCursor: "children-next" },
+    };
+    fixture.data.repository.issues.nodes = [issue];
+    await gh.script({
+      "auth status": {},
+      "api repos/Example/Project": {
+        stdout: {
+          node_id: "R_test",
+          full_name: "Example/Project",
+          html_url: "https://github.com/Example/Project",
+        },
+      },
+      "api graphql": [
+        { stdout: fixture },
+        kind === "labelled rate limit"
+          ? {
+              stdout: {
+                data: {
+                  node: null,
+                  rateLimit: { cost: 1, remaining: 0, resetAt: "2020-01-01T00:00:00Z" },
+                },
+              },
+            }
+          : { code: 1 },
+      ],
+    });
+    const { discoverGithubWorkItems } = await import("./github-discovery.js");
+    const result = await discoverGithubWorkItems(root);
+    expect(result.complete).toBe(false);
+    expect(result.errorCode).toBe(
+      kind === "labelled cap"
+        ? "cap"
+        : kind === "labelled rate limit"
+          ? "rate-limited"
+          : "incomplete",
+    );
+    expect(result.warnings).toHaveLength(1);
+    if (retained) expect(result.items).toMatchObject([{ number: 1, complete: false }]);
+    else expect(result.items).toEqual([]);
+  },
+);
+
+test.each(["offline", "rate-limited"] as const)(
+  "cached load-more retains a known parent after %s relationship failure",
+  async (failure) => {
+    const { root, gh } = await project("https://github.com/Example/Project.git");
+    const { mkdir, readFile, writeFile } = await import("node:fs/promises");
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const fixture = JSON.parse(
+      await readFile(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const pages = Array.from({ length: 5 }, (_, i) => {
+      const page = structuredClone(fixture);
+      page.data.repository.issues.nodes = i ? [] : [fixture.data.repository.issues.nodes[0]];
+      page.data.repository.issues.pageInfo = { hasNextPage: true, endCursor: `page-${i}` };
+      return { stdout: page };
+    });
+    const repo = {
+      node_id: "R_test",
+      full_name: "Example/Project",
+      html_url: "https://github.com/Example/Project",
+    };
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": pages,
+    });
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"));
+    try {
+      const first = await (await server.app.request("/api/project")).json();
+      expect(first.github.cursor).toBe("page-4");
+      const last = structuredClone(fixture);
+      const issue = last.data.repository.issues.nodes[1];
+      issue.subIssues.pageInfo = { hasNextPage: true, endCursor: "children-2" };
+      last.data.repository.issues.nodes = [issue];
+      last.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+      const error =
+        failure === "offline"
+          ? { code: 1 }
+          : {
+              stdout: {
+                data: {
+                  node: null,
+                  rateLimit: { cost: 1, remaining: 0, resetAt: "2020-01-01T00:00:00Z" },
+                },
+              },
+            };
+      await gh.script({
+        "auth status": {},
+        "api user": { stdout: "101" },
+        "api repos/Example/Project": { stdout: repo },
+        "api graphql": [{ stdout: last }, error],
+      });
+      const partial = await (
+        await server.app.request("/api/github/discovery/load-more", { method: "POST" })
+      ).json();
+      expect(partial.github).toMatchObject({
+        complete: false,
+        items: [{ number: 1 }, { number: 2, complete: false }],
+      });
+      expect(partial.github.warnings.join(" ")).toContain("Issue #2");
+      if (failure === "rate-limited") {
+        issue.subIssues.pageInfo = { hasNextPage: false, endCursor: null };
+        await gh.script({
+          "auth status": {},
+          "api user": { stdout: "101" },
+          "api repos/Example/Project": { stdout: repo },
+          "api graphql": { stdout: last },
+        });
+        const retried = await (
+          await server.app.request("/api/github/discovery/load-more", { method: "POST" })
+        ).json();
+        expect(retried.github).toMatchObject({
+          complete: true,
+          scanned: 2,
+          items: [{ number: 1 }, { number: 2, complete: true }],
+        });
+        expect(retried.github.items).toHaveLength(2);
+      }
+    } finally {
+      await server.stop();
+    }
+  },
+);
+
+test("membership established on a later child page survives a subsequent page failure", async () => {
+  const { root, gh } = await project("https://github.com/Example/Project.git");
+  const { readFile } = await import("node:fs/promises");
+  const fixture = JSON.parse(
+    await readFile(
+      new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const issue = fixture.data.repository.issues.nodes[0];
+  issue.labels.nodes = [];
+  issue.subIssues = {
+    totalCount: 3,
+    nodes: [{ repository: { id: "R_other" }, subIssues: { totalCount: 0 } }],
+    pageInfo: { hasNextPage: true, endCursor: "children-1" },
+  };
+  fixture.data.repository.issues.nodes = [issue];
+  const relationship = {
+    data: {
+      node: {
+        id: issue.id,
+        subIssues: {
+          nodes: [{ repository: { id: "R_test" }, subIssues: { totalCount: 0 } }],
+          pageInfo: { hasNextPage: true, endCursor: "children-2" },
+        },
+      },
+      rateLimit: { cost: 1, remaining: 4800, resetAt: "2026-10-28T00:00:00Z" },
+    },
+  };
+  await gh.script({
+    "auth status": {},
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_test",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": [{ stdout: fixture }, { stdout: relationship }, { code: 1 }],
+  });
+  const { discoverGithubWorkItems } = await import("./github-discovery.js");
+  const result = await discoverGithubWorkItems(root);
+  expect(result).toMatchObject({
+    complete: false,
+    errorCode: "incomplete",
+    items: [{ number: 1, complete: false }],
+  });
 });

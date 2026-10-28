@@ -169,6 +169,7 @@ export type GithubDiscovery = {
     url: string;
     complete: boolean;
     bound?: boolean;
+    provisional?: boolean;
   }[];
   scanned: number;
   cursor: string | null;
@@ -267,7 +268,9 @@ export async function discoverGithubWorkItems(
     issue: Issue,
     field: "labels" | "subIssues",
     initial: Connection<T>,
+    observe?: (nodes: T[]) => void,
   ): Promise<T[]> {
+    if (Array.isArray(initial?.nodes)) observe?.(initial.nodes);
     if (!validConnection(initial))
       throw new Error(`Incomplete ${field} connection for issue #${issue.number}.`);
     const nodes = [...initial.nodes];
@@ -286,11 +289,13 @@ export async function discoverGithubWorkItems(
       )
         throw new Error(`Incomplete ${field} connection for issue #${issue.number}.`);
       nodes.push(...connection.nodes);
+      observe?.(connection.nodes);
       page = connection.pageInfo;
     }
     if (nodes.length >= 1000) throw new GithubReadError("cap");
     return nodes;
   }
+  let provisional: GithubDiscovery["items"][number] | undefined;
   let checkpoint = {
     scanned: result.scanned,
     items: result.items.length,
@@ -331,8 +336,20 @@ export async function discoverGithubWorkItems(
           !(issue.parent === null || typeof issue.parent?.id === "string")
         )
           throw new Error("GitHub issue identity is ambiguous.");
+        let membershipKnown =
+          Array.isArray(issue.subIssues?.nodes) &&
+          issue.subIssues.nodes.some((child) => child?.repository?.id === repository.repositoryId);
         try {
-          const labels = await more(issue, "labels", issue.labels);
+          const labels = await more(issue, "labels", issue.labels, (nodes) => {
+            if (
+              nodes.some(
+                (label) =>
+                  typeof label?.name === "string" &&
+                  label.name.toLowerCase() === "stintwork:work-item",
+              )
+            )
+              membershipKnown = true;
+          });
           if (labels.some((label) => !label || typeof label.name !== "string"))
             throw new Error("Invalid label connection.");
           const labelled = labels.some(
@@ -343,7 +360,10 @@ export async function discoverGithubWorkItems(
             if (labelled) result.warnings.push(`Issue #${issue.number}: labelled child excluded.`);
             continue;
           }
-          const children = await more(issue, "subIssues", issue.subIssues);
+          const children = await more(issue, "subIssues", issue.subIssues, (nodes) => {
+            if (nodes.some((child) => child?.repository?.id === repository.repositoryId))
+              membershipKnown = true;
+          });
           if (
             children.some(
               (child) =>
@@ -369,7 +389,18 @@ export async function discoverGithubWorkItems(
               complete: !cross && !nested,
             });
         } catch (error) {
-          if (error instanceof GithubReadError && error.code === "rate-limited") throw error;
+          if (error instanceof GithubReadError && error.code === "rate-limited") {
+            if (issue.parent === null && membershipKnown)
+              provisional = {
+                id: issue.id,
+                number: issue.number,
+                title: issue.title,
+                url: issue.url,
+                complete: false,
+                provisional: true,
+              };
+            throw error;
+          }
           const failure =
             error instanceof GithubReadError && error.code === "cap"
               ? error
@@ -379,6 +410,14 @@ export async function discoverGithubWorkItems(
           );
           result.error = failure.message;
           result.errorCode = failure.code;
+          if (issue.parent === null && membershipKnown)
+            result.items.push({
+              id: issue.id,
+              number: issue.number,
+              title: issue.title,
+              url: issue.url,
+              complete: false,
+            });
         }
       }
       next = page.pageInfo.endCursor;
@@ -396,6 +435,10 @@ export async function discoverGithubWorkItems(
     if (discarded.length) result.discardedPages = [...(result.discardedPages ?? []), ...discarded];
     result.items.length = checkpoint.items;
     result.warnings.length = checkpoint.warnings;
+    if (provisional) {
+      result.items.push(provisional);
+      result.warnings.push(`Issue #${provisional.number}: relationship unavailable or incomplete.`);
+    }
     result.scanned = checkpoint.scanned;
     result.cursor = checkpoint.cursor;
     result.membershipIncomplete = Boolean(checkpoint.error);
