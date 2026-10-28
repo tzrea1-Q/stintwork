@@ -305,7 +305,8 @@ test("reports the reset time and stops when the GraphQL rate budget is exhausted
   const result = await discoverGithubWorkItems(root);
   expect(result.complete).toBe(false);
   expect(result.error).toContain("2026-10-28T00:00:00Z");
-  expect(result.pages).toHaveLength(1);
+  expect(result.pages).toHaveLength(0);
+  expect(result.discardedPages).toMatchObject([{ cost: 102 }]);
 });
 
 test("a failed refresh keeps stale data only for the same authenticated account", async () => {
@@ -633,7 +634,8 @@ test("a GraphQL rate error retains page cost and reset information", async () =>
     complete: false,
     errorCode: "rate-limited",
     retryAt: "2026-10-28T00:00:00Z",
-    pages: [{ cost: 102 }],
+    pages: [],
+    discardedPages: [{ cost: 102 }],
   });
 });
 
@@ -824,4 +826,284 @@ test("issues connection accepts unrelated epics and does not query pull requests
   const query = call?.args.find((arg) => arg.startsWith("query="));
   expect(query).toMatch(/\bissues\s*\(/);
   expect(query).not.toMatch(/\bpullRequests\s*\(/);
+});
+
+test.each(["success", "failure", "identity"] as const)(
+  "an interrupted issue page can be retried without replaying committed work: %s",
+  async (outcome) => {
+    const { root, gh } = await project("https://github.com/Example/Project.git");
+    const { mkdir, readFile, writeFile } = await import("node:fs/promises");
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const fixture = JSON.parse(
+      await readFile(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const first = structuredClone(fixture);
+    first.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[0]];
+    first.data.repository.issues.pageInfo = { hasNextPage: true, endCursor: "page-1" };
+    const second = structuredClone(fixture);
+    const third = {
+      ...structuredClone(fixture.data.repository.issues.nodes[1]),
+      id: "I_3",
+      number: 3,
+      title: "Third",
+      url: "https://github.com/Example/Project/issues/3",
+    };
+    third.labels.pageInfo = { hasNextPage: true, endCursor: "labels-3" };
+    second.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[1], third];
+    second.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+    const rate = {
+      data: { node: null, rateLimit: { cost: 1, remaining: 0, resetAt: "2020-01-01T00:00:00Z" } },
+    };
+    const repo = {
+      node_id: "R_test",
+      full_name: "Example/Project",
+      html_url: "https://github.com/Example/Project",
+    };
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": [{ stdout: first }, { stdout: second }, { stdout: rate }],
+    });
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"));
+    try {
+      const initial = await (await server.app.request("/api/project")).json();
+      expect(initial.github).toMatchObject({
+        cursor: "page-1",
+        scanned: 1,
+        complete: false,
+        errorCode: "rate-limited",
+        items: [{ number: 1 }],
+        pages: [{ cost: 102 }],
+      });
+      const label = {
+        data: {
+          node: {
+            id: "I_3",
+            labels: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+          },
+          rateLimit: { cost: 1, remaining: 4800, resetAt: "2026-10-28T00:00:00Z" },
+        },
+      };
+      if (outcome === "identity")
+        second.data.repository.issues.nodes[0] = {
+          ...first.data.repository.issues.nodes[0],
+          id: "I_changed",
+        };
+      await gh.script({
+        "auth status": {},
+        "api user": { stdout: "101" },
+        "api repos/Example/Project": { stdout: repo },
+        "api graphql":
+          outcome !== "failure"
+            ? [{ stdout: second }, { stdout: label }]
+            : { code: 1, effect: "process.stderr.write('network is unreachable')" },
+      });
+      const retried = await (
+        await server.app.request("/api/github/discovery/load-more", { method: "POST" })
+      ).json();
+      if (outcome === "success") {
+        expect(retried.github).toMatchObject({
+          scanned: 3,
+          cursor: null,
+          complete: true,
+          items: [{ number: 1 }, { number: 2 }, { number: 3 }],
+          pages: [{ cost: 102 }, { cost: 102 }, { cost: 1 }],
+        });
+        expect(retried.github.error).toBeUndefined();
+      } else if (outcome === "identity") {
+        expect(retried.github).toMatchObject({ complete: false, errorCode: "identity", items: [] });
+      } else {
+        expect(retried.github).toMatchObject({
+          scanned: 1,
+          cursor: "page-1",
+          complete: false,
+          errorCode: "offline",
+          items: [{ number: 1 }],
+          pages: [{ cost: 102 }],
+        });
+      }
+    } finally {
+      await server.stop();
+    }
+  },
+);
+
+test("a failed load-more from a cached batch retries from its checkpoint and clears the error", async () => {
+  const { root, gh } = await project("https://github.com/Example/Project.git");
+  const { mkdir, readFile, writeFile } = await import("node:fs/promises");
+  await mkdir(join(root, "web"));
+  await writeFile(join(root, "web/index.html"), "<!doctype html>");
+  await mkdir(join(root, "docs/agents"), { recursive: true });
+  await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  const fixture = JSON.parse(
+    await readFile(
+      new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const pages = Array.from({ length: 5 }, (_, i) => {
+    const page = structuredClone(fixture);
+    page.data.repository.issues.nodes = i === 0 ? [fixture.data.repository.issues.nodes[0]] : [];
+    page.data.repository.issues.pageInfo = { hasNextPage: true, endCursor: `cursor-${i}` };
+    return { stdout: page };
+  });
+  const repo = {
+    node_id: "R_test",
+    full_name: "Example/Project",
+    html_url: "https://github.com/Example/Project",
+  };
+  await gh.script({
+    "auth status": {},
+    "api user": { stdout: "101" },
+    "api repos/Example/Project": { stdout: repo },
+    "api graphql": pages,
+  });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  try {
+    const initial = await (await server.app.request("/api/project")).json();
+    expect(initial.github).toMatchObject({ cursor: "cursor-4", scanned: 1 });
+    expect(initial.github.error).toBeUndefined();
+    const last = structuredClone(fixture);
+    last.data.repository.issues.nodes = [
+      fixture.data.repository.issues.nodes[1],
+      {
+        ...fixture.data.repository.issues.nodes[1],
+        id: "I_3",
+        number: 3,
+        url: "https://github.com/Example/Project/issues/3",
+        labels: { nodes: [], pageInfo: { hasNextPage: true, endCursor: "labels-3" } },
+      },
+    ];
+    last.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+    const rate = {
+      data: { node: null, rateLimit: { cost: 1, remaining: 0, resetAt: "2020-01-01T00:00:00Z" } },
+    };
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": [{ stdout: last }, { stdout: rate }],
+    });
+    const failed = await (
+      await server.app.request("/api/github/discovery/load-more", { method: "POST" })
+    ).json();
+    expect(failed.github).toMatchObject({
+      scanned: 1,
+      cursor: "cursor-4",
+      stale: true,
+      errorCode: "rate-limited",
+      items: [{ number: 1 }],
+      discardedPages: [{ cost: 102 }, { cost: 1 }],
+    });
+    const labels = {
+      data: {
+        node: {
+          id: "I_3",
+          labels: {
+            nodes: [{ name: "stintwork:work-item" }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+        rateLimit: { cost: 1, remaining: 4700, resetAt: "2026-10-28T00:00:00Z" },
+      },
+    };
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": [{ stdout: last }, { stdout: labels }],
+    });
+    const retried = await (
+      await server.app.request("/api/github/discovery/load-more", { method: "POST" })
+    ).json();
+    expect(retried.github).toMatchObject({
+      scanned: 3,
+      cursor: null,
+      complete: true,
+      stale: false,
+      items: [{ number: 1 }, { number: 2 }, { number: 3 }],
+      discardedPages: [{ cost: 102 }, { cost: 1 }],
+    });
+    expect(retried.github.error).toBeUndefined();
+    expect(retried.github.pages).toHaveLength(7);
+  } finally {
+    await server.stop();
+  }
+});
+
+test("retry does not clear an earlier unresolved membership decision", async () => {
+  const { root, gh } = await project("https://github.com/Example/Project.git");
+  const { mkdir, readFile, writeFile } = await import("node:fs/promises");
+  await mkdir(join(root, "web"));
+  await writeFile(join(root, "web/index.html"), "<!doctype html>");
+  await mkdir(join(root, "docs/agents"), { recursive: true });
+  await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  const fixture = JSON.parse(
+    await readFile(
+      new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const first = structuredClone(fixture);
+  first.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[0]];
+  first.data.repository.issues.nodes[0].labels.pageInfo = {
+    hasNextPage: true,
+    endCursor: "labels-1",
+  };
+  first.data.repository.issues.pageInfo = { hasNextPage: true, endCursor: "page-1" };
+  const second = structuredClone(fixture);
+  second.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[1]];
+  second.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+  const repo = {
+    node_id: "R_test",
+    full_name: "Example/Project",
+    html_url: "https://github.com/Example/Project",
+  };
+  await gh.script({
+    "auth status": {},
+    "api user": { stdout: "101" },
+    "api repos/Example/Project": { stdout: repo },
+    "api graphql": [
+      { stdout: first },
+      { code: 1 },
+      { code: 1, effect: "process.stderr.write('network is unreachable')" },
+    ],
+  });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  try {
+    const initial = await (await server.app.request("/api/project")).json();
+    expect(initial.github).toMatchObject({
+      cursor: "page-1",
+      membershipIncomplete: true,
+      errorCode: "offline",
+    });
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": { stdout: second },
+    });
+    const retried = await (
+      await server.app.request("/api/github/discovery/load-more", { method: "POST" })
+    ).json();
+    expect(retried.github).toMatchObject({
+      complete: false,
+      cursor: null,
+      membershipIncomplete: true,
+      errorCode: "incomplete",
+      items: [{ number: 2 }],
+    });
+  } finally {
+    await server.stop();
+  }
 });

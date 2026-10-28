@@ -247,9 +247,31 @@ export function createProjectServer(
               items: [...previous.items, ...next.items].sort((a, b) => a.number - b.number),
               scanned: previous.scanned + next.scanned,
               pages: [...previous.pages, ...next.pages],
+              ...(previous.discardedPages || next.discardedPages
+                ? {
+                    discardedPages: [
+                      ...(previous.discardedPages ?? []),
+                      ...(next.discardedPages ?? []),
+                    ],
+                  }
+                : {}),
               warnings: [...previous.warnings, ...next.warnings],
+              ...(previous.membershipIncomplete || (previous.error && !previous.retryable)
+                ? { membershipIncomplete: true }
+                : {}),
+              ...((previous.membershipIncomplete || (previous.error && !previous.retryable)) &&
+              !next.error
+                ? {
+                    error: "Results are incomplete; dependencies and approvals may be unknown.",
+                    errorCode: "incomplete" as const,
+                    membershipIncomplete: true,
+                  }
+                : {}),
               complete:
-                !previous.error && previous.items.every((item) => item.complete) && next.complete,
+                !previous.membershipIncomplete &&
+                (!previous.error || previous.retryable === true) &&
+                previous.items.every((item) => item.complete) &&
+                next.complete,
             }
           : next;
       next = bindGithubIdentities(next, readProjectFiles());
@@ -270,6 +292,11 @@ export function createProjectServer(
           complete: false,
           error: github.error,
           errorCode: github.errorCode,
+          retryable: true,
+          discardedPages: [
+            ...(github.discardedPages ?? []),
+            ...github.pages.slice(cached.data.pages.length),
+          ],
           ...(github.retryAt ? { retryAt: github.retryAt } : {}),
         };
       }
@@ -287,6 +314,7 @@ export function createProjectServer(
           complete: false,
           error: failure.message,
           errorCode: failure.code,
+          ...(failure.code !== "identity" ? { retryable: true } : {}),
           ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
         };
       } else

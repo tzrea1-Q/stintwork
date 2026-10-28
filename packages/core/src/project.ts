@@ -34,6 +34,9 @@ export type GithubDiscovery = {
   cursor: string | null;
   complete: boolean;
   pages: { cost: number; remaining: number; resetAt: string }[];
+  discardedPages?: { cost: number; remaining: number; resetAt: string }[];
+  retryable?: boolean;
+  membershipIncomplete?: boolean;
   warnings: string[];
   error?: string;
   errorCode?: string;

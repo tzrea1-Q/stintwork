@@ -174,6 +174,9 @@ export type GithubDiscovery = {
   cursor: string | null;
   complete: boolean;
   pages: Page[];
+  discardedPages?: Page[];
+  retryable?: boolean;
+  membershipIncomplete?: boolean;
   warnings: string[];
   error?: string;
   errorCode?: GithubErrorCode;
@@ -288,10 +291,26 @@ export async function discoverGithubWorkItems(
     if (nodes.length >= 1000) throw new GithubReadError("cap");
     return nodes;
   }
+  let checkpoint = {
+    scanned: result.scanned,
+    items: result.items.length,
+    pages: result.pages.length,
+    warnings: result.warnings.length,
+    error: result.error,
+    cursor: result.cursor,
+  };
   try {
     let next: string | null = cursor;
     const issueCursors = new Set<string>();
     for (let pageNumber = 0; pageNumber < 5; pageNumber++) {
+      checkpoint = {
+        scanned: result.scanned,
+        items: result.items.length,
+        pages: result.pages.length,
+        warnings: result.warnings.length,
+        error: result.error,
+        cursor: result.cursor,
+      };
       const data = await query(issuesQuery, { owner, repo, cursor: next });
       if (
         data.repository?.id !== repository.repositoryId ||
@@ -372,6 +391,15 @@ export async function discoverGithubWorkItems(
       issueCursors.add(next);
     }
   } catch (error) {
+    // Only complete issue pages advance the cursor; retain aborted request costs separately.
+    const discarded = result.pages.splice(checkpoint.pages);
+    if (discarded.length) result.discardedPages = [...(result.discardedPages ?? []), ...discarded];
+    result.items.length = checkpoint.items;
+    result.warnings.length = checkpoint.warnings;
+    result.scanned = checkpoint.scanned;
+    result.cursor = checkpoint.cursor;
+    result.membershipIncomplete = Boolean(checkpoint.error);
+    result.retryable = true;
     const failure = classifyGithubError(error);
     result.error = failure.message;
     result.errorCode = failure.code;
