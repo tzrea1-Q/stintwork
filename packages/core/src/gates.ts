@@ -8,7 +8,12 @@ import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./work
 import { reviewGateConditions } from "./review-evidence.js";
 import { outputGateConditions, type GateCondition } from "./gate-output.js";
 
-export type GateRecord = { by: string; at: string; commit: string };
+export type GateRecord = {
+  by: string;
+  at: string;
+  commit: string;
+  remote?: { version: 1; parentId: string; digest: string };
+};
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
 
 export function gateReadiness(
