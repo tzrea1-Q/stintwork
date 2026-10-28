@@ -160,6 +160,7 @@ export function compileBrief({
       ].join("\n"),
       [
         "Working instructions:",
+        "- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
         `- Work in the work item worktree on branch stintwork/${workItem.slug}.`,
         ...(stage.gate === "spec"
           ? [
@@ -175,15 +176,23 @@ export function compileBrief({
               "- Do not write the spec or tickets; later stages do.",
             ]
           : []),
-        ...(github.ticket
+        ...(github.ticket && stage.column === "implement"
           ? [
               `- Finish only selected ticket #${github.ticket.number}.`,
+              "- Keep the project checks green.",
               `- Commit referencing the issue (#${github.ticket.number}); do not push.`,
             ]
-          : ["- Do not push."]),
+          : [
+              `- Work on the ${stage.name} stage${github.ticket ? ` for ticket #${github.ticket.number}` : ""} only.`,
+              "- Keep the project checks green.",
+              "- Leave stage gate approval to the developer.",
+              "- Do not push.",
+            ]),
         "- Update issue status and comments through the configured tracker skill and gh; Stintwork does not write issues.",
         "- Record only checks actually run, with their results.",
-        "- Leave gate approval to the developer.",
+        ...(github.ticket && stage.column === "implement"
+          ? ["- Leave gate approval to the developer."]
+          : []),
       ].join("\n"),
     ]
       .map(safe)

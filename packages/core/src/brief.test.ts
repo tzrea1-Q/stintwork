@@ -112,6 +112,12 @@ test("GitHub ticket brief uses issue identities and read-only explicit-repositor
   };
   const brief = compileBrief({ ...input(), workItem: { slug: "github-7", spec: null }, github });
   expect(brief.prompt.startsWith(`/implement ${github.ticket.url}\n`)).toBe(true);
+  expect(brief.prompt).toContain(
+    "Working instructions:\n- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
+  );
+  expect(brief.prompt).toContain("- Keep the project checks green.");
+  expect(brief.prompt).toContain("- Finish only selected ticket #8.");
+  expect(brief.prompt).toContain("- Commit referencing the issue (#8); do not push.");
   for (const expected of [
     "github.com/owner/repo",
     "R_1",
@@ -150,8 +156,27 @@ test("GitHub review and planning briefs respect stage ownership", () => {
   );
   expect(review).not.toContain(`/code-review ${github.parent.url}`);
 
+  const ticketReview = compileBrief({
+    ...base,
+    stage: builtInWorkflows.feature.stages[4],
+    github: {
+      ...github,
+      ticket: { number: 8, url: "https://github.com/owner/repo/issues/8", id: "I_8" },
+    },
+  }).prompt;
+  expect(ticketReview).not.toContain("Finish only");
+  expect(ticketReview).not.toContain("Commit referencing");
+  expect(ticketReview).toContain("Do not implement fixes or change project files.");
+  expect(ticketReview).toContain("- Work on the Review stage for ticket #8 only.");
+  expect(ticketReview).toContain("- Leave stage gate approval to the developer.");
+  expect(ticketReview).toContain("- Do not push.");
+
   for (const stage of [builtInWorkflows.feature.stages[0], builtInWorkflows.bug.stages[0]]) {
     const prompt = compileBrief({ ...base, stage }).prompt;
+    expect(prompt).toContain(
+      "Working instructions:\n- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
+    );
+    expect(prompt).toContain("- Keep the project checks green.");
     expect(prompt.toLowerCase()).not.toContain("publish");
     expect(prompt).toContain(
       "Settle open questions; record agreed terms in GLOSSARY.md and decisions in docs/adr/.",
