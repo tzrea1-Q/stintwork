@@ -109,6 +109,7 @@ for (const language of ["en", "zh-CN"] as const) {
             reviewDigest: "digest",
             reviewHead: "head",
           };
+          snapshot.workItems[0].stages = { clarify: { approved: { remoteState: "current" } } };
           await page.route("**/api/github/items/1/gates/approve", async (route) => {
             expect(route.request().postDataJSON()).toEqual({
               stage: "spec",

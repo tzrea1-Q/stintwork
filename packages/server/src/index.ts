@@ -42,7 +42,7 @@ import {
 } from "./github-discovery.js";
 import { readGithubTickets } from "./github-tickets.js";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
-import { addGithubGateRoutes } from "./github-gates.js";
+import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -136,10 +136,7 @@ export function createProjectServer(
     data = validateGithubIdentities(mainFiles, data);
     for (const item of data.items) {
       const source = worktreeFiles.get(item.number);
-      if (!source) {
-        if (project.worktreePaths.has(`github-${item.number}`)) item.bound = false;
-        continue;
-      }
+      if (!source) continue;
       const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
       const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
       try {
@@ -664,6 +661,12 @@ export function createProjectServer(
     readProjectFiles,
     refresh,
     stopStints.isActive,
+    async (expected) => {
+      const source = githubSource;
+      if (!source || github !== expected) return false;
+      const valid = await verifyGithubGateIdentity(root, expected, source);
+      return valid && github === expected && githubSource === source;
+    },
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);

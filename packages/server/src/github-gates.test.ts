@@ -8,7 +8,11 @@ import { Hono } from "hono";
 import { afterEach, expect, test } from "vitest";
 import { parse } from "yaml";
 import { fakeGh, type GhReply } from "../test/fake-gh.js";
-import { addGithubGateRoutes, requireCurrentGithubApproval } from "./github-gates.js";
+import {
+  addGithubGateRoutes,
+  requireCurrentGithubApproval,
+  verifyGithubGateIdentity,
+} from "./github-gates.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
@@ -51,10 +55,20 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
   execFileSync("git", ["init", "-q", root]);
   git("config", "user.name", "Test");
   git("config", "user.email", "test@example.com");
+  git("remote", "add", "origin", "https://github.com/Example/Project.git");
   git("commit", "--allow-empty", "-qm", "initial");
   const gh = await fakeGh(join(root, "bin"));
   process.env.PATH = gh.path;
   await gh.script({
+    "auth status": {},
+    "api user": { stdout: "101" },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_1",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
     [issue]: { stdout: parent },
     [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [] },
     [`${issue}/comments?per_page=100&page=1`]: { stdout: [] },
@@ -65,6 +79,54 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
     createMemoryRepoFiles({ "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n" }),
     { name: "test" },
   );
+  const stage = initialStage ?? "clarify";
+  const workItem = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/github-1/spec.md": "# Spec",
+      ".scratch/github-1/issues/01-first.md": "# Ticket\nStatus: resolved\nBlocked by: none",
+    }),
+    { name: "test" },
+  ).workItems[0];
+  workItem.stage = stage;
+  workItem.github = {
+    repository: discovery.repository,
+    repositoryId: discovery.repositoryId,
+    issueId: "I_1",
+    number: 1,
+    url: parent.html_url,
+    complete: true,
+    reviewDigest: "digest",
+    reviewHead: "head",
+  };
+  workItem.stages = Object.fromEntries(
+    snapshot.workflows.feature.stages
+      .slice(
+        0,
+        snapshot.workflows.feature.stages.findIndex((entry) => entry.id === stage),
+      )
+      .map(({ id }) => [id, { approved: { remoteState: "current" } }]),
+  );
+  workItem.stints = [
+    {
+      id: "finished",
+      workItem: "github-1",
+      stage,
+      ticket: null,
+      agent: "codex",
+      status: "finished",
+      startedAt: "2099-01-01T00:00:00Z",
+      endedAt: "2099-01-01T00:01:00Z",
+      checkpointCommit: "checkpoint",
+      handoff: {
+        stint: "finished",
+        agent: "codex",
+        stoppedAt: "Done",
+        unresolved: "None",
+        nextStep: "Approve",
+      },
+    },
+  ];
+  snapshot.workItems = [workItem];
   addGithubGateRoutes(
     app,
     root,
@@ -73,6 +135,8 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
     createProjectFiles(root, createNodeRepoFiles(root)),
     () => {},
     () => false,
+    (expected) =>
+      verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
   );
   if (initialStage) {
     const digest = await githubEvidenceDigest(
@@ -108,6 +172,40 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
   return { git, request, reviewedHead, reviewedDigest, root, snapshot };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
+
+test("refuses a direct approval when readiness is unmet without committing", async () => {
+  const { snapshot, request, git } = await setup();
+  snapshot.workItems[0].stints = [];
+  expect((await request()).status).toBe(409);
+  expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test.each([
+  ["viewer changed", { "api user": { stdout: "202" } }],
+  [
+    "repository changed",
+    {
+      "api repos/Example/Project": {
+        stdout: {
+          node_id: "R_other",
+          full_name: "Example/Project",
+          html_url: "https://github.com/Example/Project",
+        },
+      },
+    },
+  ],
+] as const)("refuses %s before approve or reopen", async (_case, replies) => {
+  const { request, git, reviewedHead, reviewedDigest } = await setup(replies, "spec");
+  for (const action of ["approve", "reopen"] as const) {
+    const response = await request(
+      { stage: action === "approve" ? "spec" : "clarify", reviewedHead, reviewedDigest },
+      action,
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("identity");
+  }
+  expect(git("rev-list", "--count", "HEAD")).toBe("2");
+});
 
 test("reopens an earlier GitHub gate and retains its approval", async () => {
   const { git, request, reviewedHead } = await setup({}, "tickets");

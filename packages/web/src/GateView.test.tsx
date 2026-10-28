@@ -393,6 +393,30 @@ test.each([
 });
 
 for (const language of ["en", "zh-CN"] as const) {
+  test(`${language} GitHub Spec gate enables approval with current prior evidence`, () => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = project("spec").workItems[0];
+    item.stints = [{ ...stint, stage: "spec", ticket: null }];
+    item.stages = { clarify: { approved: { remoteState: "current" } } };
+    item.github = {
+      repository: "Example/Project",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://github.com/Example/Project/issues/1",
+      complete: true,
+      reviewDigest: "digest",
+      reviewHead: "head",
+    };
+    render(
+      <LanguageProvider>
+        <GateView item={item} />
+      </LanguageProvider>,
+    );
+    expect(
+      screen.getByRole("button", { name: language === "en" ? "Approve Spec" : "批准规格说明" }),
+    ).toBeEnabled();
+  });
   test.each(["current", "stale", "unknown"] as const)(
     `${language} GitHub approval sends reviewed evidence and shows %s`,
     async (state) => {

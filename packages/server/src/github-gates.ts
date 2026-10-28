@@ -15,10 +15,25 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { parseDocument } from "yaml";
-import type { GithubDiscovery } from "./github-discovery.js";
+import { githubTrackerRepository, githubViewer, type GithubDiscovery } from "./github-discovery.js";
 import { readGithubTickets } from "./github-tickets.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
+
+export async function verifyGithubGateIdentity(
+  root: string,
+  expected: GithubDiscovery,
+  source: { viewer: string; origin: string },
+) {
+  const viewer = await githubViewer(root);
+  const repository = await githubTrackerRepository(root);
+  return (
+    viewer === source.viewer &&
+    repository.repository.toLowerCase() === source.origin.toLowerCase() &&
+    repository.repository.toLowerCase() === expected.repository.toLowerCase() &&
+    repository.repositoryId === expected.repositoryId
+  );
+}
 
 export async function requireCurrentGithubApproval(
   directory: string,
@@ -80,6 +95,7 @@ export function addGithubGateRoutes(
   readProjectFiles: ProjectFilesReader,
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
+  verifyIdentity: (github: GithubDiscovery) => Promise<boolean>,
 ) {
   const writing = new Set<string>();
   for (const action of ["approve", "reopen"] as const)
@@ -129,6 +145,7 @@ export function addGithubGateRoutes(
         return context.json(
           coreTextWire({
             reason: "GitHub identity is ambiguous. Developer resolution is required.",
+            code: "identity",
           }),
           409,
         );
@@ -157,6 +174,20 @@ export function addGithubGateRoutes(
           409,
         );
       try {
+        let identityValid = false;
+        try {
+          identityValid = await verifyIdentity(github);
+        } catch {
+          // An unverified identity cannot authorize a write.
+        }
+        if (!identityValid)
+          return context.json(
+            coreTextWire({
+              reason: "GitHub identity is ambiguous. Developer resolution is required.",
+              code: "identity",
+            }),
+            409,
+          );
         const project = readProjectFiles();
         const worktree = project.worktreePaths.get(slug);
         if (
@@ -166,6 +197,7 @@ export function addGithubGateRoutes(
           return context.json(
             coreTextWire({
               reason: "GitHub identity is ambiguous. Developer resolution is required.",
+              code: "identity",
             }),
             409,
           );
@@ -206,10 +238,10 @@ export function addGithubGateRoutes(
             : position >= currentPosition || !records[stage.id]?.approved)
         )
           return refuse("gate.notCurrentStage");
-        if (action === "approve" && records[stage.id]?.reopened) {
+        if (action === "approve") {
           const snapshot = getSnapshot();
           const workItem = snapshot.workItems.find((entry) => entry.slug === slug);
-          if (!workItem || !gateReadiness(workItem, workflows).ready)
+          if (!workItem || workItem.stage !== stage.id || !gateReadiness(workItem, workflows).ready)
             return refuse("gate.notCurrentStage");
         }
         const labels = new Map(
