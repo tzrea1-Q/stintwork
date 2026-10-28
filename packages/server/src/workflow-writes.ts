@@ -17,6 +17,8 @@ export async function saveGithubWorkflow(
   item: GithubDiscovery["items"][number],
   workflow: string,
   stage: string,
+  update?: (text: string) => string,
+  message?: string,
 ) {
   const relative = `.stintwork/github/${discovery.repository.toLowerCase()}/${item.number}/workflow.yaml`;
   if (
@@ -52,32 +54,42 @@ export async function saveGithubWorkflow(
         items: [item],
       });
     };
-    if (stat) {
-      validate(readFileSync(path, "utf8"));
-      return null;
-    }
-    const text = stringify({
-      workflow,
-      stage,
-      github: {
-        host: "github.com",
-        repositoryId: discovery.repositoryId,
-        repository: discovery.repository,
-        issueId: item.id,
-        number: item.number,
-        url: item.url,
-      },
-    });
+    const existing = stat ? readFileSync(path, "utf8") : undefined;
+    if (existing !== undefined) validate(existing);
+    const initial =
+      existing ??
+      stringify({
+        workflow,
+        stage,
+        github: {
+          host: "github.com",
+          repositoryId: discovery.repositoryId,
+          repository: discovery.repository,
+          issueId: item.id,
+          number: item.number,
+          url: item.url,
+        },
+      });
+    const text = update ? update(initial) : initial;
     validate(text);
-    if (indexEntry) throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
-    writeFileSync(path, text, { flag: "wx" });
+    if (text === existing) return null;
+    if (!stat && indexEntry) throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
+    writeFileSync(path, text, { flag: stat ? "w" : "wx" });
     try {
-      const commit = await commitStintworkSetup(root, `github-${item.number}`, [relative]);
+      const commit = await commitStintworkSetup(root, `github-${item.number}`, [relative], message);
       if (!commit) throw new CoreTextError({ code: "workflow.commitIgnored" });
       return commit;
     } catch (error) {
-      if (readFileSync(path, "utf8") === text) rmSync(path);
-      execFileSync("git", ["update-index", "--force-remove", "--", relative], { cwd: root });
+      if (readFileSync(path, "utf8") === text) {
+        if (existing === undefined) rmSync(path);
+        else writeFileSync(path, existing);
+      }
+      if (indexEntry) {
+        const [mode, hash] = indexEntry.split(" ");
+        execFileSync("git", ["update-index", "--cacheinfo", `${mode},${hash},${relative}`], {
+          cwd: root,
+        });
+      } else execFileSync("git", ["update-index", "--force-remove", "--", relative], { cwd: root });
       throw error;
     }
   });

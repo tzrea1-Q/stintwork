@@ -59,6 +59,35 @@ test("creates and commits an identity that can be revalidated", async () => {
   expect(validateGithubIdentities(createNodeRepoFiles(root), discovery).items[0].bound).toBe(true);
 });
 
+test("creates the identity and approval in one commit, and rolls back a failed update", async () => {
+  const root = repo();
+  const path = ".stintwork/github/example/project/1/workflow.yaml";
+  const approval = (text: string) =>
+    `${text}stages:\n  spec:\n    approved:\n      by: Developer\n`;
+  await saveGithubWorkflow(root, discovery, item, "feature", "spec", approval, "Approve spec");
+  const initial = readFileSync(join(root, path), "utf8");
+  expect(initial).toContain("approved:");
+  expect(
+    execFileSync("git", ["-C", root, "rev-list", "--count", "HEAD"], { encoding: "utf8" }).trim(),
+  ).toBe("2");
+  writeFileSync(join(root, ".git/hooks/pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+  await expect(
+    saveGithubWorkflow(
+      root,
+      discovery,
+      item,
+      "feature",
+      "spec",
+      (text) => `${text}extra: true\n`,
+      "Update",
+    ),
+  ).rejects.toThrow();
+  expect(readFileSync(join(root, path), "utf8")).toBe(initial);
+  expect(
+    execFileSync("git", ["-C", root, "diff", "--cached", "--name-only"], { encoding: "utf8" }),
+  ).toBe("");
+});
+
 test("refuses unsafe paths and identity changes", async () => {
   const root = repo();
   for (const repository of ["../repo", "-bad/repo", "owner/..", "owner/x/y"]) {

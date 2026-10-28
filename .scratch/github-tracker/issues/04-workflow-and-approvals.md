@@ -19,6 +19,10 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Comments
 
+**Codex, 2026-10-28:** Started stage 2 with a test-first extension of the guarded writer: a new identity and supplied update can be committed together, and a failed update restores the prior file and index entry. The gate route, reviewed evidence and HEAD checks, post-commit revalidation, snapshot approval states and UI remain unimplemented. No acceptance criterion is newly complete; this is not an approvable GitHub gate yet.
+
+Checks in an isolated copy: format:check, lint and typecheck passed; web/core/git 1,685 tests and the changed server file's 6 tests passed. Lint reported the existing Biome deprecation. No network, sockets or full server suite were used.
+
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
 
 **Codex, 2026-10-28:** Started a test-first evidence serialization slice. Version 1 canonical JSON and SHA-256 helpers have focused tests, but are not connected to the GitHub gate or workflow record. Identity creation, worktree writes, approval/reopen revalidation, invalidation, concurrency and UI behavior remain unimplemented; no acceptance criterion is complete. The coordinator must not treat these helpers as approval evidence until the remaining boundary and fail-closed validation are implemented and tested.
