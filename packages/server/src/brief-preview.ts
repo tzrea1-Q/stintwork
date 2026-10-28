@@ -26,7 +26,7 @@ import { changedSince, workItemDiff } from "@stintwork/git";
 import { readGithubTickets } from "./github-tickets.js";
 import { GithubReadError, type GithubDiscovery } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
-import { resolveGithubWorkflow } from "./github-snapshot.js";
+import { projectGithubGates, resolveGithubWorkflow } from "./github-snapshot.js";
 import { githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export type GithubBriefSource = {
@@ -111,6 +111,8 @@ export async function prepareStintBrief(
       githubSource.detailFailed(github, remote.number, error);
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     }
+    if (!remote.complete || !github.complete || github.stale || github.errorCode)
+      return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     let valid = false;
     try {
       valid = await githubSource.verifyIdentity(github);
@@ -170,6 +172,7 @@ export async function prepareStintBrief(
       status: 409 as const,
     };
   if (remote && github && githubSource) {
+    projectGithubGates(snapshot, root, project);
     const stages = snapshot.workflows[workItem.workflow].stages;
     const position = stages.findIndex((stage) => stage.id === workItem.stage);
     const labels = new Map(
@@ -204,6 +207,14 @@ export async function prepareStintBrief(
           }),
           status: 409 as const,
         };
+      const projected = workItem.stages[prior.id]?.approved;
+      if (
+        !projected ||
+        typeof projected !== "object" ||
+        !("remoteState" in projected) ||
+        projected.remoteState !== "current"
+      )
+        return { reason: coreText({ code: "gate.evidenceChanged" }), status: 409 as const };
     }
   }
   if (workItem.activeStint)

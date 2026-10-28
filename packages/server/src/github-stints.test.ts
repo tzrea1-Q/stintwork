@@ -15,7 +15,7 @@ import { createProjectFiles } from "./work-item-files.js";
 import { githubSnapshotFiles } from "./github-snapshot.js";
 import { validateGithubIdentities, type GithubDiscovery } from "./github-discovery.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
-import { stringify } from "yaml";
+import { parse, stringify } from "yaml";
 
 const roots: string[] = [];
 const oldPath = process.env.PATH;
@@ -99,6 +99,9 @@ async function setup(
           url: parent.html_url,
         },
         stages: {
+          clarify: {
+            approved: { at: "2026-01-01", remote: { version: 1, parentId: "I_1", digest: spec } },
+          },
           spec: {
             approved: { at: "2026-01-01", remote: { version: 1, parentId: "I_1", digest: spec } },
           },
@@ -242,6 +245,27 @@ test("preview refreshes GitHub detail without writing a record or worktree", asy
   expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
 });
 
+test.each(["item", "snapshot", "stale", "error"])(
+  "incomplete or stale discovery (%s) refuses preview and start after successful detail",
+  async (state) => {
+    const { github, preview, start, root, git } = await setup();
+    if (state === "item") github.items[0].discoveryComplete = false;
+    if (state === "snapshot") github.complete = false;
+    if (state === "stale") github.stale = true;
+    if (state === "error") github.errorCode = "offline";
+    for (const response of [await preview(), await start()]) {
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        reasonMessage: { code: "gate.detailUnavailable" },
+      });
+    }
+    expect(existsSync(join(root, path))).toBe(false);
+    expect(existsSync(join(root, ".stintwork/local/stints"))).toBe(false);
+    expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+    expect(git("branch", "--list", "stintwork/github-1")).toBe("");
+  },
+);
+
 test("first start commits identity in its worktree and concurrent start refuses", async () => {
   const { start, root, git } = await setup();
   const response = await start();
@@ -320,6 +344,21 @@ test("stale tickets approval refuses and current approval starts", async () => {
   const current = await setup({}, "implement", true);
   const response = await current.start();
   expect(response.status, await response.clone().text()).toBe(201);
+});
+
+test.each(["clarify", "spec"])("reopening %s invalidates the tickets approval", async (stage) => {
+  const { root, git, start } = await setup({}, "implement", true);
+  const workflow = parse(readFileSync(join(root, path), "utf8"));
+  workflow.stages[stage].reopened = { at: "2026-01-02" };
+  writeFileSync(join(root, path), stringify(workflow));
+  git("add", path);
+  git("commit", "-qm", "reopen stage");
+  const response = await start();
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "gate.evidenceChanged" } });
+  expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+  expect(existsSync(join(root, ".stintwork/local/stints"))).toBe(false);
+  expect(git("branch", "--list", "stintwork/github-1")).toBe("");
 });
 
 test("gate writes and starts exclude each other", async () => {
