@@ -30,6 +30,7 @@ import { createReviewEvidenceReader } from "./review-evidence.js";
 import { addRoadmapRoute } from "./roadmap.js";
 import { addWorkItemCreationRoutes } from "./create-work-item.js";
 import { addSetupRoutes } from "./setup.js";
+import { discoverGithubWorkItems, type GithubDiscovery } from "./github-discovery.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -65,6 +66,10 @@ export function createProjectServer(
   const readReviewEvidence = createReviewEvidenceReader(root, checks);
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
+  let github: GithubDiscovery | undefined;
+  let knownRepository: { repository: string; repositoryId: string } | undefined;
+  const knownIssues = new Map<number, string>();
+  let discoveryRunning = false;
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
     let branchWarning: Warning | undefined;
@@ -83,6 +88,7 @@ export function createProjectServer(
     const snapshot = indexProject(project.files, {
       name,
       agents: describeAgents(agentRegistry),
+      ...(github ? { github } : {}),
       ...(branch ? { branch } : {}),
     });
     readReviewEvidence(project, snapshot);
@@ -147,6 +153,60 @@ export function createProjectServer(
 
   const app = new Hono();
   addProjectPermissionRoute(app, root, () => refresh());
+  async function refreshGithub(loadMore = false) {
+    if (snapshot.setup.tracker !== "github-issues") {
+      github = undefined;
+      return;
+    }
+    if (discoveryRunning) return;
+    discoveryRunning = true;
+    try {
+      const previous = github;
+      const next = await discoverGithubWorkItems(
+        root,
+        loadMore ? (previous?.cursor ?? null) : null,
+      );
+      if (
+        knownRepository &&
+        (knownRepository.repositoryId !== next.repositoryId ||
+          knownRepository.repository.toLowerCase() !== next.repository.toLowerCase())
+      )
+        throw new Error("GitHub repository identity changed; developer resolution is required.");
+      for (const item of next.items) {
+        const earlier = knownIssues.get(item.number);
+        if (earlier && earlier !== item.id)
+          throw new Error("GitHub issue identity changed; developer resolution is required.");
+      }
+      knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
+      for (const item of next.items) knownIssues.set(item.number, item.id);
+      github =
+        loadMore && previous
+          ? {
+              ...next,
+              items: [...previous.items, ...next.items].sort((a, b) => a.number - b.number),
+              scanned: previous.scanned + next.scanned,
+              pages: [...previous.pages, ...next.pages],
+              warnings: [...previous.warnings, ...next.warnings],
+              complete: previous.error ? false : next.complete,
+            }
+          : next;
+    } catch {
+      github = {
+        repository: "",
+        repositoryId: "",
+        items: [],
+        scanned: 0,
+        cursor: null,
+        complete: false,
+        pages: [],
+        warnings: [],
+        error:
+          "GitHub repository or identity unavailable. Check the repository and access, then retry.",
+      };
+    } finally {
+      discoveryRunning = false;
+    }
+  }
   let initialization: Promise<void> | undefined;
   function initialize() {
     initialization ??= Promise.all([
@@ -164,6 +224,7 @@ export function createProjectServer(
         (warning) => recoveryWarnings.push(warning),
       ),
       refreshAgentRegistry(agentRegistry),
+      refreshGithub(),
     ]).then(() => refresh());
     return initialization;
   }
@@ -186,6 +247,21 @@ export function createProjectServer(
     context.header("Cache-Control", "no-store");
     return context.json(coreTextWire(snapshot));
   });
+  app.post("/api/github/discovery/:action", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.text("Origin mismatch", 403);
+    const action = context.req.param("action");
+    if (
+      snapshot.setup.tracker !== "github-issues" ||
+      !["refresh", "load-more"].includes(action) ||
+      (action === "load-more" && !github?.cursor)
+    )
+      return context.text("Discovery unavailable", 409);
+    await refreshGithub(action === "load-more");
+    refresh();
+    return context.json(coreTextWire(snapshot));
+  });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
@@ -194,7 +270,7 @@ export function createProjectServer(
   addRoadmapRoute(app, root, readProjectFiles, refresh);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
   addWorkflowCustomisationRoutes(app, root, refresh);
-  addSetupRoutes(app, root, files, agentRegistry, refresh);
+  addSetupRoutes(app, root, files, agentRegistry, refresh, undefined, () => github);
   const stopStints = addStintRoutes(
     app,
     root,

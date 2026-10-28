@@ -61,11 +61,24 @@ export function addSetupRoutes(
   agents: AgentRegistry,
   refresh: () => void,
   home = homedir(),
+  github?: () => { repository: string; repositoryId: string; error?: string } | undefined,
 ) {
   function guide() {
     const loaded = loadWorkflows(files);
     const plan = planSetup(files);
+    const remote = plan.tracker === "github-issues" ? github?.() : undefined;
+    if (remote?.repositoryId && !remote.error)
+      plan.checks[0] = { id: "tracker", ready: true, status: "ready" };
     return {
+      ...(remote
+        ? {
+            github: {
+              repository: remote.repository,
+              repositoryId: remote.repositoryId,
+              ...(remote.error ? { error: remote.error } : {}),
+            },
+          }
+        : {}),
       ...plan,
       warnings: [...plan.warnings, ...loaded.warnings],
       skills: skillAvailability(loaded.workflows, describeAgents(agents), (location) =>

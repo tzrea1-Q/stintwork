@@ -163,3 +163,38 @@ test("indexes this repository's real project files read from disk", () => {
   expect(snapshot.setup).toMatchObject({ hasAgents: true, hasGlossary: true, hasAdrs: true });
   expect(snapshot.warnings).toEqual([]);
 });
+
+test("GitHub discovery supplies board work items without importing local Markdown", () => {
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+    ".scratch/local/spec.md": "# Local draft",
+  });
+  const github = {
+    repository: "Example/Project",
+    repositoryId: "R_test",
+    scanned: 1,
+    cursor: null,
+    complete: false,
+    pages: [],
+    warnings: ["incomplete"],
+    items: [
+      {
+        id: "I_1",
+        number: 1,
+        title: "Remote work",
+        url: "https://github.com/Example/Project/issues/1",
+        complete: false,
+      },
+    ],
+  };
+  const project = indexProject(files, { name: "project", github });
+  expect(project.github).toEqual(github);
+  expect(project.workItems).toMatchObject([
+    {
+      slug: "github-1",
+      title: "Remote work",
+      github: { repositoryId: "R_test", issueId: "I_1", number: 1, complete: false },
+    },
+  ]);
+  expect(project.workItems).toHaveLength(1);
+});
