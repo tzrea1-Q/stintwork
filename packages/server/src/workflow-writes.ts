@@ -1,9 +1,87 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CoreTextError } from "@stintwork/core";
+import { CoreTextError, createMemoryRepoFiles, githubWorkflowPath } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
-import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { commitStintworkSetup } from "@stintwork/git";
+import { commitStintworkSetup, withRepoLock } from "@stintwork/git";
+import { stringify } from "yaml";
+import {
+  GithubReadError,
+  validateGithubIdentities,
+  type GithubDiscovery,
+} from "./github-discovery.js";
+
+export async function saveGithubWorkflow(
+  root: string,
+  discovery: GithubDiscovery,
+  item: GithubDiscovery["items"][number],
+  workflow: string,
+  stage: string,
+) {
+  const relative = `.stintwork/github/${discovery.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+  if (
+    !githubWorkflowPath(relative) ||
+    !discovery.repositoryId ||
+    !item.id ||
+    item.url !== `https://github.com/${discovery.repository}/issues/${item.number}`
+  )
+    throw new GithubReadError("identity");
+  return withRepoLock(root, async () => {
+    let directory = root;
+    for (const part of relative.split("/").slice(0, -1)) {
+      directory = join(directory, part);
+      const stat = lstatSync(directory, { throwIfNoEntry: false });
+      if (stat && (!stat.isDirectory() || stat.isSymbolicLink()))
+        throw new CoreTextError({ code: "server.workItemDirectories" });
+      if (!stat) mkdirSync(directory);
+    }
+    const path = join(root, relative);
+    const stat = lstatSync(path, { throwIfNoEntry: false });
+    if (stat && (!stat.isFile() || stat.isSymbolicLink()))
+      throw new CoreTextError({ code: "workflow.regularFile" });
+    const indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
+      throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
+    const validate = (text: string) => {
+      validateGithubIdentities(createMemoryRepoFiles({ [relative]: text }), {
+        ...discovery,
+        complete: false,
+        items: [item],
+      });
+    };
+    if (stat) {
+      validate(readFileSync(path, "utf8"));
+      return null;
+    }
+    const text = stringify({
+      workflow,
+      stage,
+      github: {
+        host: "github.com",
+        repositoryId: discovery.repositoryId,
+        repository: discovery.repository,
+        issueId: item.id,
+        number: item.number,
+        url: item.url,
+      },
+    });
+    validate(text);
+    if (indexEntry) throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
+    writeFileSync(path, text, { flag: "wx" });
+    try {
+      const commit = await commitStintworkSetup(root, `github-${item.number}`, [relative]);
+      if (!commit) throw new CoreTextError({ code: "workflow.commitIgnored" });
+      return commit;
+    } catch (error) {
+      if (readFileSync(path, "utf8") === text) rmSync(path);
+      execFileSync("git", ["update-index", "--force-remove", "--", relative], { cwd: root });
+      throw error;
+    }
+  });
+}
 
 export function writeWorkItemWorkflow(
   root: string,

@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { shipGit } from "./pull-requests.js";
-import type { RepoFiles } from "@stintwork/core";
+import { githubWorkflowPath, type RepoFiles } from "@stintwork/core";
 import { parseDocument } from "yaml";
 
 const execute = promisify(execFile);
@@ -484,11 +484,10 @@ export function validateGithubIdentities(
   files: RepoFiles,
   discovery: GithubDiscovery,
 ): GithubDiscovery {
-  const known = new Map<number, string>();
+  const known = new Map<number, { id: string; url: string }>();
   for (const path of files.list(".stintwork/github/")) {
     if (!path.endsWith("/workflow.yaml")) continue;
-    const match =
-      /^\.stintwork\/github\/([a-z0-9-]+)\/([a-z0-9_.-]+)\/([1-9]\d*)\/workflow\.yaml$/.exec(path);
+    const match = githubWorkflowPath(path);
     if (!match) throw new GithubReadError("identity");
     const document = parseDocument(files.read(path) ?? "");
     const value: unknown = document.toJS();
@@ -507,10 +506,11 @@ export function validateGithubIdentities(
       identity.repositoryId !== discovery.repositoryId ||
       identity.number !== Number(match[3]) ||
       typeof identity.issueId !== "string" ||
-      !identity.issueId
+      !identity.issueId ||
+      identity.url !== `https://github.com/${identity.repository}/issues/${match[3]}`
     )
       throw new GithubReadError("identity");
-    known.set(identity.number as number, identity.issueId);
+    known.set(identity.number as number, { id: identity.issueId, url: identity.url as string });
   }
   if (
     discovery.complete &&
@@ -518,9 +518,10 @@ export function validateGithubIdentities(
   )
     throw new GithubReadError("identity");
   const items = discovery.items.map((item) => {
-    const id = known.get(item.number);
-    if (id && id !== item.id) throw new GithubReadError("identity");
-    return { ...item, bound: id === item.id };
+    const identity = known.get(item.number);
+    if (identity && (identity.id !== item.id || identity.url !== item.url))
+      throw new GithubReadError("identity");
+    return { ...item, bound: identity?.id === item.id };
   });
   return { ...discovery, items };
 }

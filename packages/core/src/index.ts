@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+export { githubWorkflowPath } from "./github-workflow-path.js";
 export {
   githubEvidenceJson,
   githubEvidenceDigest,

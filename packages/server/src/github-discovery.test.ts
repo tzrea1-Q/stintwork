@@ -583,7 +583,7 @@ test("workflow identity binds only the same repository and parent after a restar
       },
     ],
   };
-  const identity = `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: I_1\n  number: 1\n`;
+  const identity = `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: I_1\n  number: 1\n  url: https://github.com/Example/Project/issues/1\n`;
   const files = createMemoryRepoFiles({
     ".stintwork/github/example/project/1/workflow.yaml": identity,
   });
@@ -1349,7 +1349,7 @@ test.each([
   });
   const path = ".stintwork/github/example/project/1/workflow.yaml";
   const identity = (id: string) =>
-    `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: ${id}\n  number: 1\n`;
+    `workflow: feature\nstage: spec\ngithub:\n  host: github.com\n  repository: Example/Project\n  repositoryId: R_test\n  issueId: ${id}\n  number: 1\n  url: https://github.com/Example/Project/issues/1\n`;
   await mkdir(join(root, ".stintwork/github/example/project/1"), { recursive: true });
   await writeFile(join(root, path), identity(mainId));
   if (worktreeId) {
