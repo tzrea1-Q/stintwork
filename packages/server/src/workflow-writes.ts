@@ -57,6 +57,7 @@ export async function saveGithubWorkflow(
     const stat = lstatSync(path, { throwIfNoEntry: false });
     if (stat && (!stat.isFile() || stat.isSymbolicLink()))
       throw new CoreTextError({ code: "workflow.regularFile" });
+    if (stat && !indexEntry) throw new CoreTextError({ code: "workflow.dirtyFile" });
     const validate = (text: string) => {
       validateGithubIdentities(createMemoryRepoFiles({ [relative]: text }), {
         ...discovery,

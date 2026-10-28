@@ -153,7 +153,7 @@ export function indexProject(
               slug: `github-${item.number}`,
               title: item.title,
               type: "feature",
-              spec: item.detail ? { path: item.url, text: item.detail.spec } : null,
+              spec: item.detail?.spec.trim() ? { path: item.url, text: item.detail.spec } : null,
               tickets: orderTickets(
                 (item.detail?.tickets ?? []).map((ticket) => {
                   const path = `https://github.com/${meta.github?.repository}/issues/${ticket.number}`;

@@ -12,6 +12,55 @@ const specPath = ".scratch/first/spec.md";
 const ticketPath = ".scratch/first/issues/01-first.md";
 const ticket = "# First\nStatus: ready-for-agent\nBlocked by: none";
 
+test.each([
+  ["", false],
+  [" \n\t", false],
+  ["A spec", true],
+] as const)("GitHub Spec gate requires a nonempty parent body (%j)", (body, ready) => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub",
+      ".stintwork/github/a/b/1/workflow.yaml": "workflow: feature\nstage: spec",
+    }),
+    {
+      name: "Remote",
+      github: {
+        repository: "a/b",
+        repositoryId: "R",
+        scanned: 1,
+        cursor: null,
+        complete: true,
+        pages: [],
+        warnings: [],
+        items: [
+          {
+            id: "I",
+            number: 1,
+            title: "Parent",
+            url: "https://github.com/a/b/issues/1",
+            complete: true,
+            bound: true,
+            detail: { spec: body, tickets: [] },
+          },
+        ],
+      },
+    },
+  );
+  const item = snapshot.workItems[0];
+  if (!item.github) throw new Error("Missing GitHub metadata");
+  item.github.reviewDigest = "digest";
+  item.stages.clarify = { approved: { remoteState: "current" } };
+  item.stints = project("spec").item.stints;
+  const gate = gateReadiness(item);
+  expect(gate.ready).toBe(ready);
+  if (!ready) {
+    const local = project("spec").item;
+    local.slug = item.slug;
+    expect(gate.reason).toEqual(gateReadiness(local).reason);
+  }
+  expect(gateReadiness(project("spec", { [specPath]: "# Spec" }).item).ready).toBe(true);
+});
+
 test("GitHub tickets gate uses resolved external blockers and requires fresh direct tickets", () => {
   const { item } = project("tickets", { [ticketPath]: ticket });
   item.github = {

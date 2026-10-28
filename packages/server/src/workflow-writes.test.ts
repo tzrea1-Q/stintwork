@@ -112,6 +112,21 @@ test("updates a clean existing workflow", async () => {
   ).toContain("extra: true");
 });
 
+test("refuses an untracked existing workflow without changing it", async () => {
+  const root = repo();
+  const path = ".stintwork/github/example/project/1/workflow.yaml";
+  mkdirSync(join(root, ".stintwork/github/example/project/1"), { recursive: true });
+  const original = "workflow: feature\nstage: spec\n";
+  writeFileSync(join(root, path), original);
+  const head = execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" });
+  await expect(
+    saveGithubWorkflow(root, discovery, item, "feature", "spec", (text) => `${text}extra: true\n`),
+  ).rejects.toMatchObject({ coreText: { code: "workflow.dirtyFile" } });
+  expect(readFileSync(join(root, path), "utf8")).toBe(original);
+  expect(execFileSync("git", ["-C", root, "ls-files", "--", path], { encoding: "utf8" })).toBe("");
+  expect(execFileSync("git", ["-C", root, "rev-parse", "HEAD"], { encoding: "utf8" })).toBe(head);
+});
+
 test("creates the identity and approval in one commit, and rolls back a failed update", async () => {
   const root = repo();
   const path = ".stintwork/github/example/project/1/workflow.yaml";
