@@ -41,6 +41,7 @@ import {
   type GithubDiscovery,
 } from "./github-discovery.js";
 import { readGithubTickets } from "./github-tickets.js";
+import { addGithubGateRoutes } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -635,6 +636,15 @@ export function createProjectServer(
     checks.isActive,
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
+  );
+  addGithubGateRoutes(
+    app,
+    root,
+    () => github,
+    () => snapshot,
+    readProjectFiles,
+    refresh,
+    stopStints.isActive,
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);

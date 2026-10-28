@@ -19,6 +19,10 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Comments
 
+**Codex, 2026-10-28:** Added the GitHub approval route with fresh complete evidence and reviewed HEAD checks, a guarded first-write commit, and a post-commit current/stale/unknown result. Nine fake-gh tests cover refusals, concurrency and spec versus ticket evidence. Criterion 4 remains open: the route reports the immediate post-check, but snapshot projection and revalidation before later dependent use are not yet implemented. GitHub stage readiness and reopen/invalidation integration also remain outstanding.
+
+Checks in this worktree: format:check, lint, typecheck and the requested Vitest selection passed (1,020 tests across 37 files; 9 GitHub gate tests). Lint reported the existing Biome deprecation. No network or project commit was used.
+
 **Codex, 2026-10-28:** Added the optional version 1 remote evidence field to the gate record type and a YAML round-trip test. The GitHub snapshot and approval route are not connected: current GitHub items have no active stage and their committed workflow is not projected into the gate path. Fresh-read and HEAD checks, post-commit revalidation, race coverage and a complete committed approval remain outstanding. No criterion is newly complete; the route remains fail-closed.
 
 Checks in this worktree: format:check, lint and typecheck passed; core/git 1,051 tests and server gates/workflow-writes 19 tests passed. Lint reported the existing Biome deprecation. No network, sockets or commit were used.
