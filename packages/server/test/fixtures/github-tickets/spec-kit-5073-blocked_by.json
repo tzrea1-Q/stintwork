@@ -1,0 +1,27 @@
+[
+  {
+    "id": 5973319963,
+    "node_id": "I_kwDOPiFCnc8AAAABZAmhGw",
+    "number": 5060,
+    "repository_url": "https://api.github.com/repos/github/spec-kit",
+    "html_url": "https://github.com/github/spec-kit/issues/5060",
+    "state": "open",
+    "state_reason": null,
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "labels": [
+      {
+        "name": "feature-go"
+      },
+      {
+        "name": "triage-can-wait"
+      }
+    ],
+    "title": "Recorded issue",
+    "body": "Recorded body",
+    "comments": 2
+  }
+]

@@ -115,13 +115,14 @@ function parseTicket(path: string, text: string, warnings: Warning[]): Ticket | 
 }
 
 /** ponytail: rescans the graph per ticket; use an indegree queue for large efforts. */
-function orderTickets(tickets: Ticket[], warnings: Warning[]): Ticket[] {
+export function orderTickets(tickets: Ticket[], warnings: Warning[], remote = false): Ticket[] {
   tickets.sort((left, right) => left.number - right.number);
   const byNumber = new Map(tickets.map((ticket) => [ticket.number, ticket]));
   for (const ticket of tickets) {
-    ticket.blocked = ticket.blockedBy.some((number) => !byNumber.get(number)?.resolved);
+    if (!remote)
+      ticket.blocked = ticket.blockedBy.some((number) => !byNumber.get(number)?.resolved);
     for (const number of ticket.blockedBy) {
-      if (!byNumber.has(number)) {
+      if (!remote && !byNumber.has(number)) {
         warnings.push({
           path: ticket.path,
           message: `Blocked by references missing ticket ${number}`,
@@ -138,8 +139,14 @@ function orderTickets(tickets: Ticket[], warnings: Warning[]): Ticket[] {
     if (!next) {
       warnings.push({
         path: [...pending.values()][0].path,
-        message: "Dependency cycle; falling back to numeric ticket order",
+        message: remote
+          ? "Dependency cycle; remaining tickets are blocked in numeric order"
+          : "Dependency cycle; falling back to numeric ticket order",
       });
+      if (remote) {
+        for (const ticket of pending.values()) ticket.blocked = true;
+        return [...ordered, ...pending.values()];
+      }
       return tickets;
     }
     ordered.push(next);

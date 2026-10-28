@@ -37,8 +37,10 @@ import {
   discoverGithubWorkItems,
   githubOrigin,
   githubViewer,
+  githubTrackerRepository,
   type GithubDiscovery,
 } from "./github-discovery.js";
+import { readGithubTickets } from "./github-tickets.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -80,6 +82,35 @@ export function createProjectServer(
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
   let discoveryRunning = false;
+  let detailRunning = false;
+  const detailFailures = new Map<string, GithubReadError>();
+  let discoveryFailure:
+    | Pick<GithubDiscovery, "error" | "errorCode" | "retryAt" | "retryable">
+    | undefined;
+  function updateGithubFreshness() {
+    if (!github) return;
+    const detailFailure = github.items.map((item) => detailFailures.get(item.id)).find(Boolean);
+    const failure = discoveryFailure ?? detailFailure;
+    github.stale =
+      (!!discoveryFailure && !!githubSource) ||
+      github.items.some((item) => item.detail?.stale || detailFailures.has(item.id));
+    if (failure instanceof GithubReadError || failure?.error) {
+      github.error = failure instanceof GithubReadError ? failure.message : failure.error;
+      github.errorCode = failure instanceof GithubReadError ? failure.code : failure.errorCode;
+    } else {
+      delete github.error;
+      delete github.errorCode;
+    }
+    const retryAt = [
+      discoveryFailure?.retryAt,
+      ...github.items.map((item) => detailFailures.get(item.id)?.retryAt),
+    ]
+      .filter((value): value is string => !!value)
+      .sort()
+      .at(-1);
+    if (retryAt) github.retryAt = retryAt;
+    else delete github.retryAt;
+  }
   function bindGithubIdentities(
     data: GithubDiscovery,
     project: ReturnType<typeof readProjectFiles>,
@@ -213,16 +244,20 @@ export function createProjectServer(
       github = undefined;
       githubSource = undefined;
       cached = undefined;
+      discoveryFailure = undefined;
+      detailFailures.clear();
       return;
     }
     if (
       discoveryRunning ||
+      detailRunning ||
       (!githubSource && github?.retryAt && Date.parse(github.retryAt) > Date.now())
     )
       return;
     discoveryRunning = true;
     let viewer: string | undefined;
     let origin: string | undefined;
+    const changedIssues = new Set<number>();
     try {
       origin = await githubOrigin(root);
       viewer = await githubViewer(root);
@@ -234,10 +269,13 @@ export function createProjectServer(
         cached = undefined;
         github = undefined;
         githubSource = undefined;
+        discoveryFailure = undefined;
+        detailFailures.clear();
         if (loadMore) throw new GithubReadError("identity");
       }
       if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
       const previous = github;
+      const previousDiscoveryFailure = discoveryFailure;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
       if (
         knownRepository &&
@@ -247,8 +285,9 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       for (const item of next.items) {
         const earlier = knownIssues.get(item.number);
-        if (earlier && earlier !== item.id) throw new GithubReadError("identity");
+        if (earlier && earlier !== item.id) changedIssues.add(item.number);
       }
+      if (changedIssues.size) throw new GithubReadError("identity");
       const retained =
         previous?.items.filter(
           (item) => !item.provisional || (next.retryable && next.cursor === previous.cursor),
@@ -272,10 +311,12 @@ export function createProjectServer(
                   }
                 : {}),
               warnings: [...previous.warnings, ...next.warnings],
-              ...(previous.membershipIncomplete || (previous.error && !previous.retryable)
+              ...(previous.membershipIncomplete ||
+              (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)
                 ? { membershipIncomplete: true }
                 : {}),
-              ...((previous.membershipIncomplete || (previous.error && !previous.retryable)) &&
+              ...((previous.membershipIncomplete ||
+                (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)) &&
               !next.error
                 ? {
                     error: "Results are incomplete; dependencies and approvals may be unknown.",
@@ -285,15 +326,40 @@ export function createProjectServer(
                 : {}),
               complete:
                 !previous.membershipIncomplete &&
-                (!previous.error || previous.retryable === true) &&
-                retained.every((item) => item.complete) &&
+                (!previousDiscoveryFailure?.error || previousDiscoveryFailure.retryable === true) &&
+                retained.every((item) => item.discoveryComplete ?? item.complete) &&
                 next.complete,
             }
           : next;
+      if (previous) {
+        const previousItems = new Map(previous.items.map((item) => [item.number, item]));
+        next.items = next.items.map((item) => {
+          const earlier = previousItems.get(item.number);
+          return earlier?.id === item.id && earlier.detail
+            ? {
+                ...item,
+                discoveryComplete: item.discoveryComplete ?? item.complete,
+                complete: false,
+                detail: { ...earlier.detail, stale: true },
+              }
+            : item;
+        });
+      }
       next = bindGithubIdentities(next, readProjectFiles());
       knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
       for (const item of next.items) knownIssues.set(item.number, item.id);
       github = next;
+      for (const id of detailFailures.keys()) {
+        if (!github.items.some((item) => item.id === id)) detailFailures.delete(id);
+      }
+      discoveryFailure = github.error
+        ? {
+            error: github.error,
+            errorCode: github.errorCode,
+            retryAt: github.retryAt,
+            retryable: github.retryable,
+          }
+        : undefined;
       githubSource = { viewer, origin };
       if (!github.error) {
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
@@ -328,6 +394,12 @@ export function createProjectServer(
       }
     } catch (error) {
       const failure = classifyGithubError(error);
+      discoveryFailure = {
+        error: failure.message,
+        errorCode: failure.code,
+        retryAt: failure.retryAt,
+        retryable: failure.code !== "identity",
+      };
       if (
         viewer &&
         origin &&
@@ -335,6 +407,19 @@ export function createProjectServer(
         cached.origin.toLowerCase() === origin.toLowerCase()
       ) {
         githubSource = { viewer, origin };
+        if (failure.code === "identity") {
+          cached = {
+            ...cached,
+            data: {
+              ...cached.data,
+              items: cached.data.items.map((item) => {
+                if (changedIssues.size && !changedIssues.has(item.number)) return item;
+                const { detail: _detail, ...rest } = item;
+                return rest;
+              }),
+            },
+          };
+        }
         github = {
           ...cached.data,
           stale: true,
@@ -361,6 +446,7 @@ export function createProjectServer(
         };
       }
     } finally {
+      updateGithubFreshness();
       discoveryRunning = false;
     }
   }
@@ -418,6 +504,113 @@ export function createProjectServer(
     await refreshGithub(action === "load-more");
     refresh();
     return context.json(coreTextWire(snapshot));
+  });
+  app.post("/api/github/items/:number/refresh", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.text("Origin mismatch", 403);
+    const number = Number(context.req.param("number"));
+    const item = github?.items.find((entry) => entry.number === number);
+    if (
+      !item ||
+      !github ||
+      !githubSource ||
+      snapshot.setup.tracker !== "github-issues" ||
+      detailRunning ||
+      discoveryRunning
+    )
+      return context.text("Work item unavailable", 409);
+    detailRunning = true;
+    const source = githubSource;
+    const current = github;
+    item.discoveryComplete ??= item.complete;
+    let verified = false;
+    try {
+      const currentOrigin = await githubOrigin(root);
+      const viewer = await githubViewer(root);
+      if (
+        currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||
+        viewer !== githubSource.viewer
+      ) {
+        github = undefined;
+        githubSource = undefined;
+        cached = undefined;
+        throw new GithubReadError("identity");
+      }
+      verified = true;
+      if (github.retryAt && Date.parse(github.retryAt) > Date.now())
+        return context.json(coreTextWire(snapshot), 429);
+      const repository = await githubTrackerRepository(root);
+      if (
+        repository.repositoryId !== current.repositoryId ||
+        repository.repository.toLowerCase() !== current.repository.toLowerCase()
+      ) {
+        verified = false;
+        throw new GithubReadError("identity");
+      }
+      const detail = await readGithubTickets(root, github.repository, item.id, number);
+      if (github !== current || githubSource !== source) throw new GithubReadError("identity");
+      const identities = new Map<number, string>();
+      for (const ticket of detail.tickets) {
+        for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {
+          const prior = identities.get(reference.number) ?? knownIssues.get(reference.number);
+          if (prior && prior !== reference.id) throw new GithubReadError("identity");
+          identities.set(reference.number, reference.id);
+        }
+      }
+      for (const [issueNumber, id] of identities) knownIssues.set(issueNumber, id);
+      item.detail = { ...detail, fetchedAt: new Date().toISOString() };
+      item.complete = item.discoveryComplete && detail.complete;
+      detailFailures.delete(item.id);
+      updateGithubFreshness();
+      refresh();
+      return context.json(coreTextWire(snapshot));
+    } catch (error) {
+      const failure = classifyGithubError(error);
+      if (!verified) {
+        github = undefined;
+        githubSource = undefined;
+        cached = undefined;
+        discoveryFailure = undefined;
+        detailFailures.clear();
+      }
+      if (github) {
+        if (failure.code === "identity") {
+          delete item.detail;
+          if (
+            cached?.viewer === source.viewer &&
+            cached.origin.toLowerCase() === source.origin.toLowerCase()
+          ) {
+            const cachedItem = cached.data.items.find(
+              (entry) => entry.id === item.id && entry.number === item.number,
+            );
+            if (cachedItem) delete cachedItem.detail;
+          }
+        }
+        item.complete = false;
+        if (item.detail) item.detail.stale = true;
+        detailFailures.set(item.id, failure);
+        updateGithubFreshness();
+      } else {
+        github = {
+          repository: "",
+          repositoryId: "",
+          items: [],
+          scanned: 0,
+          cursor: null,
+          complete: false,
+          pages: [],
+          warnings: [],
+          error: failure.message,
+          errorCode: failure.code,
+          ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
+        };
+      }
+      refresh();
+      return context.json(coreTextWire(snapshot), 503);
+    } finally {
+      detailRunning = false;
+    }
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
