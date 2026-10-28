@@ -170,8 +170,15 @@ export function projectGithubGates(
     const reviewDigest = item.stage ? digest(item.stage) : undefined;
     if (reviewDigest) {
       try {
+        const candidate = project.worktreePaths.get(item.slug);
+        const path = `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
+        const directory =
+          candidate &&
+          (item.github.bound || resolveGithubWorkflow(project, path, candidate) === undefined)
+            ? candidate
+            : root;
         const reviewHead = execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: (item.github.bound ? project.worktreePaths.get(item.slug) : undefined) ?? root,
+          cwd: directory,
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         }).trim();

@@ -1164,6 +1164,7 @@ export const zhCN: Catalog = {
     "ship.recordedCiInvalid": "记录的拉取请求 CI 证据无效。",
     "workflow.regularFile": "workflow.yaml 必须是普通文件。",
     "workflow.resolveIndexConflict": "更改 workflow.yaml 前，请先解决其索引冲突。",
+    "workflow.dirtyFile": "更改 workflow.yaml 前，请先提交或放弃对该文件的更改。",
     "workflow.commitIgnored": "无法提交 workflow.yaml。请检查它是否被 Git 忽略。",
     "workflow.invalidId": "工作流标识无效。",
     "server.workItemDirectories": "工作项目录必须是真实目录。",

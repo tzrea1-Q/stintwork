@@ -29,6 +29,22 @@ export async function saveGithubWorkflow(
   )
     throw new GithubReadError("identity");
   return withRepoLock(root, async () => {
+    const indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
+      cwd: root,
+      encoding: "utf8",
+    }).trim();
+    if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
+      throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
+    for (const args of [["--cached", "HEAD"], []]) {
+      if (
+        execFileSync(
+          "git",
+          ["diff", "--no-ext-diff", "--name-only", "-z", ...args, "--", relative],
+          { cwd: root },
+        ).length
+      )
+        throw new CoreTextError({ code: "workflow.dirtyFile" });
+    }
     let directory = root;
     for (const part of relative.split("/").slice(0, -1)) {
       directory = join(directory, part);
@@ -41,12 +57,6 @@ export async function saveGithubWorkflow(
     const stat = lstatSync(path, { throwIfNoEntry: false });
     if (stat && (!stat.isFile() || stat.isSymbolicLink()))
       throw new CoreTextError({ code: "workflow.regularFile" });
-    const indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
-      cwd: root,
-      encoding: "utf8",
-    }).trim();
-    if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
-      throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
     const validate = (text: string) => {
       validateGithubIdentities(createMemoryRepoFiles({ [relative]: text }), {
         ...discovery,

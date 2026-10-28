@@ -191,8 +191,12 @@ export function addGithubGateRoutes(
           );
         const project = readProjectFiles();
         const worktree = project.worktreePaths.get(slug);
+        const directory = worktree ?? root;
+        const relative = `.stintwork/github/${github.repository.toLowerCase()}/${number}/workflow.yaml`;
+        const text = resolveGithubWorkflow(project, relative, worktree);
         if (
           worktree &&
+          text !== undefined &&
           !getSnapshot().workItems.find((entry) => entry.slug === slug)?.github?.bound
         )
           return context.json(
@@ -202,9 +206,6 @@ export function addGithubGateRoutes(
             }),
             409,
           );
-        const directory = worktree ?? root;
-        const relative = `.stintwork/github/${github.repository.toLowerCase()}/${number}/workflow.yaml`;
-        const text = resolveGithubWorkflow(project, relative, worktree);
         const targetExists = existsSync(join(directory, relative));
         const doc = parseDocument(text ?? "");
         if (doc.errors.length || doc.warnings.length) throw new Error("Invalid workflow.yaml");

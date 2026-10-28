@@ -402,6 +402,29 @@ test("creates and commits a current approval", async () => {
   expect(git("rev-list", "--count", "HEAD")).toBe("2");
 });
 
+test("first approval creates the record in an unbound worktree", async () => {
+  const { request, root, snapshot, worktree } = await setup({}, undefined, true);
+  if (!snapshot.workItems[0].github) throw new Error("Missing GitHub metadata");
+  snapshot.workItems[0].github.bound = false;
+  const response = await request();
+  expect(response.status, await response.text()).toBe(200);
+  expect(parse(readFileSync(join(worktree, path), "utf8")).stages.clarify.approved).toBeDefined();
+  expect(() => readFileSync(join(root, path))).toThrow();
+});
+
+test("refuses a mismatched record in an unbound worktree", async () => {
+  const { request, snapshot, worktree } = await setup({}, undefined, true);
+  if (!snapshot.workItems[0].github) throw new Error("Missing GitHub metadata");
+  snapshot.workItems[0].github.bound = false;
+  mkdirSync(join(worktree, path, ".."), { recursive: true });
+  const existing = "workflow: feature\nstage: clarify\ngithub:\n  issueId: I_other\n";
+  writeFileSync(join(worktree, path), existing);
+  const response = await request();
+  expect(response.status).toBe(409);
+  expect((await response.json()).code).toBe("identity");
+  expect(readFileSync(join(worktree, path), "utf8")).toBe(existing);
+});
+
 test("refuses incomplete detail without a commit", async () => {
   const child = {
     ...parent,

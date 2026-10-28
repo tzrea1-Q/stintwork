@@ -60,6 +60,58 @@ test("creates and commits an identity that can be revalidated", async () => {
   expect(validateGithubIdentities(createNodeRepoFiles(root), discovery).items[0].bound).toBe(true);
 });
 
+test.each(["staged", "unstaged", "partially staged"])(
+  "refuses a %s workflow without changing the file or index",
+  async (kind) => {
+    const root = repo();
+    const path = ".stintwork/github/example/project/1/workflow.yaml";
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+    await saveGithubWorkflow(root, discovery, item, "feature", "spec");
+    const file = join(root, path);
+    const clean = readFileSync(file, "utf8");
+    if (kind !== "unstaged") {
+      writeFileSync(file, `${clean}staged: true\n`);
+      git("add", "--", path);
+    }
+    if (kind !== "staged") writeFileSync(file, `${readFileSync(file, "utf8")}dirty: true\n`);
+    const before = readFileSync(file);
+    const index = git("ls-files", "--stage", "--", path);
+    const head = git("rev-parse", "HEAD");
+    await expect(
+      saveGithubWorkflow(
+        root,
+        discovery,
+        item,
+        "feature",
+        "spec",
+        (text) => `${text}extra: true\n`,
+      ),
+    ).rejects.toMatchObject({ coreText: { code: "workflow.dirtyFile" } });
+    expect(readFileSync(file)).toEqual(before);
+    expect(git("ls-files", "--stage", "--", path)).toBe(index);
+    expect(git("rev-parse", "HEAD")).toBe(head);
+  },
+);
+
+test("updates a clean existing workflow", async () => {
+  const root = repo();
+  await saveGithubWorkflow(root, discovery, item, "feature", "spec");
+  expect(
+    await saveGithubWorkflow(
+      root,
+      discovery,
+      item,
+      "feature",
+      "spec",
+      (text) => `${text}extra: true\n`,
+    ),
+  ).toBeTruthy();
+  expect(
+    readFileSync(join(root, ".stintwork/github/example/project/1/workflow.yaml"), "utf8"),
+  ).toContain("extra: true");
+});
+
 test("creates the identity and approval in one commit, and rolls back a failed update", async () => {
   const root = repo();
   const path = ".stintwork/github/example/project/1/workflow.yaml";

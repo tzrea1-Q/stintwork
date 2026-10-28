@@ -68,6 +68,36 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
       watchPaths: [],
       warnings: [],
     } as ReturnType<ProjectFilesReader>;
+    const emptyWorktree = join(root, "empty-worktree");
+    execFileSync("git", ["-C", root, "worktree", "add", "-qb", "empty", emptyWorktree]);
+    execFileSync("git", [
+      "-C",
+      emptyWorktree,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "--allow-empty",
+      "-qm",
+      "worktree head",
+    ]);
+    const worktreeHead = execFileSync("git", ["-C", emptyWorktree, "rev-parse", "HEAD"], {
+      encoding: "utf8",
+    }).trim();
+    const emptyFiles = createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+    });
+    const unbound = indexProject(emptyFiles, {
+      name: "Test",
+      github: { ...github, items: [{ ...github.items[0], bound: false }] },
+    });
+    projectGithubGates(unbound, root, {
+      ...project,
+      files: emptyFiles,
+      worktreePaths: new Map([["github-1", emptyWorktree]]),
+    });
+    expect(unbound.workItems[0].github?.reviewHead).toBe(worktreeHead);
     const snapshot = indexProject(files, { name: "Test", github });
     projectGithubGates(snapshot, root, project);
     const item = snapshot.workItems[0];
