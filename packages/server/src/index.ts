@@ -530,6 +530,18 @@ export function createProjectServer(
         cached = undefined;
       }
       if (github) {
+        if (failure.code === "identity") {
+          delete item.detail;
+          if (
+            cached?.viewer === source.viewer &&
+            cached.origin.toLowerCase() === source.origin.toLowerCase()
+          ) {
+            const cachedItem = cached.data.items.find(
+              (entry) => entry.id === item.id && entry.number === item.number,
+            );
+            if (cachedItem) delete cachedItem.detail;
+          }
+        }
         item.complete = false;
         if (!github.stale) detailOnlyStale = true;
         detailFailures.add(item.id);
