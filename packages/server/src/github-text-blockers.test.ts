@@ -129,7 +129,7 @@ test.each([
       process.env.PATH = gh.path;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/spec-kit": {
           stdout: {
             node_id: "R_test",

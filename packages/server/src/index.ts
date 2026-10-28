@@ -88,8 +88,10 @@ export function createProjectServer(
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
   let github: GithubDiscovery | undefined;
-  let githubSource: { viewer: string; origin: string } | undefined;
-  let cached: { viewer: string; origin: string; data: GithubDiscovery } | undefined;
+  let githubSource: { viewer: { id: number; login: string }; origin: string } | undefined;
+  let cached:
+    | { viewer: { id: number; login: string }; origin: string; data: GithubDiscovery }
+    | undefined;
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
   function registerDetailIdentities(detail: Awaited<ReturnType<typeof readGithubTickets>>) {
@@ -165,7 +167,7 @@ export function createProjectServer(
     if (failure.code === "identity") {
       delete item.detail;
       const cachedItem =
-        cached?.viewer === githubSource?.viewer &&
+        cached?.viewer.id === githubSource?.viewer.id &&
         cached?.origin.toLowerCase() === githubSource?.origin.toLowerCase()
           ? cached?.data.items.find((entry) => entry.id === item.id && entry.number === item.number)
           : undefined;
@@ -345,7 +347,8 @@ export function createProjectServer(
 
   let localViewerCheck: Promise<string> | undefined;
   function localViewer() {
-    // Token authentication cannot prove its identity from local config while offline.
+    if (lifetime.signal.aborted) return Promise.resolve("");
+    // Offline only the local login is available; token authentication cannot be verified from config.
     if ("GH_TOKEN" in process.env || "GITHUB_TOKEN" in process.env) return Promise.resolve("");
     localViewerCheck ??= githubLocalViewer(root)
       .catch(() => "")
@@ -355,10 +358,10 @@ export function createProjectServer(
     return localViewerCheck;
   }
   async function verifyOfflineViewer(): Promise<boolean> {
-    if (!offlineViewer || !githubSource) return false;
+    if (lifetime.signal.aborted || !offlineViewer || !githubSource) return false;
     const source = githubSource;
     const origin = await githubOrigin(root).catch(() => undefined);
-    if (githubSource !== source || !offlineViewer) return false;
+    if (lifetime.signal.aborted || githubSource !== source || !offlineViewer) return false;
     if (!origin) return false;
     if (origin.toLowerCase() !== source.origin.toLowerCase()) {
       trackerGeneration++;
@@ -367,15 +370,23 @@ export function createProjectServer(
       return false;
     }
     const local = await localViewer();
-    if (githubSource !== source || !offlineViewer) return false;
-    if (local && local === source.viewer) return true;
+    if (lifetime.signal.aborted || githubSource !== source || !offlineViewer) return false;
+    if (local && local === source.viewer.login) return true;
     trackerGeneration++;
     clearGithub();
     refresh();
     return false;
   }
 
-  async function checkGithubViewer() {
+  let viewerCheck: Promise<void> | undefined;
+  function checkGithubViewer() {
+    if (lifetime.signal.aborted) return Promise.resolve();
+    viewerCheck ??= runGithubViewerCheck().finally(() => {
+      viewerCheck = undefined;
+    });
+    return viewerCheck;
+  }
+  async function runGithubViewerCheck() {
     const source = githubSource;
     if (
       viewerChecking ||
@@ -387,13 +398,24 @@ export function createProjectServer(
     viewerChecking = true;
     refresh();
     try {
-      const viewer = await githubViewer(root);
-      if (!lifetime.signal.aborted && githubSource === source && viewer !== source.viewer) {
+      const viewer = await githubViewer(root, lifetime.signal);
+      if (!lifetime.signal.aborted && githubSource === source && viewer.id !== source.viewer.id) {
         trackerGeneration++;
         clearGithub();
         refresh();
         if (!discoveryRunning && !detailRunning) void refreshGithub().then(() => refresh());
       } else if (!lifetime.signal.aborted && githubSource === source) {
+        const origin = await githubOrigin(root);
+        if (lifetime.signal.aborted || githubSource !== source) return;
+        if (origin.toLowerCase() !== source.origin.toLowerCase()) {
+          trackerGeneration++;
+          clearGithub();
+          refresh();
+          if (!discoveryRunning && !detailRunning) void refreshGithub().then(() => refresh());
+          return;
+        }
+        source.viewer = viewer;
+        if (cached?.viewer.id === viewer.id) cached.viewer = viewer;
         viewerVerifiedAt = viewerNow();
         offlineViewer = false;
         if (viewerFailure) discoveryFailure = previousDiscoveryFailure;
@@ -421,13 +443,13 @@ export function createProjectServer(
         }
         const local = origin ? await localViewer() : "";
         if (lifetime.signal.aborted || githubSource !== source) return;
-        if (wasOffline && local !== source.viewer) {
+        if (wasOffline && local !== source.viewer.login) {
           trackerGeneration++;
           clearGithub();
           refresh();
           return;
         }
-        offlineViewer = !!local && local === source.viewer;
+        offlineViewer = !!local && local === source.viewer.login;
       }
       if (failure.code === "login" || failure.code === "gh-missing") {
         trackerGeneration++;
@@ -459,6 +481,7 @@ export function createProjectServer(
   }
 
   function refresh(paths?: readonly string[], force = false) {
+    if (lifetime.signal.aborted) return;
     const previousTracker = snapshot.setup.tracker;
     const previousPaths = watchedPaths;
     snapshot = readSnapshot(paths);
@@ -497,6 +520,7 @@ export function createProjectServer(
   const app = new Hono();
   addProjectPermissionRoute(app, root, () => refresh());
   async function refreshGithub(loadMore = false) {
+    if (lifetime.signal.aborted) return;
     if (snapshot.setup.tracker !== "github-issues") {
       clearGithub();
       return;
@@ -509,22 +533,22 @@ export function createProjectServer(
       return;
     discoveryRunning = true;
     const generation = trackerGeneration;
-    let viewer: string | undefined;
+    let viewer: Awaited<ReturnType<typeof githubViewer>> | undefined;
     let origin: string | undefined;
     const changedIssues = new Set<number>();
     try {
       origin = await githubOrigin(root);
-      if (generation !== trackerGeneration) return;
+      if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (githubSource && githubSource.origin.toLowerCase() !== origin.toLowerCase()) {
         clearGithub();
         refresh();
         if (loadMore) throw new GithubReadError("identity");
       }
-      viewer = await githubViewer(root);
-      if (generation !== trackerGeneration) return;
+      viewer = await githubViewer(root, lifetime.signal);
+      if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (
         githubSource &&
-        (githubSource.viewer !== viewer ||
+        (githubSource.viewer.id !== viewer.id ||
           githubSource.origin.toLowerCase() !== origin.toLowerCase())
       ) {
         clearGithub();
@@ -539,7 +563,7 @@ export function createProjectServer(
       const previous = github;
       const priorDiscoveryFailure = discoveryFailure;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
-      if (generation !== trackerGeneration) return;
+      if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (
         knownRepository &&
         (knownRepository.repositoryId !== next.repositoryId ||
@@ -634,7 +658,7 @@ export function createProjectServer(
       } else if (
         github.retryable &&
         cached &&
-        cached.viewer === viewer &&
+        cached.viewer.id === viewer.id &&
         cached.origin.toLowerCase() === origin.toLowerCase()
       ) {
         github = {
@@ -661,7 +685,7 @@ export function createProjectServer(
         };
       }
     } catch (error) {
-      if (generation !== trackerGeneration) return;
+      if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       const failure = classifyGithubError(error);
       const priorFailure = discoveryFailure;
       discoveryFailure = {
@@ -682,13 +706,13 @@ export function createProjectServer(
         offlineViewer = false;
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
-          if (generation !== trackerGeneration) return;
-          if (wasOffline && local !== githubSource.viewer) {
+          if (lifetime.signal.aborted || generation !== trackerGeneration) return;
+          if (wasOffline && local !== githubSource.viewer.login) {
             trackerGeneration++;
             clearGithub();
             return;
           }
-          offlineViewer = !!local && local === githubSource.viewer;
+          offlineViewer = !!local && local === githubSource.viewer.login;
         }
         if (!viewerFailure) previousDiscoveryFailure = priorFailure;
         viewerFailure = true;
@@ -702,7 +726,7 @@ export function createProjectServer(
       } else if (
         viewer &&
         origin &&
-        cached?.viewer === viewer &&
+        cached?.viewer.id === viewer.id &&
         cached.origin.toLowerCase() === origin.toLowerCase()
       ) {
         githubSource = { viewer, origin };
@@ -820,6 +844,7 @@ export function createProjectServer(
   });
   const beginDetail = createDetailPublisher();
   async function refreshGithubDetail(number: number) {
+    if (lifetime.signal.aborted) return 409;
     const item = github?.items.find((entry) => entry.number === number);
     if (
       !item ||
@@ -839,16 +864,17 @@ export function createProjectServer(
     let publish: ReturnType<typeof beginDetail> | undefined;
     try {
       const currentOrigin = await githubOrigin(root);
-      if (generation !== trackerGeneration || githubSource !== source) return 409;
+      if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
+        return 409;
       if (currentOrigin.toLowerCase() !== source.origin.toLowerCase()) {
         clearGithub();
         refresh();
         throw new GithubReadError("identity");
       }
-      const viewer = await githubViewer(root);
+      const viewer = await githubViewer(root, lifetime.signal);
       if (
         currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||
-        viewer !== githubSource.viewer
+        viewer.id !== githubSource.viewer.id
       ) {
         clearGithub();
         throw new GithubReadError("identity");
@@ -889,13 +915,18 @@ export function createProjectServer(
         offlineViewer = false;
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
-          if (generation !== trackerGeneration || githubSource !== source) return 409;
-          if (wasOffline && local !== source.viewer) {
+          if (
+            lifetime.signal.aborted ||
+            generation !== trackerGeneration ||
+            githubSource !== source
+          )
+            return 409;
+          if (wasOffline && local !== source.viewer.login) {
             trackerGeneration++;
             clearGithub();
             return 409;
           }
-          offlineViewer = !!local && local === source.viewer;
+          offlineViewer = !!local && local === source.viewer.login;
         }
         if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
         viewerFailure = true;
@@ -951,7 +982,7 @@ export function createProjectServer(
     verifyIdentity: async (expected: GithubDiscovery) => {
       const source = githubSource;
       if (!source || github !== expected) return false;
-      const valid = await verifyGithubGateIdentity(root, expected, source);
+      const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
       return valid && github === expected && githubSource === source;
     },
     detailFailed: failGithubDetail,
@@ -1010,7 +1041,7 @@ export function createProjectServer(
     async (expected) => {
       const source = githubSource;
       if (!source || github !== expected) return false;
-      const valid = await verifyGithubGateIdentity(root, expected, source);
+      const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
       return valid && github === expected && githubSource === source;
     },
     failGithubDetail,
@@ -1037,6 +1068,7 @@ export function createProjectServer(
     if (lifetime.signal.aborted) return Promise.reject(new Error("Project server is stopped"));
     starting ??= (async () => {
       await initialize();
+      if (lifetime.signal.aborted) throw new Error("Project server is stopped");
       watcher = watch([...watchedPaths], {
         ignoreInitial: false,
         followSymlinks: false,
@@ -1076,6 +1108,7 @@ export function createProjectServer(
       });
       try {
         await once(watcher, "ready", { signal: lifetime.signal });
+        if (lifetime.signal.aborted) throw new Error("Project server is stopped");
         watcherReady = true;
         refresh();
         metadataPoll = setInterval(() => {
@@ -1102,7 +1135,7 @@ export function createProjectServer(
       clearInterval(metadataPoll);
       clearInterval(viewerPoll);
       try {
-        const results = await Promise.allSettled([stopStints(), checks.stop()]);
+        const results = await Promise.allSettled([stopStints(), checks.stop(), viewerCheck]);
         const failed = results.find((result) => result.status === "rejected");
         if (failed?.status === "rejected") throw failed.reason;
       } finally {

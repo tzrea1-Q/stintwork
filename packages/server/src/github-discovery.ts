@@ -95,9 +95,13 @@ export async function githubOrigin(root: string) {
   return `${match[1]}/${match[2]}`;
 }
 
-export async function githubViewer(root: string): Promise<string> {
+export async function githubViewer(
+  root: string,
+  signal?: AbortSignal,
+): Promise<{ id: number; login: string }> {
   const options = {
     cwd: root,
+    signal,
     timeout: 60_000,
     maxBuffer: 1024 * 1024,
     env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
@@ -121,10 +125,20 @@ export async function githubViewer(root: string): Promise<string> {
     throw failure;
   }
   try {
-    const { stdout } = await execute("gh", ["api", "user", "--jq", ".login"], options);
-    const login = stdout.trim();
-    if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(login)) throw new GithubReadError("login");
-    return login.toLowerCase();
+    const { stdout } = await execute(
+      "gh",
+      ["api", "user", "--jq", "{id: .id, login: .login}"],
+      options,
+    );
+    const { id, login } = JSON.parse(stdout) as { id: unknown; login: unknown };
+    if (
+      !Number.isSafeInteger(id) ||
+      (id as number) <= 0 ||
+      typeof login !== "string" ||
+      !/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(login)
+    )
+      throw new GithubReadError("login");
+    return { id: id as number, login: login.toLowerCase() };
   } catch (error) {
     throw classifyGithubError(error);
   }

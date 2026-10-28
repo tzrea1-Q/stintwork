@@ -148,7 +148,7 @@ test.each(scenarios)(
       });
       const replies = {
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": { stdout: repo },
         "api graphql":
           scenario === "load-more"
@@ -353,7 +353,9 @@ test.each(scenarios)(
         });
         await gh.script({
           "auth status": {},
-          "api user": { stdout: scenario === "viewer" ? "202" : "101" },
+          "api user": {
+            stdout: scenario === "viewer" ? { id: 202, login: "202" } : { id: 101, login: "101" },
+          },
           [`api repos/${newRepo.full_name}`]: { stdout: newRepo },
           "api graphql": scenario === "load-more" ? morePages : { stdout: refreshPage },
         });
@@ -380,7 +382,7 @@ test.each(scenarios)(
           if (scenario === "load-more") {
             await gh.script({
               "auth status": {},
-              "api user": { stdout: "101" },
+              "api user": { stdout: { id: 101, login: "101" } },
               "api repos/github/gh-aw": { stdout: repo },
               "api graphql": { stdout: page([]) },
             });

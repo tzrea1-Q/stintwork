@@ -48,7 +48,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       `fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "start", pid: process.pid, child: ${number} }) + "\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${number === 1472 ? 350 : 200}); fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "end", pid: process.pid, child: ${number} }) + "\\n");`;
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/github/gh-aw": {
         stdout: {
           node_id: "R_test",
@@ -174,7 +174,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       const slow = `fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "start", pid: process.pid }) + "\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800); fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "end", pid: process.pid }) + "\\n");`;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -228,7 +228,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       ]);
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -267,7 +267,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       );
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -305,7 +305,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       parent.sub_issues_summary.total = 2;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -332,7 +332,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       parent.sub_issues_summary.total = 4;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -384,7 +384,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       ).toBe(true);
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -427,7 +427,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       };
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -471,7 +471,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       children[3].body = "Blocked by: owner/other#2";
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -542,7 +542,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       ).toBe(true);
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -571,7 +571,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       const capPage = `HTTP/2 200 OK\r\nLink: <https://api.github.com/next>; rel="next"\r\n\r\n${JSON.stringify(Array(100).fill(children[0]))}`;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -611,7 +611,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       }
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -650,7 +650,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       const reset = Math.ceil(Date.now() / 1000) + 60;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/gh-aw": {
           stdout: {
             node_id: "R_test",
@@ -667,11 +667,11 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       });
       expect(limited.status).toBe(503);
       expect((await limited.json()).github.errorCode).toBe("rate-limited");
-      await gh.script({ "auth status": {}, "api user": { stdout: "101" } });
+      await gh.script({ "auth status": {}, "api user": { stdout: { id: 101, login: "101" } } });
       expect(
         (await server.app.request("/api/github/items/1433/refresh", { method: "POST" })).status,
       ).toBe(429);
-      await gh.script({ "auth status": {}, "api user": { stdout: "102" } });
+      await gh.script({ "auth status": {}, "api user": { stdout: { id: 102, login: "102" } } });
       const changed = await server.app.request("/api/github/items/1433/refresh", {
         method: "POST",
       });
@@ -734,7 +734,7 @@ test("recorded native open blockers outside the parent block both tickets", asyn
     });
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/github/spec-kit": {
         stdout: {
           node_id: "R_test",
@@ -817,7 +817,7 @@ test("recorded native open blockers outside the parent block both tickets", asyn
         `HTTP/2 200 OK\r\nLink: <https://api.github.com/next>; rel="next"\r\n\r\n${JSON.stringify(data)}`;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/spec-kit": {
           stdout: {
             node_id: "R_test",
@@ -868,7 +868,7 @@ test("recorded native open blockers outside the parent block both tickets", asyn
       children[0].issue_dependencies_summary.total_blocked_by = 1;
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/spec-kit": {
           stdout: {
             node_id: "R_test",
@@ -908,7 +908,7 @@ test("recorded native open blockers outside the parent block both tickets", asyn
       });
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/spec-kit": {
           stdout: {
             node_id: "R_changed",

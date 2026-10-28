@@ -53,7 +53,7 @@ test.each(["changed", "logout", "offline"])(
       process.env.PATH = gh.path;
       const replies = {
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/example/project": {
           stdout: {
             node_id: "R_1",
@@ -94,7 +94,7 @@ test.each(["changed", "logout", "offline"])(
         "api user":
           scenario === "offline"
             ? { code: 1, effect: "process.stderr.write('network error')" }
-            : { stdout: "202" },
+            : { stdout: { id: 202, login: "202" } },
         "api graphql": { stdout: newer },
       });
       const redacted = await get();
@@ -155,7 +155,7 @@ test.each([
     process.env.PATH = gh.path;
     const replies = {
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -220,7 +220,7 @@ test("offline auth retains data only while the local account matches and coalesc
     process.env.PATH = gh.path;
     const replies = {
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -307,7 +307,7 @@ test.each(["changed", "case", "refresh", "token"])(
       process.env.PATH = gh.path;
       const replies = {
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/example/project": {
           stdout: {
             node_id: "R_1",
@@ -399,7 +399,7 @@ test.each(["account", "origin"])(
       process.env.PATH = gh.path;
       const replies = {
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/example/project": {
           stdout: {
             node_id: "R_1",
@@ -483,7 +483,7 @@ test("viewer recovery cannot restore an obsolete failure after a failed reposito
     process.env.PATH = gh.path;
     const replies = {
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -555,7 +555,7 @@ test("discovery returns conflict while a detail read is in flight", async () => 
     process.env.PATH = gh.path;
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -571,7 +571,7 @@ test("discovery returns conflict while a detail read is in flight", async () => 
       "auth status": {
         effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)",
       },
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
     });
     const detail = server.app.request("/api/github/items/1/refresh", { method: "POST" });
     await expect
@@ -611,7 +611,7 @@ test("tracker changes start and clear discovery without restarting", async () =>
     process.env.PATH = gh.path;
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -669,7 +669,7 @@ test.each([false, true])(
       };
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/example/project": repo,
         "api graphql": { stdout: page },
         "api repos/example/project/issues/1": {
@@ -697,7 +697,7 @@ test.each([false, true])(
       expect(first.github.items[0].detail.spec).toBe("Secret");
       await gh.script({
         "auth status": {},
-        "api user": { stdout: changed ? "202" : "101" },
+        "api user": { stdout: changed ? { id: 202, login: "101" } : { id: 101, login: "101" } },
         "api repos/example/project": { effect: "process.stderr.write('HTTP 500')", code: 1 },
       });
       const failed = await (
@@ -744,7 +744,7 @@ test("viewer polling is client-scoped, preserves data on failure, and stops with
     process.env.PATH = gh.path;
     const replies = {
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -785,7 +785,7 @@ test("viewer polling is client-scoped, preserves data on failure, and stops with
     expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(0);
     await gh.script({
       ...replies,
-      "api user": { stdout: "202" },
+      "api user": { stdout: { id: 202, login: "202" } },
       "api graphql": {
         stdout: {
           ...page,
@@ -823,6 +823,134 @@ test("viewer polling is client-scoped, preserves data on failure, and stops with
     expect(await count()).toBe(stopped);
   } finally {
     socket?.terminate();
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each(["origin", "account id"])(
+  "viewer revalidation clears private data on changed %s",
+  async (changed) => {
+    const root = await mkdtemp(join(tmpdir(), "github-poll-identity-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: { id: 101, login: "same" } },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
+        },
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      let now = 100_000;
+      const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+      server = instance;
+      const get = async () => (await instance.app.request("/api/project")).json();
+      expect((await get()).github.items).toHaveLength(1);
+      if (changed === "origin")
+        execFileSync("git", [
+          "-C",
+          root,
+          "remote",
+          "set-url",
+          "origin",
+          "https://github.com/other/project.git",
+        ]);
+      await gh.script({
+        ...replies,
+        "api user": { stdout: { id: changed === "account id" ? 202 : 101, login: "same" } },
+        "api repos/example/project": { code: 1 },
+        "api repos/other/project": { code: 1 },
+      });
+      now += 60_001;
+      expect((await get()).github.items).toEqual([]);
+      await expect.poll(async () => (await get()).github?.errorCode).toBeTruthy();
+      const result = await get();
+      expect(result.github.items).toEqual([]);
+      expect(result.github.fetchedAt).toBeUndefined();
+      expect(JSON.stringify(result)).not.toContain("Private");
+    } finally {
+      await server?.stop();
+      process.env.PATH = oldPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("stopping cancels an in-flight viewer authentication before the user check", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-stop-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "same" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    await server.app.request("/api/project");
+    const calls = await gh.calls();
+    await gh.script({
+      ...replies,
+      "auth status": {
+        effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)",
+      },
+    });
+    now += 60_001;
+    await server.app.request("/api/project");
+    await expect.poll(async () => (await gh.calls()).length).toBeGreaterThan(calls.length);
+    await server.stop();
+    const stopped = await gh.calls();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    expect(await gh.calls()).toEqual(stopped);
+    expect(stopped.filter(({ args }) => args[0] === "api" && args[1] === "user")).toHaveLength(1);
+  } finally {
     await server?.stop();
     process.env.PATH = oldPath;
     await rm(root, { recursive: true, force: true });

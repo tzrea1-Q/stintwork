@@ -137,7 +137,7 @@ async function setup(
   process.env.PATH = gh.path;
   const ghReplies = {
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": {
       stdout: {
         node_id: "R_1",
@@ -174,7 +174,10 @@ async function setup(
     discoveryFailed: () => false,
     registerDetailIdentities: () => {},
     verifyIdentity: (expected) =>
-      verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
+      verifyGithubGateIdentity(root, expected, {
+        viewer: { id: 101, login: "101" },
+        origin: "Example/Project",
+      }),
     detailFailed: () => {
       failures++;
     },
@@ -771,7 +774,7 @@ test.each([
 test.each([
   ["failed detail", { [issue]: { code: 1 } }],
   ["incomplete detail", { [issue]: { stdout: { ...parent, sub_issues_summary: { total: 2 } } } }],
-  ["viewer changed", { "api user": { stdout: "102" } }],
+  ["viewer changed", { "api user": { stdout: { id: 102, login: "102" } } }],
   [
     "repository changed",
     {

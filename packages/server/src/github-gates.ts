@@ -35,12 +35,14 @@ import type { ReviewEvidenceReader } from "./review-evidence.js";
 export async function verifyGithubGateIdentity(
   root: string,
   expected: GithubDiscovery,
-  source: { viewer: string; origin: string },
+  source: { viewer: { id: number; login: string }; origin: string },
+  signal?: AbortSignal,
 ) {
-  const viewer = await githubViewer(root);
+  const viewer = await githubViewer(root, signal);
+  if (signal?.aborted) return false;
   const repository = await githubTrackerRepository(root);
   return (
-    viewer === source.viewer &&
+    viewer.id === source.viewer.id &&
     repository.repository.toLowerCase() === source.origin.toLowerCase() &&
     repository.repository.toLowerCase() === expected.repository.toLowerCase() &&
     repository.repositoryId === expected.repositoryId

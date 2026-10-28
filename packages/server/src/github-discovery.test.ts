@@ -85,7 +85,7 @@ test("load more retries a transient relationship failure on the first issue page
   };
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": { stdout: repo },
     "api graphql": [
       { stdout: page },
@@ -116,7 +116,7 @@ test("load more retries a transient relationship failure on the first issue page
     };
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": { stdout: repo },
       "api graphql": [{ stdout: page }, { stdout: child }],
     });
@@ -375,7 +375,7 @@ test("project snapshot exposes discovered work items through the configured GitH
   );
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": {
       stdout: {
         node_id: "R_test",
@@ -503,7 +503,7 @@ test("a failed refresh keeps stale data only for the same authenticated account"
   };
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": { stdout: repo },
     "api graphql": { stdout: fixture },
   });
@@ -513,7 +513,7 @@ test("a failed refresh keeps stale data only for the same authenticated account"
     expect((await (await server.app.request("/api/project")).json()).workItems).toHaveLength(2);
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": {
         code: 1,
         effect: "process.stderr.write('gh: Not Found (HTTP 404)')",
@@ -531,7 +531,7 @@ test("a failed refresh keeps stale data only for the same authenticated account"
     expect(stale.workItems).toHaveLength(2);
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "202" },
+      "api user": { stdout: { id: 202, login: "202" } },
       "api repos/Example/Project": { code: 1 },
     });
     const switched = await (
@@ -724,7 +724,7 @@ test("does not retry before a secondary limit's Retry-After", async () => {
   await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": {
       code: 1,
       effect: "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 120\\n')",
@@ -852,7 +852,7 @@ test("load more keeps earlier incomplete parents incomplete", async () => {
   });
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": {
       stdout: {
         node_id: "R_test",
@@ -1073,7 +1073,7 @@ test.each([
     };
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": { stdout: repo },
       "api graphql": [{ stdout: first }, { stdout: second }, { stdout: rate }],
     });
@@ -1115,7 +1115,10 @@ test.each([
       await gh.script({
         "auth status": {},
         "api user": {
-          stdout: outcome === "viewer" || outcome === "viewer-limited" ? "202" : "101",
+          stdout:
+            outcome === "viewer" || outcome === "viewer-limited"
+              ? { id: 202, login: "202" }
+              : { id: 101, login: "101" },
         },
         "api repos/Example/Project": { stdout: repo },
         "api graphql":
@@ -1185,7 +1188,7 @@ test("a failed load-more from a cached batch retries from its checkpoint and cle
   };
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": { stdout: repo },
     "api graphql": pages,
   });
@@ -1212,7 +1215,7 @@ test("a failed load-more from a cached batch retries from its checkpoint and cle
     };
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": { stdout: repo },
       "api graphql": [{ stdout: last }, { stdout: rate }],
     });
@@ -1241,7 +1244,7 @@ test("a failed load-more from a cached batch retries from its checkpoint and cle
     };
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": { stdout: repo },
       "api graphql": [{ stdout: last }, { stdout: labels }],
     });
@@ -1293,7 +1296,7 @@ test("retry does not clear an earlier unresolved membership decision", async () 
   };
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": { stdout: repo },
     "api graphql": [
       { stdout: first },
@@ -1312,7 +1315,7 @@ test("retry does not clear an earlier unresolved membership decision", async () 
     });
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": { stdout: repo },
       "api graphql": { stdout: second },
     });
@@ -1383,7 +1386,7 @@ test.each([
   fixture.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[0]];
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": {
       stdout: {
         node_id: "R_test",
@@ -1518,7 +1521,7 @@ test.each(["offline", "rate-limited"] as const)(
     };
     await gh.script({
       "auth status": {},
-      "api user": { stdout: "101" },
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/Example/Project": { stdout: repo },
       "api graphql": pages,
     });
@@ -1545,7 +1548,7 @@ test.each(["offline", "rate-limited"] as const)(
             };
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/Example/Project": { stdout: repo },
         "api graphql": [{ stdout: last }, error],
       });
@@ -1565,7 +1568,7 @@ test.each(["offline", "rate-limited"] as const)(
         issue.subIssues.pageInfo = { hasNextPage: false, endCursor: null };
         await gh.script({
           "auth status": {},
-          "api user": { stdout: "101" },
+          "api user": { stdout: { id: 101, login: "101" } },
           "api repos/Example/Project": { stdout: repo },
           "api graphql": { stdout: last },
         });

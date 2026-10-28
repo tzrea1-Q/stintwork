@@ -77,7 +77,7 @@ async function setup(
   process.env.PATH = gh.path;
   await gh.script({
     "auth status": {},
-    "api user": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
     "api repos/Example/Project": {
       stdout: {
         node_id: "R_1",
@@ -172,7 +172,10 @@ async function setup(
     () => checking,
     writing,
     (expected) =>
-      verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
+      verifyGithubGateIdentity(root, expected, {
+        viewer: { id: 101, login: "101" },
+        origin: "Example/Project",
+      }),
     (_github, number, error) => {
       const item = github.items.find((entry) => entry.number === number);
       if (!item) throw new Error("Missing item");
@@ -598,7 +601,7 @@ test("refuses a direct approval when readiness is unmet without committing", asy
 });
 
 test.each([
-  ["viewer changed", { "api user": { stdout: "202" } }],
+  ["viewer changed", { "api user": { stdout: { id: 202, login: "202" } } }],
   [
     "repository changed",
     {
