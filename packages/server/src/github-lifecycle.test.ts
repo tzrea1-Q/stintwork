@@ -128,6 +128,148 @@ test.each(["changed", "logout", "offline"])(
   },
 );
 
+test.each([
+  ["same", { stdout: "101" }, true],
+  ["different", { stdout: "202" }, false],
+  ["empty", { stdout: "" }, false],
+  ["failed", { code: 1 }, false],
+])("offline viewer local config %s", async (_name, local, visible) => {
+  const root = await mkdtemp(join(tmpdir(), "github-local-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    expect((await get()).github.items).toHaveLength(1);
+    now += 60_001;
+    await gh.script({
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('network error')" },
+      "config get": local,
+    });
+    await get();
+    await expect.poll(async () => (await get()).github?.errorCode).toBe("offline");
+    const failed = await get();
+    expect(failed.github.discoveryFailed).toBe(true);
+    expect(failed.github.items).toHaveLength(visible ? 1 : 0);
+    if (visible) {
+      expect(failed.github.stale).toBe(true);
+      const start = await server.app.request("/api/stints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workItem: "github-1", ticket: 2, agent: "codex" }),
+      });
+      expect(start.status).toBe(409);
+    }
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("viewer recovery cannot restore an obsolete failure after a failed repository refresh", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-viewer-recovery-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    await get();
+    now += 60_001;
+    await gh.script({
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('network error')" },
+    });
+    await get();
+    await expect.poll(async () => (await get()).github?.errorCode).toBe("offline");
+    await gh.script({
+      ...replies,
+      "api repos/example/project": { code: 1, effect: "process.stderr.write('HTTP 500')" },
+    });
+    const failed = await (
+      await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+    ).json();
+    expect(failed.github).toMatchObject({
+      discoveryFailed: true,
+      errorCode: "server-error",
+      stale: true,
+    });
+    now += 60_001;
+    await get();
+    await expect.poll(async () => (await get()).github?.verifying).not.toBe(true);
+    expect((await get()).github).toMatchObject({
+      discoveryFailed: true,
+      errorCode: "server-error",
+      stale: true,
+    });
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("discovery returns conflict while a detail read is in flight", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-busy-"));
   const oldPath = process.env.PATH;

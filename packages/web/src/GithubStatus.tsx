@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { renderCoreText, useLanguage } from "./i18n/language";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
@@ -37,30 +37,46 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
   const warnings = (github?.warnings ?? []) as unknown[];
   const incompleteCount = github?.items.filter((item) => !item.complete).length ?? 0;
   const unavailable = !!github?.error && !github.fetchedAt && !github.repositoryId;
-  async function act(action: "refresh" | "load-more", attempts = 1) {
-    setPending(true);
-    setFailed(false);
-    setRetryAction(undefined);
-    try {
-      const response = await fetch(`/api/github/discovery/${action}`, { method: "POST" });
-      if (response.status === 409 && attempts < 3) {
-        setWaiting({ action, attempts, snapshot: github });
-        return;
+  const act = useCallback(
+    async (action: "refresh" | "load-more", attempts = 1) => {
+      setPending(true);
+      setFailed(false);
+      setRetryAction(undefined);
+      try {
+        const response = await fetch(`/api/github/discovery/${action}`, { method: "POST" });
+        if (response.status === 409 && attempts < 3) {
+          setWaiting({ action, attempts, snapshot: github });
+          return;
+        }
+        if (!response.ok) throw new Error();
+        window.dispatchEvent(new Event("stintwork:refresh-project"));
+      } catch {
+        setFailed(true);
+        setRetryAction(action);
       }
-      if (!response.ok) throw new Error();
-      window.dispatchEvent(new Event("stintwork:refresh-project"));
-    } catch {
-      setFailed(true);
-      setRetryAction(action);
-    }
-    setPending(false);
-  }
+      setPending(false);
+    },
+    [github],
+  );
   useEffect(() => {
     const retry = waiting;
-    if (!retry || retry.snapshot === github) return;
-    setWaiting(undefined);
-    void act(retry.action, retry.attempts + 1);
-  });
+    if (!retry) return;
+    if (retry.action === "load-more" && !github?.cursor) {
+      setWaiting(undefined);
+      setPending(false);
+      return;
+    }
+    const run = () => {
+      setWaiting(undefined);
+      void act(retry.action, retry.attempts + 1);
+    };
+    if (retry.snapshot !== github) {
+      run();
+      return;
+    }
+    const timer = setTimeout(run, retry.attempts === 1 ? 2000 : 5000);
+    return () => clearTimeout(timer);
+  }, [waiting, github, act]);
   return (
     <div
       role="status"

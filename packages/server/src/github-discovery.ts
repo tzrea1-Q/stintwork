@@ -102,13 +102,23 @@ export async function githubViewer(root: string): Promise<string> {
     throw new GithubReadError("login");
   }
   try {
-    const { stdout } = await execute("gh", ["api", "user", "--jq", ".id"], options);
-    const id = stdout.trim();
-    if (!/^[1-9][0-9]*$/.test(id)) throw new GithubReadError("login");
-    return id;
+    const { stdout } = await execute("gh", ["api", "user", "--jq", ".login"], options);
+    const login = stdout.trim();
+    if (!/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(login)) throw new GithubReadError("login");
+    return login.toLowerCase();
   } catch (error) {
     throw classifyGithubError(error);
   }
+}
+
+export async function githubLocalViewer(root: string): Promise<string> {
+  const { stdout } = await execute("gh", ["config", "get", "user", "-h", "github.com"], {
+    cwd: root,
+    timeout: 60_000,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
+  });
+  return stdout.trim().toLowerCase();
 }
 
 export async function githubTrackerRepository(root: string) {

@@ -37,6 +37,7 @@ import {
   discoverGithubWorkItems,
   githubOrigin,
   githubViewer,
+  githubLocalViewer,
   githubTrackerRepository,
   type GithubDiscovery,
 } from "./github-discovery.js";
@@ -298,11 +299,14 @@ export function createProjectServer(
   let viewerFailure = false;
   let previousDiscoveryFailure: typeof discoveryFailure;
   let viewerVerifiedAt = 0;
+  let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
   const viewerFresh = () =>
     viewerVerifiedAt > 0 && viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
   function publicSnapshot() {
-    return githubSource && !viewerFresh() ? readSnapshot(undefined, true) : snapshot;
+    return githubSource && !viewerFresh() && !offlineViewer
+      ? readSnapshot(undefined, true)
+      : snapshot;
   }
   const changedPaths = new Set<string>();
   let starting: Promise<ServerType> | undefined;
@@ -330,6 +334,7 @@ export function createProjectServer(
     discoveryFailure = undefined;
     detailFailures.clear();
     viewerVerifiedAt = 0;
+    offlineViewer = false;
     viewerFailure = false;
     previousDiscoveryFailure = undefined;
   }
@@ -354,6 +359,7 @@ export function createProjectServer(
         if (!discoveryRunning && !detailRunning) void refreshGithub().then(() => refresh());
       } else if (!lifetime.signal.aborted && githubSource === source) {
         viewerVerifiedAt = viewerNow();
+        offlineViewer = false;
         if (viewerFailure) discoveryFailure = previousDiscoveryFailure;
         viewerFailure = false;
         previousDiscoveryFailure = undefined;
@@ -366,6 +372,12 @@ export function createProjectServer(
       if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
       viewerFailure = true;
       viewerVerifiedAt = 0;
+      offlineViewer = false;
+      if (failure.code === "offline" || failure.code === "server-error") {
+        const local = await githubLocalViewer(root).catch(() => "");
+        if (lifetime.signal.aborted || githubSource !== source) return;
+        offlineViewer = !!local && local === source.viewer;
+      }
       if (failure.code === "login" || failure.code === "gh-missing") {
         trackerGeneration++;
         clearGithub();
@@ -454,9 +466,13 @@ export function createProjectServer(
         if (loadMore) throw new GithubReadError("identity");
       }
       viewerVerifiedAt = viewerNow();
+      offlineViewer = false;
+      if (viewerFailure) discoveryFailure = previousDiscoveryFailure;
+      viewerFailure = false;
+      previousDiscoveryFailure = undefined;
       if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
       const previous = github;
-      const previousDiscoveryFailure = discoveryFailure;
+      const priorDiscoveryFailure = discoveryFailure;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
       if (generation !== trackerGeneration) return;
       if (
@@ -498,11 +514,11 @@ export function createProjectServer(
                 ...(next.warningMessages ?? next.warnings.map(() => null)),
               ],
               ...(previous.membershipIncomplete ||
-              (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)
+              (priorDiscoveryFailure?.error && !priorDiscoveryFailure.retryable)
                 ? { membershipIncomplete: true }
                 : {}),
               ...((previous.membershipIncomplete ||
-                (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)) &&
+                (priorDiscoveryFailure?.error && !priorDiscoveryFailure.retryable)) &&
               !next.error
                 ? {
                     error: "Results are incomplete; dependencies and approvals may be unknown.",
@@ -512,7 +528,7 @@ export function createProjectServer(
                 : {}),
               complete:
                 !previous.membershipIncomplete &&
-                (!previousDiscoveryFailure?.error || previousDiscoveryFailure.retryable === true) &&
+                (!priorDiscoveryFailure?.error || priorDiscoveryFailure.retryable === true) &&
                 retained.every((item) => item.discoveryComplete ?? item.complete) &&
                 next.complete,
             }
@@ -597,6 +613,12 @@ export function createProjectServer(
         failure.code !== "gh-missing"
       ) {
         viewerVerifiedAt = 0;
+        offlineViewer = false;
+        if (failure.code === "offline" || failure.code === "server-error") {
+          const local = await githubLocalViewer(root).catch(() => "");
+          if (generation !== trackerGeneration) return;
+          offlineViewer = !!local && local === githubSource.viewer;
+        }
         if (!viewerFailure) previousDiscoveryFailure = priorFailure;
         viewerFailure = true;
         github = {
@@ -786,6 +808,12 @@ export function createProjectServer(
         failure.code !== "identity"
       ) {
         viewerVerifiedAt = 0;
+        offlineViewer = false;
+        if (failure.code === "offline" || failure.code === "server-error") {
+          const local = await githubLocalViewer(root).catch(() => "");
+          if (generation !== trackerGeneration || githubSource !== source) return 409;
+          offlineViewer = !!local && local === source.viewer;
+        }
         if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
         viewerFailure = true;
         discoveryFailure = {

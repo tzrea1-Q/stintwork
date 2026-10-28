@@ -5,6 +5,57 @@ import { GithubStatus } from "./GithubStatus";
 
 afterEach(() => vi.useRealTimers());
 
+test("conflicts retry on timers and eventually release controls", async () => {
+  vi.useFakeTimers();
+  const fetcher = vi
+    .spyOn(window, "fetch")
+    .mockResolvedValue({ ok: false, status: 409 } as Response);
+  render(<GithubStatus />);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(5000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  fetcher.mockRestore();
+});
+
+test("load more stops retrying when the cursor disappears", async () => {
+  vi.useFakeTimers();
+  const fetcher = vi
+    .spyOn(window, "fetch")
+    .mockResolvedValue({ ok: false, status: 409 } as Response);
+  const github = {
+    repository: "a/b",
+    repositoryId: "R",
+    items: [],
+    scanned: 1,
+    cursor: "next",
+    complete: false,
+    pages: [],
+    warnings: [],
+  };
+  const { rerender } = render(<GithubStatus github={github} />);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+  });
+  rerender(<GithubStatus github={{ ...github, cursor: null }} />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled();
+  fetcher.mockRestore();
+});
+
 test.each([1, 3])(
   "load more retries after snapshot updates, with %s conflicts",
   async (conflicts) => {
