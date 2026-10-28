@@ -623,6 +623,13 @@ export const en = {
     gate: (name: string) => `${name} gate`,
     gateConditions: (name: string) => `${name} gate conditions`,
     readyToApprove: "Ready to approve",
+    githubDetailRequired: "Refresh complete GitHub evidence before approving.",
+    githubRefresh: "Refresh GitHub evidence",
+    githubApproval: {
+      current: "Approval is current.",
+      stale: "Approval is stale; GitHub evidence changed.",
+      unknown: "Approval status is unknown; GitHub evidence is unavailable.",
+    },
     ready: "Ready",
     blocked: "Blocked",
     noAction: "No action needed.",

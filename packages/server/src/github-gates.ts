@@ -181,13 +181,14 @@ export function addGithubGateRoutes(
         },
         `Approve ${stage.id} gate for ${slug}`,
       );
-      refresh();
       let approval: "current" | "stale" | "unknown" = "unknown";
       try {
         approval = (await digest()) === observed ? "current" : "stale";
       } catch {
         /* The committed approval remains unverified. */
       }
+      if (approval !== "current" && item.detail) item.detail.stale = true;
+      refresh();
       return context.json({ approval });
     } catch (error) {
       refresh();

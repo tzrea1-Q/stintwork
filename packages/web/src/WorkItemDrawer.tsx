@@ -229,7 +229,7 @@ export function WorkItemDrawer({
             <ShipActions item={item} workflows={workflows} />
             {!item.merged && (
               <GateView
-                key={`${item.slug}:${item.stage}`}
+                key={item.github ? item.slug : `${item.slug}:${item.stage}`}
                 item={item}
                 warnings={warnings}
                 workflows={workflows}

@@ -640,6 +640,13 @@ export const zhCN: Catalog = {
     gate: (name) => joinChinese(name, "关卡"),
     gateConditions: (name) => joinChinese(name, "关卡条件"),
     readyToApprove: "可批准",
+    githubDetailRequired: "批准前请刷新完整的 GitHub 证据。",
+    githubRefresh: "刷新 GitHub 证据",
+    githubApproval: {
+      current: "批准状态为当前。",
+      stale: "批准已过期；GitHub 证据已变化。",
+      unknown: "批准状态未知；无法获取 GitHub 证据。",
+    },
     ready: "已就绪",
     blocked: "受阻",
     noAction: "无需操作。",

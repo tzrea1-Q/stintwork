@@ -41,6 +41,7 @@ import {
   type GithubDiscovery,
 } from "./github-discovery.js";
 import { readGithubTickets } from "./github-tickets.js";
+import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import { addGithubGateRoutes } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
@@ -172,12 +173,16 @@ export function createProjectServer(
         };
       }
     }
-    const snapshot = indexProject(project.files, {
-      name,
-      agents: describeAgents(agentRegistry),
-      ...(safeGithub ? { github: safeGithub } : {}),
-      ...(branch ? { branch } : {}),
-    });
+    const snapshot = indexProject(
+      safeGithub ? githubSnapshotFiles(project, safeGithub) : project.files,
+      {
+        name,
+        agents: describeAgents(agentRegistry),
+        ...(safeGithub ? { github: safeGithub } : {}),
+        ...(branch ? { branch } : {}),
+      },
+    );
+    projectGithubGates(snapshot, root, project);
     readReviewEvidence(project, snapshot);
     for (const item of snapshot.workItems)
       if (item.activeStint)

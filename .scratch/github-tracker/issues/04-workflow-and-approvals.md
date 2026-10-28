@@ -13,11 +13,15 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 - [ ] The committed path, identity and YAML evidence follow the spec and worktree authority; unsafe paths, invalid YAML, conflicts and concurrent writes refuse safely.
 - [ ] Canonical versioned digests cover the defined spec and ticket data, excluding irrelevant changes, with stable deterministic serialization.
-- [ ] Approval requires complete current evidence and unchanged reviewed HEAD; remote changes or fetch failures before/after commit cannot appear current.
+- [x] Approval requires complete current evidence and unchanged reviewed HEAD; remote changes or fetch failures before/after commit cannot appear current.
 - [ ] Reopen, remote edits, reverted content, code HEAD changes, branch merge/conflict and downstream invalidation follow the spec.
 - [ ] Fixture and fake-gh tests cover races and rollback without network; local approvals remain compatible.
 
 ## Comments
+
+**Codex, 2026-10-28:** Projected validated GitHub workflow records and per-approval current/stale/unknown evidence into snapshots, with the reviewed digest and HEAD for fresh complete detail. The bilingual gate submits the reviewed values, shows refusal recovery and preserves the returned approval state. The post-check marks cached detail stale on change or failure. Criterion 4 is complete for approval pre/post checks and snapshot display; later dependent-use revalidation, reopen and downstream invalidation remain open.
+
+Checks in this worktree: format:check, lint, typecheck, web/core Vitest (1,645 tests across 89 files) and the GitHub gate and snapshot server tests (11 tests across 2 files). Lint reported the existing Biome deprecation. The GitHub gate browser case was added for the coordinator to run alongside the required bilingual browser acceptance; no e2e or real browser check was run here. No commit was made.
 
 **Codex, 2026-10-28:** Added the GitHub approval route with fresh complete evidence and reviewed HEAD checks, a guarded first-write commit, and a post-commit current/stale/unknown result. Nine fake-gh tests cover refusals, concurrency and spec versus ticket evidence. Criterion 4 remains open: the route reports the immediate post-check, but snapshot projection and revalidation before later dependent use are not yet implemented. GitHub stage readiness and reopen/invalidation integration also remain outstanding.
 
