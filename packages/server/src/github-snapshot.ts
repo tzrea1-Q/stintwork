@@ -3,9 +3,11 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   githubEvidenceJson,
+  evidenceStale,
   type GithubEvidenceInput,
   type ProjectSnapshot,
 } from "@stintwork/core";
+import { checkpointChangedPaths } from "@stintwork/git";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 
@@ -34,6 +36,17 @@ export function projectGithubGates(
   }
   for (const item of snapshot.workItems) {
     if (!item.github) continue;
+    const worktree = project.worktreePaths.get(item.slug);
+    if (worktree && snapshot.github) {
+      const path = `.stintwork/github/${snapshot.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
+      const main = project.files.read(path);
+      const branch = createNodeRepoFiles(worktree).read(path);
+      if (main !== undefined && branch !== undefined && main !== branch)
+        snapshot.warnings.push({
+          path,
+          message: "Workflow records differ between the main checkout and worktree.",
+        });
+    }
     const remote = snapshot.github?.items.find((entry) => entry.id === item.github?.issueId);
     const detail = remote?.detail;
     const valid =
@@ -67,15 +80,32 @@ export function projectGithubGates(
         )
         .digest("hex")}`;
     };
-    for (const [stage, record] of Object.entries(item.stages)) {
+    let upstream: "current" | "stale" | "unknown" = "current";
+    for (const { id: stage } of stages) {
+      const record = item.stages[stage];
+      if (!record) {
+        if (
+          stages.findIndex((entry) => entry.id === stage) <
+          stages.findIndex((entry) => entry.id === item.stage)
+        )
+          upstream = "unknown";
+        continue;
+      }
       const approval = record.approved;
-      if (!approval || typeof approval !== "object" || Array.isArray(approval)) continue;
+      if (!approval || typeof approval !== "object" || Array.isArray(approval)) {
+        if (
+          stages.findIndex((entry) => entry.id === stage) <
+          stages.findIndex((entry) => entry.id === item.stage)
+        )
+          upstream = "unknown";
+        continue;
+      }
       const evidence =
         "remote" in approval && approval.remote && typeof approval.remote === "object"
           ? approval.remote
           : undefined;
       const current = digest(stage);
-      const state =
+      let state: "current" | "stale" | "unknown" =
         !current ||
         !evidence ||
         !("version" in evidence) ||
@@ -87,7 +117,49 @@ export function projectGithubGates(
           : evidence.digest === current
             ? "current"
             : "stale";
+      const reopened = record.reopened;
+      if (
+        reopened &&
+        typeof reopened === "object" &&
+        "at" in reopened &&
+        typeof reopened.at === "string"
+      ) {
+        if (!("at" in approval) || typeof approval.at !== "string") state = "unknown";
+        else if (reopened.at >= approval.at) state = "stale";
+      }
+      if (upstream !== "current" && state === "current") state = upstream;
+      if (state === "current" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
+        try {
+          if (!("commit" in approval) || typeof approval.commit !== "string") state = "unknown";
+          else {
+            const directory = project.worktreePaths.get(item.slug) ?? root;
+            const headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+              cwd: directory,
+              encoding: "utf8",
+            }).trim();
+            const paths =
+              approval.commit === headCommit
+                ? []
+                : checkpointChangedPaths(directory, approval.commit, headCommit);
+            if (
+              evidenceStale(
+                {
+                  slug: item.slug,
+                  github: item.github,
+                  headCommit,
+                  evidenceChangedPaths: { [approval.commit]: paths },
+                },
+                approval.commit,
+              )
+            )
+              state = "stale";
+          }
+        } catch {
+          state = "unknown";
+        }
+      }
       record.approved = { ...approval, remoteState: state };
+      upstream = state;
     }
     const reviewDigest = item.stage ? digest(item.stage) : undefined;
     if (reviewDigest) {

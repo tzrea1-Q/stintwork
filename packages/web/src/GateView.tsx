@@ -54,7 +54,7 @@ export function GateView({
     try {
       const response = await fetch(
         github
-          ? `/api/github/items/${github.number}/gates/approve`
+          ? `/api/github/items/${github.number}/gates/${action}`
           : `/api/work-items/${encodeURIComponent(item.slug)}/gates/${encodeURIComponent(stage)}/${action}`,
         {
           method: "POST",
@@ -176,17 +176,21 @@ export function GateView({
           {t.stints.approve(stageName(workflows[item.workflow], current, t))}
         </Button>
       )}
-      {!github &&
-        earlier.map((stage) => (
-          <Button
-            key={stage.id}
-            type="button"
-            disabled={saving || !!message || !!item.activeStint}
-            onClick={() => void act(stage.id, "reopen")}
-          >
-            {t.stints.reopen(stageName(workflows[item.workflow], stage, t))}
-          </Button>
-        ))}
+      {earlier.map((stage) => (
+        <Button
+          key={stage.id}
+          type="button"
+          disabled={
+            saving ||
+            !!message ||
+            !!item.activeStint ||
+            (!!github && (!reviewAvailable || refreshNeeded))
+          }
+          onClick={() => void act(stage.id, "reopen")}
+        >
+          {t.stints.reopen(stageName(workflows[item.workflow], stage, t))}
+        </Button>
+      ))}
       {github && (refreshNeeded || !reviewAvailable) && (
         <Button
           type="button"

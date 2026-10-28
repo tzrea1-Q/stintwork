@@ -163,3 +163,29 @@ test("local workflow bytes are unchanged and unrelated setup paths remain forbid
     await expect(commitStintworkSetup(root, "github-1", [path])).rejects.toThrow();
   }
 });
+
+test("accepts a merged record and refuses an unresolved index conflict", async () => {
+  const root = repo();
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", root, ...args], { encoding: "utf8" }).trim();
+  const path = ".stintwork/github/example/project/1/workflow.yaml";
+  git("config", "user.name", "Test");
+  git("config", "user.email", "test@example.com");
+  const main = git("branch", "--show-current");
+  git("checkout", "-qb", "topic");
+  await saveGithubWorkflow(root, discovery, item, "feature", "spec");
+  const recorded = readFileSync(join(root, path), "utf8");
+  git("checkout", "-q", main);
+  git("merge", "--ff-only", "topic");
+  expect(await saveGithubWorkflow(root, discovery, item, "feature", "spec")).toBeNull();
+  expect(readFileSync(join(root, path), "utf8")).toBe(recorded);
+  const hash = git("rev-parse", `HEAD:${path}`);
+  execFileSync("git", ["-C", root, "update-index", "--index-info"], {
+    input: `0 ${"0".repeat(hash.length)}\t${path}\n100644 ${hash} 1\t${path}\n100644 ${hash} 2\t${path}\n100644 ${hash} 3\t${path}\n`,
+  });
+  await expect(
+    saveGithubWorkflow(root, discovery, item, "feature", "spec", (text) => `${text}extra: true\n`),
+  ).rejects.toThrow();
+  expect(readFileSync(join(root, path), "utf8")).toBe(recorded);
+  expect(git("ls-files", "-u", "--", path).split("\n")).toHaveLength(3);
+});

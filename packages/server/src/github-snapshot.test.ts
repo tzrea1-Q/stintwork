@@ -79,6 +79,53 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
         reviewHead: head,
       },
     });
+    const branch = join(root, "branch");
+    const workflowPath = ".stintwork/github/example/project/1/workflow.yaml";
+    mkdirSync(join(branch, ".stintwork/github/example/project/1"), { recursive: true });
+    writeFileSync(join(branch, workflowPath), "different record\n");
+    const divergent = indexProject(files, { name: "Test", github });
+    projectGithubGates(divergent, root, {
+      ...project,
+      worktreePaths: new Map([["github-1", branch]]),
+    });
+    expect(divergent.warnings).toContainEqual({
+      path: workflowPath,
+      message: expect.stringContaining("differ"),
+    });
+    const reviewSnapshot = indexProject(files, { name: "Test", github });
+    const reviewItem = reviewSnapshot.workItems[0];
+    const ticketDigest = await githubEvidenceDigest(
+      { parentId: "I_1", body: "Spec", tickets: [] },
+      true,
+    );
+    const approval = {
+      by: "Test",
+      at: "2026-01-01T00:00:00Z",
+      commit: head,
+      remote: { version: 1, parentId: "I_1", digest: ticketDigest },
+    };
+    reviewItem.stages.spec.approved = { ...approval, remote: { ...approval.remote, digest } };
+    reviewItem.stages.tickets = { approved: approval };
+    reviewItem.stages.implement = { approved: approval };
+    reviewItem.stages.review = { approved: approval };
+    reviewItem.stage = "ship";
+    projectGithubGates(reviewSnapshot, root, project);
+    expect(reviewItem.stages.review.approved).toMatchObject({ remoteState: "current" });
+    writeFileSync(join(root, "code.ts"), "code\n");
+    execFileSync("git", ["-C", root, "add", "code.ts"]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-qm",
+      "code change",
+    ]);
+    projectGithubGates(reviewSnapshot, root, project);
+    expect(reviewItem.stages.review.approved).toMatchObject({ remoteState: "stale" });
     const freshDefault = indexProject(files, {
       name: "Test",
       github: { ...github, items: [{ ...github.items[0], bound: false }] },
@@ -147,4 +194,71 @@ test("worktree workflow overrides main only when present", () => {
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("parent and ticket revisions invalidate only dependent approvals and a revert restores them", async () => {
+  const ticket = {
+    id: "I_2",
+    number: 2,
+    title: "Ticket",
+    body: "Ticket",
+    state: "open",
+    stateReason: null,
+    labels: [],
+    blockers: [],
+    commentRecords: [],
+    comments: [],
+    blockedBy: [],
+    blocked: false,
+  };
+  const input = { parentId: "I_1", body: "Spec", tickets: [ticket] };
+  const spec = await githubEvidenceDigest(input, false);
+  const tickets = await githubEvidenceDigest(input, true);
+  const path = ".stintwork/github/example/project/1/workflow.yaml";
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+    [path]: `workflow: feature\nstage: implement\nstages:\n  clarify:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${spec}' } }\n  spec:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${spec}' } }\n  tickets:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${tickets}' } }\n`,
+  });
+  const github = {
+    repository: "Example/Project",
+    repositoryId: "R_1",
+    items: [
+      {
+        id: "I_1",
+        number: 1,
+        title: "Parent",
+        url: "https://github.com/Example/Project/issues/1",
+        bound: true,
+        complete: true,
+        detail: { spec: "Spec", tickets: [ticket], complete: true },
+      },
+    ],
+    scanned: 1,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+  };
+  const project = {
+    files,
+    worktreePaths: new Map(),
+    watchPaths: [],
+    warnings: [],
+  } as ReturnType<ProjectFilesReader>;
+  const states = () => {
+    const snapshot = indexProject(files, { name: "Test", github });
+    projectGithubGates(snapshot, process.cwd(), project);
+    return ["spec", "tickets"].map(
+      (stage) =>
+        (snapshot.workItems[0].stages[stage].approved as { remoteState: string }).remoteState,
+    );
+  };
+  expect(states()).toEqual(["current", "current"]);
+  github.items[0].detail.spec = "Changed";
+  expect(states()).toEqual(["stale", "stale"]);
+  github.items[0].detail.spec = "Spec";
+  ticket.body = "Changed";
+  expect(states()).toEqual(["current", "stale"]);
+  ticket.body = "Ticket";
+  expect(states()).toEqual(["current", "current"]);
 });

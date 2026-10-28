@@ -49,3 +49,28 @@ test("ticket evidence sorts identities and includes only configured triage label
     '{"version":1,"parentId":"I_1","body":"spec","tickets":[{"id":"I_a","body":"","state":"closed","stateReason":"completed","labels":[],"blockers":[],"comments":[]},{"id":"I_b","body":"body","state":"open","stateReason":null,"labels":["ready"],"blockers":[{"id":"I_a","state":"open"},{"id":"I_z","state":"closed"}],"comments":[{"id":"C_a","body":"first"},{"id":"C_z","body":"last"}]}]}',
   );
 });
+
+test("irrelevant metadata and parent comments are excluded, ticket comments are included", () => {
+  const ticket = {
+    id: "I_2",
+    body: "body",
+    state: "open",
+    stateReason: null,
+    labels: [],
+    blockers: [],
+    commentRecords: [{ id: "C_1", body: "first" }],
+    title: "Old",
+    assignees: ["a"],
+    updatedAt: "old",
+  };
+  const input = { parentId: "I_1", body: "spec", tickets: [ticket], comments: ["discussion"] };
+  const before = githubEvidenceJson(input, true);
+  ticket.title = "New";
+  ticket.assignees = ["b"];
+  ticket.updatedAt = "new";
+  input.comments = ["changed discussion"];
+  expect(githubEvidenceJson(input, true)).toBe(before);
+  ticket.commentRecords[0].body = "changed";
+  expect(githubEvidenceJson(input, true)).not.toBe(before);
+  expect(githubEvidenceJson(input, false)).not.toContain("changed");
+});

@@ -19,6 +19,7 @@ export function riskyPathAccepted(risk: RiskyPath, decisions: readonly ReviewDec
 
 export type EvidenceContext = {
   slug: string;
+  github?: { repository: string; number: number };
   headCommit?: string;
   evidenceChangedPaths?: Record<string, string[] | null>;
 };
@@ -38,7 +39,10 @@ export function evidenceStale(item: EvidenceContext, commit: string): boolean {
     paths.some(
       (path) =>
         path !== `.scratch/${item.slug}/workflow.yaml` &&
-        path !== `.scratch/${item.slug}/review.yaml`,
+        path !== `.scratch/${item.slug}/review.yaml` &&
+        (!item.github ||
+          path !==
+            `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`),
     )
   );
 }

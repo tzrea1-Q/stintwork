@@ -74,22 +74,81 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
     () => {},
     () => false,
   );
-  if (initialStage)
-    await saveGithubWorkflow(root, discovery, discovery.items[0], "feature", initialStage);
+  if (initialStage) {
+    const digest = await githubEvidenceDigest(
+      { parentId: "I_1", body: "Spec", tickets: [] },
+      false,
+    );
+    const stages = snapshot.workflows.feature.stages;
+    const previous = stages.slice(
+      0,
+      stages.findIndex(({ id }) => id === initialStage),
+    );
+    await saveGithubWorkflow(
+      root,
+      discovery,
+      discovery.items[0],
+      "feature",
+      initialStage,
+      (text) =>
+        `${text}stages:\n${previous.map(({ id }) => `  ${id}:\n    approved:\n      at: '2026-01-01T00:00:00Z'\n      remote: { version: 1, parentId: I_1, digest: '${digest}' }\n`).join("")}`,
+    );
+  }
   const reviewedHead = git("rev-parse", "HEAD");
   const reviewedDigest = await githubEvidenceDigest(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,
   );
-  const request = (body = { stage: "clarify", reviewedDigest, reviewedHead }) =>
-    app.request("/api/github/items/1/gates/approve", {
+  const request = (body = { stage: "clarify", reviewedDigest, reviewedHead }, action = "approve") =>
+    app.request(`/api/github/items/1/gates/${action}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  return { git, request, reviewedHead, reviewedDigest };
+  return { git, request, reviewedHead, reviewedDigest, root };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
+
+test("reopens an earlier GitHub gate and retains its approval", async () => {
+  const { git, request, reviewedHead } = await setup({}, "tickets");
+  const reviewedDigest = await githubEvidenceDigest(
+    { parentId: "I_1", body: "Spec", tickets: [] },
+    true,
+  );
+  const response = await request({ stage: "spec", reviewedDigest, reviewedHead }, "reopen");
+  expect(response.status).toBe(200);
+  expect(parse(git("show", `HEAD:${path}`))).toMatchObject({
+    stage: "spec",
+    stages: {
+      spec: { approved: { remote: { parentId: "I_1" } }, reopened: { commit: reviewedHead } },
+    },
+  });
+  const specDigest = await githubEvidenceDigest(
+    { parentId: "I_1", body: "Spec", tickets: [] },
+    false,
+  );
+  expect(
+    (
+      await request({
+        stage: "spec",
+        reviewedDigest: specDigest,
+        reviewedHead: git("rev-parse", "HEAD"),
+      })
+    ).status,
+  ).toBe(409);
+});
+
+test("refuses a later approval when an earlier approval is stale or unknown", async () => {
+  for (const reply of [{ stdout: { ...parent, body: "Changed" } }, { code: 1 }]) {
+    const { git, request, reviewedHead } = await setup({ [issue]: reply }, "spec");
+    const reviewedDigest = await githubEvidenceDigest(
+      { parentId: "I_1", body: "Changed", tickets: [] },
+      false,
+    );
+    expect((await request({ stage: "spec", reviewedDigest, reviewedHead })).status).toBe(409);
+    expect(git("rev-list", "--count", "HEAD")).toBe("2");
+  }
+});
 
 test("creates and commits a current approval", async () => {
   const { git, request, reviewedHead, reviewedDigest } = await setup();
