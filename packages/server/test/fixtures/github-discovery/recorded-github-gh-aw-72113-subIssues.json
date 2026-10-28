@@ -1,0 +1,28 @@
+{
+  "data": {
+    "node": {
+      "id": "I_kwDOPc1QR88AAAABaBvdig",
+      "subIssues": {
+        "nodes": [
+          {
+            "repository": {
+              "id": "R_kgDOPc1QRw"
+            },
+            "subIssues": {
+              "totalCount": 0
+            }
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "MQ"
+        }
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4659,
+      "resetAt": "2026-10-28T02:18:19Z"
+    }
+  }
+}

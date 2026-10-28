@@ -2,25 +2,117 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { shipGit } from "./pull-requests.js";
+import type { RepoFiles } from "@stintwork/core";
+import { parseDocument } from "yaml";
 
 const execute = promisify(execFile);
-class RateLimitError extends Error {}
+export type GithubErrorCode =
+  | "gh-missing"
+  | "login"
+  | "unavailable"
+  | "rate-limited"
+  | "offline"
+  | "server-error"
+  | "incomplete"
+  | "cap"
+  | "identity";
+const errorMessages: Record<GithubErrorCode, string> = {
+  "gh-missing": "GitHub CLI is not installed. Install gh, then retry.",
+  login: "GitHub login is unavailable. Sign in with gh, then retry.",
+  unavailable: "Repository or issue unavailable. Check the repository and your access, then retry.",
+  "rate-limited": "GitHub rate limit reached. Retry after the indicated time.",
+  offline: "GitHub could not be reached. Showing stale data when available.",
+  "server-error": "GitHub could not be reached. Showing stale data when available.",
+  incomplete: "Results are incomplete; dependencies and approvals may be unknown.",
+  cap: "Results are incomplete; a connection reached its safety cap.",
+  identity: "GitHub identity is ambiguous. Developer resolution is required.",
+};
+export class GithubReadError extends Error {
+  constructor(
+    public code: GithubErrorCode,
+    public retryAt?: string,
+  ) {
+    super(`${errorMessages[code]}${retryAt ? ` Retry after ${retryAt}.` : ""}`);
+  }
+}
+export function classifyGithubError(error: unknown): GithubReadError {
+  if (error instanceof GithubReadError) return error;
+  const value = error as { code?: unknown; stderr?: unknown; stdout?: unknown } | null;
+  if (value?.code === "ENOENT") return new GithubReadError("gh-missing");
+  const detail = `${typeof value?.stderr === "string" ? value.stderr : ""}\n${typeof value?.stdout === "string" ? value.stdout.slice(0, 8192) : ""}`;
+  if (/rate limit|secondary rate/i.test(detail)) {
+    const seconds = /^retry-after:\s*(\d+)/im.exec(detail)?.[1];
+    const reset = /^x-ratelimit-reset:\s*(\d+)/im.exec(detail)?.[1];
+    const timestamp = seconds
+      ? Date.now() + Number(seconds) * 1000
+      : reset
+        ? Number(reset) * 1000
+        : 0;
+    return new GithubReadError(
+      "rate-limited",
+      timestamp > Date.now() && timestamp < 8640000000000000
+        ? new Date(timestamp).toISOString()
+        : new Date(Date.now() + 60_000).toISOString(),
+    );
+  }
+  if (/HTTP 5\d\d|server error/i.test(detail)) return new GithubReadError("server-error");
+  if (/network|connect|timed? out|could not resolve|no such host|ENOTFOUND/i.test(detail))
+    return new GithubReadError("offline");
+  return new GithubReadError("unavailable");
+}
+
+function responseJson(stdout: string): unknown {
+  try {
+    if (!stdout.startsWith("HTTP/")) return JSON.parse(stdout);
+    const separator = /\r?\n\r?\n/.exec(stdout);
+    if (!separator) throw new GithubReadError("incomplete");
+    return JSON.parse(stdout.slice(separator.index + separator[0].length));
+  } catch {
+    throw new GithubReadError("incomplete");
+  }
+}
 
 /** Resolve only the project's explicit, credential-free github.com origin. */
-export async function githubTrackerRepository(root: string) {
+export async function githubOrigin(root: string) {
   let origin: string;
   try {
     origin = await shipGit(root, ["config", "--get-all", "remote.origin.url"]);
   } catch {
-    throw new Error("GitHub origin is unavailable or ambiguous.");
+    throw new GithubReadError("identity");
   }
   const match =
     /^(?:https:\/\/github\.com\/|ssh:\/\/git@github\.com\/|git@github\.com:)([A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/.exec(
       origin,
     );
-  if (!match || match[2] === "." || match[2] === "..")
-    throw new Error("GitHub origin is unavailable or ambiguous.");
-  const repository = `${match[1]}/${match[2]}`;
+  if (!match || match[2] === "." || match[2] === "..") throw new GithubReadError("identity");
+  return `${match[1]}/${match[2]}`;
+}
+
+export async function githubViewer(root: string): Promise<string> {
+  const options = {
+    cwd: root,
+    timeout: 60_000,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
+  };
+  try {
+    await execute("gh", ["auth", "status", "--active", "--hostname", "github.com"], options);
+  } catch (error) {
+    if ((error as { code?: unknown })?.code === "ENOENT") throw new GithubReadError("gh-missing");
+    throw new GithubReadError("login");
+  }
+  try {
+    const { stdout } = await execute("gh", ["api", "user", "--jq", ".id"], options);
+    const id = stdout.trim();
+    if (!/^[1-9][0-9]*$/.test(id)) throw new GithubReadError("login");
+    return id;
+  } catch (error) {
+    throw classifyGithubError(error);
+  }
+}
+
+export async function githubTrackerRepository(root: string) {
+  const repository = await githubOrigin(root);
   const gh = async (args: string[]) =>
     (
       await execute("gh", args, {
@@ -34,16 +126,14 @@ export async function githubTrackerRepository(root: string) {
     await gh(["auth", "status", "--active", "--hostname", "github.com"]);
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
-      throw new Error("GitHub CLI is not installed. Install gh, then retry.");
-    throw new Error("GitHub login is unavailable. Sign in with gh, then retry.");
+      throw new GithubReadError("gh-missing");
+    throw new GithubReadError("login");
   }
   let data: { node_id?: unknown; full_name?: unknown; html_url?: unknown };
   try {
-    data = JSON.parse(await gh(["api", `repos/${repository}`]));
-  } catch {
-    throw new Error(
-      "Repository or issue unavailable. Check the repository and your access, then retry.",
-    );
+    data = responseJson(await gh(["api", `repos/${repository}`, "--include"])) as typeof data;
+  } catch (error) {
+    throw classifyGithubError(error);
   }
   if (
     !data ||
@@ -53,7 +143,7 @@ export async function githubTrackerRepository(root: string) {
     data.full_name.toLowerCase() !== repository.toLowerCase() ||
     data.html_url !== `https://github.com/${data.full_name}`
   )
-    throw new Error("GitHub repository identity is ambiguous. Resolve it before retrying.");
+    throw new GithubReadError("identity");
   return { repository: data.full_name, repositoryId: data.node_id, url: data.html_url };
 }
 
@@ -72,13 +162,24 @@ type Page = { cost: number; remaining: number; resetAt: string };
 export type GithubDiscovery = {
   repository: string;
   repositoryId: string;
-  items: { id: string; number: number; title: string; url: string; complete: boolean }[];
+  items: {
+    id: string;
+    number: number;
+    title: string;
+    url: string;
+    complete: boolean;
+    bound?: boolean;
+  }[];
   scanned: number;
   cursor: string | null;
   complete: boolean;
   pages: Page[];
   warnings: string[];
   error?: string;
+  errorCode?: GithubErrorCode;
+  retryAt?: string;
+  stale?: boolean;
+  fetchedAt?: string;
 };
 
 const issueFields = `id number title url parent { id } labels(first: 100) { nodes { name } pageInfo { hasNextPage endCursor } } subIssues(first: 100) { totalCount nodes { repository { id } subIssues(first: 1) { totalCount } } pageInfo { hasNextPage endCursor } }`;
@@ -102,30 +203,50 @@ export async function discoverGithubWorkItems(
     warnings: [],
   };
   async function query(queryText: string, variables: Record<string, string | null>) {
-    const args = ["api", "graphql", "-f", `query=${queryText}`];
+    const args = ["api", "graphql", "--include", "-f", `query=${queryText}`];
     for (const [key, value] of Object.entries(variables))
       if (value !== null) args.push("-f", `${key}=${value}`);
-    const { stdout } = await execute("gh", args, {
-      cwd: root,
-      timeout: 60_000,
-      maxBuffer: 4 * 1024 * 1024,
-      env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
-    });
-    const response = JSON.parse(stdout);
+    let stdout: string;
+    try {
+      ({ stdout } = await execute("gh", args, {
+        cwd: root,
+        timeout: 60_000,
+        maxBuffer: 4 * 1024 * 1024,
+        env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
+      }));
+    } catch (error) {
+      throw classifyGithubError(error);
+    }
+    const response = responseJson(stdout) as {
+      errors?: unknown;
+      data?: {
+        rateLimit: Page;
+        repository?: { id: string; nameWithOwner: string; issues: Connection<Issue> };
+        node?: { id: string; labels: Connection<{ name: string }>; subIssues: Connection<Child> };
+      };
+    };
     if (
-      response.errors ||
-      !response.data ||
-      !response.data.rateLimit ||
+      !response.data?.rateLimit ||
       typeof response.data.rateLimit.cost !== "number" ||
       typeof response.data.rateLimit.remaining !== "number" ||
       typeof response.data.rateLimit.resetAt !== "string"
     )
-      throw new Error("GitHub returned an incomplete GraphQL page.");
+      throw new GithubReadError("incomplete");
     result.pages.push(response.data.rateLimit);
-    if (response.data.rateLimit.remaining <= 0)
-      throw new RateLimitError(
-        `GitHub rate limit reached. Retry after ${response.data.rateLimit.resetAt}.`,
+    const rateError =
+      Array.isArray(response.errors) &&
+      response.errors.some(
+        (error: unknown) =>
+          error &&
+          typeof error === "object" &&
+          (("type" in error && error.type === "RATE_LIMITED") ||
+            ("message" in error &&
+              typeof error.message === "string" &&
+              /rate limit/i.test(error.message))),
       );
+    if (response.data.rateLimit.remaining <= 0 || rateError)
+      throw new GithubReadError("rate-limited", response.data.rateLimit.resetAt);
+    if (response.errors) throw new GithubReadError("incomplete");
     return response.data;
   }
   function validConnection<T>(connection: Connection<T>) {
@@ -151,10 +272,10 @@ export async function discoverGithubWorkItems(
     const cursors = new Set<string>();
     while (page.hasNextPage) {
       if (nodes.length >= 1000 || !page.endCursor || cursors.has(page.endCursor))
-        throw new Error(`Capped or invalid ${field} connection for issue #${issue.number}.`);
+        throw new GithubReadError("cap");
       cursors.add(page.endCursor);
       const data = await query(relationshipQuery(field), { id: issue.id, cursor: page.endCursor });
-      const connection = data.node?.[field] as Connection<T>;
+      const connection = data.node?.[field] as unknown as Connection<T>;
       if (
         data.node?.id !== issue.id ||
         !validConnection(connection) ||
@@ -164,8 +285,7 @@ export async function discoverGithubWorkItems(
       nodes.push(...connection.nodes);
       page = connection.pageInfo;
     }
-    if (nodes.length >= 1000)
-      throw new Error(`Capped ${field} connection for issue #${issue.number}.`);
+    if (nodes.length >= 1000) throw new GithubReadError("cap");
     return nodes;
   }
   try {
@@ -230,9 +350,16 @@ export async function discoverGithubWorkItems(
               complete: !cross && !nested,
             });
         } catch (error) {
-          if (error instanceof RateLimitError) throw error;
-          result.warnings.push(`Issue #${issue.number}: relationship unavailable or incomplete.`);
-          result.error = "Results are incomplete; dependencies and approvals may be unknown.";
+          if (error instanceof GithubReadError && error.code === "rate-limited") throw error;
+          const failure =
+            error instanceof GithubReadError && error.code === "cap"
+              ? error
+              : new GithubReadError("incomplete");
+          result.warnings.push(
+            `Issue #${issue.number}: ${failure.code === "cap" ? "relationship safety cap reached" : "relationship unavailable or incomplete"}.`,
+          );
+          result.error = failure.message;
+          result.errorCode = failure.code;
         }
       }
       next = page.pageInfo.endCursor;
@@ -245,11 +372,57 @@ export async function discoverGithubWorkItems(
       issueCursors.add(next);
     }
   } catch (error) {
-    result.error =
-      error instanceof RateLimitError
-        ? error.message
-        : "Repository or issue unavailable. Check the repository and your access, then retry.";
+    const failure = classifyGithubError(error);
+    result.error = failure.message;
+    result.errorCode = failure.code;
+    if (failure.retryAt) result.retryAt = failure.retryAt;
   }
   result.items.sort((a, b) => a.number - b.number);
   return result;
+}
+
+/** Validate identities already recorded by the workflow boundary; never create or rewrite them. */
+export function validateGithubIdentities(
+  files: RepoFiles,
+  discovery: GithubDiscovery,
+): GithubDiscovery {
+  const known = new Map<number, string>();
+  for (const path of files.list(".stintwork/github/")) {
+    if (!path.endsWith("/workflow.yaml")) continue;
+    const match =
+      /^\.stintwork\/github\/([a-z0-9-]+)\/([a-z0-9_.-]+)\/([1-9]\d*)\/workflow\.yaml$/.exec(path);
+    if (!match) throw new GithubReadError("identity");
+    const document = parseDocument(files.read(path) ?? "");
+    const value: unknown = document.toJS();
+    const identity =
+      value && typeof value === "object" && "github" in value
+        ? (value.github as Record<string, unknown>)
+        : undefined;
+    if (
+      document.errors.length ||
+      document.warnings.length ||
+      !identity ||
+      identity.host !== "github.com" ||
+      typeof identity.repository !== "string" ||
+      identity.repository.toLowerCase() !== `${match[1]}/${match[2]}` ||
+      identity.repository.toLowerCase() !== discovery.repository.toLowerCase() ||
+      identity.repositoryId !== discovery.repositoryId ||
+      identity.number !== Number(match[3]) ||
+      typeof identity.issueId !== "string" ||
+      !identity.issueId
+    )
+      throw new GithubReadError("identity");
+    known.set(identity.number as number, identity.issueId);
+  }
+  if (
+    discovery.complete &&
+    [...known.keys()].some((number) => !discovery.items.some((item) => item.number === number))
+  )
+    throw new GithubReadError("identity");
+  const items = discovery.items.map((item) => {
+    const id = known.get(item.number);
+    if (id && id !== item.id) throw new GithubReadError("identity");
+    return { ...item, bound: id === item.id };
+  });
+  return { ...discovery, items };
 }

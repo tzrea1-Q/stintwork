@@ -30,7 +30,15 @@ import { createReviewEvidenceReader } from "./review-evidence.js";
 import { addRoadmapRoute } from "./roadmap.js";
 import { addWorkItemCreationRoutes } from "./create-work-item.js";
 import { addSetupRoutes } from "./setup.js";
-import { discoverGithubWorkItems, type GithubDiscovery } from "./github-discovery.js";
+import {
+  classifyGithubError,
+  GithubReadError,
+  validateGithubIdentities,
+  discoverGithubWorkItems,
+  githubOrigin,
+  githubViewer,
+  type GithubDiscovery,
+} from "./github-discovery.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -67,9 +75,42 @@ export function createProjectServer(
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
   let github: GithubDiscovery | undefined;
+  let cached: { viewer: string; origin: string; data: GithubDiscovery } | undefined;
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
   let discoveryRunning = false;
+  function bindGithubIdentities(
+    data: GithubDiscovery,
+    project: ReturnType<typeof readProjectFiles>,
+  ) {
+    const worktreeNumbers = new Set(
+      data.items
+        .filter((item) => project.worktreePaths.has(`github-${item.number}`))
+        .map((item) => item.number),
+    );
+    const mainFiles = {
+      read: (path: string) => files.read(path),
+      list: (prefix: string) =>
+        files.list(prefix).filter((path) => {
+          const number = /\/([1-9]\d*)\/workflow\.yaml$/.exec(path)?.[1];
+          return !number || !worktreeNumbers.has(Number(number));
+        }),
+    };
+    data = validateGithubIdentities(mainFiles, data);
+    for (const item of data.items) {
+      const worktree = project.worktreePaths.get(`github-${item.number}`);
+      if (!worktree) continue;
+      const worktreeFiles = createNodeRepoFiles(worktree);
+      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+      const exactFiles = {
+        read: (name: string) => worktreeFiles.read(name),
+        list: () => (worktreeFiles.read(path) === undefined ? [] : [path]),
+      };
+      const validated = validateGithubIdentities(exactFiles, { ...data, items: [item] });
+      item.bound = validated.items[0].bound;
+    }
+    return data;
+  }
   function readSnapshot(changedPaths?: readonly string[]) {
     let branch: string | undefined;
     let branchWarning: Warning | undefined;
@@ -85,10 +126,24 @@ export function createProjectServer(
     }
     const project = readProjectFiles(changedPaths);
     watchedPaths = new Set(project.watchPaths);
+    let safeGithub = github;
+    if (safeGithub?.repositoryId) {
+      try {
+        safeGithub = bindGithubIdentities(safeGithub, project);
+      } catch {
+        safeGithub = {
+          ...safeGithub,
+          items: [],
+          complete: false,
+          error: "GitHub identity is ambiguous. Developer resolution is required.",
+          errorCode: "identity",
+        };
+      }
+    }
     const snapshot = indexProject(project.files, {
       name,
       agents: describeAgents(agentRegistry),
-      ...(github ? { github } : {}),
+      ...(safeGithub ? { github: safeGithub } : {}),
       ...(branch ? { branch } : {}),
     });
     readReviewEvidence(project, snapshot);
@@ -158,28 +213,34 @@ export function createProjectServer(
       github = undefined;
       return;
     }
-    if (discoveryRunning) return;
+    if (discoveryRunning || (github?.retryAt && Date.parse(github.retryAt) > Date.now())) return;
     discoveryRunning = true;
+    let viewer: string | undefined;
+    let origin: string | undefined;
     try {
+      origin = await githubOrigin(root);
+      viewer = await githubViewer(root);
+      if (
+        cached &&
+        (cached.viewer !== viewer || cached.origin.toLowerCase() !== origin.toLowerCase())
+      ) {
+        cached = undefined;
+        github = undefined;
+        if (loadMore) throw new GithubReadError("identity");
+      }
       const previous = github;
-      const next = await discoverGithubWorkItems(
-        root,
-        loadMore ? (previous?.cursor ?? null) : null,
-      );
+      let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
       if (
         knownRepository &&
         (knownRepository.repositoryId !== next.repositoryId ||
           knownRepository.repository.toLowerCase() !== next.repository.toLowerCase())
       )
-        throw new Error("GitHub repository identity changed; developer resolution is required.");
+        throw new GithubReadError("identity");
       for (const item of next.items) {
         const earlier = knownIssues.get(item.number);
-        if (earlier && earlier !== item.id)
-          throw new Error("GitHub issue identity changed; developer resolution is required.");
+        if (earlier && earlier !== item.id) throw new GithubReadError("identity");
       }
-      knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
-      for (const item of next.items) knownIssues.set(item.number, item.id);
-      github =
+      next =
         loadMore && previous
           ? {
               ...next,
@@ -187,22 +248,61 @@ export function createProjectServer(
               scanned: previous.scanned + next.scanned,
               pages: [...previous.pages, ...next.pages],
               warnings: [...previous.warnings, ...next.warnings],
-              complete: previous.error ? false : next.complete,
+              complete:
+                !previous.error && previous.items.every((item) => item.complete) && next.complete,
             }
           : next;
-    } catch {
-      github = {
-        repository: "",
-        repositoryId: "",
-        items: [],
-        scanned: 0,
-        cursor: null,
-        complete: false,
-        pages: [],
-        warnings: [],
-        error:
-          "GitHub repository or identity unavailable. Check the repository and access, then retry.",
-      };
+      next = bindGithubIdentities(next, readProjectFiles());
+      knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
+      for (const item of next.items) knownIssues.set(item.number, item.id);
+      github = next;
+      if (!github.error) {
+        github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
+        cached = { viewer, origin, data: github };
+      } else if (
+        cached &&
+        cached.viewer === viewer &&
+        cached.origin.toLowerCase() === origin.toLowerCase()
+      ) {
+        github = {
+          ...cached.data,
+          stale: true,
+          complete: false,
+          error: github.error,
+          errorCode: github.errorCode,
+          ...(github.retryAt ? { retryAt: github.retryAt } : {}),
+        };
+      }
+    } catch (error) {
+      const failure = classifyGithubError(error);
+      if (
+        viewer &&
+        origin &&
+        cached?.viewer === viewer &&
+        cached.origin.toLowerCase() === origin.toLowerCase()
+      ) {
+        github = {
+          ...cached.data,
+          stale: true,
+          complete: false,
+          error: failure.message,
+          errorCode: failure.code,
+          ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
+        };
+      } else
+        github = {
+          repository: "",
+          repositoryId: "",
+          items: [],
+          scanned: 0,
+          cursor: null,
+          complete: false,
+          pages: [],
+          warnings: [],
+          error: failure.message,
+          errorCode: failure.code,
+          ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
+        };
     } finally {
       discoveryRunning = false;
     }

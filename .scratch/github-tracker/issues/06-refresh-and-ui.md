@@ -9,6 +9,8 @@ Implement the specified open, post-stint and explicit refresh lifecycle, scoped 
 
 ## Acceptance criteria
 
+- [ ] Implement automatic project-open, post-stint and pre-action refresh, detect login changes, and show the last same-login snapshot read-only when offline.
+
 - [ ] Fresh, stale, partial, offline and no-snapshot states expose fetch time and completeness; unknown blockers and approvals cannot look ready.
 - [ ] Missing gh, login, access/404, rate limit, network and incomplete states use the specified English and Chinese copy and offer retry.
 - [ ] Identity/login changes clear cached private data; rate limits and bounded concurrency are respected.

@@ -22,13 +22,24 @@ import type { RiskyPath } from "./stints.js";
 export type GithubDiscovery = {
   repository: string;
   repositoryId: string;
-  items: { id: string; number: number; title: string; url: string; complete: boolean }[];
+  items: {
+    id: string;
+    number: number;
+    title: string;
+    url: string;
+    complete: boolean;
+    bound?: boolean;
+  }[];
   scanned: number;
   cursor: string | null;
   complete: boolean;
   pages: { cost: number; remaining: number; resetAt: string }[];
   warnings: string[];
   error?: string;
+  errorCode?: string;
+  retryAt?: string;
+  stale?: boolean;
+  fetchedAt?: string;
 };
 
 export type ProjectSnapshot = {
@@ -64,6 +75,7 @@ export type ProjectSnapshot = {
       number: number;
       url: string;
       complete: boolean;
+      bound?: boolean;
     };
   })[];
   setup: SetupReport;
@@ -121,18 +133,24 @@ export function indexProject(
     workflows: loaded.workflows,
     milestones: roadmap.milestones,
     workItems: staged.workItems.map((item) => {
+      const bound =
+        meta.github?.items.find(({ number }) => item.slug === `github-${number}`)?.bound === true;
       const milestone =
-        setup.tracker === "github-issues" ? undefined : assigned.assignments.get(item.slug);
+        setup.tracker === "github-issues" && !bound
+          ? undefined
+          : assigned.assignments.get(item.slug);
       const stints =
-        setup.tracker === "github-issues"
+        setup.tracker === "github-issues" && !bound
           ? []
           : stintIndex.stints.filter((stint) => stint.workItem === item.slug);
       const reviewPath = `.scratch/${item.slug}/review.yaml`;
       let reviewDecisions: ReviewDecision[] = [];
-      try {
-        reviewDecisions = parseReviewDecisions(files.read(reviewPath));
-      } catch (error) {
-        warnings.push({ path: reviewPath, message: String(error) });
+      if (setup.tracker !== "github-issues" || bound) {
+        try {
+          reviewDecisions = parseReviewDecisions(files.read(reviewPath));
+        } catch (error) {
+          warnings.push({ path: reviewPath, message: String(error) });
+        }
       }
       return {
         ...item,
@@ -150,6 +168,7 @@ export function indexProject(
                       number: remote.number,
                       url: remote.url,
                       complete: remote.complete,
+                      bound: remote.bound === true,
                     },
                   }
                 : {};

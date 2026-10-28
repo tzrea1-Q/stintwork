@@ -1,0 +1,26 @@
+{
+  "data": {
+    "node": {
+      "id": "I_kwDOPc1QR88AAAABaBvdig",
+      "labels": {
+        "nodes": [
+          {
+            "name": "automation"
+          },
+          {
+            "name": "testing"
+          }
+        ],
+        "pageInfo": {
+          "hasNextPage": false,
+          "endCursor": "Mg"
+        }
+      }
+    },
+    "rateLimit": {
+      "cost": 1,
+      "remaining": 4658,
+      "resetAt": "2026-10-28T02:18:19Z"
+    }
+  }
+}
