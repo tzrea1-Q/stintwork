@@ -209,27 +209,36 @@ export async function readGithubTickets(
     )
       throw incomplete("comments or blocked_by");
     const body = child.body ?? "";
-    const lines = [...body.matchAll(/^Blocked by:\s*(.*)$/gim)].map((match) => match[1].trim());
-    const sections = [...body.matchAll(/^## Blocked by\s*$([\s\S]*?)(?=^##\s|$(?![\s\S]))/gim)].map(
+    const lines = [...body.matchAll(/^(?:Blocked by:|\*\*Blocked by:\*\*)[ \t]*(.*)$/gim)].map(
       (match) => match[1].trim(),
     );
+    const sections = [
+      ...body.matchAll(/^## Blocked by[ \t]*\r?$([\s\S]*?)(?=^##[ \t]|$(?![\s\S]))/gim),
+    ].map((match) => match[1].trim());
+    const issueUrl =
+      /(?:^|[^a-z0-9./-])(?:https?:\/\/)?(?:www\.)?github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+\/(?:issues|pull)\/\d+\b/i;
     const text = [...lines, ...sections];
     let textUnknown = text.length > 1;
     let textNumbers: number[] = [];
-    if (text.length === 1 && !/^none$/i.test(text[0])) {
+    const none =
+      text.length === 1 &&
+      /^(?:[-*][ \t]+)?none(?:[ \t]*\([^()\r\n]*\))?$/i.test(text[0]) &&
+      !/#\d+/.test(text[0]) &&
+      !/\b(?:ticket|issue|pull request|pr)[ \t]+\d+\b/i.test(text[0]) &&
+      !issueUrl.test(text[0]) &&
+      (sections.length === 1 || !/^[-*]/.test(text[0]));
+    if (text.length === 1 && !none) {
       const value = text[0];
       const exact = /^(?:\s*(?:[-*]\s*)?#\d+\s*(?:,|\n|$))+$/i.test(value);
       const sectionLines =
         sections.length === 1 &&
+        value.length > 0 &&
         value
           .split("\n")
           .every(
             (line) =>
               !line.trim() ||
-              (/^\s*(?:[-*]\s*)?#\d+(?:\s+[^#]*)?\s*$/.test(line) &&
-                !/(?:^|[^a-z0-9./-])(?:https?:\/\/)?(?:www\.)?github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+\/(?:issues|pull)\/\d+\b/i.test(
-                  line,
-                )),
+              (/^\s*(?:[-*]\s*)?#\d+(?:\s+[^#]*)?\s*$/.test(line) && !issueUrl.test(line)),
           );
       if (!exact && !sectionLines) textUnknown = true;
       else
