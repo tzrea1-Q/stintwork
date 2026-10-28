@@ -23,7 +23,11 @@ import {
 import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@stintwork/agents";
 import type { Hono } from "hono";
 import { changedSince, workItemDiff, worktreePath } from "@stintwork/git";
-import { readGithubTickets, type createDetailPublisher } from "./github-tickets.js";
+import {
+  githubDetailCoolingDown,
+  readGithubTickets,
+  type createDetailPublisher,
+} from "./github-tickets.js";
 import { classifyGithubError, GithubReadError, type GithubDiscovery } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
 import {
@@ -123,6 +127,8 @@ export async function prepareStintBrief(
       return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
     if (githubSource.discoveryFailed())
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
+    if (githubDetailCoolingDown(github))
+      return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     const publish = githubSource.beginDetail(remote.number);
     try {
       const detail = await (githubSource.readDetail ?? readGithubTickets)(
@@ -134,13 +140,15 @@ export async function prepareStintBrief(
       if (!detail.complete) throw new GithubReadError("incomplete");
       githubSource.registerDetailIdentities(github, detail);
       ownDetail = { ...detail, fetchedAt: new Date().toISOString() };
-      publish(() => {
+      const published = publish(() => {
         remote.detail = ownDetail;
         remote.complete = remote.discoveryComplete ?? remote.complete;
         githubSource.detailSucceeded?.(github, remote.number);
       });
+      if (!published)
+        return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     } catch (error) {
-      githubSource.detailFailed(github, remote.number, error);
+      publish(() => githubSource.detailFailed(github, remote.number, error));
       return {
         reason: coreText({
           code:

@@ -40,7 +40,11 @@ import {
   githubTrackerRepository,
   type GithubDiscovery,
 } from "./github-discovery.js";
-import { createDetailPublisher, readGithubTickets } from "./github-tickets.js";
+import {
+  createDetailPublisher,
+  githubDetailCoolingDown,
+  readGithubTickets,
+} from "./github-tickets.js";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
@@ -593,6 +597,7 @@ export function createProjectServer(
     const current = github;
     item.discoveryComplete ??= item.complete;
     let verified = false;
+    let publish: ReturnType<typeof beginDetail> | undefined;
     try {
       const currentOrigin = await githubOrigin(root);
       const viewer = await githubViewer(root);
@@ -606,7 +611,7 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       }
       verified = true;
-      if (github.retryAt && Date.parse(github.retryAt) > Date.now()) return 429;
+      if (githubDetailCoolingDown(github)) return 429;
       const repository = await githubTrackerRepository(root);
       if (
         repository.repositoryId !== current.repositoryId ||
@@ -615,7 +620,7 @@ export function createProjectServer(
         verified = false;
         throw new GithubReadError("identity");
       }
-      const publish = beginDetail(number);
+      publish = beginDetail(number);
       const detail = await readGithubTickets(root, github.repository, item.id, number);
       if (github !== current || githubSource !== source) throw new GithubReadError("identity");
       registerDetailIdentities(detail);
@@ -637,7 +642,8 @@ export function createProjectServer(
         detailFailures.clear();
       }
       if (github) {
-        failGithubDetail(current, number, failure);
+        if (publish) publish(() => failGithubDetail(current, number, failure));
+        else failGithubDetail(current, number, failure);
       } else {
         github = {
           repository: "",

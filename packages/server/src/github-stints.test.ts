@@ -22,7 +22,11 @@ import { addStintRoutes } from "./stints.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { githubSnapshotFiles } from "./github-snapshot.js";
-import { validateGithubIdentities, type GithubDiscovery } from "./github-discovery.js";
+import {
+  GithubReadError,
+  validateGithubIdentities,
+  type GithubDiscovery,
+} from "./github-discovery.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { parse, stringify } from "yaml";
 import { createDetailPublisher, readGithubTickets } from "./github-tickets.js";
@@ -292,14 +296,110 @@ test.each(["older-ready", "older-blocked"] as const)(
       expect(await newer.json()).toMatchObject({ reasonMessage: { code: "brief.blockedBy" } });
     release(order === "older-ready" ? ready : blocked);
     const oldResponse = await older;
-    expect(oldResponse.status).toBe(order === "older-ready" ? 200 : 409);
-    if (order === "older-blocked")
-      expect(await oldResponse.json()).toMatchObject({
-        reasonMessage: { code: "brief.blockedBy" },
-      });
+    expect(oldResponse.status).toBe(409);
+    expect(await oldResponse.json()).toMatchObject({
+      reasonMessage: { code: "gate.detailUnavailable" },
+    });
     expect(fixture.github.items[0].detail?.tickets[0].blocked).toBe(order === "older-ready");
   },
 );
+
+test("newer failed detail keeps stale state and refuses an older start", async () => {
+  const fixture = await setup();
+  const detail = await readGithubTickets(fixture.root, "Example/Project", "I_1", 1);
+  fixture.github.items[0].detail = { ...detail, fetchedAt: new Date().toISOString() };
+  let release!: (value: typeof detail) => void;
+  let entered!: () => void;
+  const waiting = new Promise<typeof detail>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let count = 0;
+  fixture.source.readDetail = async () => {
+    if (++count === 1) {
+      entered();
+      return waiting;
+    }
+    throw new GithubReadError("unavailable");
+  };
+  fixture.source.detailFailed = () => {
+    if (fixture.github.items[0].detail) fixture.github.items[0].detail.stale = true;
+  };
+  const older = fixture.start();
+  await started;
+  expect((await fixture.preview()).status).toBe(409);
+  release(detail);
+  const response = await older;
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    reasonMessage: { code: "gate.detailUnavailable" },
+  });
+  expect(fixture.github.items[0].detail?.stale).toBe(true);
+});
+
+test("older failed detail does not replace a newer success", async () => {
+  const fixture = await setup();
+  const detail = await readGithubTickets(fixture.root, "Example/Project", "I_1", 1);
+  let reject!: (error: Error) => void;
+  let entered!: () => void;
+  const waiting = new Promise<typeof detail>((_resolve, fail) => {
+    reject = fail;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let count = 0;
+  fixture.source.readDetail = async () => {
+    if (++count === 1) {
+      entered();
+      return waiting;
+    }
+    return detail;
+  };
+  const older = fixture.preview();
+  await started;
+  expect((await fixture.preview()).status).toBe(200);
+  reject(new GithubReadError("unavailable"));
+  expect((await older).status).toBe(409);
+  expect(fixture.failures()).toBe(0);
+  expect(fixture.github.items[0].detail?.stale).not.toBe(true);
+});
+
+test("preview and start respect detail retry time", async () => {
+  const fixture = await setup();
+  let reads = 0;
+  fixture.source.readDetail = async (...args) => {
+    reads++;
+    return readGithubTickets(...args);
+  };
+  fixture.source.detailFailed = (_github, _number, error) => {
+    if (error instanceof GithubReadError) fixture.github.retryAt = error.retryAt;
+  };
+  const read = fixture.source.readDetail;
+  fixture.source.readDetail = async () => {
+    throw new GithubReadError("rate-limited", new Date(Date.now() + 60_000).toISOString());
+  };
+  expect((await fixture.preview()).status).toBe(409);
+  fixture.source.readDetail = read;
+  const calls = (await fixture.gh.calls()).length;
+  for (const response of [await fixture.preview(), await fixture.start()]) {
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reasonMessage: { code: "gate.detailUnavailable" },
+    });
+  }
+  expect((await fixture.gh.calls()).length).toBe(calls);
+  expect(reads).toBe(0);
+  fixture.github.retryAt = new Date(Date.now() - 1000).toISOString();
+  expect((await fixture.preview()).status).toBe(200);
+  expect(reads).toBe(1);
+  expect((await fixture.start()).status).toBe(201);
+  expect(reads).toBeGreaterThan(1);
+  fixture.finish();
+  await expect.poll(() => fixture.stints.isActive("github-1"), { timeout: 10000 }).toBe(false);
+});
 
 test("failed discovery blocks preview and start until discovery recovers", async () => {
   const { root, git, gh, ghReplies } = await setup();
