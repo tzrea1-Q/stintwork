@@ -3,7 +3,12 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { githubEvidenceDigest, indexProject, createMemoryRepoFiles } from "@stintwork/core";
+import {
+  githubEvidenceDigest,
+  indexProject,
+  createMemoryRepoFiles,
+  gateReadiness,
+} from "@stintwork/core";
 import { Hono } from "hono";
 import { afterEach, expect, test } from "vitest";
 import { parse } from "yaml";
@@ -16,6 +21,7 @@ import {
 import { createNodeRepoFiles } from "./repo-files.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
+import { readGithubTickets } from "./github-tickets.js";
 
 const roots: string[] = [];
 const oldPath = process.env.PATH;
@@ -47,7 +53,11 @@ const discovery = {
   warnings: [],
 };
 const issue = "api repos/Example/Project/issues/1";
-async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialStage?: string) {
+async function setup(
+  replies: Record<string, GhReply | GhReply[]> = {},
+  initialStage?: string,
+  withWorktree = false,
+) {
   const root = mkdtempSync(join(tmpdir(), "github-gates-"));
   roots.push(root);
   const git = (...args: string[]) =>
@@ -57,6 +67,10 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
   git("config", "user.email", "test@example.com");
   git("remote", "add", "origin", "https://github.com/Example/Project.git");
   git("commit", "--allow-empty", "-qm", "initial");
+  const worktreeParent = `${root}-worktrees`;
+  const worktree = join(worktreeParent, "github-1");
+  if (withWorktree) roots.push(worktreeParent);
+  if (withWorktree) git("worktree", "add", "-qb", "stintwork/github-1", worktree);
   const gh = await fakeGh(join(root, "bin"));
   process.env.PATH = gh.path;
   await gh.script({
@@ -95,6 +109,7 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
     number: 1,
     url: parent.html_url,
     complete: true,
+    bound: withWorktree,
     reviewDigest: "digest",
     reviewHead: "head",
   };
@@ -158,7 +173,9 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
         `${text}stages:\n${previous.map(({ id }) => `  ${id}:\n    approved:\n      at: '2026-01-01T00:00:00Z'\n      remote: { version: 1, parentId: I_1, digest: '${digest}' }\n`).join("")}`,
     );
   }
-  const reviewedHead = git("rev-parse", "HEAD");
+  const reviewedHead = withWorktree
+    ? execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
+    : git("rev-parse", "HEAD");
   const reviewedDigest = await githubEvidenceDigest(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,
@@ -169,9 +186,115 @@ async function setup(replies: Record<string, GhReply | GhReply[]> = {}, initialS
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  return { git, request, reviewedHead, reviewedDigest, root, snapshot };
+  return { git, request, reviewedHead, reviewedDigest, root, snapshot, worktree };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
+
+test.each(["closed", "open", "inaccessible"] as const)(
+  "external %s blocker determines GitHub tickets readiness",
+  async (state) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      html_url: "https://github.com/Example/Project/issues/2",
+      body: "Blocked by: #99",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const { root, snapshot } = await setup(
+      {
+        [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+        [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+        [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+        "api repos/Example/Project/issues/99":
+          state === "inaccessible"
+            ? { code: 1, effect: "console.error('HTTP 404')" }
+            : {
+                stdout: {
+                  ...parent,
+                  node_id: "I_99",
+                  number: 99,
+                  html_url: "https://github.com/Example/Project/issues/99",
+                  state,
+                },
+              },
+      },
+      "tickets",
+    );
+    const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+    const files = createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+    });
+    const projected = indexProject(files, {
+      name: "test",
+      github: { ...discovery, items: [{ ...discovery.items[0], bound: true, detail }] },
+    }).workItems[0];
+    const item = snapshot.workItems[0];
+    item.tickets = projected.tickets;
+    if (!item.github) throw new Error("Missing GitHub metadata");
+    item.github.complete = detail.complete;
+    expect(gateReadiness(item).ready).toBe(state === "closed");
+  },
+);
+
+test.each(["approve", "reopen"] as const)(
+  "%s preserves checkout history when the worktree has no record",
+  async (action) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      html_url: "https://github.com/Example/Project/issues/2",
+      body: "Ticket",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const { request, reviewedHead, worktree } = await setup(
+      {
+        [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+        [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+        [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+      },
+      "tickets",
+      true,
+    );
+    const reviewedDigest = await githubEvidenceDigest(
+      {
+        parentId: "I_1",
+        body: "Spec",
+        tickets: [
+          {
+            id: "I_2",
+            body: "Ticket",
+            state: "open",
+            stateReason: null,
+            labels: [],
+            blockers: [],
+            commentRecords: [],
+          },
+        ],
+      },
+      true,
+    );
+    const response = await request(
+      { stage: action === "approve" ? "tickets" : "spec", reviewedHead, reviewedDigest },
+      action,
+    );
+    expect(response.status, await response.text()).toBe(200);
+    const result = parse(readFileSync(join(worktree, path), "utf8"));
+    expect(result.stages.spec.approved.remote.parentId).toBe("I_1");
+    expect(
+      result.stages[action === "approve" ? "tickets" : "spec"][
+        action === "approve" ? "approved" : "reopened"
+      ],
+    ).toBeDefined();
+  },
+);
 
 test("refuses a direct approval when readiness is unmet without committing", async () => {
   const { snapshot, request, git } = await setup();
@@ -341,8 +464,8 @@ test("concurrent reopen and approval have one winner and leave a valid workflow"
     true,
   );
   const responses = await Promise.all([
-    request({ stage: "tickets", reviewedDigest, reviewedHead }),
     request({ stage: "spec", reviewedDigest, reviewedHead }, "reopen"),
+    request({ stage: "tickets", reviewedDigest, reviewedHead }),
   ]);
   expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
   expect(git("rev-list", "--count", "HEAD")).toBe("3");

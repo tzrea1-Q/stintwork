@@ -11,7 +11,7 @@ import {
 } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { checkpointChangedPaths } from "@stintwork/git";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Hono } from "hono";
 import { parseDocument } from "yaml";
@@ -19,6 +19,7 @@ import { githubTrackerRepository, githubViewer, type GithubDiscovery } from "./g
 import { readGithubTickets } from "./github-tickets.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
+import { resolveGithubWorkflow } from "./github-snapshot.js";
 
 export async function verifyGithubGateIdentity(
   root: string,
@@ -203,12 +204,8 @@ export function addGithubGateRoutes(
           );
         const directory = worktree ?? root;
         const relative = `.stintwork/github/${github.repository.toLowerCase()}/${number}/workflow.yaml`;
-        let text: string | undefined;
-        try {
-          text = readFileSync(join(directory, relative), "utf8");
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-        }
+        const text = resolveGithubWorkflow(project, relative, worktree);
+        const targetExists = existsSync(join(directory, relative));
         const doc = parseDocument(text ?? "");
         if (doc.errors.length || doc.warnings.length) throw new Error("Invalid workflow.yaml");
         const workflows = getSnapshot().workflows;
@@ -257,6 +254,12 @@ export function addGithubGateRoutes(
         const readDigests = async () => {
           const detail = await readGithubTickets(directory, github.repository, item.id, number);
           if (!detail.complete) throw new Error("Incomplete detail");
+          if (
+            action === "approve" &&
+            stage.gate === "tickets" &&
+            (!detail.tickets.length || detail.tickets.some((ticket) => ticket.blocked))
+          )
+            throw new Error("Incomplete detail");
           const input = { parentId: item.id, body: detail.spec, tickets: detail.tickets };
           const [spec, tickets] = await Promise.all([
             githubEvidenceDigest(input, false, [...labels.values()]),
@@ -348,16 +351,16 @@ export function addGithubGateRoutes(
           workflow,
           current as string,
           (initial) => {
-            const currentDoc = parseDocument(initial);
-            if (
-              (text === undefined ? existsSync(join(directory, relative)) : initial !== text) ||
-              currentDoc.get("workflow") !== workflow ||
-              currentDoc.get("stage") !== current
-            )
+            const authoritative = resolveGithubWorkflow(project, relative, worktree);
+            if (authoritative !== text || existsSync(join(directory, relative)) !== targetExists)
+              throw new Error("gate-stage-changed");
+            const source = text ?? initial;
+            const currentDoc = parseDocument(source);
+            if (currentDoc.get("workflow") !== workflow || currentDoc.get("stage") !== current)
               throw new Error("gate-stage-changed");
             if (head() !== commit) throw new Error("gate-head-changed");
             return workflowGate(
-              initial,
+              source,
               { workflow, stage: current as string },
               stage.id,
               action,

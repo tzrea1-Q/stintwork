@@ -79,6 +79,9 @@ export const coreTextEnglish = {
       `Write or edit ${path} with a nonempty # heading.${warning ? ` ${warning}` : ""}`,
   ),
   "gate.ticketsOutput": "At least one ticket, no ticket warnings, valid dependency order",
+  "gate.githubTicketsOutput": "At least one ticket with known status and no unresolved blockers",
+  "gate.githubTicketsRequired":
+    "Add a direct ticket and resolve any unknown statuses or blockers before approving.",
   "gate.writeTickets": template(
     { path: "string", warning: "string" },
     ({ path, warning }) =>

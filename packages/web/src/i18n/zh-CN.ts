@@ -926,6 +926,8 @@ export const zhCN: Catalog = {
     "gate.writeSpec": ({ path, warning }) =>
       joinChinese("编写或编辑 ", path, "，加入非空的 # 标题。", warning ? ` ${warning}` : ""),
     "gate.ticketsOutput": "至少有一个工单，没有工单警告，且依赖顺序有效",
+    "gate.githubTicketsOutput": "至少有一个工单，状态已知且没有未解决的阻塞项",
+    "gate.githubTicketsRequired": "批准前请添加直接工单，并解决所有未知状态或阻塞项。",
     "gate.writeTickets": ({ path, warning }) =>
       joinChinese(
         "编写或修正 ",

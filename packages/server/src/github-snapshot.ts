@@ -188,11 +188,21 @@ export function githubSnapshotFiles(
     const worktree = item.bound ? project.worktreePaths.get(`github-${item.number}`) : undefined;
     if (!worktree) continue;
     const path = `.stintwork/github/${github.repository.toLowerCase()}/${item.number}/workflow.yaml`;
-    const text = createNodeRepoFiles(worktree).read(path);
+    const text = resolveGithubWorkflow(project, path, worktree);
     if (text !== undefined) overrides.set(path, text);
   }
   return {
     ...project.files,
     read: (path: string) => overrides.get(path) ?? project.files.read(path),
   };
+}
+
+export function resolveGithubWorkflow(
+  project: ReturnType<ProjectFilesReader>,
+  path: string,
+  worktree?: string,
+) {
+  return (
+    (worktree ? createNodeRepoFiles(worktree).read(path) : undefined) ?? project.files.read(path)
+  );
 }

@@ -36,17 +36,21 @@ export function outputGateConditions(
     const positions = new Map(item.tickets.map((ticket, index) => [ticket.number, index]));
     output = {
       id: "output",
-      label: coreText({ code: "gate.ticketsOutput" }),
+      label: coreText({ code: item.github ? "gate.githubTicketsOutput" : "gate.ticketsOutput" }),
       ready:
         item.tickets.length > 0 &&
-        !warning &&
-        item.tickets.every((ticket, index) =>
-          ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
-        ),
-      action: coreText({
-        code: "gate.writeTickets",
-        params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },
-      }),
+        (item.github
+          ? item.tickets.every((ticket) => ticket.status !== "unknown" && !ticket.blocked)
+          : !warning &&
+            item.tickets.every((ticket, index) =>
+              ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
+            )),
+      action: item.github
+        ? coreText({ code: "gate.githubTicketsRequired" })
+        : coreText({
+            code: "gate.writeTickets",
+            params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },
+          }),
     };
   }
   const conditions: GateCondition[] = [output];
