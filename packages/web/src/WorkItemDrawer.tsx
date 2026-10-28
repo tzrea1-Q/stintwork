@@ -9,7 +9,8 @@ import {
   type Warning,
 } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { refreshGithubItem } from "./github-refresh";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
@@ -21,7 +22,7 @@ import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
-import { ticketStatus, useLanguage } from "./i18n/language";
+import { ticketStatus, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
@@ -78,6 +79,21 @@ export function WorkItemDrawer({
   onCustomiseWorkflow?: (id: string) => void;
 }) {
   const { t } = useLanguage();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useErrorText();
+  const refreshed = useRef<number>();
+  const githubNumber = item.github?.number;
+  useEffect(() => {
+    if (githubNumber === undefined || refreshed.current === githubNumber) return;
+    refreshed.current = githubNumber;
+    setRefreshing(true);
+    setRefreshError("");
+    void refreshGithubItem(githubNumber, t.stints.changeGateFailed)
+      .catch((cause: unknown) =>
+        setRefreshError(cause instanceof Error ? cause : t.stints.changeGateFailed),
+      )
+      .finally(() => setRefreshing(false));
+  }, [githubNumber, setRefreshError, t.stints.changeGateFailed]);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -181,6 +197,16 @@ export function WorkItemDrawer({
               </div>
             )}
           </header>
+          {refreshing && (
+            <p role="status" className="px-4 text-sm text-muted sm:px-7">
+              {t.board.githubStatus.pending}
+            </p>
+          )}
+          {refreshError && (
+            <p role="alert" className="px-4 text-sm text-warning sm:px-7">
+              {refreshError}
+            </p>
+          )}
           {item.stage && !item.merged ? (
             <StageAgentRail key={item.slug} item={item} workflows={workflows} />
           ) : !item.merged ? (

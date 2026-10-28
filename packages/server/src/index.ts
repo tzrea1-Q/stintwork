@@ -400,6 +400,10 @@ export function createProjectServer(
                   }
                 : {}),
               warnings: [...previous.warnings, ...next.warnings],
+              warningMessages: [
+                ...(previous.warningMessages ?? previous.warnings.map(() => null)),
+                ...(next.warningMessages ?? next.warnings.map(() => null)),
+              ],
               ...(previous.membershipIncomplete ||
               (previousDiscoveryFailure?.error && !previousDiscoveryFailure.retryable)
                 ? { membershipIncomplete: true }
@@ -471,6 +475,7 @@ export function createProjectServer(
           stale: true,
           complete: false,
           warnings: github.warnings,
+          warningMessages: github.warningMessages,
           error: github.error,
           errorCode: github.errorCode,
           retryable: true,

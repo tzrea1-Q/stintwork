@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useState } from "react";
-import { useLanguage } from "./i18n/language";
+import { renderCoreText, useLanguage } from "./i18n/language";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 
@@ -28,6 +28,8 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
     code && Object.hasOwn(copy.errors, code)
       ? copy.errors[code as keyof typeof copy.errors]
       : undefined;
+  const warnings = (github?.warnings ?? []) as unknown[];
+  const incompleteCount = github?.items.filter((item) => !item.complete).length ?? 0;
   const unavailable = !!github?.error && !github.fetchedAt && !github.repositoryId;
   async function act(action: "refresh" | "load-more") {
     setPending(true);
@@ -63,9 +65,34 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
       {github && !unavailable && (github.discoveryFailed || !github.fetchedAt) && (
         <p>{copy.scanned.replace("{count}", String(github.scanned))}</p>
       )}
-      {github && !unavailable && (!github.complete || github.cursor) && (
-        <Badge variant="warning">{copy.errors.incomplete}</Badge>
-      )}
+      {github &&
+        !unavailable &&
+        (!github.complete || github.cursor || warnings.length > 0 || incompleteCount > 0) && (
+          <div className="min-w-0 space-y-1">
+            <Badge variant="warning">{copy.errors.incomplete}</Badge>
+            <p>
+              {warnings.length || incompleteCount
+                ? copy.connectionsFailed
+                : github.cursor
+                  ? copy.morePages
+                  : copy.errors.incomplete}
+            </p>
+            {incompleteCount > 0 && (
+              <p>{copy.incompleteItems.replace("{count}", String(incompleteCount))}</p>
+            )}
+            {warnings.length > 0 && (
+              <ul className="list-disc pl-4 [overflow-wrap:anywhere]">
+                {warnings.map((warning) => {
+                  const text =
+                    typeof warning === "string"
+                      ? warning
+                      : ((warning as { text?: string }).text ?? "");
+                  return <li key={text}>{renderCoreText(warning, text, t)}</li>;
+                })}
+              </ul>
+            )}
+          </div>
+        )}
       {error && !(error === copy.errors.incomplete && !unavailable) && <p>{error}</p>}
       {failed && <p>{copy.requestFailed}</p>}
       {retryAt > now && github?.retryAt && (

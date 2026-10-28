@@ -1544,6 +1544,10 @@ test.each(["offline", "rate-limited"] as const)(
         items: [{ number: 1 }, { number: 2, complete: false }],
       });
       expect(partial.github.warnings.join(" ")).toContain("Issue #2");
+      expect(partial.github.warningMessages).toContainEqual({
+        code: "github.relationshipIncomplete",
+        params: { issue: "2" },
+      });
       if (failure === "rate-limited") {
         issue.subIssues.pageInfo = { hasNextPage: false, endCursor: null };
         await gh.script({

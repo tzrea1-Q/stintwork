@@ -73,3 +73,79 @@ test.each([false, true])(
     else expect(screen.queryByText(/Last successful fetch:/)).not.toBeInTheDocument();
   },
 );
+
+test("cursor-only discovery explains that more pages can be loaded", () => {
+  render(
+    <GithubStatus
+      github={{
+        repository: "a/b",
+        repositoryId: "R",
+        items: [],
+        scanned: 1,
+        cursor: "next",
+        complete: false,
+        pages: [],
+        warnings: [],
+      }}
+    />,
+  );
+  expect(screen.getByText("More pages are available to load.")).toBeInTheDocument();
+  expect(screen.queryByRole("list")).not.toBeInTheDocument();
+});
+
+test.each([
+  [
+    "en",
+    "Some connections failed or are incomplete.",
+    "2 items have incomplete membership.",
+    "Issue #1: relationship unavailable or incomplete.",
+    "Issue #2: labelled child excluded.",
+  ],
+  [
+    "zh-CN",
+    "部分连接失败或不完整。",
+    "2 个工作项的归属信息不完整。",
+    "Issue #1：关系连接不可用或不完整。",
+    "Issue #2：已排除带标签的子 Issue。",
+  ],
+])(
+  "%s discovery shows localized warnings and incomplete membership",
+  async (language, summary, count, first, second) => {
+    const { readCoreTextWire } = await import("@stintwork/core");
+    const { LanguageProvider, languageStorageKey } = await import("./i18n/language");
+    localStorage.setItem(languageStorageKey, language);
+    const github = readCoreTextWire({
+      repository: "a/b",
+      repositoryId: "R",
+      items: [1, 2].map((number) => ({
+        id: String(number),
+        number,
+        title: "A",
+        url: "https://example.com",
+        complete: false,
+      })),
+      scanned: 2,
+      cursor: null,
+      complete: false,
+      pages: [],
+      warnings: [
+        "Issue #1: relationship unavailable or incomplete.",
+        "Issue #2: labelled child excluded.",
+      ],
+      warningMessages: [
+        { code: "github.relationshipIncomplete", params: { issue: "1" } },
+        { code: "github.labelledChildExcluded", params: { issue: "2" } },
+      ],
+    }) as NonNullable<import("@stintwork/core").ProjectSnapshot["github"]>;
+    render(
+      <LanguageProvider>
+        <GithubStatus github={github} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByText(summary)).toBeInTheDocument();
+    expect(screen.getByText(count)).toBeInTheDocument();
+    expect(screen.getByText(first)).toBeInTheDocument();
+    expect(screen.getByText(second)).toBeInTheDocument();
+    localStorage.removeItem(languageStorageKey);
+  },
+);

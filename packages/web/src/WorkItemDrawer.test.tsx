@@ -177,3 +177,76 @@ test("the drawer does not claim a worktree for a main-checkout work item", () =>
   expect(screen.queryByText("Work item files live in this worktree:")).not.toBeInTheDocument();
   expect(screen.getByText(".scratch/first/spec.md")).toBeInTheDocument();
 });
+
+test("opening a GitHub drawer refreshes once, including after reopening", async () => {
+  let finish!: (response: Response) => void;
+  const fetcher = vi.fn((url: string) =>
+    url === "/api/agents"
+      ? Promise.resolve(new Response(JSON.stringify({ agents: [] })))
+      : new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const refresh = vi.fn();
+  window.addEventListener("stintwork:refresh-project", refresh);
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: true,
+  };
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh")).toHaveLength(
+    1,
+  );
+  expect(fetcher).toHaveBeenCalledWith("/api/github/items/1/refresh", { method: "POST" });
+  expect(screen.getByText("Refreshing…")).toBeInTheDocument();
+  view.rerender(<WorkItemDrawer item={{ ...item }} onClose={() => {}} />);
+  expect(fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh")).toHaveLength(
+    1,
+  );
+  finish(new Response("{}"));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  view.unmount();
+  const reopened = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh")).toHaveLength(
+    2,
+  );
+  finish(new Response("{}"));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+  reopened.unmount();
+  window.removeEventListener("stintwork:refresh-project", refresh);
+});
+
+test("local drawers do not refresh and GitHub refresh failure is shown", async () => {
+  const fetcher = vi.fn(async (url: string) =>
+    url === "/api/agents"
+      ? new Response(JSON.stringify({ agents: [] }))
+      : new Response(JSON.stringify({ reason: "Refresh failed" }), { status: 500 }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(fetcher.mock.calls.some(([url]) => String(url).includes("/api/github/items/"))).toBe(
+    false,
+  );
+  view.unmount();
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: true,
+  };
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Refresh failed");
+});

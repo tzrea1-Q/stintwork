@@ -204,6 +204,14 @@ export type GithubDiscovery = {
   retryable?: boolean;
   membershipIncomplete?: boolean;
   warnings: string[];
+  warningMessages?: ({
+    code:
+      | "github.labelledChildExcluded"
+      | "github.childrenExcluded"
+      | "github.relationshipCap"
+      | "github.relationshipIncomplete";
+    params: { issue: string };
+  } | null)[];
   error?: string;
   errorCode?: GithubErrorCode;
   retryAt?: string;
@@ -477,6 +485,18 @@ export async function discoverGithubWorkItems(
     result.errorCode = failure.code;
     if (failure.retryAt) result.retryAt = failure.retryAt;
   }
+  result.warningMessages = result.warnings.map((warning) => {
+    const match = /^Issue #(\d+): (.+)\.$/.exec(warning);
+    if (!match) return null;
+    const codes = {
+      "labelled child excluded": "github.labelledChildExcluded",
+      "cross-repository or nested children excluded": "github.childrenExcluded",
+      "relationship safety cap reached": "github.relationshipCap",
+      "relationship unavailable or incomplete": "github.relationshipIncomplete",
+    } as const;
+    const code = codes[match[2] as keyof typeof codes];
+    return code ? { code, params: { issue: match[1] } } : null;
+  });
   result.items.sort((a, b) => a.number - b.number);
   return result;
 }

@@ -14,6 +14,10 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "coreText.github.labelledChildExcluded": [[{ issue: "12" }]],
+  "coreText.github.childrenExcluded": [[{ issue: "12" }]],
+  "coreText.github.relationshipCap": [[{ issue: "12" }]],
+  "coreText.github.relationshipIncomplete": [[{ issue: "12" }]],
   "stints.recovery.checkpointFailedUnknown": [["disk full 原文"]],
   "stints.recovery.saved": [["abc123"]],
   "stints.recovery.checkpointFailed": [["/worktrees/工程", "disk full 原文"]],
