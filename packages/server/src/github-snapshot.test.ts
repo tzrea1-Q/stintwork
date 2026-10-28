@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   createMemoryRepoFiles,
+  builtInWorkflows,
   deriveAttentionItems,
   githubEvidenceDigest,
   indexProject,
@@ -14,6 +15,34 @@ import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { createReviewEvidenceReader } from "./review-evidence.js";
 import type { createChecks } from "./checks.js";
+import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+
+test("built-in workflows retain their previous evidence digests", async () => {
+  const input = {
+    parentId: "I_1",
+    body: "Spec",
+    tickets: [
+      {
+        id: "I_2",
+        body: "Ticket",
+        state: "open",
+        stateReason: null,
+        labels: [],
+        blockers: [],
+        commentRecords: [],
+      },
+    ],
+  };
+  for (const workflow of Object.values(builtInWorkflows)) {
+    const stages = workflow.stages;
+    for (const [index, stage] of stages.entries()) {
+      const previous = index > stages.findIndex((entry) => entry.column === "spec");
+      expect(await githubEvidenceDigest(input, githubGateIncludesTickets(stages, stage.id))).toBe(
+        await githubEvidenceDigest(input, previous),
+      );
+    }
+  }
+});
 
 test("projects workflow records and fresh, stale and unknown approval evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "github-snapshot-"));
@@ -341,69 +370,81 @@ test("worktree workflow overrides main only when present", () => {
   }
 });
 
-test("parent and ticket revisions invalidate only dependent approvals and a revert restores them", async () => {
-  const ticket = {
-    id: "I_2",
-    number: 2,
-    title: "Ticket",
-    body: "Ticket",
-    state: "open",
-    stateReason: null,
-    labels: [],
-    blockers: [],
-    commentRecords: [],
-    comments: [],
-    blockedBy: [],
-    blocked: false,
-  };
-  const input = { parentId: "I_1", body: "Spec", tickets: [ticket] };
-  const spec = await githubEvidenceDigest(input, false);
-  const tickets = await githubEvidenceDigest(input, true);
-  const path = ".stintwork/github/example/project/1/workflow.yaml";
-  const files = createMemoryRepoFiles({
-    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
-    [path]: `workflow: feature\nstage: implement\nstages:\n  clarify:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${spec}' } }\n  spec:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${spec}' } }\n  tickets:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${tickets}' } }\n`,
-  });
-  const github = {
-    repository: "Example/Project",
-    repositoryId: "R_1",
-    items: [
-      {
-        id: "I_1",
-        number: 1,
-        title: "Parent",
-        url: "https://github.com/Example/Project/issues/1",
-        bound: true,
-        complete: true,
-        detail: { spec: "Spec", tickets: [ticket], complete: true },
-      },
-    ],
-    scanned: 1,
-    cursor: null,
-    complete: true,
-    pages: [],
-    warnings: [],
-  };
-  const project = {
-    files,
-    worktreePaths: new Map(),
-    watchPaths: [],
-    warnings: [],
-  } as ReturnType<ProjectFilesReader>;
-  const states = () => {
-    const snapshot = indexProject(files, { name: "Test", github });
-    projectGithubGates(snapshot, process.cwd(), project);
-    return ["spec", "tickets"].map(
-      (stage) =>
-        (snapshot.workItems[0].stages[stage].approved as { remoteState: string }).remoteState,
-    );
-  };
-  expect(states()).toEqual(["current", "current"]);
-  github.items[0].detail.spec = "Changed";
-  expect(states()).toEqual(["stale", "stale"]);
-  github.items[0].detail.spec = "Spec";
-  ticket.body = "Changed";
-  expect(states()).toEqual(["current", "stale"]);
-  ticket.body = "Ticket";
-  expect(states()).toEqual(["current", "current"]);
-});
+test.each([false, true])(
+  "parent and ticket revisions invalidate dependent approvals (custom: %s)",
+  async (custom) => {
+    const ticket = {
+      id: "I_2",
+      number: 2,
+      title: "Ticket",
+      body: "Ticket",
+      state: "open",
+      stateReason: null,
+      labels: [],
+      blockers: [],
+      commentRecords: [],
+      comments: [],
+      blockedBy: [],
+      blocked: false,
+    };
+    const input = { parentId: "I_1", body: "Spec", tickets: [ticket] };
+    const spec = await githubEvidenceDigest(input, false);
+    const tickets = await githubEvidenceDigest(input, true);
+    const path = ".stintwork/github/example/project/1/workflow.yaml";
+    const files = createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+      [path]: `workflow: feature\nstage: implement\nstages:\n  clarify:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${spec}' } }\n  spec:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${custom ? tickets : spec}' } }\n  tickets:\n    approved: { remote: { version: 1, parentId: I_1, digest: '${tickets}' } }\n`,
+    });
+    const github = {
+      repository: "Example/Project",
+      repositoryId: "R_1",
+      items: [
+        {
+          id: "I_1",
+          number: 1,
+          title: "Parent",
+          url: "https://github.com/Example/Project/issues/1",
+          bound: true,
+          complete: true,
+          detail: { spec: "Spec", tickets: [ticket], complete: true },
+        },
+      ],
+      scanned: 1,
+      cursor: null,
+      complete: true,
+      pages: [],
+      warnings: [],
+    };
+    const project = {
+      files,
+      worktreePaths: new Map(),
+      watchPaths: [],
+      warnings: [],
+    } as ReturnType<ProjectFilesReader>;
+    const states = () => {
+      const snapshot = indexProject(files, { name: "Test", github });
+      if (custom) {
+        snapshot.workflows.feature = {
+          ...snapshot.workflows.feature,
+          stages: snapshot.workflows.feature.stages.map((entry) => ({
+            ...entry,
+            gate: entry.id === "spec" ? "tickets" : entry.id === "tickets" ? "manual" : entry.gate,
+          })),
+        };
+      }
+      projectGithubGates(snapshot, process.cwd(), project);
+      return ["clarify", "spec", "tickets"].map(
+        (stage) =>
+          (snapshot.workItems[0].stages[stage].approved as { remoteState: string }).remoteState,
+      );
+    };
+    expect(states()).toEqual(["current", "current", "current"]);
+    github.items[0].detail.spec = "Changed";
+    expect(states()).toEqual(["stale", "stale", "stale"]);
+    github.items[0].detail.spec = "Spec";
+    ticket.body = "Changed";
+    expect(states()).toEqual(["current", custom ? "stale" : "current", "stale"]);
+    ticket.body = "Ticket";
+    expect(states()).toEqual(["current", "current", "current"]);
+  },
+);

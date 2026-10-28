@@ -10,6 +10,7 @@ import {
 import { checkpointChangedPaths } from "@stintwork/git";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export function projectGithubGates(
   snapshot: ProjectSnapshot,
@@ -63,9 +64,7 @@ export function projectGithubGates(
     const stages = snapshot.workflows[item.workflow].stages;
     const digest = (stage: string) => {
       if (!valid || !remote) return undefined;
-      const includeTickets =
-        stages.findIndex((entry) => entry.id === stage) >
-        stages.findIndex((entry) => entry.column === "spec");
+      const includeTickets = githubGateIncludesTickets(stages, stage);
       return `sha256:${createHash("sha256")
         .update(
           githubEvidenceJson(

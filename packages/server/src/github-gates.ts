@@ -20,6 +20,7 @@ import { readGithubTickets } from "./github-tickets.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
 import { resolveGithubWorkflow } from "./github-snapshot.js";
+import { githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export async function verifyGithubGateIdentity(
   root: string,
@@ -266,11 +267,7 @@ export function addGithubGateRoutes(
             githubEvidenceDigest(input, false, [...labels.values()]),
             githubEvidenceDigest(input, true, [...labels.values()]),
           ]);
-          return (stageId: string) =>
-            stages.findIndex((entry) => entry.id === stageId) >
-            stages.findIndex((entry) => entry.column === "spec")
-              ? tickets
-              : spec;
+          return (stageId: string) => (githubGateIncludesTickets(stages, stageId) ? tickets : spec);
         };
         let observed: string;
         try {
@@ -284,8 +281,7 @@ export function addGithubGateRoutes(
                 github.repository,
                 item.id,
                 number,
-                stages.findIndex((entry) => entry.id === prior.id) >
-                  stages.findIndex((entry) => entry.column === "spec"),
+                githubGateIncludesTickets(stages, prior.id),
                 [...labels.values()],
                 record,
               );

@@ -516,53 +516,69 @@ test("failed reopen commit restores workflow and index", async () => {
 });
 
 test.each([
-  ["spec", "current"],
-  ["tickets", "stale"],
-] as const)("%s approval observes the right remote evidence", async (stage, expected) => {
-  const child = {
-    ...parent,
-    node_id: "I_2",
-    number: 2,
-    html_url: "https://github.com/Example/Project/issues/2",
-    body: "Ticket",
-    issue_dependencies_summary: { total_blocked_by: 0 },
-  };
-  const childPath = "api repos/Example/Project/issues/2";
-  const { request, reviewedHead } = await setup(
-    {
-      [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
-      [`${issue}/sub_issues?per_page=100&page=1`]: [
-        { stdout: [child] },
-        { stdout: [{ ...child, body: "Changed ticket" }] },
-      ],
-      [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
-      [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
-      [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
-    },
-    stage,
-  );
-  const reviewedDigest = await githubEvidenceDigest(
-    {
-      parentId: "I_1",
-      body: "Spec",
-      tickets: [
-        {
-          id: "I_2",
-          body: "Ticket",
-          state: "open",
-          stateReason: null,
-          labels: [],
-          blockers: [],
-          commentRecords: [],
-        },
-      ],
-    },
-    stage === "tickets",
-  );
-  const response = await request({ stage, reviewedHead, reviewedDigest });
-  expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ approval: expected });
-});
+  ["spec", "current", false],
+  ["tickets", "stale", false],
+  ["spec", "stale", true],
+] as const)(
+  "%s approval is %s after a ticket edit (custom: %s)",
+  async (stage, expected, custom) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      html_url: "https://github.com/Example/Project/issues/2",
+      body: "Ticket",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const { request, reviewedHead, snapshot, git } = await setup(
+      {
+        [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+        [`${issue}/sub_issues?per_page=100&page=1`]: [
+          { stdout: [child] },
+          { stdout: [{ ...child, body: "Changed ticket" }] },
+        ],
+        [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+      },
+      stage,
+    );
+    if (custom) {
+      snapshot.workflows.feature = {
+        ...snapshot.workflows.feature,
+        stages: snapshot.workflows.feature.stages.map((entry) => ({
+          ...entry,
+          gate: entry.id === "spec" ? "tickets" : entry.id === "tickets" ? "manual" : entry.gate,
+        })),
+      };
+    }
+    const reviewedDigest = await githubEvidenceDigest(
+      {
+        parentId: "I_1",
+        body: "Spec",
+        tickets: [
+          {
+            id: "I_2",
+            body: "Ticket",
+            state: "open",
+            stateReason: null,
+            labels: [],
+            blockers: [],
+            commentRecords: [],
+          },
+        ],
+      },
+      stage === "tickets" || custom,
+    );
+    const response = await request({ stage, reviewedHead, reviewedDigest });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ approval: expected });
+    expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.digest).toBe(
+      reviewedDigest,
+    );
+  },
+);
 
 test("fresh approval check distinguishes missing, unknown, stale, current and unavailable", async () => {
   const { root, reviewedDigest } = await setup();
