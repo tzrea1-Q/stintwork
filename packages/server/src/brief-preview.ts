@@ -24,7 +24,7 @@ import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@s
 import type { Hono } from "hono";
 import { changedSince, workItemDiff, worktreePath } from "@stintwork/git";
 import { readGithubTickets } from "./github-tickets.js";
-import { GithubReadError, type GithubDiscovery } from "./github-discovery.js";
+import { classifyGithubError, GithubReadError, type GithubDiscovery } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
 import { projectGithubGates, resolveGithubWorkflow } from "./github-snapshot.js";
 import { githubGateIncludesTickets } from "./github-evidence-scope.js";
@@ -35,6 +35,10 @@ export type GithubBriefSource = {
   discoveryFailed: () => boolean;
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>;
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void;
+  registerDetailIdentities: (
+    github: GithubDiscovery,
+    detail: Awaited<ReturnType<typeof readGithubTickets>>,
+  ) => void;
   refresh: () => void;
   detailSucceeded?: (github: GithubDiscovery, number: number) => void;
 };
@@ -113,12 +117,21 @@ export async function prepareStintBrief(
     try {
       const detail = await readGithubTickets(root, github.repository, remote.id, remote.number);
       if (!detail.complete) throw new GithubReadError("incomplete");
+      githubSource.registerDetailIdentities(github, detail);
       remote.detail = { ...detail, fetchedAt: new Date().toISOString() };
       remote.complete = remote.discoveryComplete ?? remote.complete;
       githubSource.detailSucceeded?.(github, remote.number);
     } catch (error) {
       githubSource.detailFailed(github, remote.number, error);
-      return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
+      return {
+        reason: coreText({
+          code:
+            classifyGithubError(error).code === "identity"
+              ? "gate.identityAmbiguous"
+              : "gate.detailUnavailable",
+        }),
+        status: 409 as const,
+      };
     }
     if (!remote.complete)
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };

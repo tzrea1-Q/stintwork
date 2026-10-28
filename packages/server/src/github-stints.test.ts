@@ -165,6 +165,7 @@ async function setup(
     getGithub: () => github,
     getSnapshot: () => snapshot,
     discoveryFailed: () => false,
+    registerDetailIdentities: () => {},
     verifyIdentity: (expected) =>
       verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
     detailFailed: () => {
@@ -323,6 +324,109 @@ test("failed discovery blocks preview and start until discovery recovers", async
     await server.stop();
   }
 });
+
+test.each([
+  ["ticket", "preview"],
+  ["ticket", "start"],
+  ["blocker", "preview"],
+  ["blocker", "start"],
+  ["unchanged", "preview"],
+] as const)(
+  "observed %s identities are checked during preview and start (%s first)",
+  async (scenario, first) => {
+    const { root, git, gh, ghReplies } = await setup();
+    mkdirSync(join(root, "web"));
+    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+    const page = JSON.parse(
+      readFileSync(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const item = page.data.repository.issues.nodes[0];
+    Object.assign(item, {
+      id: "I_1",
+      number: 1,
+      title: "Parent",
+      url: parent.html_url,
+      parent: null,
+      labels: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+      subIssues: {
+        nodes: [{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }],
+        totalCount: 1,
+        pageInfo: { hasNextPage: false, endCursor: null },
+      },
+    });
+    page.data.repository.id = "R_1";
+    page.data.repository.nameWithOwner = "Example/Project";
+    page.data.repository.issues.nodes = [item];
+    page.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+    const blocker = {
+      ...child,
+      node_id: "I_3",
+      number: 3,
+      html_url: "https://github.com/Example/Project/issues/3",
+      state: "closed",
+      state_reason: "completed",
+    };
+    const ticket = { ...child, issue_dependencies_summary: { total_blocked_by: 1 } };
+    const replies = {
+      ...ghReplies,
+      "api graphql": { stdout: page },
+      [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [ticket] },
+      [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [blocker] },
+    };
+    await gh.script(replies);
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"), {
+      launchAgent: () => {
+        let finish: () => void = () => {};
+        const done = new Promise<{ stopReason: "end_turn" }>((resolve) => {
+          finish = () => resolve({ stopReason: "end_turn" });
+        });
+        return { done, cancel: async () => finish() };
+      },
+    });
+    try {
+      expect(
+        (await server.app.request("/api/github/items/1/refresh", { method: "POST" })).status,
+      ).toBe(200);
+      if (scenario === "ticket") ticket.node_id = "I_changed";
+      if (scenario === "blocker") blocker.node_id = "I_changed";
+      await gh.script(replies);
+      const preview = () => server.app.request("/api/work-items/github-1/tickets/2/brief-preview");
+      const start = () =>
+        server.app.request("/api/stints", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workItem: "github-1", ticket: 2, agent: "codex" }),
+        });
+      if (scenario === "unchanged") {
+        expect((await preview()).status).toBe(200);
+        const response = await start();
+        expect(response.status, await response.clone().text()).toBe(201);
+      } else {
+        const actions = first === "preview" ? [preview, start] : [start, preview];
+        for (const action of actions) {
+          const response = await action();
+          expect(response.status).toBe(409);
+          expect(await response.json()).toMatchObject({
+            reasonMessage: { code: "gate.identityAmbiguous" },
+          });
+        }
+        const snapshot = await (await server.app.request("/api/project")).json();
+        expect(snapshot.github).toMatchObject({ stale: true, errorCode: "identity" });
+        expect(snapshot.github.items[0].detail).toBeUndefined();
+        expect(existsSync(join(root, path))).toBe(false);
+        expect(existsSync(join(root, ".stintwork/local/stints"))).toBe(false);
+        expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+        expect(git("branch", "--list", "stintwork/github-1")).toBe("");
+      }
+    } finally {
+      await server.stop();
+    }
+  },
+);
 
 test("preview refreshes GitHub detail without writing a record or worktree", async () => {
   const { preview, root } = await setup();

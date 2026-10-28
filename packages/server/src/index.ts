@@ -83,6 +83,17 @@ export function createProjectServer(
   let cached: { viewer: string; origin: string; data: GithubDiscovery } | undefined;
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
+  function registerDetailIdentities(detail: Awaited<ReturnType<typeof readGithubTickets>>) {
+    const identities = new Map<number, string>();
+    for (const ticket of detail.tickets) {
+      for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {
+        const prior = identities.get(reference.number) ?? knownIssues.get(reference.number);
+        if (prior && prior !== reference.id) throw new GithubReadError("identity");
+        identities.set(reference.number, reference.id);
+      }
+    }
+    for (const [number, id] of identities) knownIssues.set(number, id);
+  }
   let discoveryRunning = false;
   let detailRunning = false;
   const detailFailures = new Map<string, GithubReadError>();
@@ -587,15 +598,7 @@ export function createProjectServer(
       }
       const detail = await readGithubTickets(root, github.repository, item.id, number);
       if (github !== current || githubSource !== source) throw new GithubReadError("identity");
-      const identities = new Map<number, string>();
-      for (const ticket of detail.tickets) {
-        for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {
-          const prior = identities.get(reference.number) ?? knownIssues.get(reference.number);
-          if (prior && prior !== reference.id) throw new GithubReadError("identity");
-          identities.set(reference.number, reference.id);
-        }
-      }
-      for (const [issueNumber, id] of identities) knownIssues.set(issueNumber, id);
+      registerDetailIdentities(detail);
       item.detail = { ...detail, fetchedAt: new Date().toISOString() };
       item.complete = item.discoveryComplete && detail.complete;
       detailFailures.delete(item.id);
@@ -646,6 +649,13 @@ export function createProjectServer(
       return valid && github === expected && githubSource === source;
     },
     detailFailed: failGithubDetail,
+    registerDetailIdentities: (
+      current: GithubDiscovery,
+      detail: Awaited<ReturnType<typeof readGithubTickets>>,
+    ) => {
+      if (github !== current) throw new GithubReadError("identity");
+      registerDetailIdentities(detail);
+    },
     detailSucceeded: (current: GithubDiscovery, number: number) => {
       if (github !== current) return;
       const item = current.items.find((entry) => entry.number === number);
