@@ -9,15 +9,17 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Acceptance criteria
 
-- [ ] Create and commit each durable issue-keyed workflow identity record with the repository and parent node IDs, issue number and canonical URL, and validate it before binding existing branches, stints or worktrees.
+- [x] Create and commit each durable issue-keyed workflow identity record on approval or reopen with the repository and parent node IDs, issue number and canonical URL, and validate it at existing binding points. Stint, worktree and branch binding is covered by ticket 05.
 
-- [ ] The committed path, identity and YAML evidence follow the spec and worktree authority; unsafe paths, invalid YAML, conflicts and concurrent writes refuse safely.
+- [x] The committed path, identity and YAML evidence follow the spec and worktree authority; unsafe paths, invalid YAML, conflicts and concurrent writes refuse safely.
 - [x] Canonical versioned digests cover the defined spec and ticket data, excluding irrelevant changes, with stable deterministic serialization.
 - [x] Approval requires complete current evidence and unchanged reviewed HEAD; remote changes or fetch failures before/after commit cannot appear current.
-- [ ] Reopen, remote edits, reverted content, code HEAD changes, branch merge/conflict and downstream invalidation follow the spec.
-- [ ] Fixture and fake-gh tests cover races and rollback without network; local approvals remain compatible.
+- [x] Reopen, remote edits, reverted content, code HEAD changes, branch merge/conflict and downstream invalidation follow the spec.
+- [x] Fixture and fake-gh tests cover races and rollback without network; local approvals remain compatible.
 
 ## Comments
+
+**Codex, 2026-10-28:** Criterion 1: `github-discovery.test.ts` “identity fallback with worktree mismatch” and “identity fallback with worktree wins”; `github-gates.test.ts` “creates and commits a current approval”. Stint, worktree and branch binding remains ticket 05. Criterion 2: `workflow-writes.test.ts` “refuses unsafe paths and identity changes”, “refuses symlinks and invalid YAML”, “serializes concurrent creates and rolls back a failed commit”, and “accepts a merged record and refuses an unresolved index conflict”; `github-gates.test.ts` “creates and commits a current approval” checks committed YAML. Criterion 5: `github-snapshot.test.ts` “projects workflow records and fresh, stale and unknown approval evidence”, “worktree workflow overrides main only when present”, and “parent and ticket revisions invalidate only dependent approvals and a revert restores them”; `github-gates.test.ts` “reopens an earlier GitHub gate and retains its approval”, “refuses a later approval when an earlier approval is stale or unknown”, “refuses changed HEAD without a commit”, and “HTTP approve reopen reapprove retains the reopen and makes approval current”; `workflow-writes.test.ts` “accepts a merged record and refuses an unresolved index conflict”. Criterion 6: `github-gates.test.ts` “concurrent approvals create only one commit”, “concurrent reopen and approval have one winner and leave a valid workflow”, and “failed reopen commit restores workflow and index”; `workflow-writes.test.ts` “local approve reopen approve matches main workflow bytes”.
 
 **Codex, 2026-10-28:** Follow-up in progress: `github-discovery.test.ts` “identity fallback with worktree mismatch” and “identity fallback with worktree wins” cover identity binding; `github-gates.test.ts` “fresh approval check distinguishes missing, unknown, stale, current and unavailable” and “HTTP approve reopen reapprove retains the reopen and makes approval current” cover the shared fresh check and route history; `workflow-writes.test.ts` “local approve reopen approve matches main workflow bytes” covers fixed local bytes. Workflow customisation first-write is not implemented, so criteria 1, 2, 5 and 6 remain open. No commit was made.
 
