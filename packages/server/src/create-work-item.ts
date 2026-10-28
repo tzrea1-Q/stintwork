@@ -51,6 +51,12 @@ export function addWorkItemCreationRoutes(
       let validated = false;
       try {
         const prepare = () => {
+          const project = readProjectFiles();
+          if (project.warnings.some(({ path }) => path === ".git"))
+            throw new WorkItemCreationRefusal({ code: "roadmap.worktreesUnreadable" });
+          const snapshot = indexProject(project.files, { name: "" });
+          if (snapshot.setup.tracker === "github-issues")
+            throw new WorkItemCreationRefusal({ code: "creation.githubTracker" });
           const slug = deriveWorkItemSlug(
             input && typeof input === "object" && "title" in input ? input.title : undefined,
             input && typeof input === "object" && "slug" in input ? input.slug : undefined,
@@ -64,10 +70,6 @@ export function addWorkItemCreationRoutes(
               ? { roadmapText: "" }
               : {}),
           });
-          const project = readProjectFiles();
-          if (project.warnings.some(({ path }) => path === ".git"))
-            throw new WorkItemCreationRefusal({ code: "roadmap.worktreesUnreadable" });
-          const snapshot = indexProject(project.files, { name: "" });
           const creation = prepareWorkItemCreation(
             input,
             snapshot.workflows,

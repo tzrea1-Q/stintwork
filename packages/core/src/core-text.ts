@@ -59,6 +59,8 @@ export const coreTextEnglish = {
     ({ slug }) => `Work item ${slug} already exists in Git.`,
   ),
   "creation.scratchDirectory": ".scratch must be a real directory.",
+  "creation.githubTracker":
+    "GitHub work items are issues created through agent skills, such as to-spec.",
   "creation.commitPaths": "Commit or discard hand edits to the creation paths first.",
   "creation.roadmapEdits": "Commit or discard hand edits to roadmap.md first.",
   "workItem.shipped": "This work item is shipped.",

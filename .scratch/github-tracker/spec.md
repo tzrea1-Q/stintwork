@@ -12,7 +12,7 @@ Skills configured for GitHub publish the spec and tickets as issues, but Stintwo
 
 ## Solution
 
-For a GitHub-configured project, read parent issues as work items and native direct sub-issues as tickets through the developer's `gh` login. The parent body is the spec; agents write issues with their skills and `gh`. Stintwork never writes issues. Keep its workflow and gate records committed locally, with remote revision evidence, and extend the shared project model so the existing views show provenance, completeness and safe action availability. Local Markdown remains unchanged. ADR 0013 explicitly narrows the offline/repo-only promise of ADR 0001 and supersedes 0005.
+For a GitHub-configured project, read parent issues as work items and native direct sub-issues as tickets through the developer's `gh` login. The parent body is the spec; agents write issues with their skills and `gh`. Stintwork never writes issues. For GitHub-tracked projects, Stintwork does not create local Markdown work items; agents create GitHub issues through their configured skills. Keep its workflow and gate records committed locally, with remote revision evidence, and extend the shared project model so the existing views show provenance, completeness and safe action availability. Local Markdown remains unchanged. ADR 0013 explicitly narrows the offline/repo-only promise of ADR 0001 and supersedes 0005.
 
 ## User Stories
 

@@ -72,6 +72,41 @@ for (const language of ["en", "zh-CN"] as const) {
           );
         });
 
+        test("GitHub tracker directs creation to agent skills and repository issues", async ({
+          page,
+        }, testInfo) => {
+          snapshot = {
+            ...dialogSnapshot,
+            setup: { ...dialogSnapshot.setup, tracker: "github-issues" },
+            github: {
+              repository: "example/project",
+              repositoryId: "repo-id",
+              items: [],
+              scanned: 0,
+              cursor: null,
+              complete: true,
+              pages: [],
+              warnings: [],
+            },
+          };
+          await page.goto("/");
+          await expect(page.getByText(t.board.githubCreation)).toBeVisible();
+          await expect(page.getByRole("link", { name: t.board.githubIssues })).toHaveAttribute(
+            "href",
+            "https://github.com/example/project/issues",
+          );
+          await expect(page.getByRole("button", { name: t.board.createWorkItem })).toHaveCount(0);
+          await page.keyboard.press("c");
+          await expect(page.getByRole("dialog", { name: t.planning.create.title })).toHaveCount(0);
+          await assertLayout(page);
+          await page.screenshot({
+            path: testInfo.outputPath("github-creation.png"),
+            fullPage: true,
+          });
+          await page.getByRole("button", { name: t.topBar.openPalette }).click();
+          await expect(page.getByText(t.planning.palette.create, { exact: true })).toHaveCount(0);
+        });
+
         test("create: empty, checking, long content, pending save and refusal", async ({
           page,
         }, testInfo) => {

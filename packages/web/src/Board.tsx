@@ -29,6 +29,8 @@ export function Board({
   error?: string;
 }) {
   const { t } = useLanguage();
+  const githubTracker = snapshot.setup.tracker === "github-issues";
+  const repository = snapshot.github?.repository;
   const [selectedMilestone, setSelectedMilestone] = useState("");
   const [openSlug, setOpenSlug] = useState<string | null>(() =>
     new URL(window.location.href).searchParams.get("item"),
@@ -104,7 +106,13 @@ export function Board({
         )
       )
         return;
-      if (event.key === "c" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      if (
+        !githubTracker &&
+        event.key === "c" &&
+        !event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey
+      ) {
         event.preventDefault();
         setCreateOpen(true);
         return;
@@ -143,7 +151,7 @@ export function Board({
       document.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("popstate", handlePopstate);
     };
-  }, [openItem, paletteOpen, needsYouOpen, createOpen, customiseId]);
+  }, [openItem, paletteOpen, needsYouOpen, createOpen, customiseId, githubTracker]);
 
   return (
     <div className="pipeline-app flex h-dvh min-w-0 flex-col">
@@ -215,9 +223,11 @@ export function Board({
           </div>
           <div className="board-toolbar-actions flex shrink-0 items-center gap-2">
             <RoadmapEditor snapshot={snapshot} />
-            <Button variant="primary" aria-haspopup="dialog" onClick={() => setCreateOpen(true)}>
-              {t.board.createWorkItem}
-            </Button>
+            {!githubTracker && (
+              <Button variant="primary" aria-haspopup="dialog" onClick={() => setCreateOpen(true)}>
+                {t.board.createWorkItem}
+              </Button>
+            )}
             <TooltipProvider>
               <nav
                 className="stage-navigation ml-auto flex gap-1 lg:ml-0 min-[1200px]:hidden"
@@ -253,6 +263,16 @@ export function Board({
             </TooltipProvider>
           </div>
         </div>
+        {githubTracker && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 pb-3 text-sm text-muted sm:px-6">
+            <span>{t.board.githubCreation}</span>
+            {repository && /^[a-z\d-]+\/[a-z\d_.-]+$/i.test(repository) && (
+              <a className="underline" href={`https://github.com/${repository}/issues`}>
+                {t.board.githubIssues}
+              </a>
+            )}
+          </div>
+        )}
         <section
           className="board-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
           ref={scroll}
@@ -262,15 +282,19 @@ export function Board({
             <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
               <FolderOpen className="size-icon-lg muted text-muted" aria-hidden="true" />
               <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
-              <p className="mt-2 muted text-muted">
-                {t.board.startWithSpec}
-                <code>.scratch/&lt;work-item&gt;/spec.md</code>.
-              </p>
-              <p className="mt-2 text-xs muted text-muted">
-                {t.board.addTickets}
-                <code>.scratch/&lt;work-item&gt;/issues/</code>
-                {t.board.updatesAsYouEdit}
-              </p>
+              {!githubTracker && (
+                <>
+                  <p className="mt-2 muted text-muted">
+                    {t.board.startWithSpec}
+                    <code>.scratch/&lt;work-item&gt;/spec.md</code>.
+                  </p>
+                  <p className="mt-2 text-xs muted text-muted">
+                    {t.board.addTickets}
+                    <code>.scratch/&lt;work-item&gt;/issues/</code>
+                    {t.board.updatesAsYouEdit}
+                  </p>
+                </>
+              )}
             </section>
           ) : (
             <>
@@ -390,7 +414,7 @@ export function Board({
           onClose={() => setPaletteOpen(false)}
         />
       )}
-      {createOpen && (
+      {createOpen && !githubTracker && (
         <CreateWorkItem
           snapshot={snapshot}
           onClose={() => setCreateOpen(false)}
