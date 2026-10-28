@@ -75,6 +75,7 @@ export function createProjectServer(
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
   let watchedPaths = new Set<string>();
   let github: GithubDiscovery | undefined;
+  let githubSource: { viewer: string; origin: string } | undefined;
   let cached: { viewer: string; origin: string; data: GithubDiscovery } | undefined;
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
@@ -210,9 +211,15 @@ export function createProjectServer(
   async function refreshGithub(loadMore = false) {
     if (snapshot.setup.tracker !== "github-issues") {
       github = undefined;
+      githubSource = undefined;
+      cached = undefined;
       return;
     }
-    if (discoveryRunning || (github?.retryAt && Date.parse(github.retryAt) > Date.now())) return;
+    if (
+      discoveryRunning ||
+      (!githubSource && github?.retryAt && Date.parse(github.retryAt) > Date.now())
+    )
+      return;
     discoveryRunning = true;
     let viewer: string | undefined;
     let origin: string | undefined;
@@ -220,13 +227,16 @@ export function createProjectServer(
       origin = await githubOrigin(root);
       viewer = await githubViewer(root);
       if (
-        cached &&
-        (cached.viewer !== viewer || cached.origin.toLowerCase() !== origin.toLowerCase())
+        githubSource &&
+        (githubSource.viewer !== viewer ||
+          githubSource.origin.toLowerCase() !== origin.toLowerCase())
       ) {
         cached = undefined;
         github = undefined;
+        githubSource = undefined;
         if (loadMore) throw new GithubReadError("identity");
       }
+      if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
       const previous = github;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
       if (
@@ -284,6 +294,7 @@ export function createProjectServer(
       knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
       for (const item of next.items) knownIssues.set(item.number, item.id);
       github = next;
+      githubSource = { viewer, origin };
       if (!github.error) {
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
         cached = { viewer, origin, data: github };
@@ -323,6 +334,7 @@ export function createProjectServer(
         cached?.viewer === viewer &&
         cached.origin.toLowerCase() === origin.toLowerCase()
       ) {
+        githubSource = { viewer, origin };
         github = {
           ...cached.data,
           stale: true,
@@ -332,7 +344,8 @@ export function createProjectServer(
           ...(failure.code !== "identity" ? { retryable: true } : {}),
           ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
         };
-      } else
+      } else {
+        githubSource = undefined;
         github = {
           repository: "",
           repositoryId: "",
@@ -346,6 +359,7 @@ export function createProjectServer(
           errorCode: failure.code,
           ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
         };
+      }
     } finally {
       discoveryRunning = false;
     }
@@ -398,7 +412,7 @@ export function createProjectServer(
     if (
       snapshot.setup.tracker !== "github-issues" ||
       !["refresh", "load-more"].includes(action) ||
-      (action === "load-more" && !github?.cursor)
+      (action === "load-more" && !github?.cursor && !github?.retryable)
     )
       return context.text("Discovery unavailable", 409);
     await refreshGithub(action === "load-more");

@@ -59,6 +59,83 @@ test.each([
   expect(await gh.calls()).toEqual([]);
 });
 
+test("load more retries a transient relationship failure on the first issue page", async () => {
+  const { root, gh } = await project("https://github.com/Example/Project.git");
+  const { mkdir, readFile, writeFile } = await import("node:fs/promises");
+  await mkdir(join(root, "web"));
+  await writeFile(join(root, "web/index.html"), "<!doctype html>");
+  await mkdir(join(root, "docs/agents"), { recursive: true });
+  await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  const page = JSON.parse(
+    await readFile(
+      new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const issue = page.data.repository.issues.nodes[0];
+  issue.labels.nodes = [];
+  issue.subIssues.nodes = [];
+  issue.subIssues.pageInfo = { hasNextPage: true, endCursor: "child-1" };
+  page.data.repository.issues.nodes = [issue];
+  page.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+  const repo = {
+    node_id: "R_test",
+    full_name: "Example/Project",
+    html_url: "https://github.com/Example/Project",
+  };
+  await gh.script({
+    "auth status": {},
+    "api user": { stdout: "101" },
+    "api repos/Example/Project": { stdout: repo },
+    "api graphql": [
+      { stdout: page },
+      { code: 1, effect: "process.stderr.write('network is unreachable')" },
+    ],
+  });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  try {
+    const initial = await (await server.app.request("/api/project")).json();
+    expect(initial.github).toMatchObject({
+      cursor: null,
+      retryable: true,
+      errorCode: "offline",
+      items: [],
+    });
+    const child = {
+      data: {
+        node: {
+          id: issue.id,
+          subIssues: {
+            nodes: [{ repository: { id: "R_test" }, subIssues: { totalCount: 0 } }],
+            pageInfo: { hasNextPage: false, endCursor: null },
+          },
+        },
+        rateLimit: { cost: 1, remaining: 4800, resetAt: "2026-10-28T00:00:00Z" },
+      },
+    };
+    await gh.script({
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": [{ stdout: page }, { stdout: child }],
+    });
+    const response = await server.app.request("/api/github/discovery/load-more", {
+      method: "POST",
+    });
+    expect(response.status).toBe(200);
+    const retried = await response.json();
+    expect(retried.github).toMatchObject({
+      cursor: null,
+      complete: true,
+      scanned: 1,
+      items: [{ number: 1 }],
+    });
+  } finally {
+    await server.stop();
+  }
+});
+
 test("does not silently accept a renamed repository", async () => {
   const { root, gh } = await project("https://github.com/Example/Project.git");
   await gh.script({
@@ -185,6 +262,103 @@ test("failed relationship pages are incomplete rather than a negative membership
   const result = await discoverGithubWorkItems(root);
   expect(result).toMatchObject({ complete: false, scanned: 1, error: expect.any(String) });
 });
+
+test.each([
+  ["labels", "offline", "network is unreachable"],
+  ["labels", "server-error", "HTTP 500 server error"],
+  ["subIssues", "offline", "network is unreachable"],
+  ["subIssues", "server-error", "HTTP 500 server error"],
+  ["labels", "unavailable", "HTTP 404 Not Found"],
+  ["subIssues", "unavailable", "HTTP 404 Not Found"],
+] as const)(
+  "%s relationship %s preserves the correct issue-page checkpoint",
+  async (field, failure, stderr) => {
+    const { root, gh } = await project("https://github.com/Example/Project.git");
+    const { readFile } = await import("node:fs/promises");
+    const fixture = JSON.parse(
+      await readFile(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    const first = structuredClone(fixture);
+    first.data.repository.issues.nodes = [];
+    first.data.repository.issues.pageInfo = { hasNextPage: true, endCursor: "page-1" };
+    const last = structuredClone(fixture);
+    const issue = last.data.repository.issues.nodes[0];
+    issue.labels.nodes = [];
+    issue.subIssues.nodes = [];
+    issue[field].pageInfo = { hasNextPage: true, endCursor: "relationship-1" };
+    last.data.repository.issues.nodes = [issue];
+    last.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+    const repo = {
+      node_id: "R_test",
+      full_name: "Example/Project",
+      html_url: "https://github.com/Example/Project",
+    };
+    await gh.script({
+      "auth status": {},
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": [
+        { stdout: first },
+        { stdout: last },
+        { code: 1, effect: `process.stderr.write(${JSON.stringify(stderr)})` },
+      ],
+    });
+    const { discoverGithubWorkItems } = await import("./github-discovery.js");
+    const result = await discoverGithubWorkItems(root);
+    if (failure === "unavailable") {
+      expect(result).toMatchObject({
+        complete: false,
+        cursor: null,
+        scanned: 1,
+        errorCode: "incomplete",
+        items: [],
+      });
+      expect(result.retryable).not.toBe(true);
+      return;
+    }
+    expect(result).toMatchObject({
+      complete: false,
+      cursor: "page-1",
+      scanned: 0,
+      errorCode: failure,
+      retryable: true,
+      items: [],
+    });
+    const connection = {
+      nodes:
+        field === "labels"
+          ? [{ name: "stintwork:work-item" }]
+          : [{ repository: { id: "R_test" }, subIssues: { totalCount: 0 } }],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    };
+    await gh.script({
+      "auth status": {},
+      "api repos/Example/Project": { stdout: repo },
+      "api graphql": [
+        { stdout: last },
+        {
+          stdout: {
+            data: {
+              node: { id: issue.id, [field]: connection },
+              rateLimit: { cost: 1, remaining: 4800, resetAt: "2026-10-28T00:00:00Z" },
+            },
+          },
+        },
+      ],
+    });
+    const retried = await discoverGithubWorkItems(root, result.cursor);
+    expect(retried).toMatchObject({
+      complete: true,
+      cursor: null,
+      scanned: 1,
+      items: [{ number: 1, complete: true }],
+    });
+    const calls = await gh.calls();
+    expect(calls.filter(({ args }) => args.includes("cursor=page-1"))).toHaveLength(2);
+  },
+);
 
 test("project snapshot exposes discovered work items through the configured GitHub tracker", async () => {
   const { root, gh } = await project("https://github.com/Example/Project.git");
@@ -831,7 +1005,15 @@ test("issues connection accepts unrelated epics and does not query pull requests
   expect(query).not.toMatch(/\bpullRequests\s*\(/);
 });
 
-test.each(["success", "failure", "identity"] as const)(
+test.each([
+  "success",
+  "failure",
+  "identity",
+  "viewer",
+  "origin",
+  "viewer-limited",
+  "origin-limited",
+] as const)(
   "an interrupted issue page can be retried without replaying committed work: %s",
   async (outcome) => {
     const { root, gh } = await project("https://github.com/Example/Project.git");
@@ -862,7 +1044,14 @@ test.each(["success", "failure", "identity"] as const)(
     second.data.repository.issues.nodes = [fixture.data.repository.issues.nodes[1], third];
     second.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
     const rate = {
-      data: { node: null, rateLimit: { cost: 1, remaining: 0, resetAt: "2020-01-01T00:00:00Z" } },
+      data: {
+        node: null,
+        rateLimit: {
+          cost: 1,
+          remaining: 0,
+          resetAt: outcome.endsWith("-limited") ? "2099-01-01T00:00:00Z" : "2020-01-01T00:00:00Z",
+        },
+      },
     };
     const repo = {
       node_id: "R_test",
@@ -904,9 +1093,17 @@ test.each(["success", "failure", "identity"] as const)(
           ...first.data.repository.issues.nodes[0],
           id: "I_changed",
         };
+      if (outcome === "origin" || outcome === "origin-limited")
+        execFileSync(
+          "git",
+          ["remote", "set-url", "origin", "https://github.com/Other/Project.git"],
+          { cwd: root },
+        );
       await gh.script({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": {
+          stdout: outcome === "viewer" || outcome === "viewer-limited" ? "202" : "101",
+        },
         "api repos/Example/Project": { stdout: repo },
         "api graphql":
           outcome !== "failure"
@@ -925,8 +1122,14 @@ test.each(["success", "failure", "identity"] as const)(
           pages: [{ cost: 102 }, { cost: 102 }, { cost: 1 }],
         });
         expect(retried.github.error).toBeUndefined();
-      } else if (outcome === "identity") {
+      } else if (
+        outcome === "identity" ||
+        outcome === "viewer" ||
+        outcome === "origin" ||
+        outcome.endsWith("-limited")
+      ) {
         expect(retried.github).toMatchObject({ complete: false, errorCode: "identity", items: [] });
+        expect(retried.workItems).toEqual([]);
       } else {
         expect(retried.github).toMatchObject({
           scanned: 1,

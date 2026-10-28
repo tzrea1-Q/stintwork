@@ -389,7 +389,10 @@ export async function discoverGithubWorkItems(
               complete: !cross && !nested,
             });
         } catch (error) {
-          if (error instanceof GithubReadError && error.code === "rate-limited") {
+          if (
+            error instanceof GithubReadError &&
+            ["rate-limited", "offline", "server-error"].includes(error.code)
+          ) {
             if (issue.parent === null && membershipKnown)
               provisional = {
                 id: issue.id,
