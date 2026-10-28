@@ -1,6 +1,6 @@
 # 05 — Start an issue ticket stint
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 04
 
 ## What to build
@@ -12,9 +12,33 @@ Connect the selected GitHub ticket to the existing stint and brief flow using th
 - [x] The brief gives repo, issue identities, URLs, read commands, worktree, scope, handoff and checkpoint without credentials or local ticket instructions.
 - [x] Planning and ticket prompts direct issue updates to the configured skill and `gh`; no issue content is mirrored or written by Stintwork.
 - [x] A fresh complete snapshot is required to start a ticket; resolved, blocked, unknown and changed identities refuse safely. Starting a stint or creating a worktree or branch for a GitHub item validates its identity record first and refuses on mismatch; it uses the shared current-approval check from ticket 04.
-- [ ] Fake-gh tests verify scope, refresh/failure and unchanged local Markdown briefs and stints without network.
+- [x] Fake-gh tests verify scope, refresh/failure and unchanged local Markdown briefs and stints without network.
 
 ## Comments
+
+**Coordinator, 2026-10-28:** Resolved. Merged to main as `2e58370`.
+
+The full verify passed: format:check, lint, typecheck, build, 3,055 unit tests across 168 files, smoke:package and test:e2e. There were 13 Codex review rounds; the last was clean. Fixes from earlier rounds:
+- local start ordering and refusal codes restored;
+- review briefs keep the review range and stay read-only, including for issues;
+- spec and ticket publishing appears only at the gate that owns it;
+- the skill targets the selected ticket;
+- starts check the selected item's completeness, not unscanned discovery pages;
+- upstream reopenings are honoured;
+- a failed discovery refresh refuses;
+- ticket-state refusals apply only at implementation stages, while unknown or open dependencies refuse at every stage;
+- the shared issue-identity check;
+- a post-stint detail refresh;
+- handoff and note paths are kept verbatim, and the worktree path appears in the brief;
+- detail reads are ordered per item, failures included;
+- the rate-limit retry time is honoured.
+
+Live check against the scratch repo (origin `github/gh-aw`, #1433), using real read-only `gh`:
+- The Clarify brief preview returns the issue URLs, explicit `-R` read commands and the worktree path. It contains no `.scratch` path or issue text.
+- Preview created no workflow record or worktree.
+- A live stint start was not run, because it would launch a real agent. The fake-gh tests cover it.
+
+CI run 40755849987 passed: checks, both browser shards, and package-smoke on ubuntu and macOS.
 
 **Codex, 2026-10-28:** Preserved supplied `.scratch/` paths verbatim in GitHub briefs and refreshed GitHub detail asynchronously after stint finalization, using the existing detail failure path. Added brief and fake-gh coverage for preserved paths, updated and failed detail reads, and local stints. `pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. The requested four-file Vitest run had 97 passes and 11 failures: three socket tests hit `listen EPERM`, while eight agent-session cases failed (four timed out and four returned 201 instead of 503). Both failure modes also reproduced in the Claude installed cases on an untouched HEAD archive. No commit or push.
 
