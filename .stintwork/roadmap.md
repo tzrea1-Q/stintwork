@@ -64,7 +64,9 @@ Status: shipped
 
 ## M11 · GitHub Issues as a tracker
 Id: m11
-Status: planned
+Status: active
+
+- github-tracker
 
 ## M12 · More agents
 Id: m12

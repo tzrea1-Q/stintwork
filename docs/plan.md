@@ -164,11 +164,10 @@ An active stint resumes after a server restart or crash. Spec: `.scratch/stint-r
 
 ### M11 · GitHub Issues as a tracker · L
 
-A repo whose tracker config says GitHub shows its issues as work items and tickets, read through `gh`.
+A repo whose tracker config says GitHub shows top-level issues with a direct same-repository sub-issue or the `stintwork:work-item` label as work items, and their direct same-repository sub-issues as tickets, read through `gh`. Spec: `.scratch/github-tracker/spec.md`.
 
-- Start with a research spike on mattpocock/skills' GitHub tracker layout, before writing a spec.
-- Proposed: agents write issues through their own skills and `gh`; Stintwork only reads. This keeps ADR 0005's reason for avoiding two-way sync.
-- A new decision record supersedes ADR 0005.
+- Agents write issues through their own skills and `gh`; Stintwork only reads. Workflow and revision-bound gate records remain committed in the work item worktree.
+- Accepted ADR 0013 supersedes ADR 0005 and narrows ADR 0001.
 
 **Exit test:** a real repo that tracks work in GitHub Issues takes one ticket from the board to a merged PR.
 
@@ -195,7 +194,7 @@ Publish the release after its milestones pass.
 
 ### Open questions for v0.2
 
-1. **GitHub tracker files.** Where do the spec and `workflow.yaml` gate approvals live in an issue-tracked repo? The M11 research spike answers this before any spec.
+1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.
 2. **M9 targets.** The spike sets the size and time limits.
 
 ### After the public release
