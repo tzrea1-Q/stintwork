@@ -673,6 +673,7 @@ export function createProjectServer(
       return valid && github === expected && githubSource === source;
     },
     failGithubDetail,
+    readReviewEvidence,
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);

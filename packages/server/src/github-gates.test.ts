@@ -146,13 +146,22 @@ async function setup(
   ];
   snapshot.workItems = [workItem];
   const project = createProjectFiles(root, createNodeRepoFiles(root));
+  let discoveryFailure = false;
+  let evidenceReads = 0;
   let published = 0;
   addGithubGateRoutes(
     app,
     root,
     () => github,
     () => snapshot,
-    project,
+    Object.assign(
+      () => {
+        const result = project();
+        if (discoveryFailure) result.warnings.push({ path: ".git", message: "Discovery failed" });
+        return result;
+      },
+      { metadataChanged: project.metadataChanged },
+    ),
     () => {
       published++;
       snapshot.github = github;
@@ -167,6 +176,10 @@ async function setup(
       if (classifyGithubError(error).code === "identity") delete item.detail;
       item.complete = false;
       if (item.detail) item.detail.stale = true;
+    },
+    (_project, current) => {
+      evidenceReads++;
+      current.workItems[0].reviewEvidenceError = "Evidence changed";
     },
   );
   if (initialStage) {
@@ -204,6 +217,7 @@ async function setup(
     });
   return {
     git,
+    app,
     request,
     reviewedHead,
     reviewedDigest,
@@ -212,9 +226,152 @@ async function setup(
     worktree,
     github,
     published: () => published,
+    failDiscovery: () => {
+      discoveryFailure = true;
+    },
+    evidenceReads: () => evidenceReads,
   };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
+
+test("rejects cross-origin, non-JSON, malformed and non-object requests", async () => {
+  const { app, git } = await setup();
+  for (const [headers, body, status, code] of [
+    [
+      { origin: "https://elsewhere.test", "content-type": "application/json" },
+      "{}",
+      403,
+      "server.originMismatch",
+    ],
+    [{ "content-type": "text/plain" }, "{}", 400, "server.jsonGate"],
+    [{ "content-type": "application/json" }, "{", 400, "server.invalidJson"],
+    [{ "content-type": "application/json" }, "[]", 400, "server.jsonGate"],
+  ] as const) {
+    const response = await app.request("/api/github/items/1/gates/approve", {
+      method: "POST",
+      headers,
+      body,
+    });
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ reasonMessage: { code } });
+  }
+  expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test("refuses a missing GitHub work item", async () => {
+  const { app, git } = await setup();
+  const response = await app.request("/api/github/items/2/gates/approve", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ stage: "clarify", reviewedDigest: "x", reviewedHead: "x" }),
+  });
+  expect(response.status).toBe(404);
+  expect(await response.json()).toMatchObject({
+    reasonMessage: { code: "server.workItemNotFound" },
+  });
+  expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test("refuses missing, noncurrent and non-earlier stages with local codes", async () => {
+  const { request, reviewedHead, reviewedDigest, git } = await setup({}, "spec");
+  for (const [stage, action, status, code] of [
+    ["absent", "approve", 400, "server.stageNotFound"],
+    ["clarify", "approve", 409, "gate.notCurrentStage"],
+    ["spec", "reopen", 409, "gate.reopenEarlier"],
+    ["tickets", "reopen", 409, "gate.reopenEarlier"],
+  ] as const) {
+    const response = await request({ stage, reviewedHead, reviewedDigest }, action);
+    expect(response.status).toBe(status);
+    expect(await response.json()).toMatchObject({ reasonMessage: { code } });
+  }
+  expect(git("rev-list", "--count", "HEAD")).toBe("2");
+});
+
+test("refreshes Clarify memory proposals before checking readiness", async () => {
+  const { request, snapshot, git } = await setup();
+  snapshot.workItems[0].stints = [];
+  snapshot.workItems[0].memoryProposalError = "stale error";
+  const response = await request();
+  expect(response.status).toBe(409);
+  expect(snapshot.workItems[0].memoryProposalError).toBeUndefined();
+  expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test.each(["approve", "reopen"] as const)(
+  "%s refuses a shipped record without writing",
+  async (action) => {
+    const { root, git, request, reviewedDigest } = await setup({}, "spec");
+    const file = join(root, path);
+    writeFileSync(
+      file,
+      `${readFileSync(file, "utf8")}merged: { at: '2026-01-01T00:00:00Z', commit: '${"a".repeat(40)}' }\n`,
+    );
+    git("add", path);
+    git("commit", "-qm", "ship");
+    const before = readFileSync(file, "utf8");
+    const head = git("rev-parse", "HEAD");
+    const response = await request(
+      { stage: action === "approve" ? "spec" : "clarify", reviewedDigest, reviewedHead: head },
+      action,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({ reasonMessage: { code: "workItem.shipped" } });
+    expect(git("rev-parse", "HEAD")).toBe(head);
+    expect(readFileSync(file, "utf8")).toBe(before);
+  },
+);
+
+test.each(["approve", "reopen"] as const)(
+  "%s refuses a structurally invalid workflow without writing",
+  async (action) => {
+    const { root, git, request, reviewedDigest } = await setup({}, "spec");
+    const file = join(root, path);
+    const before = readFileSync(file, "utf8").replace(
+      /stages:\n[\s\S]*/,
+      "stages:\n  clarify: invalid\n",
+    );
+    writeFileSync(file, before);
+    git("add", path);
+    git("commit", "-qm", "invalid record");
+    const head = git("rev-parse", "HEAD");
+    const response = await request(
+      { stage: action === "approve" ? "spec" : "clarify", reviewedDigest, reviewedHead: head },
+      action,
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reasonMessage: { code: "gate.validWorkflowRequired" },
+    });
+    expect(git("rev-parse", "HEAD")).toBe(head);
+    expect(readFileSync(file, "utf8")).toBe(before);
+  },
+);
+
+test("refuses a snapshot active stint", async () => {
+  const { request, snapshot, git } = await setup();
+  snapshot.workItems[0].activeStint = snapshot.workItems[0].stints[0] as NonNullable<
+    (typeof snapshot.workItems)[0]["activeStint"]
+  >;
+  const response = await request();
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "gate.activeWrite" } });
+  expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test("refuses failed worktree discovery", async () => {
+  const { request, failDiscovery, git } = await setup();
+  failDiscovery();
+  expect((await request()).status).toBe(503);
+  expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test("refreshes Review evidence before checking readiness", async () => {
+  const { request, reviewedHead, reviewedDigest, evidenceReads, git } = await setup({}, "review");
+  const response = await request({ stage: "review", reviewedHead, reviewedDigest });
+  expect(response.status).toBe(409);
+  expect(evidenceReads()).toBe(1);
+  expect(git("rev-list", "--count", "HEAD")).toBe("2");
+});
 
 test.each(["approve", "reopen"] as const)(
   "%s publishes unknown approvals on a failed fresh read",
@@ -366,7 +523,9 @@ test.each(["approve", "reopen"] as const)(
 test("refuses a direct approval when readiness is unmet without committing", async () => {
   const { snapshot, request, git } = await setup();
   snapshot.workItems[0].stints = [];
-  expect((await request()).status).toBe(409);
+  const response = await request();
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "gate.stintUnfinished" } });
   expect(git("rev-list", "--count", "HEAD")).toBe("1");
 });
 

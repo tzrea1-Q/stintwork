@@ -7,6 +7,9 @@ import {
   gateReadiness,
   evidenceStale,
   workflowGate,
+  readWorkflow,
+  loadWorkflows,
+  createMemoryRepoFiles,
   type ProjectSnapshot,
 } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
@@ -26,6 +29,8 @@ import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
 import { resolveGithubWorkflow } from "./github-snapshot.js";
 import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+import { createMemoryProposalReader } from "./memory-proposals.js";
+import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export async function verifyGithubGateIdentity(
   root: string,
@@ -106,8 +111,10 @@ export function addGithubGateRoutes(
   isStintActive: (slug: string) => boolean,
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>,
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void,
+  readReviewEvidence?: ReviewEvidenceReader,
 ) {
   const writing = new Set<string>();
+  const readMemoryProposals = createMemoryProposalReader(root);
   for (const action of ["approve", "reopen"] as const)
     app.post(`/api/github/items/:number/gates/${action}`, async (context) => {
       const origin = context.req.header("origin");
@@ -159,7 +166,11 @@ export function addGithubGateRoutes(
           }),
           409,
         );
-      if (writing.has(slug) || isStintActive(slug))
+      if (
+        writing.has(slug) ||
+        isStintActive(slug) ||
+        getSnapshot().workItems.find((entry) => entry.slug === slug)?.activeStint
+      )
         return context.json(coreTextWire({ reason: coreText({ code: "gate.activeWrite" }) }), 409);
       writing.add(slug);
       const refuse = (
@@ -199,6 +210,9 @@ export function addGithubGateRoutes(
             409,
           );
         const project = readProjectFiles();
+        const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
+        if (discoveryFailure)
+          return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
         const worktree = project.worktreePaths.get(slug);
         const directory = worktree ?? root;
         const relative = `.stintwork/github/${github.repository.toLowerCase()}/${number}/workflow.yaml`;
@@ -216,18 +230,34 @@ export function addGithubGateRoutes(
             409,
           );
         const targetExists = existsSync(join(directory, relative));
-        const doc = parseDocument(text ?? "");
-        if (doc.errors.length || doc.warnings.length) throw new Error("Invalid workflow.yaml");
         const workflows = getSnapshot().workflows;
-        const workflow = text === undefined ? "feature" : doc.get("workflow");
-        if (typeof workflow !== "string" || !workflows[workflow])
-          return refuse("gate.notCurrentStage");
+        const declared =
+          text === undefined
+            ? undefined
+            : readWorkflow(createMemoryRepoFiles({ [relative]: text }), relative, [], {
+                ...loadWorkflows(project.files),
+                workflows,
+              });
+        if (text !== undefined && !declared)
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "gate.validWorkflowRequired" }) }),
+            409,
+          );
+        if (
+          declared?.merged ||
+          getSnapshot().workItems.find((entry) => entry.slug === slug)?.merged
+        )
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }),
+            409,
+          );
+        const workflow = declared?.workflow ?? "feature";
         const stages = workflows[workflow].stages;
         const stage = stages.find((entry) => entry.id === body.stage);
-        const current = text === undefined ? stages[0]?.id : doc.get("stage");
+        const current = declared?.stage ?? stages[0]?.id;
         const position = stages.findIndex((entry) => entry.id === stage?.id);
         const currentPosition = stages.findIndex((entry) => entry.id === current);
-        const records = (doc.toJS()?.stages ?? {}) as Record<
+        const records = (declared?.stages ?? {}) as Record<
           string,
           {
             approved?: {
@@ -238,18 +268,31 @@ export function addGithubGateRoutes(
             reopened?: { at?: string };
           }
         >;
-        if (
-          !stage ||
-          (action === "approve"
-            ? current !== stage.id || stages.at(-1)?.id === stage.id
-            : position >= currentPosition || !records[stage.id]?.approved)
-        )
-          return refuse("gate.notCurrentStage");
+        if (!stage || !current)
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "server.stageNotFound" }) }),
+            400,
+          );
+        if (action === "reopen" && (position >= currentPosition || !records[stage.id]?.approved))
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "gate.reopenEarlier" }) }),
+            409,
+          );
+        if (action === "approve" && current !== stage.id) return refuse("gate.notCurrentStage");
         if (action === "approve") {
           const snapshot = getSnapshot();
           const workItem = snapshot.workItems.find((entry) => entry.slug === slug);
-          if (!workItem || workItem.stage !== stage.id || !gateReadiness(workItem, workflows).ready)
-            return refuse("gate.notCurrentStage");
+          if (stage.gate === "evidence") readReviewEvidence?.(project, snapshot);
+          else if (stage.column === "clarify") readMemoryProposals(project.files, snapshot);
+          if (!workItem || workItem.stage !== stage.id) return refuse("gate.notCurrentStage");
+          const gate = gateReadiness(workItem, workflows);
+          if (!gate.ready) {
+            refresh();
+            return context.json(
+              coreTextWire({ reason: gate.reason, conditions: gate.conditions }),
+              409,
+            );
+          }
         }
         const labels = new Map(
           ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(

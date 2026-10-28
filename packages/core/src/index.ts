@@ -125,6 +125,7 @@ export {
 } from "./work-items.js";
 
 export {
+  readWorkflow,
   resolveStages,
   workflowMerge,
   type StageRecords,
