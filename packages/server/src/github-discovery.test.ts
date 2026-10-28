@@ -784,6 +784,19 @@ test("missing gh and a failed active login have distinct safe error codes", asyn
   await expect(githubViewer(root)).rejects.toMatchObject({ code: "gh-missing" });
 });
 
+test.each([
+  ["network is unreachable", "offline"],
+  ["You are not logged into any GitHub hosts", "login"],
+  ["unexpected failure", "unavailable"],
+] as const)("classifies auth status failure %s", async (detail, code) => {
+  const { root, gh } = await project("https://github.com/Example/Project.git");
+  await gh.script({
+    "auth status": { code: 1, effect: `process.stderr.write(${JSON.stringify(detail)})` },
+  });
+  const { githubViewer } = await import("./github-discovery.js");
+  await expect(githubViewer(root)).rejects.toMatchObject({ code });
+});
+
 test("a GraphQL rate error retains page cost and reset information", async () => {
   const { root, gh } = await project("https://github.com/Example/Project.git");
   await gh.script({

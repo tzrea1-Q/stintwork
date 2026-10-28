@@ -37,8 +37,15 @@ export class GithubReadError extends Error {
 }
 export function classifyGithubError(error: unknown): GithubReadError {
   if (error instanceof GithubReadError) return error;
-  const value = error as { code?: unknown; stderr?: unknown; stdout?: unknown } | null;
+  const value = error as {
+    code?: unknown;
+    stderr?: unknown;
+    stdout?: unknown;
+    killed?: unknown;
+    signal?: unknown;
+  } | null;
   if (value?.code === "ENOENT") return new GithubReadError("gh-missing");
+  if (value?.killed && value.signal === "SIGTERM") return new GithubReadError("offline");
   const detail = `${typeof value?.stderr === "string" ? value.stderr : ""}\n${typeof value?.stdout === "string" ? value.stdout.slice(0, 8192) : ""}`;
   if (/rate limit|secondary rate/i.test(detail)) {
     const seconds = /^retry-after:\s*(\d+)/im.exec(detail)?.[1];
@@ -56,7 +63,7 @@ export function classifyGithubError(error: unknown): GithubReadError {
     );
   }
   if (/HTTP 5\d\d|server error/i.test(detail)) return new GithubReadError("server-error");
-  if (/network|connect|timed? out|could not resolve|no such host|ENOTFOUND/i.test(detail))
+  if (/network|connect|timed? out|timeout|could not resolve|no such host|ENOTFOUND/i.test(detail))
     return new GithubReadError("offline");
   return new GithubReadError("unavailable");
 }
@@ -98,8 +105,20 @@ export async function githubViewer(root: string): Promise<string> {
   try {
     await execute("gh", ["auth", "status", "--active", "--hostname", "github.com"], options);
   } catch (error) {
-    if ((error as { code?: unknown })?.code === "ENOENT") throw new GithubReadError("gh-missing");
-    throw new GithubReadError("login");
+    const failure = classifyGithubError(error);
+    if (failure.code !== "unavailable") throw failure;
+    const value = error as { stderr?: unknown; stdout?: unknown };
+    const detail =
+      `${typeof value.stderr === "string" ? value.stderr : ""}\n${typeof value.stdout === "string" ? value.stdout : ""}`.trim();
+    if (
+      !detail ||
+      detail === "{}" ||
+      /not logged in|not logged into|no accounts|token[^\n]*invalid|authentication failed/i.test(
+        detail,
+      )
+    )
+      throw new GithubReadError("login");
+    throw failure;
   }
   try {
     const { stdout } = await execute("gh", ["api", "user", "--jq", ".login"], options);

@@ -303,8 +303,8 @@ export function createProjectServer(
   const viewerNow = options.githubViewerNow ?? Date.now;
   const viewerFresh = () =>
     viewerVerifiedAt > 0 && viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
-  function publicSnapshot() {
-    return githubSource && !viewerFresh() && !offlineViewer
+  function publicSnapshot(offlineVerified = false) {
+    return githubSource && !viewerFresh() && !(offlineViewer && offlineVerified)
       ? readSnapshot(undefined, true)
       : snapshot;
   }
@@ -319,8 +319,12 @@ export function createProjectServer(
   });
   websocket.on("connection", (socket) => {
     socket.on("error", () => socket.terminate());
-    socket.send(JSON.stringify(coreTextWire(publicSnapshot())));
-    void checkGithubViewer();
+    void (async () => {
+      const verified = await verifyOfflineViewer();
+      if (socket.readyState === WebSocket.OPEN)
+        socket.send(JSON.stringify(coreTextWire(publicSnapshot(verified))));
+      void checkGithubViewer();
+    })();
   });
 
   let trackerGeneration = 0;
@@ -337,6 +341,28 @@ export function createProjectServer(
     offlineViewer = false;
     viewerFailure = false;
     previousDiscoveryFailure = undefined;
+  }
+
+  let localViewerCheck: Promise<string> | undefined;
+  function localViewer() {
+    localViewerCheck ??= githubLocalViewer(root)
+      .catch(() => "")
+      .finally(() => {
+        localViewerCheck = undefined;
+      });
+    return localViewerCheck;
+  }
+  function verifyOfflineViewer(): Promise<boolean> {
+    if (!offlineViewer || !githubSource) return Promise.resolve(false);
+    const source = githubSource;
+    return localViewer().then((local) => {
+      if (githubSource !== source || !offlineViewer) return false;
+      if (local && local === source.viewer) return true;
+      trackerGeneration++;
+      clearGithub();
+      refresh();
+      return false;
+    });
   }
 
   async function checkGithubViewer() {
@@ -372,10 +398,17 @@ export function createProjectServer(
       if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
       viewerFailure = true;
       viewerVerifiedAt = 0;
+      const wasOffline = offlineViewer;
       offlineViewer = false;
       if (failure.code === "offline" || failure.code === "server-error") {
-        const local = await githubLocalViewer(root).catch(() => "");
+        const local = await localViewer();
         if (lifetime.signal.aborted || githubSource !== source) return;
+        if (wasOffline && local !== source.viewer) {
+          trackerGeneration++;
+          clearGithub();
+          refresh();
+          return;
+        }
         offlineViewer = !!local && local === source.viewer;
       }
       if (failure.code === "login" || failure.code === "gh-missing") {
@@ -433,6 +466,14 @@ export function createProjectServer(
     for (const client of websocket.clients) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }
+    if (offlineViewer && websocket.clients.size)
+      void verifyOfflineViewer().then((verified) => {
+        if (!verified) return;
+        const verifiedMessage = JSON.stringify(coreTextWire(publicSnapshot(true)));
+        lastBroadcast = verifiedMessage;
+        for (const client of websocket.clients)
+          if (client.readyState === WebSocket.OPEN) client.send(verifiedMessage);
+      });
   }
 
   const app = new Hono();
@@ -613,10 +654,16 @@ export function createProjectServer(
         failure.code !== "gh-missing"
       ) {
         viewerVerifiedAt = 0;
+        const wasOffline = offlineViewer;
         offlineViewer = false;
         if (failure.code === "offline" || failure.code === "server-error") {
-          const local = await githubLocalViewer(root).catch(() => "");
+          const local = await localViewer();
           if (generation !== trackerGeneration) return;
+          if (wasOffline && local !== githubSource.viewer) {
+            trackerGeneration++;
+            clearGithub();
+            return;
+          }
           offlineViewer = !!local && local === githubSource.viewer;
         }
         if (!viewerFailure) previousDiscoveryFailure = priorFailure;
@@ -725,9 +772,9 @@ export function createProjectServer(
   });
   const health: Health = { ok: true, repo: name };
   app.get("/api/health", (context) => context.json(coreTextWire(health)));
-  app.get("/api/project", (context) => {
+  app.get("/api/project", async (context) => {
     context.header("Cache-Control", "no-store");
-    const result = publicSnapshot();
+    const result = publicSnapshot(await verifyOfflineViewer());
     if (!viewerFresh()) void checkGithubViewer();
     return context.json(coreTextWire(result));
   });
@@ -808,10 +855,16 @@ export function createProjectServer(
         failure.code !== "identity"
       ) {
         viewerVerifiedAt = 0;
+        const wasOffline = offlineViewer;
         offlineViewer = false;
         if (failure.code === "offline" || failure.code === "server-error") {
-          const local = await githubLocalViewer(root).catch(() => "");
+          const local = await localViewer();
           if (generation !== trackerGeneration || githubSource !== source) return 409;
+          if (wasOffline && local !== source.viewer) {
+            trackerGeneration++;
+            clearGithub();
+            return 409;
+          }
           offlineViewer = !!local && local === source.viewer;
         }
         if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
