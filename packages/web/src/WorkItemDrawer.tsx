@@ -10,7 +10,7 @@ import {
 } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { refreshGithubItem } from "./github-refresh";
+import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
@@ -80,20 +80,38 @@ export function WorkItemDrawer({
 }) {
   const { t } = useLanguage();
   const [refreshing, setRefreshing] = useState(false);
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [refreshError, setRefreshError] = useErrorText();
   const refreshed = useRef<number>();
   const githubNumber = item.github?.number;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry intentionally restarts this effect.
   useEffect(() => {
     if (githubNumber === undefined || refreshed.current === githubNumber) return;
-    refreshed.current = githubNumber;
+    const number = githubNumber;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     setRefreshing(true);
     setRefreshError("");
-    void refreshGithubItem(githubNumber, t.stints.changeGateFailed)
-      .catch((cause: unknown) =>
-        setRefreshError(cause instanceof Error ? cause : t.stints.changeGateFailed),
-      )
-      .finally(() => setRefreshing(false));
-  }, [githubNumber, setRefreshError, t.stints.changeGateFailed]);
+    async function attempt(count: number) {
+      try {
+        await refreshGithubItem(number, t.stints.changeGateFailed);
+        if (!cancelled) refreshed.current = number;
+      } catch (cause) {
+        if (cancelled) return;
+        if (cause instanceof GithubRefreshConflict && count < 3) {
+          timer = setTimeout(() => void attempt(count + 1), 250 * count);
+          return;
+        }
+        setRefreshError(cause instanceof Error ? cause : t.stints.changeGateFailed);
+      }
+      if (!cancelled) setRefreshing(false);
+    }
+    void attempt(1);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [githubNumber, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -203,9 +221,12 @@ export function WorkItemDrawer({
             </p>
           )}
           {refreshError && (
-            <p role="alert" className="px-4 text-sm text-warning sm:px-7">
-              {refreshError}
-            </p>
+            <div className="px-4 text-sm text-warning sm:px-7">
+              <p role="alert">{refreshError}</p>
+              <Button variant="secondary" onClick={() => setRefreshAttempt((count) => count + 1)}>
+                {t.board.githubStatus.retry}
+              </Button>
+            </div>
           )}
           {item.stage && !item.merged ? (
             <StageAgentRail key={item.slug} item={item} workflows={workflows} />

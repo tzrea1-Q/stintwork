@@ -55,7 +55,7 @@ export type { StintServerOptions } from "./stints.js";
 export function createProjectServer(
   repoRoot: string,
   webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url)),
-  options: StintServerOptions = {},
+  options: StintServerOptions & { githubViewerIntervalMs?: number } = {},
 ) {
   try {
     accessSync(join(webRoot, "index.html"));
@@ -279,6 +279,8 @@ export function createProjectServer(
   let debounce: ReturnType<typeof setTimeout> | undefined;
   let settle: ReturnType<typeof setTimeout> | undefined;
   let metadataPoll: ReturnType<typeof setInterval> | undefined;
+  let viewerPoll: ReturnType<typeof setInterval> | undefined;
+  let viewerChecking = false;
   const changedPaths = new Set<string>();
   let starting: Promise<ServerType> | undefined;
   let stopping: Promise<void> | undefined;
@@ -291,6 +293,7 @@ export function createProjectServer(
   websocket.on("connection", (socket) => {
     socket.on("error", () => socket.terminate());
     socket.send(JSON.stringify(coreTextWire(snapshot)));
+    void checkGithubViewer();
   });
 
   let trackerGeneration = 0;
@@ -303,6 +306,33 @@ export function createProjectServer(
     pendingStintDetails.clear();
     discoveryFailure = undefined;
     detailFailures.clear();
+  }
+
+  async function checkGithubViewer() {
+    const source = githubSource;
+    if (
+      viewerChecking ||
+      lifetime.signal.aborted ||
+      snapshot.setup.tracker !== "github-issues" ||
+      !cached ||
+      !source ||
+      ![...websocket.clients].some((client) => client.readyState === WebSocket.OPEN)
+    )
+      return;
+    viewerChecking = true;
+    try {
+      const viewer = await githubViewer(root);
+      if (!lifetime.signal.aborted && githubSource === source && viewer !== source.viewer) {
+        trackerGeneration++;
+        clearGithub();
+        refresh();
+        if (!discoveryRunning && !detailRunning) void refreshGithub().then(() => refresh());
+      }
+    } catch {
+      // A failed identity check does not prove the login changed.
+    } finally {
+      viewerChecking = false;
+    }
   }
 
   function refresh(paths?: readonly string[]) {
@@ -354,6 +384,7 @@ export function createProjectServer(
     try {
       origin = await githubOrigin(root);
       viewer = await githubViewer(root);
+      if (generation !== trackerGeneration) return;
       if (
         githubSource &&
         (githubSource.viewer !== viewer ||
@@ -366,6 +397,7 @@ export function createProjectServer(
       const previous = github;
       const previousDiscoveryFailure = discoveryFailure;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
+      if (generation !== trackerGeneration) return;
       if (
         knownRepository &&
         (knownRepository.repositoryId !== next.repositoryId ||
@@ -487,6 +519,7 @@ export function createProjectServer(
         };
       }
     } catch (error) {
+      if (generation !== trackerGeneration) return;
       const failure = classifyGithubError(error);
       discoveryFailure = {
         error: failure.message,
@@ -838,6 +871,10 @@ export function createProjectServer(
         metadataPoll = setInterval(() => {
           if (!lifetime.signal.aborted && readProjectFiles.metadataChanged()) refresh([]);
         }, 150).unref();
+        viewerPoll = setInterval(
+          () => void checkGithubViewer(),
+          options.githubViewerIntervalMs ?? 60_000,
+        ).unref();
         return server;
       } catch (error) {
         await stop();
@@ -853,6 +890,7 @@ export function createProjectServer(
       clearTimeout(debounce);
       clearTimeout(settle);
       clearInterval(metadataPoll);
+      clearInterval(viewerPoll);
       try {
         const results = await Promise.allSettled([stopStints(), checks.stop()]);
         const failed = results.find((result) => result.status === "rejected");

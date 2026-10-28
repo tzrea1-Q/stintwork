@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { once } from "node:events";
+import { WebSocket } from "ws";
 import { expect, test } from "vitest";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
@@ -159,3 +161,78 @@ test.each([false, true])(
     }
   },
 );
+
+test("viewer polling is client-scoped, preserves data on failure, and stops with the server", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  let socket: WebSocket | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: "101" },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    server = createProjectServer(root, join(root, "web"), { githubViewerIntervalMs: 200 });
+    const http = await server.start();
+    const count = async () =>
+      (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length;
+    const before = await count();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await count()).toBe(before);
+    http.listen(0, "127.0.0.1");
+    await once(http, "listening");
+    const address = http.address();
+    if (!address || typeof address === "string") throw new Error("Missing server address");
+    await gh.script({
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('offline')" },
+    });
+    socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
+    const messages: { github?: { items: unknown[] } }[] = [];
+    socket.on("message", (data) => messages.push(JSON.parse(data.toString())));
+    await once(socket, "open");
+    await expect.poll(count, { timeout: 5000 }).toBeGreaterThan(before);
+    expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(1);
+    await gh.script({
+      ...replies,
+      "api user": { stdout: "202" },
+      "api repos/example/project": { code: 1, effect: "process.stderr.write('HTTP 500')" },
+    });
+    await expect
+      .poll(() => messages.some((message) => message.github?.items.length === 0), { timeout: 5000 })
+      .toBe(true);
+    await server.stop();
+    const stopped = await count();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await count()).toBe(stopped);
+  } finally {
+    socket?.terminate();
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});

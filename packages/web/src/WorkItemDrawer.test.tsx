@@ -250,3 +250,58 @@ test("local drawers do not refresh and GitHub refresh failure is shown", async (
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   expect(await screen.findByRole("alert")).toHaveTextContent("Refresh failed");
 });
+
+test.each(["success", "closed", "exhausted"])(
+  "drawer retries a conflicting refresh: %s",
+  async (scenario) => {
+    const fetcher = vi.fn(async (url: string) => {
+      if (url === "/api/agents") return new Response(JSON.stringify({ agents: [] }));
+      const attempts = fetcher.mock.calls.filter(([path]) =>
+        path.includes("/api/github/items/"),
+      ).length;
+      return new Response("{}", { status: scenario === "success" && attempts > 1 ? 200 : 409 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+      name: "Project",
+    }).workItems[0];
+    item.github = {
+      repository: "a/b",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://example.com/1",
+      complete: true,
+    };
+    const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+    await waitFor(() =>
+      expect(fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/"))).toHaveLength(
+        1,
+      ),
+    );
+    if (scenario === "closed") {
+      view.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 850));
+      expect(fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/"))).toHaveLength(
+        1,
+      );
+    } else {
+      view.rerender(<WorkItemDrawer item={{ ...item }} onClose={() => {}} />);
+      if (scenario === "success") {
+        await waitFor(() =>
+          expect(
+            fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/")),
+          ).toHaveLength(2),
+        );
+        await waitFor(() => expect(screen.queryByText("Refreshing…")).not.toBeInTheDocument());
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      } else {
+        expect(await screen.findByRole("alert", {}, { timeout: 2000 })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+        expect(
+          fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/")),
+        ).toHaveLength(3);
+      }
+    }
+  },
+);
