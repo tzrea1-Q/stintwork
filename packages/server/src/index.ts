@@ -638,6 +638,7 @@ export function createProjectServer(
   const githubBriefSource = {
     getGithub: () => github,
     getSnapshot: () => snapshot,
+    discoveryFailed: () => !!discoveryFailure,
     verifyIdentity: async (expected: GithubDiscovery) => {
       const source = githubSource;
       if (!source || github !== expected) return false;

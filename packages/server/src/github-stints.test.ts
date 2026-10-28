@@ -119,7 +119,7 @@ async function setup(
   git("commit", "-qm", "initial");
   const gh = await fakeGh(join(root, "bin"));
   process.env.PATH = gh.path;
-  await gh.script({
+  const ghReplies = {
     "auth status": {},
     "api user": { stdout: "101" },
     "api repos/Example/Project": {
@@ -136,7 +136,8 @@ async function setup(
     [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
     [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
     ...replies,
-  });
+  };
+  await gh.script(ghReplies);
   const github: GithubDiscovery = {
     repository: "Example/Project",
     repositoryId: "R_1",
@@ -153,6 +154,7 @@ async function setup(
   const source: GithubBriefSource = {
     getGithub: () => github,
     getSnapshot: () => snapshot,
+    discoveryFailed: () => false,
     verifyIdentity: (expected) =>
       verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
     detailFailed: () => {
@@ -233,8 +235,84 @@ async function setup(
     source,
     failures: () => failures,
     finish: () => finish(),
+    gh,
+    ghReplies,
   };
 }
+
+test("failed discovery blocks preview and start until discovery recovers", async () => {
+  const { root, git, gh, ghReplies } = await setup();
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const page = JSON.parse(
+    readFileSync(new URL("../test/fixtures/github-discovery/issues.json", import.meta.url), "utf8"),
+  );
+  const item = page.data.repository.issues.nodes[0];
+  Object.assign(item, {
+    id: "I_1",
+    number: 1,
+    title: "Parent",
+    url: parent.html_url,
+    parent: null,
+    labels: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    subIssues: {
+      nodes: [{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }],
+      totalCount: 1,
+      pageInfo: { hasNextPage: false, endCursor: null },
+    },
+  });
+  page.data.repository.id = "R_1";
+  page.data.repository.nameWithOwner = "Example/Project";
+  page.data.repository.issues.nodes = [item];
+  page.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+  const replies = { ...ghReplies, "api graphql": { stdout: page } };
+  await gh.script(replies);
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"), {
+    launchAgent: () => {
+      let finish: () => void = () => {};
+      const done = new Promise<{ stopReason: "end_turn" }>((resolve) => {
+        finish = () => resolve({ stopReason: "end_turn" });
+      });
+      return { done, cancel: async () => finish() };
+    },
+  });
+  try {
+    const initial = await (await server.app.request("/api/project")).json();
+    expect(initial.github.items).toHaveLength(1);
+    await gh.script({
+      ...replies,
+      "api graphql": { code: 1, effect: "process.stderr.write('network is unreachable')" },
+    });
+    const failed = await (
+      await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+    ).json();
+    expect(failed.github).toMatchObject({ stale: true, errorCode: "offline" });
+    const preview = () => server.app.request("/api/work-items/github-1/tickets/2/brief-preview");
+    const start = () =>
+      server.app.request("/api/stints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workItem: "github-1", ticket: 2, agent: "codex" }),
+      });
+    for (const response of [await preview(), await start()]) {
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        reasonMessage: { code: "gate.detailUnavailable" },
+      });
+    }
+    expect(existsSync(join(root, path))).toBe(false);
+    expect(existsSync(join(root, ".stintwork/local/stints"))).toBe(false);
+    expect(existsSync(`${root}-worktrees/github-1`)).toBe(false);
+    expect(git("branch", "--list", "stintwork/github-1")).toBe("");
+    await gh.script(replies);
+    await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+    const response = await start();
+    expect(response.status, await response.clone().text()).toBe(201);
+  } finally {
+    await server.stop();
+  }
+});
 
 test("preview refreshes GitHub detail without writing a record or worktree", async () => {
   const { preview, root } = await setup();

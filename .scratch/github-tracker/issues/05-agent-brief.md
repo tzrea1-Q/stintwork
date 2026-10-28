@@ -31,3 +31,5 @@ Connect the selected GitHub ticket to the existing stint and brief flow using th
 Coordinator browser check, 2026-10-28: the drawer offers an enabled Start stint for GitHub items; the start path (`prepareStintBrief`) indexes without GitHub discovery, so it refuses as not found. Ticket 05 must make this start work, or disable it with a reason until it does.
 
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
+
+**Codex, 2026-10-28:** Refused GitHub preview and start when the most recent discovery refresh failed, independently of other items' detail freshness. Added fake-gh coverage for failure after successful discovery, no worktree or record on refusal, and start after recovery; unrelated detail failure and unscanned pages still pass. Ran `pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` successfully. The requested four-file Vitest run had 96 passes and 9 failures: all nine failures were socket tests in `index.test.ts` blocked by `listen EPERM` in the sandbox. No commit or push.

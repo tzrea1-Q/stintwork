@@ -32,6 +32,7 @@ import { githubGateIncludesTickets } from "./github-evidence-scope.js";
 export type GithubBriefSource = {
   getGithub: () => GithubDiscovery | undefined;
   getSnapshot: () => ProjectSnapshot;
+  discoveryFailed: () => boolean;
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>;
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void;
   refresh: () => void;
@@ -107,6 +108,8 @@ export async function prepareStintBrief(
       githubSource.getSnapshot().github?.errorCode === "identity"
     )
       return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
+    if (githubSource.discoveryFailed())
+      return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     try {
       const detail = await readGithubTickets(root, github.repository, remote.id, remote.number);
       if (!detail.complete) throw new GithubReadError("incomplete");
