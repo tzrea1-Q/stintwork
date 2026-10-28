@@ -633,6 +633,7 @@ export const zhCN: Catalog = {
     recordedChecks: "已记录的检查",
     checks: "检查",
     tracker: "本地 Markdown 跟踪器",
+    githubTracker: "GitHub Issues 跟踪器",
     returnToPipeline: " 返回流水线",
     changeGateFailed: "无法更改关卡。",
     gateApproved: (name) => joinChinese("关卡已批准。阶段推进至", name, "。"),

@@ -19,6 +19,8 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Comments
 
+**Codex, 2026-10-28:** The GitHub detail action now requests a fresh project snapshot after it finishes, including on failure, so an open drawer can recover if a live update is missed; a pending project read is followed by another read. The existing live broadcast was verified with a simulated WebSocket client, and the refresh action clears its pending state in `finally`. The drawer footer now identifies the GitHub Issues tracker in English and Chinese; local Markdown copy is unchanged. Tests cover live and HTTP recovery, failed refresh, both footer languages, and the server broadcast. `format:check`, lint, typecheck, web/core/git Vitest (1,725 tests across 96 files), and the changed server test (9 tests) passed. Lint reported the existing Biome deprecation. The coordinator's real-browser scenario was not rerun here; the precise reason its live update or response did not reach the browser remains unverified. No commit was made.
+
 **Codex, 2026-10-28:** Audited the local gate path in execution order. Both GitHub actions now validate the authoritative record with `readWorkflow` and refuse shipped records; discovery failure, snapshot active stints, fresh Review/Clarify evidence and local readiness/refusal codes are also enforced. GitHub identity, remote evidence and reviewed HEAD checks remain additional requirements. The GitHub lock is acquired earlier because identity and remote reads are asynchronous.
 
 | Guard | Local location | GitHub status | Proving test |

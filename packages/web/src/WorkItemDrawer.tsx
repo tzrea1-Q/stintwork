@@ -373,7 +373,7 @@ export function WorkItemDrawer({
             )}
           </div>
           <footer className="drawer-footer flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted sm:px-7">
-            <span>{t.stints.tracker}</span>
+            <span>{item.github ? t.stints.githubTracker : t.stints.tracker}</span>
             <span>
               <kbd>Esc</kbd>
               {t.stints.returnToPipeline}

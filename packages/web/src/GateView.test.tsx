@@ -679,3 +679,21 @@ test("GitHub refresh recovery requests fresh detail", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Refresh GitHub evidence" }));
   expect(fetcher).toHaveBeenCalledWith("/api/github/items/1/refresh", { method: "POST" });
 });
+
+test("GitHub refresh failure re-enables the action", async () => {
+  const item = project().workItems[0];
+  item.github = {
+    repository: "Example/Project",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/Example/Project/issues/1",
+    complete: false,
+  };
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("Network failure")));
+  render(<GateView item={item} />);
+  const button = screen.getByRole("button", { name: "Refresh GitHub evidence" });
+  await userEvent.click(button);
+  expect(screen.getByRole("alert")).toHaveTextContent("Network failure");
+  expect(button).toBeEnabled();
+});

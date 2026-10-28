@@ -616,6 +616,7 @@ export const en = {
     recordedChecks: "Recorded checks",
     checks: "Checks",
     tracker: "Local Markdown tracker",
+    githubTracker: "GitHub Issues tracker",
     returnToPipeline: " to return to Pipeline",
     changeGateFailed: "Could not change the gate.",
     gateApproved: (name: string) => `Gate approved. Stage advances to ${name}.`,

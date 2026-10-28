@@ -223,6 +223,7 @@ export function GateView({
             } catch (cause) {
               setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
             } finally {
+              window.dispatchEvent(new Event("stintwork:refresh-project"));
               setSaving(false);
             }
           }}
