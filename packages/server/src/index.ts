@@ -665,7 +665,8 @@ export function createProjectServer(
     () => snapshot,
     readProjectFiles,
     refresh,
-    stopStints.isActive,
+    (slug) => stopStints.isActive(slug) || checks.isActive(slug),
+    stopStints.workflowWrites,
     async (expected) => {
       const source = githubSource;
       if (!source || github !== expected) return false;

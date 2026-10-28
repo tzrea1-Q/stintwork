@@ -109,11 +109,11 @@ export function addGithubGateRoutes(
   readProjectFiles: ProjectFilesReader,
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
+  writing: Set<string>,
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>,
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void,
   readReviewEvidence?: ReviewEvidenceReader,
 ) {
-  const writing = new Set<string>();
   const readMemoryProposals = createMemoryProposalReader(root);
   for (const action of ["approve", "reopen"] as const)
     app.post(`/api/github/items/:number/gates/${action}`, async (context) => {
@@ -398,7 +398,7 @@ export function addGithubGateRoutes(
           commit,
           remote: { version: 1 as const, parentId: item.id, digest: observed },
         };
-        await saveGithubWorkflow(
+        const workflowCommit = await saveGithubWorkflow(
           directory,
           github,
           item,
@@ -424,6 +424,10 @@ export function addGithubGateRoutes(
           },
           `${action === "approve" ? "Approve" : "Reopen"} ${stage.id} gate for ${slug}`,
         );
+        const parent = execFileSync("git", ["rev-parse", `${workflowCommit}^`], {
+          cwd: directory,
+          encoding: "utf8",
+        }).trim();
         let approval: "current" | "stale" | "unknown" = "unknown";
         try {
           approval = (await readDigests())(current as string) === observed ? "current" : "stale";
@@ -431,8 +435,9 @@ export function addGithubGateRoutes(
           detailFailed(github, number, error);
         }
         if (approval !== "current" && item.detail) item.detail.stale = true;
+        if (parent !== commit) approval = "stale";
         refresh();
-        return context.json({ approval });
+        return context.json({ approval, ...(parent !== commit ? { reason: "head-changed" } : {}) });
       } catch (error) {
         refresh();
         if (error instanceof Error && error.message === "gate-head-changed")

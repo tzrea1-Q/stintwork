@@ -125,6 +125,34 @@ export function projectGithubGates(
           : evidence.digest === current
             ? "current"
             : "stale";
+      let headChanged = false;
+      if (
+        "at" in approval &&
+        typeof approval.at === "string" &&
+        "commit" in approval &&
+        typeof approval.commit === "string"
+      ) {
+        try {
+          const directory = worktree ?? root;
+          const path = `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
+          const introduced = execFileSync(
+            "git",
+            ["log", "--format=%H", "--fixed-strings", `-S${approval.at}`, "--", path],
+            { cwd: directory, encoding: "utf8" },
+          )
+            .trim()
+            .split("\n")[0];
+          if (introduced) {
+            const parent = execFileSync("git", ["rev-parse", `${introduced}^`], {
+              cwd: directory,
+              encoding: "utf8",
+            }).trim();
+            headChanged = parent !== approval.commit;
+          }
+        } catch {
+          state = "unknown";
+        }
+      }
       if (latestReopen !== undefined) {
         const at =
           "at" in approval && typeof approval.at === "string" ? Date.parse(approval.at) : NaN;
@@ -132,6 +160,7 @@ export function projectGithubGates(
         else if (at <= latestReopen) state = "stale";
       }
       if (upstream !== "current" && state === "current") state = upstream;
+      if (headChanged) state = "stale";
       if (state === "current" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
         try {
           if (!("commit" in approval) || typeof approval.commit !== "string") state = "unknown";
@@ -163,7 +192,11 @@ export function projectGithubGates(
           state = "unknown";
         }
       }
-      record.approved = { ...approval, remoteState: state };
+      record.approved = {
+        ...approval,
+        remoteState: state,
+        ...(headChanged ? { remoteStateReason: "head-changed" } : {}),
+      };
       upstream = state;
     }
     const reviewDigest = item.stage ? digest(item.stage) : undefined;

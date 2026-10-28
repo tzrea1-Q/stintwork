@@ -149,6 +149,8 @@ async function setup(
   let discoveryFailure = false;
   let evidenceReads = 0;
   let published = 0;
+  let checking = false;
+  const writing = new Set<string>();
   addGithubGateRoutes(
     app,
     root,
@@ -167,7 +169,8 @@ async function setup(
       snapshot.github = github;
       projectGithubGates(snapshot, root, project());
     },
-    () => false,
+    () => checking,
+    writing,
     (expected) =>
       verifyGithubGateIdentity(root, expected, { viewer: "101", origin: "Example/Project" }),
     (_github, number, error) => {
@@ -225,6 +228,10 @@ async function setup(
     snapshot,
     worktree,
     github,
+    writing,
+    setChecking: (value: boolean) => {
+      checking = value;
+    },
     published: () => published,
     failDiscovery: () => {
       discoveryFailure = true;
@@ -710,6 +717,53 @@ test("concurrent approvals create only one commit", async () => {
   const responses = await Promise.all([request(), request()]);
   expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
   expect(git("rev-list", "--count", "HEAD")).toBe("2");
+});
+
+test("refuses active checks and shared workflow writes, then allows approval", async () => {
+  const { request, setChecking, writing, git } = await setup();
+  setChecking(true);
+  let response = await request();
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "gate.activeWrite" } });
+  setChecking(false);
+  writing.add("github-1");
+  response = await request();
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "gate.activeWrite" } });
+  writing.delete("github-1");
+  expect((await request()).status).toBe(200);
+  expect(git("rev-list", "--count", "HEAD")).toBe("2");
+});
+
+test("records a stale approval when HEAD advances during the commit", async () => {
+  const { request, git, root, snapshot, github, reviewedHead } = await setup();
+  const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+  writeFileSync(
+    join(root, "bin", "git"),
+    `#!/bin/sh\ncase " $* " in\n  *" commit "*) old=$("${realGit}" rev-parse HEAD); new=$(printf 'external\\n' | "${realGit}" commit-tree HEAD^{tree} -p "$old"); "${realGit}" update-ref HEAD "$new" "$old" ;;\nesac\nexec "${realGit}" "$@"\n`,
+    { mode: 0o755 },
+  );
+  const response = await request();
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({ approval: "stale", reason: "head-changed" });
+  expect(git("rev-parse", "HEAD^")).not.toBe(reviewedHead);
+  const record = parse(git("show", `HEAD:${path}`)).stages.clarify;
+  expect(record.approved.commit).toBe(reviewedHead);
+  snapshot.workItems[0].stages.clarify = record;
+  github.items[0].detail = {
+    spec: "Spec",
+    comments: [],
+    tickets: [],
+    complete: true,
+    fetchedAt: new Date().toISOString(),
+    warnings: [],
+  };
+  snapshot.github = github;
+  projectGithubGates(snapshot, root, createProjectFiles(root, createNodeRepoFiles(root))());
+  expect(snapshot.workItems[0].stages.clarify.approved).toMatchObject({
+    remoteState: "stale",
+    remoteStateReason: "head-changed",
+  });
 });
 
 test("concurrent reopen and approval have one winner and leave a valid workflow", async () => {
