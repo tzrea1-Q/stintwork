@@ -66,8 +66,10 @@ export function WorkItemDrawer({
   warnings = [],
   workflows = builtInWorkflows,
   onCustomiseWorkflow,
+  githubReadOnly = false,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
   milestone?: Milestone;
   onClose: () => void;
   agents?: AgentProfile[];
@@ -232,6 +234,7 @@ export function WorkItemDrawer({
                 key={item.github ? item.slug : `${item.slug}:${item.stage}`}
                 item={item}
                 warnings={warnings}
+                githubReadOnly={githubReadOnly}
                 workflows={workflows}
               />
             )}
@@ -242,7 +245,11 @@ export function WorkItemDrawer({
                   <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
                     {t.stints.stageStint(stage ? stageName(workflow, stage, t) : "")}
                   </h3>
-                  <StageBriefPreview item={item} workflows={workflows} />
+                  <StageBriefPreview
+                    item={item}
+                    workflows={workflows}
+                    githubReadOnly={githubReadOnly}
+                  />
                 </section>
               )}
             <section id="drawer-spec" aria-labelledby="drawer-spec-title">
@@ -329,7 +336,12 @@ export function WorkItemDrawer({
                         </details>
                         <FilePath path={ticket.path} />
                         {!item.merged && (
-                          <TicketBriefPreview item={item} ticket={ticket} workflows={workflows} />
+                          <TicketBriefPreview
+                            item={item}
+                            ticket={ticket}
+                            workflows={workflows}
+                            githubReadOnly={githubReadOnly}
+                          />
                         )}
                       </li>
                     );

@@ -574,3 +574,141 @@ test("shows an effort without inventing a stage or spec and handles Escape", asy
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(card).toHaveFocus();
 });
+
+function githubProject() {
+  const snapshot = project();
+  snapshot.setup.tracker = "github-issues";
+  snapshot.github = {
+    repository: "example/project",
+    repositoryId: "R_1",
+    items: [],
+    scanned: 42,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    fetchedAt: "2026-10-28T12:00:00Z",
+  };
+  return snapshot;
+}
+
+test("GitHub fresh and partial status expose keyboard actions", async () => {
+  const user = userEvent.setup();
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+  const snapshot = githubProject();
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  const region = screen.getByRole("status", { name: "GitHub discovery status" });
+  expect(within(region).getByText(/Fetched .*42 issues scanned/)).toBeInTheDocument();
+  const refresh = within(region).getByRole("button", { name: "Refresh" });
+  refresh.focus();
+  await user.tab({ shift: true });
+  await user.tab();
+  expect(refresh).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith("/api/github/discovery/refresh", { method: "POST" }),
+  );
+  snapshot.github = { ...snapshot.github!, complete: false, cursor: "next" };
+  rerender(<Board snapshot={snapshot} />);
+  expect(
+    within(region).getByText("Results are incomplete; dependencies and approvals may be unknown."),
+  ).toBeInTheDocument();
+  refresh.focus();
+  await user.tab();
+  expect(within(region).getByRole("button", { name: "Load more" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith("/api/github/discovery/load-more", { method: "POST" }),
+  );
+});
+
+test("stale data is visible and stint start is disabled with a reason", async () => {
+  const snapshot = githubProject();
+  snapshot.github = {
+    ...snapshot.github!,
+    stale: true,
+    error: "server error",
+    errorCode: "offline",
+  };
+  render(<Board snapshot={snapshot} />);
+  expect(screen.getByText(/Last successful fetch:/)).toBeInTheDocument();
+  expect(
+    screen.getByText("GitHub could not be reached. Showing stale data when available."),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: /^Open board:/ }));
+  const start = screen.getAllByRole("button", { name: "Start stint" })[0];
+  expect(start).toBeDisabled();
+  expect(start).toHaveAccessibleDescription(
+    "GitHub data is stale. Refresh before starting a stint or approving a gate.",
+  );
+});
+
+test("unavailable and rate limited discovery never looks empty", () => {
+  const snapshot = githubProject();
+  snapshot.workItems = [];
+  snapshot.github = {
+    ...snapshot.github!,
+    fetchedAt: undefined,
+    repositoryId: "",
+    error: "limit",
+    errorCode: "rate-limited",
+    retryAt: "2099-01-01T00:00:00Z",
+  };
+  render(<Board snapshot={snapshot} />);
+  expect(screen.getByText("GitHub issues unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("No work items yet")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
+  expect(screen.getByText(/^Retry after/)).toBeInTheDocument();
+});
+
+test.each([
+  ["gh-missing", "未安装 GitHub CLI。请安装 `gh` 后重试。"],
+  ["login", "GitHub 登录不可用。请通过 `gh` 登录后重试。"],
+  ["unavailable", "仓库或 Issue 不可用。请检查仓库和访问权限后重试。"],
+  ["rate-limited", "已达到 GitHub 速率限制。请在提示的时间后重试。"],
+  ["offline", "无法连接 GitHub。如有旧数据，将显示旧数据。"],
+  ["server-error", "无法连接 GitHub。如有旧数据，将显示旧数据。"],
+  ["incomplete", "结果不完整；依赖关系和审批状态可能未知。"],
+  ["cap", "结果不完整；连接已达到安全上限。"],
+  ["identity", "无法验证 GitHub 身份。请刷新后继续。"],
+])("GitHub %s error is translated", (code, message) => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const snapshot = githubProject();
+  snapshot.github = {
+    ...snapshot.github!,
+    fetchedAt: undefined,
+    repositoryId: "",
+    error: "English server error",
+    errorCode: code,
+  };
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(message)).toBeInTheDocument();
+  expect(screen.queryByText("English server error")).not.toBeInTheDocument();
+  localStorage.removeItem(languageStorageKey);
+});
+
+test("local tracker has no GitHub discovery status", () => {
+  render(<Board snapshot={project()} />);
+  expect(screen.queryByRole("status", { name: "GitHub discovery status" })).not.toBeInTheDocument();
+});
+
+test("retry becomes available after the rate limit expires", async () => {
+  const snapshot = githubProject();
+  snapshot.github = {
+    ...snapshot.github!,
+    repositoryId: "",
+    fetchedAt: undefined,
+    error: "limit",
+    errorCode: "rate-limited",
+    retryAt: new Date(Date.now() + 200).toISOString(),
+  };
+  render(<Board snapshot={snapshot} />);
+  const retry = screen.getByRole("button", { name: "Retry" });
+  expect(retry).toBeDisabled();
+  await waitFor(() => expect(retry).toBeEnabled());
+});

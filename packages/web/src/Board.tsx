@@ -2,6 +2,7 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { GithubStatus } from "./GithubStatus";
 import { Column } from "./Column";
 import { CommandPalette } from "./CommandPalette";
 import { TopBar } from "./TopBar";
@@ -278,12 +279,19 @@ export function Board({
             )}
           </div>
         )}
+        {githubTracker && <GithubStatus github={snapshot.github} />}
         <section
           className="board-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
           ref={scroll}
           aria-label={t.board.stages}
         >
-          {snapshot.workItems.length === 0 ? (
+          {githubTracker &&
+          (!snapshot.github ||
+            (!snapshot.github.fetchedAt &&
+              !snapshot.github.repositoryId &&
+              !!snapshot.github.error) ||
+            (!snapshot.github.complete && snapshot.workItems.length === 0)) ? null : snapshot
+              .workItems.length === 0 ? (
             <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
               <FolderOpen className="size-icon-lg muted text-muted" aria-hidden="true" />
               <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
@@ -402,6 +410,7 @@ export function Board({
           warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}
+          githubReadOnly={githubTracker && !!snapshot.github?.stale}
           agents={snapshot.agents}
           milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
           onClose={() => setOpenSlug(null)}

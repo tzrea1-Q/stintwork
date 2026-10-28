@@ -39,8 +39,10 @@ export function TicketBriefPreview({
   item,
   ticket,
   workflows,
+  githubReadOnly,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
   ticket: Ticket;
   workflows?: WorkflowDefinitions;
 }) {
@@ -49,6 +51,7 @@ export function TicketBriefPreview({
       key={`${item.slug}:${item.stage}:${ticket.number}`}
       item={item}
       ticket={ticket}
+      githubReadOnly={githubReadOnly}
       workflows={workflows}
     />
   );
@@ -57,19 +60,30 @@ export function TicketBriefPreview({
 export function StageBriefPreview({
   item,
   workflows,
+  githubReadOnly,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
   workflows?: WorkflowDefinitions;
 }) {
-  return <StintBriefAction key={`${item.slug}:${item.stage}`} item={item} workflows={workflows} />;
+  return (
+    <StintBriefAction
+      key={`${item.slug}:${item.stage}`}
+      item={item}
+      workflows={workflows}
+      githubReadOnly={githubReadOnly}
+    />
+  );
 }
 
 function StintBriefAction({
   item,
   ticket,
   workflows = builtInWorkflows,
+  githubReadOnly = false,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
   ticket?: Ticket;
   workflows?: WorkflowDefinitions;
 }) {
@@ -80,11 +94,13 @@ function StintBriefAction({
   const [starting, setStarting] = useState(false);
   const reasonId = useId();
   const availability = briefAvailability(item, ticket, workflows);
-  const reason = item.activeStint
-    ? t.stints.alreadyActive
-    : availability === null
-      ? null
-      : translateCoreText(availability, t);
+  const reason = githubReadOnly
+    ? t.board.githubStatus.readOnly
+    : item.activeStint
+      ? t.stints.alreadyActive
+      : availability === null
+        ? null
+        : translateCoreText(availability, t);
 
   useEffect(() => {
     if (reason && !starting) setOpen(false);

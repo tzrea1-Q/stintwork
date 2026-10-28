@@ -291,9 +291,29 @@ export function createProjectServer(
     socket.send(JSON.stringify(coreTextWire(snapshot)));
   });
 
+  let trackerGeneration = 0;
+  function clearGithub() {
+    github = undefined;
+    githubSource = undefined;
+    cached = undefined;
+    knownRepository = undefined;
+    knownIssues.clear();
+    pendingStintDetails.clear();
+    discoveryFailure = undefined;
+    detailFailures.clear();
+  }
+
   function refresh(paths?: readonly string[]) {
+    const previousTracker = snapshot.setup.tracker;
     const previousPaths = watchedPaths;
     snapshot = readSnapshot(paths);
+    if (previousTracker !== snapshot.setup.tracker) {
+      trackerGeneration++;
+      clearGithub();
+      snapshot = readSnapshot(paths);
+      if (snapshot.setup.tracker === "github-issues" && !discoveryRunning && !detailRunning)
+        void refreshGithub().then(() => refresh());
+    }
     for (const path of watchedPaths) {
       if (!previousPaths.has(path)) watcher?.add(path);
     }
@@ -315,11 +335,7 @@ export function createProjectServer(
   addProjectPermissionRoute(app, root, () => refresh());
   async function refreshGithub(loadMore = false) {
     if (snapshot.setup.tracker !== "github-issues") {
-      github = undefined;
-      githubSource = undefined;
-      cached = undefined;
-      discoveryFailure = undefined;
-      detailFailures.clear();
+      clearGithub();
       return;
     }
     if (
@@ -329,6 +345,7 @@ export function createProjectServer(
     )
       return;
     discoveryRunning = true;
+    const generation = trackerGeneration;
     let viewer: string | undefined;
     let origin: string | undefined;
     const changedIssues = new Set<number>();
@@ -340,11 +357,7 @@ export function createProjectServer(
         (githubSource.viewer !== viewer ||
           githubSource.origin.toLowerCase() !== origin.toLowerCase())
       ) {
-        cached = undefined;
-        github = undefined;
-        githubSource = undefined;
-        discoveryFailure = undefined;
-        detailFailures.clear();
+        clearGithub();
         if (loadMore) throw new GithubReadError("identity");
       }
       if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
@@ -504,7 +517,13 @@ export function createProjectServer(
           ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
         };
       } else {
-        githubSource = undefined;
+        clearGithub();
+        discoveryFailure = {
+          error: failure.message,
+          errorCode: failure.code,
+          retryAt: failure.retryAt,
+          retryable: failure.code !== "identity",
+        };
         github = {
           repository: "",
           repositoryId: "",
@@ -520,8 +539,11 @@ export function createProjectServer(
         };
       }
     } finally {
+      if (generation !== trackerGeneration) clearGithub();
       updateGithubFreshness();
       discoveryRunning = false;
+      if (generation !== trackerGeneration && snapshot.setup.tracker === "github-issues")
+        void refreshGithub().then(() => refresh());
       drainStintDetails();
     }
   }
@@ -594,6 +616,7 @@ export function createProjectServer(
       return 409;
     detailRunning = true;
     const source = githubSource;
+    const generation = trackerGeneration;
     const current = github;
     item.discoveryComplete ??= item.complete;
     let verified = false;
@@ -605,9 +628,7 @@ export function createProjectServer(
         currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||
         viewer !== githubSource.viewer
       ) {
-        github = undefined;
-        githubSource = undefined;
-        cached = undefined;
+        clearGithub();
         throw new GithubReadError("identity");
       }
       verified = true;
@@ -633,14 +654,9 @@ export function createProjectServer(
       refresh();
       return 200;
     } catch (error) {
+      if (generation !== trackerGeneration) return 409;
       const failure = classifyGithubError(error);
-      if (!verified) {
-        github = undefined;
-        githubSource = undefined;
-        cached = undefined;
-        discoveryFailure = undefined;
-        detailFailures.clear();
-      }
+      if (!verified) clearGithub();
       if (github) {
         if (publish) publish(() => failGithubDetail(current, number, failure));
         else failGithubDetail(current, number, failure);
@@ -663,6 +679,8 @@ export function createProjectServer(
       return 503;
     } finally {
       detailRunning = false;
+      if (generation !== trackerGeneration && snapshot.setup.tracker === "github-issues")
+        void refreshGithub().then(() => refresh());
       drainStintDetails();
     }
   }

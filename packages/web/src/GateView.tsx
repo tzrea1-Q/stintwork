@@ -26,8 +26,10 @@ export function GateView({
   item,
   warnings = [],
   workflows = builtInWorkflows,
+  githubReadOnly = false,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
@@ -175,12 +177,18 @@ export function GateView({
               </p>
             );
           })}
+      {githubReadOnly && <p>{t.board.githubStatus.readOnly}</p>}
       {gate.nextStage && (
         <Button
           type="button"
           variant="primary"
           disabled={
-            !gate.ready || saving || !!message || refreshNeeded || (!!github && !reviewAvailable)
+            githubReadOnly ||
+            !gate.ready ||
+            saving ||
+            !!message ||
+            refreshNeeded ||
+            (!!github && !reviewAvailable)
           }
           onClick={() => void act(current.id, "approve")}
         >
@@ -192,6 +200,7 @@ export function GateView({
           key={stage.id}
           type="button"
           disabled={
+            githubReadOnly ||
             saving ||
             !!message ||
             !!item.activeStint ||

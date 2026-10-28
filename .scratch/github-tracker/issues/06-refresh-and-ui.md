@@ -9,12 +9,12 @@ Implement the specified open, post-stint and explicit refresh lifecycle, scoped 
 
 ## Acceptance criteria
 
-- [ ] Implement automatic project-open, post-stint and pre-action refresh; start discovery when the tracker changes to GitHub during server operation (file watcher or setup), detect login changes, and show the last same-login snapshot read-only when offline.
+- [x] Implement automatic project-open, post-stint and pre-action refresh; start discovery when the tracker changes to GitHub during server operation (file watcher or setup), detect login changes, and show the last same-login snapshot read-only when offline.
 
-- [ ] Fresh, stale, partial, capped, offline, failure and no-snapshot states expose fetch time, completeness and the load-more cursor, with refresh and Load more controls; an unavailable repository never looks empty, a partial result never looks complete, and unknown blockers and approvals cannot look ready.
-- [ ] Missing gh, login, access/404, rate limit, network and incomplete states use the specified English and Chinese copy and offer retry.
-- [ ] Identity/login changes clear cached private data; rate limits and bounded concurrency are respected.
-- [ ] Behavior and keyboard tests use fixtures and fake gh without network; local tracker remains usable.
+- [x] Fresh, stale, partial, capped, offline, failure and no-snapshot states expose fetch time, completeness and the load-more cursor, with refresh and Load more controls; an unavailable repository never looks empty, a partial result never looks complete, and unknown blockers and approvals cannot look ready.
+- [x] Missing gh, login, access/404, rate limit, network and incomplete states use the specified English and Chinese copy and offer retry.
+- [x] Identity/login changes clear cached private data; rate limits and bounded concurrency are respected.
+- [x] Behavior and keyboard tests use fixtures and fake gh without network; local tracker remains usable.
 - [ ] Coordinator runs browser layout cases at 1440, 1024, 768 and 390 in both languages, required colour schemes and records 1440/390 visual review; these require browser and local sockets.
 
 ## Comments
@@ -22,3 +22,5 @@ Implement the specified open, post-stint and explicit refresh lifecycle, scoped 
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
 
 **Codex, 2026-10-27:** The coordinator assigned two fourth-round Codex review findings to this ticket: visible discovery failure, incomplete/capped results and load-more recovery on the board (see `docs/agents/frontend.md` layout and states), and starting discovery when the detected tracker changes to GitHub without a server restart. The acceptance criteria above cover both.
+
+**Codex, 2026-10-28:** Added runtime tracker discovery and identity-scoped cache clearing, bilingual board freshness and recovery controls, and read-only stale stint and gate actions. Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (warnings only), `pnpm typecheck`, `pnpm build`, and `pnpm exec vitest run packages/server/src/github-lifecycle.test.ts packages/web/src/Board.test.tsx` (41 passed). Added the GitHub partial-board Playwright case; its run could not start because the sandbox rejected `listen 127.0.0.1:4178` with `EPERM`. Coordinator browser layout and visual review remain outstanding. No commit made.

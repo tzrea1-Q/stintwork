@@ -107,6 +107,38 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(page.getByText(t.planning.palette.create, { exact: true })).toHaveCount(0);
         });
 
+        test("GitHub partial board offers load more", async ({ page }, testInfo) => {
+          snapshot = {
+            ...dialogSnapshot,
+            setup: { ...dialogSnapshot.setup, tracker: "github-issues" },
+            github: {
+              repository: "example/project",
+              repositoryId: "repo-id",
+              items: [],
+              scanned: 500,
+              cursor: "next",
+              complete: false,
+              pages: [],
+              warnings: [],
+              fetchedAt: "2026-10-28T12:00:00Z",
+            },
+          };
+          let requested = false;
+          await page.route("**/api/github/discovery/load-more", (route) => {
+            requested = true;
+            return route.fulfill({ json: snapshot });
+          });
+          await page.goto("/");
+          await expect(page.getByText(t.board.githubStatus.errors.incomplete)).toBeVisible();
+          await page.getByRole("button", { name: t.board.githubStatus.loadMore }).click();
+          expect(requested).toBe(true);
+          await assertLayout(page);
+          await page.screenshot({
+            path: testInfo.outputPath("github-partial.png"),
+            fullPage: true,
+          });
+        });
+
         test("create: empty, checking, long content, pending save and refusal", async ({
           page,
         }, testInfo) => {
