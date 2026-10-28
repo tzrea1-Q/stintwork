@@ -223,7 +223,14 @@ export async function readGithubTickets(
         sections.length === 1 &&
         value
           .split("\n")
-          .every((line) => !line.trim() || /^\s*(?:[-*]\s*)?#\d+(?:\s+[^#]*)?\s*$/.test(line));
+          .every(
+            (line) =>
+              !line.trim() ||
+              (/^\s*(?:[-*]\s*)?#\d+(?:\s+[^#]*)?\s*$/.test(line) &&
+                !/(?:^|[^a-z0-9./-])(?:https?:\/\/)?(?:www\.)?github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+\/(?:issues|pull)\/\d+\b/i.test(
+                  line,
+                )),
+          );
       if (!exact && !sectionLines) textUnknown = true;
       else
         textNumbers = [...new Set([...value.matchAll(/#(\d+)/g)].map((match) => Number(match[1])))];
