@@ -1,6 +1,6 @@
 # 04 — Bind workflow approvals to issue revisions
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 
 ## What to build
@@ -18,6 +18,19 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 - [x] Fixture and fake-gh tests cover races and rollback without network; local approvals remain compatible.
 
 ## Comments
+
+**Coordinator, 2026-10-28:** Resolved. The final branch head was `08bcc4e`, merged to main as `bb25dff`. The full verify passed: format:check, lint, typecheck, build, 3,007 unit tests across 167 files, smoke:package and test:e2e. There were 13 Codex review rounds; the last was clean. Fixes from earlier rounds:
+- a full local-guard audit (the table below);
+- a write exclusion shared with the local gate routes;
+- a post-commit reviewed-HEAD check, limited to approvals the commit introduced, so approvals copied from the checkout record stay current;
+- a localized identity refusal.
+
+Browser check on a scratch repo (origin `github/gh-aw`, item #1433), using real read-only `gh` at 1440 px in English and zh-CN:
+- Approve Clarify is disabled until the stage stint finishes.
+- Refresh GitHub evidence updates the open drawer without a reload; tickets #1472–#1475 show as cancelled.
+- The footer reads "GitHub Issues tracker" in English and "GitHub Issues 跟踪器" in zh-CN.
+
+CI run 40710124762 passed: checks, both browser shards, and package-smoke on ubuntu and macOS. The scratch server was stopped.
 
 **Codex, 2026-10-28:** The GitHub detail action now requests a fresh project snapshot after it finishes, including on failure, so an open drawer can recover if a live update is missed; a pending project read is followed by another read. The existing live broadcast was verified with a simulated WebSocket client, and the refresh action clears its pending state in `finally`. The drawer footer now identifies the GitHub Issues tracker in English and Chinese; local Markdown copy is unchanged. Tests cover live and HTTP recovery, failed refresh, both footer languages, and the server broadcast. `format:check`, lint, typecheck, web/core/git Vitest (1,725 tests across 96 files), and the changed server test (9 tests) passed. Lint reported the existing Biome deprecation. The coordinator's real-browser scenario was not rerun here; the precise reason its live update or response did not reach the browser remains unverified. No commit was made.
 
