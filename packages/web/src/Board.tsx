@@ -410,7 +410,14 @@ export function Board({
           warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}
-          githubReadOnly={githubTracker && !!snapshot.github?.stale}
+          githubReadOnly={
+            githubTracker &&
+            (!!snapshot.github?.discoveryFailed ||
+              !!snapshot.github?.items.find((item) => item.id === openItem.github?.issueId)?.detail
+                ?.stale ||
+              !!snapshot.github?.items.find((item) => item.id === openItem.github?.issueId)
+                ?.detailFailed)
+          }
           agents={snapshot.agents}
           milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
           onClose={() => setOpenSlug(null)}

@@ -627,6 +627,7 @@ test("stale data is visible and stint start is disabled with a reason", async ()
   snapshot.github = {
     ...snapshot.github!,
     stale: true,
+    discoveryFailed: true,
     error: "server error",
     errorCode: "offline",
   };
@@ -712,3 +713,61 @@ test("retry becomes available after the rate limit expires", async () => {
   expect(retry).toBeDisabled();
   await waitFor(() => expect(retry).toBeEnabled());
 });
+
+test.each([false, true])(
+  "drawer freshness is scoped to each item; discovery failure=%s",
+  async (discoveryFailed) => {
+    const snapshot = githubProject();
+    snapshot.github = {
+      ...snapshot.github!,
+      stale: true,
+      discoveryFailed,
+      items: [
+        {
+          id: "A",
+          number: 1,
+          title: "A",
+          url: "https://example.com/1",
+          complete: true,
+          detail: { spec: "", tickets: [], stale: true },
+        },
+        {
+          id: "B",
+          number: 2,
+          title: "B",
+          url: "https://example.com/2",
+          complete: true,
+          detail: { spec: "", tickets: [] },
+        },
+      ],
+    };
+    for (const [slug, id, number] of [
+      ["board", "A", 1],
+      ["next", "B", 2],
+    ] as const) {
+      const item = snapshot.workItems.find((entry) => entry.slug === slug)!;
+      item.github = {
+        repository: "example/project",
+        repositoryId: "R_1",
+        issueId: id,
+        number,
+        url: `https://example.com/${number}`,
+        complete: true,
+        bound: true,
+      };
+    }
+    const user = userEvent.setup();
+    const { rerender } = render(<Board snapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: /^Open board:/ }));
+    expect(screen.getAllByRole("button", { name: "Start stint" })[0]).toBeDisabled();
+    snapshot.github.items[0].detail = undefined;
+    snapshot.github.items[0].detailFailed = true;
+    rerender(<Board snapshot={snapshot} />);
+    expect(screen.getAllByRole("button", { name: "Start stint" })[0]).toBeDisabled();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /^Open next:/ }));
+    const start = screen.getAllByRole("button", { name: "Start stint" })[0];
+    if (discoveryFailed) expect(start).toBeDisabled();
+    else expect(start).toBeEnabled();
+  },
+);

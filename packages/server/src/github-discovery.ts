@@ -170,6 +170,7 @@ export type GithubDiscovery = {
     complete: boolean;
     bound?: boolean;
     provisional?: boolean;
+    detailFailed?: boolean;
     discoveryComplete?: boolean;
     detail?: {
       fetchedAt: string;
@@ -207,6 +208,7 @@ export type GithubDiscovery = {
   errorCode?: GithubErrorCode;
   retryAt?: string;
   stale?: boolean;
+  discoveryFailed?: boolean;
   fetchedAt?: string;
 };
 

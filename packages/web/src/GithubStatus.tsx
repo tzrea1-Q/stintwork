@@ -13,10 +13,15 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
   const [now, setNow] = useState(Date.now());
   const retryAt = github?.retryAt ? Date.parse(github.retryAt) : 0;
   useEffect(() => {
-    if (retryAt <= now) return;
-    const timer = setTimeout(() => setNow(Date.now()), Math.min(retryAt - now, 2_147_483_647));
+    let timer: ReturnType<typeof setTimeout>;
+    function tick() {
+      const current = Date.now();
+      setNow(current);
+      if (retryAt > current) timer = setTimeout(tick, Math.min(retryAt - current, 2_147_483_647));
+    }
+    tick();
     return () => clearTimeout(timer);
-  }, [retryAt, now]);
+  }, [retryAt]);
   const time = (value: string) => new Date(value).toLocaleString(language);
   const code = github?.errorCode;
   const error =
@@ -45,19 +50,27 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
       className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3 text-sm text-muted sm:px-6"
     >
       {unavailable && <strong>{copy.unavailable}</strong>}
-      {github?.stale && github.fetchedAt && <p>{copy.stale(time(github.fetchedAt))}</p>}
+      {github?.stale && github.fetchedAt && (
+        <p>{copy.stale.replace("{time}", time(github.fetchedAt))}</p>
+      )}
       {github && !unavailable && !github.stale && github.fetchedAt && (
-        <p>{copy.fetched(time(github.fetchedAt), github.scanned)}</p>
+        <p>
+          {copy.fetched
+            .replace("{time}", time(github.fetchedAt))
+            .replace("{count}", String(github.scanned))}
+        </p>
       )}
       {github && !unavailable && (github.stale || !github.fetchedAt) && (
-        <p>{copy.scanned(github.scanned)}</p>
+        <p>{copy.scanned.replace("{count}", String(github.scanned))}</p>
       )}
       {github && !unavailable && (!github.complete || github.cursor) && (
         <Badge variant="warning">{copy.errors.incomplete}</Badge>
       )}
       {error && !(error === copy.errors.incomplete && !unavailable) && <p>{error}</p>}
       {failed && <p>{copy.requestFailed}</p>}
-      {retryAt > now && github?.retryAt && <p>{copy.retryAt(time(github.retryAt))}</p>}
+      {retryAt > now && github?.retryAt && (
+        <p>{copy.retryAt.replace("{time}", time(github.retryAt))}</p>
+      )}
       <Button disabled={pending || retryAt > now} onClick={() => void act("refresh")}>
         {pending ? copy.pending : github?.error ? copy.retry : copy.refresh}
       </Button>

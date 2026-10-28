@@ -198,7 +198,12 @@ test.each(scenarios)(
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
         if (scenario === "isolated-details") {
           type Snapshot = {
-            github: { stale: boolean; complete: boolean; errorCode?: string };
+            github: {
+              stale: boolean;
+              discoveryFailed: boolean;
+              complete: boolean;
+              errorCode?: string;
+            };
             workItems: {
               github: { number: number };
               tickets: { status: string; blocked: boolean }[];
@@ -240,6 +245,7 @@ test.each(scenarios)(
             },
           });
           const detailFailed = await post("/api/github/items/1533/refresh");
+          expect(detailFailed.github.discoveryFailed).toBe(false);
           expectKnown(detailFailed, 1433);
           expectUnknown(detailFailed, 1533);
           await gh.script(replies);
@@ -251,6 +257,7 @@ test.each(scenarios)(
           const discoveryFailed = await post("/api/github/discovery/refresh");
           expect(discoveryFailed.github).toMatchObject({
             stale: true,
+            discoveryFailed: true,
             complete: false,
             errorCode: "server-error",
           });
@@ -260,6 +267,7 @@ test.each(scenarios)(
           const retryWithDiscoveryFailure = await post("/api/github/items/1433/refresh");
           expect(retryWithDiscoveryFailure.github).toMatchObject({
             stale: true,
+            discoveryFailed: true,
             complete: false,
             errorCode: "server-error",
           });

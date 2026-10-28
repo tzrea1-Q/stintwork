@@ -143,6 +143,7 @@ test.each([false, true])(
         await server.app.request("/api/github/discovery/refresh", { method: "POST" })
       ).json();
       expect(failed.github.errorCode).toBe("server-error");
+      expect(failed.github.discoveryFailed).toBe(true);
       if (changed) {
         expect(failed.github.items).toEqual([]);
         expect(failed.github.fetchedAt).toBeUndefined();

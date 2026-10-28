@@ -128,6 +128,8 @@ export function createProjectServer(
     | undefined;
   function updateGithubFreshness() {
     if (!github) return;
+    github.discoveryFailed = !!discoveryFailure;
+    for (const item of github.items) item.detailFailed = detailFailures.has(item.id);
     const detailFailure = github.items.map((item) => detailFailures.get(item.id)).find(Boolean);
     const failure = discoveryFailure ?? detailFailure;
     github.stale =
