@@ -907,11 +907,12 @@ export function addStintRoutes(
     if (closing)
       return context.json(coreTextWire({ reason: coreText({ code: "server.stopping" }) }), 503);
     const slug = body.workItem;
-    if (active.has(slug))
+    const githubStart = /^github-\d+$/.test(slug);
+    if (githubStart && active.has(slug))
       return context.json(coreTextWire({ reason: coreText({ code: "stint.alreadyActive" }) }), 409);
-    if (workflowWrites.has(slug))
+    if (githubStart && workflowWrites.has(slug))
       return context.json(coreTextWire({ reason: coreText({ code: "gate.activeWrite" }) }), 409);
-    workflowWrites.add(slug);
+    if (githubStart) workflowWrites.add(slug);
     try {
       const result = await prepareStintBrief(
         readProjectFiles,
@@ -947,7 +948,7 @@ export function addStintRoutes(
           coreTextWire({ reason: coreText({ code: "stint.checksActive" }) }),
           409,
         );
-      if (active.has(workItem.slug))
+      if (active.has(workItem.slug) || (!githubStart && workflowWrites.has(workItem.slug)))
         return context.json(
           coreTextWire({ reason: coreText({ code: "stint.alreadyActive" }) }),
           409,
@@ -1285,7 +1286,7 @@ export function addStintRoutes(
         );
       });
     } finally {
-      workflowWrites.delete(slug);
+      if (githubStart) workflowWrites.delete(slug);
     }
   });
   function verifyRecoveryWorktree(

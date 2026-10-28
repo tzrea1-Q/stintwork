@@ -109,8 +109,15 @@ export function compileBrief({
       ...(github.ticket ? [github.ticket.number] : []),
       ...github.blockers,
     ];
+    const range = reviewRange
+      ? `${reviewRange.mergeBase}...${reviewRange.headCommit}`
+      : `main...stintwork/${workItem.slug}`;
     const prompt = [
-      ...(stage.skill ? [`${stage.skill} ${github.parent.url}`] : [github.parent.url]),
+      ...(stage.skill
+        ? [
+            `${stage.skill} ${stage.gate === "evidence" ? range : (github.ticket?.url ?? github.parent.url)}`,
+          ]
+        : [github.parent.url]),
       `Repository: github.com/${github.repository} (repository node ID: ${github.repositoryId})`,
       `Parent issue #${github.parent.number}: ${github.parent.url} (node ID: ${github.parent.id})`,
       ...(github.ticket
@@ -131,6 +138,13 @@ export function compileBrief({
       ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason.text}`)].join(
         "\n",
       ),
+      ...(stage.gate === "evidence"
+        ? [
+            `Review diff range: ${range} (merge base to reviewed commit).`,
+            ...(reviewRange ? [`Reviewed commit: ${reviewRange.headCommit}`] : []),
+            `Review both Standards and Spec${stage.skill ? ` with ${stage.skill}` : ""}. Do not implement fixes or change project files. Findings will be requested after the handoff.`,
+          ]
+        : []),
       handoff
         ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
         : "Last handoff: none — start from the project conventions and work item scope.",
@@ -147,13 +161,19 @@ export function compileBrief({
       [
         "Working instructions:",
         `- Work in the work item worktree on branch stintwork/${workItem.slug}.`,
-        ...(stage.gate === "spec" || stage.column === "clarify"
+        ...(stage.gate === "spec"
           ? [
               "- Publish the spec to the parent issue body through the configured tracker skill and gh.",
             ]
           : []),
-        ...(stage.gate === "tickets" || stage.column === "clarify"
+        ...(stage.gate === "tickets"
           ? ["- Publish tickets as direct sub-issues through the configured tracker skill and gh."]
+          : []),
+        ...(stage.gate === "manual" && stage.column === "clarify"
+          ? [
+              "- Settle open questions; record agreed terms in GLOSSARY.md and decisions in docs/adr/.",
+              "- Do not write the spec or tickets; later stages do.",
+            ]
           : []),
         ...(github.ticket
           ? [

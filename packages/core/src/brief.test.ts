@@ -111,6 +111,7 @@ test("GitHub ticket brief uses issue identities and read-only explicit-repositor
     fetchedAt: "2026-10-28T12:00:00Z",
   };
   const brief = compileBrief({ ...input(), workItem: { slug: "github-7", spec: null }, github });
+  expect(brief.prompt.startsWith(`/implement ${github.ticket.url}\n`)).toBe(true);
   for (const expected of [
     "github.com/owner/repo",
     "R_1",
@@ -125,6 +126,44 @@ test("GitHub ticket brief uses issue identities and read-only explicit-repositor
     expect(brief.prompt).toContain(expected);
   for (const forbidden of [".scratch", "Status", "Brief preview", "The first stint"])
     expect(brief.prompt).not.toContain(forbidden);
+});
+
+test("GitHub review and planning briefs respect stage ownership", () => {
+  const github = {
+    repository: "owner/repo",
+    repositoryId: "R_1",
+    parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+    blockers: [],
+    fetchedAt: "2026-10-28T12:00:00Z",
+  };
+  const base = { ...input(), workItem: { slug: "github-7", spec: null }, ticket: null, github };
+  const review = compileBrief({
+    ...base,
+    stage: builtInWorkflows.feature.stages[4],
+    reviewRange: { mergeBase: "base", headCommit: "reviewed" },
+  }).prompt;
+  expect(review.startsWith("/code-review base...reviewed\n")).toBe(true);
+  expect(review).toContain("Review diff range: base...reviewed");
+  expect(review).toContain("Reviewed commit: reviewed");
+  expect(review).toContain(
+    "Do not implement fixes or change project files. Findings will be requested after the handoff.",
+  );
+  expect(review).not.toContain(`/code-review ${github.parent.url}`);
+
+  for (const stage of [builtInWorkflows.feature.stages[0], builtInWorkflows.bug.stages[0]]) {
+    const prompt = compileBrief({ ...base, stage }).prompt;
+    expect(prompt.toLowerCase()).not.toContain("publish");
+    expect(prompt).toContain(
+      "Settle open questions; record agreed terms in GLOSSARY.md and decisions in docs/adr/.",
+    );
+    expect(prompt).toContain("Do not write the spec or tickets");
+  }
+  const spec = compileBrief({ ...base, stage: builtInWorkflows.feature.stages[1] }).prompt;
+  const tickets = compileBrief({ ...base, stage: builtInWorkflows.feature.stages[2] }).prompt;
+  expect(spec).toContain("Publish the spec to the parent issue body");
+  expect(spec).not.toContain("Publish tickets");
+  expect(tickets).toContain("Publish tickets as direct sub-issues");
+  expect(tickets).not.toContain("Publish the spec");
 });
 
 test("GitHub tickets gate publishes direct sub-issues through the configured skill", () => {
