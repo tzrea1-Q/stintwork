@@ -328,6 +328,67 @@ test.each(["approve", "reopen"] as const)(
   },
 );
 
+test.each([false, true])(
+  "copied checkout approvals remain current when the first worktree approval races: %s",
+  async (advanceHead) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      html_url: "https://github.com/Example/Project/issues/2",
+      body: "Ticket",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const { request, reviewedHead, root, worktree, git, snapshot, github } = await setup(
+      {
+        [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+        [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+        [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+      },
+      "tickets",
+      true,
+    );
+    const checkout = readFileSync(join(root, path), "utf8").replaceAll(
+      "      at: '2026-01-01T00:00:00Z'",
+      `      at: '2026-01-01T00:00:00Z'\n      commit: '${reviewedHead}'`,
+    );
+    writeFileSync(join(root, path), checkout);
+    git("add", path);
+    git("commit", "--amend", "-qm", "checkout approvals");
+    if (advanceHead) {
+      const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+      writeFileSync(
+        join(root, "bin", "git"),
+        `#!/bin/sh\ncase " $* " in\n  *" commit "*) old=$("${realGit}" rev-parse HEAD); new=$(printf 'external\\n' | "${realGit}" commit-tree HEAD^{tree} -p "$old"); "${realGit}" update-ref HEAD "$new" "$old" ;;\nesac\nexec "${realGit}" "$@"\n`,
+        { mode: 0o755 },
+      );
+    }
+    const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+    const reviewedDigest = await githubEvidenceDigest(
+      { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
+      true,
+    );
+    const response = await request({ stage: "tickets", reviewedHead, reviewedDigest });
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect(await response.json()).toEqual(
+      advanceHead ? { approval: "stale", reason: "head-changed" } : { approval: "current" },
+    );
+    snapshot.workItems[0].stages = parse(readFileSync(join(worktree, path), "utf8")).stages;
+    github.items[0].detail = { ...detail, fetchedAt: new Date().toISOString() };
+    snapshot.github = github;
+    projectGithubGates(snapshot, root, createProjectFiles(root, createNodeRepoFiles(root))());
+    expect(snapshot.workItems[0].stages.spec.approved).toMatchObject({ remoteState: "current" });
+    expect(snapshot.workItems[0].stages.tickets.approved).toMatchObject(
+      advanceHead
+        ? { remoteState: "stale", remoteStateReason: "head-changed" }
+        : { remoteState: "current" },
+    );
+  },
+);
+
 test.each(["approve", "reopen"] as const)(
   "%s refuses a structurally invalid workflow without writing",
   async (action) => {

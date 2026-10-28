@@ -8,6 +8,7 @@ import {
   type ProjectSnapshot,
 } from "@stintwork/core";
 import { checkpointChangedPaths } from "@stintwork/git";
+import { parseDocument } from "yaml";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { githubGateIncludesTickets } from "./github-evidence-scope.js";
@@ -135,20 +136,47 @@ export function projectGithubGates(
         try {
           const directory = worktree ?? root;
           const path = `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
-          const introduced = execFileSync(
-            "git",
-            ["log", "--format=%H", "--fixed-strings", `-S${approval.at}`, "--", path],
-            { cwd: directory, encoding: "utf8" },
-          )
-            .trim()
-            .split("\n")[0];
-          if (introduced) {
-            const parent = execFileSync("git", ["rev-parse", `${introduced}^`], {
-              cwd: directory,
+          const matches = (text: string | undefined) => {
+            if (text === undefined) return false;
+            const doc = parseDocument(text);
+            if (doc.errors.length || doc.warnings.length) throw new Error("Invalid workflow");
+            return (
+              doc.getIn(["stages", stage, "approved", "at"]) === approval.at &&
+              doc.getIn(["stages", stage, "approved", "commit"]) === approval.commit &&
+              doc.getIn(["stages", stage, "approved", "remote", "digest"]) ===
+                (evidence && "digest" in evidence ? evidence.digest : undefined)
+            );
+          };
+          const checkHistory = (cwd: string, allowCheckout: boolean): boolean => {
+            const readVersion = (commit: string) =>
+              execFileSync("git", ["ls-tree", "--name-only", commit, "--", path], {
+                cwd,
+                encoding: "utf8",
+              }).trim()
+                ? execFileSync("git", ["show", `${commit}:${path}`], {
+                    cwd,
+                    encoding: "utf8",
+                  })
+                : undefined;
+            const commits = execFileSync("git", ["log", "--format=%H", "--", path], {
+              cwd,
               encoding: "utf8",
             }).trim();
-            headChanged = parent !== approval.commit;
-          }
+            for (const introduced of commits ? commits.split("\n") : []) {
+              if (!matches(readVersion(introduced))) continue;
+              const parent = execFileSync("git", ["rev-parse", `${introduced}^`], {
+                cwd,
+                encoding: "utf8",
+              }).trim();
+              const previous = readVersion(parent);
+              if (matches(previous)) continue;
+              if (allowCheckout && matches(project.files.read(path)))
+                return checkHistory(root, false);
+              return parent !== approval.commit;
+            }
+            return false;
+          };
+          headChanged = checkHistory(directory, !!worktree);
         } catch {
           state = "unknown";
         }
