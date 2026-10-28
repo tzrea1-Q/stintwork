@@ -37,8 +37,10 @@ import {
   discoverGithubWorkItems,
   githubOrigin,
   githubViewer,
+  githubTrackerRepository,
   type GithubDiscovery,
 } from "./github-discovery.js";
+import { readGithubTickets } from "./github-tickets.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
 export { createNodeRepoFiles } from "./repo-files.js";
@@ -80,6 +82,9 @@ export function createProjectServer(
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
   let discoveryRunning = false;
+  let detailRunning = false;
+  const detailFailures = new Set<string>();
+  let detailOnlyStale = false;
   function bindGithubIdentities(
     data: GithubDiscovery,
     project: ReturnType<typeof readProjectFiles>,
@@ -217,6 +222,7 @@ export function createProjectServer(
     }
     if (
       discoveryRunning ||
+      detailRunning ||
       (!githubSource && github?.retryAt && Date.parse(github.retryAt) > Date.now())
     )
       return;
@@ -294,6 +300,8 @@ export function createProjectServer(
       knownRepository ??= { repository: next.repository, repositoryId: next.repositoryId };
       for (const item of next.items) knownIssues.set(item.number, item.id);
       github = next;
+      detailFailures.clear();
+      detailOnlyStale = false;
       githubSource = { viewer, origin };
       if (!github.error) {
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
@@ -418,6 +426,120 @@ export function createProjectServer(
     await refreshGithub(action === "load-more");
     refresh();
     return context.json(coreTextWire(snapshot));
+  });
+  app.post("/api/github/items/:number/refresh", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.text("Origin mismatch", 403);
+    const number = Number(context.req.param("number"));
+    const item = github?.items.find((entry) => entry.number === number);
+    if (
+      !item ||
+      !github ||
+      !githubSource ||
+      snapshot.setup.tracker !== "github-issues" ||
+      detailRunning ||
+      discoveryRunning
+    )
+      return context.text("Work item unavailable", 409);
+    detailRunning = true;
+    const source = githubSource;
+    const current = github;
+    item.discoveryComplete ??= item.complete;
+    let verified = false;
+    try {
+      const currentOrigin = await githubOrigin(root);
+      const viewer = await githubViewer(root);
+      if (
+        currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||
+        viewer !== githubSource.viewer
+      ) {
+        github = undefined;
+        githubSource = undefined;
+        cached = undefined;
+        throw new GithubReadError("identity");
+      }
+      verified = true;
+      if (github.retryAt && Date.parse(github.retryAt) > Date.now())
+        return context.json(coreTextWire(snapshot), 429);
+      const repository = await githubTrackerRepository(root);
+      if (
+        repository.repositoryId !== current.repositoryId ||
+        repository.repository.toLowerCase() !== current.repository.toLowerCase()
+      ) {
+        verified = false;
+        throw new GithubReadError("identity");
+      }
+      const detail = await readGithubTickets(root, github.repository, item.id, number);
+      verified = false;
+      const afterOrigin = await githubOrigin(root);
+      const afterViewer = await githubViewer(root);
+      const afterRepository = await githubTrackerRepository(root);
+      if (
+        afterRepository.repositoryId !== current.repositoryId ||
+        github !== current ||
+        githubSource !== source ||
+        afterOrigin.toLowerCase() !== source.origin.toLowerCase() ||
+        afterViewer !== source.viewer
+      )
+        throw new GithubReadError("identity");
+      verified = true;
+      const identities = new Map<number, string>();
+      for (const ticket of detail.tickets) {
+        for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {
+          const prior = identities.get(reference.number) ?? knownIssues.get(reference.number);
+          if (prior && prior !== reference.id) throw new GithubReadError("identity");
+          identities.set(reference.number, reference.id);
+        }
+      }
+      for (const [issueNumber, id] of identities) knownIssues.set(issueNumber, id);
+      item.detail = { ...detail, fetchedAt: new Date().toISOString() };
+      item.complete = item.discoveryComplete && detail.complete;
+      detailFailures.delete(item.id);
+      if (detailOnlyStale && detailFailures.size === 0) {
+        github.stale = false;
+        delete github.error;
+        delete github.errorCode;
+        delete github.retryAt;
+        detailOnlyStale = false;
+      }
+      refresh();
+      return context.json(coreTextWire(snapshot));
+    } catch (error) {
+      const failure = classifyGithubError(error);
+      if (!verified) {
+        github = undefined;
+        githubSource = undefined;
+        cached = undefined;
+      }
+      if (github) {
+        item.complete = false;
+        if (!github.stale) detailOnlyStale = true;
+        detailFailures.add(item.id);
+        github.error = failure.message;
+        github.errorCode = failure.code;
+        if (failure.retryAt) github.retryAt = failure.retryAt;
+        github.stale = true;
+      } else {
+        github = {
+          repository: "",
+          repositoryId: "",
+          items: [],
+          scanned: 0,
+          cursor: null,
+          complete: false,
+          pages: [],
+          warnings: [],
+          error: failure.message,
+          errorCode: failure.code,
+          ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
+        };
+      }
+      refresh();
+      return context.json(coreTextWire(snapshot), 503);
+    } finally {
+      detailRunning = false;
+    }
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);

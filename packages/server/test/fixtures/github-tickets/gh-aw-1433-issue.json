@@ -1,0 +1,24 @@
+{
+  "id": 3501010041,
+  "node_id": "I_kwDOPc1QR87QrSx5",
+  "number": 1433,
+  "repository_url": "https://api.github.com/repos/github/gh-aw",
+  "html_url": "https://github.com/github/gh-aw/issues/1433",
+  "state": "closed",
+  "state_reason": "not_planned",
+  "sub_issues_summary": {
+    "total": 4,
+    "completed": 4,
+    "percent_completed": 100
+  },
+  "labels": [],
+  "title": "Recorded issue",
+  "body": "Recorded body",
+  "issue_dependencies_summary": {
+    "blocked_by": 0,
+    "total_blocked_by": 0,
+    "blocking": 0,
+    "total_blocking": 0
+  },
+  "comments": 15
+}

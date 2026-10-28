@@ -3,7 +3,7 @@ import { assignMilestones, type Milestone, parseRoadmap } from "./roadmap.js";
 import { detectSetup, type SetupReport } from "./setup.js";
 import { resolveStages, type StagedWorkItem } from "./stages.js";
 import { indexStints, type Stint, type StintSummary, summarizeStint } from "./stints.js";
-import { indexWorkItems, type RepoFiles, type Warning } from "./work-items.js";
+import { indexWorkItems, orderTickets, type RepoFiles, type Warning } from "./work-items.js";
 import { loadWorkflows, type WorkflowDefinitions } from "./workflows.js";
 import { deriveAttentionItems, type AttentionItem } from "./attention.js";
 import type { AgentProfile } from "./agents.js";
@@ -30,6 +30,28 @@ export type GithubDiscovery = {
     complete: boolean;
     bound?: boolean;
     provisional?: boolean;
+    detail?: {
+      spec: string;
+      fetchedAt?: string;
+      comments?: string[];
+      complete?: boolean;
+      warnings?: string[];
+      tickets: {
+        id?: string;
+        url?: string;
+        blockers?: { id: string; number: number; state: string }[];
+        commentRecords?: { id: string; body: string }[];
+        number: number;
+        title: string;
+        state: string;
+        stateReason: string | null;
+        labels: string[];
+        body: string;
+        comments: string[];
+        blockedBy: number[];
+        blocked: boolean;
+      }[];
+    };
   }[];
   scanned: number;
   cursor: string | null;
@@ -92,6 +114,26 @@ export function indexProject(
 ): ProjectSnapshot {
   const loaded = loadWorkflows(files);
   const setup = detectSetup(files);
+  const remoteWarnings: Warning[] = [];
+  const roles = ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"];
+  let configured = "";
+  let triageUnavailable = false;
+  if (setup.tracker === "github-issues") {
+    try {
+      configured = files.read("docs/agents/triage-labels.md") ?? "";
+    } catch {
+      triageUnavailable = true;
+      remoteWarnings.push({
+        path: "docs/agents/triage-labels.md",
+        message: "Cannot read triage labels",
+      });
+    }
+  }
+  const roleLabels = new Map(roles.map((role) => [role, role]));
+  for (const line of configured.split(/\r?\n/)) {
+    const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
+    if (match && roleLabels.has(match[1])) roleLabels.set(match[1], match[2]);
+  }
   const staged =
     setup.tracker === "github-issues"
       ? {
@@ -101,8 +143,41 @@ export function indexProject(
               slug: `github-${item.number}`,
               title: item.title,
               type: "feature",
-              spec: null,
-              tickets: [],
+              spec: item.detail ? { path: item.url, text: item.detail.spec } : null,
+              tickets: orderTickets(
+                (item.detail?.tickets ?? []).map((ticket) => {
+                  const path = `https://github.com/${meta.github?.repository}/issues/${ticket.number}`;
+                  const matching = [...roleLabels]
+                    .filter(([, label]) =>
+                      ticket.labels.some((value) => value.toLowerCase() === label.toLowerCase()),
+                    )
+                    .map(([role]) => role);
+                  if (ticket.state === "open" && matching.length > 1)
+                    remoteWarnings.push({ path, message: "Conflicting triage labels" });
+                  const status =
+                    ticket.state === "closed"
+                      ? ticket.stateReason === "completed"
+                        ? "resolved"
+                        : ticket.stateReason === "not_planned"
+                          ? "cancelled"
+                          : "unknown"
+                      : ticket.state === "open"
+                        ? triageUnavailable || matching.length > 1
+                          ? "unknown"
+                          : (matching[0] ?? "open")
+                        : "unknown";
+                  return {
+                    ...ticket,
+                    slug: `github-${ticket.number}`,
+                    status: meta.github?.stale ? "unknown" : status,
+                    resolved: status === "resolved" && !meta.github?.stale,
+                    blocked: ticket.blocked || !!meta.github?.stale,
+                    path,
+                  };
+                }),
+                remoteWarnings,
+                true,
+              ),
               workflow: "feature",
               stage: undefined,
               column: "spec",
@@ -112,7 +187,7 @@ export function indexProject(
           ),
         }
       : resolveStages(indexWorkItems(files), files, loaded);
-  const warnings = [...staged.warnings];
+  const warnings = [...staged.warnings, ...remoteWarnings];
   let permissionLevel = defaultPermissionLevel;
   try {
     permissionLevel = projectPermissionLevel(files.read(".stintwork/config"));
@@ -156,8 +231,21 @@ export function indexProject(
           warnings.push({ path: reviewPath, message: String(error) });
         }
       }
+      const activeStint = stints.find((stint) => stint.status === "running") ?? null;
       return {
         ...item,
+        ...(setup.tracker === "github-issues" && activeStint?.ticket != null
+          ? {
+              tickets: item.tickets.map((ticket) =>
+                ticket.number === activeStint.ticket &&
+                !ticket.resolved &&
+                ticket.status !== "cancelled" &&
+                ticket.status !== "unknown"
+                  ? { ...ticket, status: "in-progress" }
+                  : ticket,
+              ),
+            }
+          : {}),
         ...(meta.github && setup.tracker === "github-issues"
           ? (() => {
               const remote = meta.github.items.find(
@@ -180,14 +268,29 @@ export function indexProject(
           : {}),
         ...(milestone === undefined ? {} : { milestone }),
         stints: stints.map(summarizeStint),
-        activeStint: stints.find((stint) => stint.status === "running") ?? null,
+        activeStint,
         reviewDecisions,
         memoryProposals: [],
-        outputWarnings: staged.warnings.filter(
-          ({ path }) =>
-            path === `.scratch/${item.slug}/spec.md` ||
-            path.startsWith(`.scratch/${item.slug}/issues/`),
-        ),
+        outputWarnings:
+          setup.tracker === "github-issues"
+            ? (() => {
+                const remote = meta.github?.items.find(
+                  ({ number }) => item.slug === `github-${number}`,
+                );
+                const paths = new Set(item.tickets.map(({ path }) => path));
+                return [
+                  ...(remote?.detail?.warnings ?? []).map((message) => ({
+                    path: remote?.url ?? "",
+                    message,
+                  })),
+                  ...remoteWarnings.filter(({ path }) => paths.has(path)),
+                ];
+              })()
+            : staged.warnings.filter(
+                ({ path }) =>
+                  path === `.scratch/${item.slug}/spec.md` ||
+                  path.startsWith(`.scratch/${item.slug}/issues/`),
+              ),
       };
     }),
     setup,

@@ -170,6 +170,29 @@ export type GithubDiscovery = {
     complete: boolean;
     bound?: boolean;
     provisional?: boolean;
+    discoveryComplete?: boolean;
+    detail?: {
+      fetchedAt: string;
+      spec: string;
+      comments: string[];
+      tickets: {
+        id: string;
+        url: string;
+        blockers: { id: string; number: number; state: string }[];
+        commentRecords: { id: string; body: string }[];
+        number: number;
+        title: string;
+        state: string;
+        stateReason: string | null;
+        labels: string[];
+        body: string;
+        comments: string[];
+        blockedBy: number[];
+        blocked: boolean;
+      }[];
+      complete: boolean;
+      warnings: string[];
+    };
   }[];
   scanned: number;
   cursor: string | null;

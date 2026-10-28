@@ -1,0 +1,126 @@
+[
+  {
+    "id": 3503639864,
+    "node_id": "I_kwDOPc1QR87Q1U04",
+    "number": 1472,
+    "repository_url": "https://api.github.com/repos/github/gh-aw",
+    "html_url": "https://github.com/github/gh-aw/issues/1472",
+    "state": "closed",
+    "state_reason": "not_planned",
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "labels": [
+      {
+        "name": "task"
+      },
+      {
+        "name": "ai-generated"
+      }
+    ],
+    "title": "Recorded issue",
+    "body": "Recorded body",
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "total_blocked_by": 0,
+      "blocking": 0,
+      "total_blocking": 0
+    },
+    "comments": 2
+  },
+  {
+    "id": 3503640112,
+    "node_id": "I_kwDOPc1QR87Q1U4w",
+    "number": 1475,
+    "repository_url": "https://api.github.com/repos/github/gh-aw",
+    "html_url": "https://github.com/github/gh-aw/issues/1475",
+    "state": "closed",
+    "state_reason": "not_planned",
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "labels": [
+      {
+        "name": "task"
+      },
+      {
+        "name": "ai-generated"
+      }
+    ],
+    "title": "Recorded issue",
+    "body": "Recorded body",
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "total_blocked_by": 0,
+      "blocking": 0,
+      "total_blocking": 0
+    },
+    "comments": 0
+  },
+  {
+    "id": 3503639908,
+    "node_id": "I_kwDOPc1QR87Q1U1k",
+    "number": 1473,
+    "repository_url": "https://api.github.com/repos/github/gh-aw",
+    "html_url": "https://github.com/github/gh-aw/issues/1473",
+    "state": "closed",
+    "state_reason": "not_planned",
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "labels": [
+      {
+        "name": "task"
+      },
+      {
+        "name": "ai-generated"
+      }
+    ],
+    "title": "Recorded issue",
+    "body": "Recorded body",
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "total_blocked_by": 0,
+      "blocking": 0,
+      "total_blocking": 0
+    },
+    "comments": 0
+  },
+  {
+    "id": 3503640003,
+    "node_id": "I_kwDOPc1QR87Q1U3D",
+    "number": 1474,
+    "repository_url": "https://api.github.com/repos/github/gh-aw",
+    "html_url": "https://github.com/github/gh-aw/issues/1474",
+    "state": "closed",
+    "state_reason": "not_planned",
+    "sub_issues_summary": {
+      "total": 0,
+      "completed": 0,
+      "percent_completed": 0
+    },
+    "labels": [
+      {
+        "name": "task"
+      },
+      {
+        "name": "ai-generated"
+      }
+    ],
+    "title": "Recorded issue",
+    "body": "Recorded body",
+    "issue_dependencies_summary": {
+      "blocked_by": 0,
+      "total_blocked_by": 0,
+      "blocking": 0,
+      "total_blocking": 0
+    },
+    "comments": 0
+  }
+]
