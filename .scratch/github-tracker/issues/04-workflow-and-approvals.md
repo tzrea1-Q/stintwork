@@ -19,6 +19,8 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Comments
 
+**Codex, 2026-10-28:** Downstream GitHub approvals now remain stale when they predate any upstream reopen, even after the upstream gate is reapproved with unchanged evidence; reapproving the downstream gate restores it. GitHub workflow projection now retains merge and pull request records. Added regression coverage for both fixes and for gate-ready attention after GitHub projection; the server already recomputes attention in its review evidence reader after projection, so that path required no production change. No commit was made.
+
 **Codex, 2026-10-28:** Coordinator decision: the GitHub Tickets gate requires at least one direct ticket. A parent with no tickets cannot pass this gate.
 
 **Codex, 2026-10-28:** Enforced readiness for every GitHub approval and rechecked viewer and repository identity before gate writes. Preserved checkout workflow history when a worktree has no record, and fixed the browser fixture's missing current Clarify approval. Added route, binding and bilingual gate tests; Playwright was not run. No commit was made.

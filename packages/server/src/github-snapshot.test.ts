@@ -3,10 +3,17 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMemoryRepoFiles, githubEvidenceDigest, indexProject } from "@stintwork/core";
+import {
+  createMemoryRepoFiles,
+  deriveAttentionItems,
+  githubEvidenceDigest,
+  indexProject,
+} from "@stintwork/core";
 import { expect, test } from "vitest";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { createReviewEvidenceReader } from "./review-evidence.js";
+import type { createChecks } from "./checks.js";
 
 test("projects workflow records and fresh, stale and unknown approval evidence", async () => {
   const root = mkdtempSync(join(tmpdir(), "github-snapshot-"));
@@ -104,6 +111,18 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
       commit: head,
       remote: { version: 1, parentId: "I_1", digest: ticketDigest },
     };
+    reviewItem.stages.spec = {
+      approved: { ...approval, at: "2026-01-03T00:00:00Z", remote: { ...approval.remote, digest } },
+      reopened: { at: "2026-01-02T00:00:00Z" },
+    };
+    reviewItem.stages.tickets = { approved: approval };
+    projectGithubGates(reviewSnapshot, root, project);
+    expect(reviewItem.stages.spec.approved).toMatchObject({ remoteState: "current" });
+    expect(reviewItem.stages.tickets.approved).toMatchObject({ remoteState: "stale" });
+    reviewItem.stages.tickets.approved = { ...approval, at: "2026-01-04T00:00:00Z" };
+    projectGithubGates(reviewSnapshot, root, project);
+    expect(reviewItem.stages.tickets.approved).toMatchObject({ remoteState: "current" });
+    delete reviewItem.stages.spec.reopened;
     reviewItem.stages.spec.approved = { ...approval, remote: { ...approval.remote, digest } };
     reviewItem.stages.tickets = { approved: approval };
     reviewItem.stages.implement = { approved: approval };
@@ -156,6 +175,99 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("attention is derived after GitHub projection while local attention is unchanged", async () => {
+  const files = createMemoryRepoFiles({
+    "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+  });
+  const github = {
+    repository: "Example/Project",
+    repositoryId: "R",
+    scanned: 1,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    items: [
+      {
+        id: "I",
+        number: 1,
+        title: "Parent",
+        url: "https://github.com/Example/Project/issues/1",
+        bound: true,
+        complete: true,
+        detail: { spec: "Spec", tickets: [], complete: true },
+      },
+    ],
+  };
+  const project = {
+    files,
+    worktreePaths: new Map(),
+    watchPaths: [],
+    warnings: [],
+  } as ReturnType<ProjectFilesReader>;
+  const snapshot = indexProject(files, { name: "Test", github });
+  const item = snapshot.workItems[0];
+  item.stints = [
+    {
+      id: "s",
+      workItem: item.slug,
+      stage: "clarify",
+      ticket: null,
+      agent: "codex",
+      status: "finished",
+      startedAt: "2026-01-01T00:00:00Z",
+      endedAt: "2026-01-01T00:01:00Z",
+      checkpointCommit: null,
+      handoff: {
+        stint: "s",
+        agent: "codex",
+        stoppedAt: "Done",
+        unresolved: "None",
+        nextStep: "Approve",
+      },
+    },
+  ];
+  snapshot.attentionItems = deriveAttentionItems(snapshot);
+  expect(snapshot.attentionItems.filter((entry) => entry.kind === "gate-ready")).toEqual([]);
+  const checks = { evidence: () => ({}), commands: () => [] } as unknown as ReturnType<
+    typeof createChecks
+  >;
+  const readEvidence = createReviewEvidenceReader(process.cwd(), checks);
+  projectGithubGates(snapshot, process.cwd(), project);
+  readEvidence(project, snapshot);
+  expect(snapshot.attentionItems).toContainEqual(
+    expect.objectContaining({ kind: "gate-ready", workItem: item.slug }),
+  );
+  if (!item.github) throw new Error("Missing GitHub metadata");
+  item.stage = "spec";
+  item.stages.clarify = { approved: { remoteState: "stale" } };
+  item.stints[0].stage = "spec";
+  readEvidence(project, snapshot);
+  expect(snapshot.attentionItems.filter((entry) => entry.kind === "gate-ready")).toEqual([]);
+  item.stage = "clarify";
+  item.stints[0].stage = "clarify";
+  item.github.stale = true;
+  readEvidence(project, snapshot);
+  expect(snapshot.attentionItems.filter((entry) => entry.kind === "gate-ready")).toEqual([]);
+  item.github.stale = false;
+  item.stints[0].status = "interrupted";
+  readEvidence(project, snapshot);
+  expect(snapshot.attentionItems.filter((entry) => entry.kind === "gate-ready")).toEqual([]);
+
+  const localFiles = createMemoryRepoFiles({ ".scratch/local/spec.md": "# Spec" });
+  const local = indexProject(localFiles, { name: "Local" });
+  local.workItems[0].stints = [
+    { ...item.stints[0], workItem: "local", stage: "spec", status: "finished" },
+  ];
+  local.attentionItems = deriveAttentionItems(local);
+  const before = local.attentionItems;
+  const localProject = { ...project, files: localFiles };
+  projectGithubGates(local, process.cwd(), localProject);
+  readEvidence(localProject, local);
+  expect(local.attentionItems).toEqual(before);
+  expect(before).toContainEqual(expect.objectContaining({ kind: "gate-ready", workItem: "local" }));
 });
 
 test("worktree workflow overrides main only when present", () => {

@@ -193,6 +193,8 @@ export function indexProject(
               column: loaded.workflows[workflow].stages.find((entry) => entry.id === stage)?.column,
               inferred: false,
               stages: record?.stages ?? {},
+              ...(record?.merged ? { merged: record.merged } : {}),
+              ...(record?.pullRequest ? { pullRequest: record.pullRequest } : {}),
             };
           }),
         }
