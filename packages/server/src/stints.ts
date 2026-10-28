@@ -60,7 +60,8 @@ import {
 } from "@stintwork/git";
 import type { Hono } from "hono";
 import { stream } from "hono/streaming";
-import { prepareStintBrief } from "./brief-preview.js";
+import { prepareStintBrief, type GithubBriefSource } from "./brief-preview.js";
+import { saveGithubWorkflow } from "./workflow-writes.js";
 
 import { addStintPermissionRoute } from "./stint-permissions.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
@@ -129,6 +130,8 @@ export function addStintRoutes(
   isChecking: (slug: string) => boolean = () => false,
   readReviewEvidence?: ReviewEvidenceReader,
   warn: (warning: Warning) => void = () => {},
+  githubSource?: GithubBriefSource,
+  refreshGithubDetail?: (number: number) => Promise<unknown>,
 ) {
   const registry = options.agentRegistry ?? createAgentRegistry();
   const handoffTimeoutMs = options.handoffTimeoutMs ?? 90_000;
@@ -139,7 +142,7 @@ export function addStintRoutes(
     throw new Error("Recovery setup timeout must be a non-negative number of milliseconds.");
   const active = new Map<string, ActiveStint>();
   const workflowWrites = new Set<string>();
-  const stageAgents = addStageAgentRoute(
+  addStageAgentRoute(
     app,
     readProjectFiles,
     root,
@@ -423,6 +426,15 @@ export function addStintRoutes(
         state.releaseOwnership = undefined;
         active.delete(workItem);
         refresh();
+        const githubNumber = /^github-(\d+)$/.exec(workItem)?.[1];
+        if (
+          githubNumber &&
+          githubSource?.getSnapshot().setup.tracker === "github-issues" &&
+          refreshGithubDetail
+        )
+          void refreshGithubDetail(Number(githubNumber)).catch((error: unknown) => {
+            console.error("Could not refresh GitHub detail after stint:", error);
+          });
       }
     }
     let attempt: StintProcessAttempt | undefined = recovery?.attempt;
@@ -904,337 +916,388 @@ export function addStintRoutes(
       );
     if (closing)
       return context.json(coreTextWire({ reason: coreText({ code: "server.stopping" }) }), 503);
-    const result = await prepareStintBrief(
-      readProjectFiles,
-      body.workItem,
-      "ticket" in body ? (body.ticket as number | null) : null,
-      root,
-      registry,
-      "agent" in body ? (body.agent as string) : undefined,
-      "permissionLevel" in body ? (body.permissionLevel as PermissionLevel) : undefined,
-    );
-    refresh();
-    if ("reason" in result)
-      return context.json(
-        coreTextWire({ reason: result.reason }),
-        result.status === 404 ? 409 : result.status,
-      );
-    const { workItem, ticket } = result;
-    const agentId = "agent" in body ? (body.agent as string) : result.brief.agent;
-    const agent = registry.get(agentId);
-    if (!agent)
-      return context.json(
-        coreTextWire({
-          reason: coreText({ code: "agent.notRegistered", params: { agent: agentId } }),
-        }),
-        400,
-      );
-    await refreshAgentAvailability(agent, true);
-    const unavailable = agentUnavailable(agent);
-    if (unavailable) return context.json(coreTextWire({ reason: unavailable }), 409);
-    if (isChecking(workItem.slug))
-      return context.json(coreTextWire({ reason: coreText({ code: "stint.checksActive" }) }), 409);
-    if (active.has(workItem.slug) || stageAgents.isWriting(workItem.slug))
+    const slug = body.workItem;
+    const githubStart = /^github-\d+$/.test(slug);
+    if (githubStart && active.has(slug))
       return context.json(coreTextWire({ reason: coreText({ code: "stint.alreadyActive" }) }), 409);
-    if (
-      indexProject(readProjectFiles().files, { name: "" }).workItems.find(
-        ({ slug }) => slug === workItem.slug,
-      )?.stage !== workItem.stage
-    )
-      return context.json(coreTextWire({ reason: coreText({ code: "stint.stageChanged" }) }), 409);
-    const state: ActiveStint = { id: randomUUID(), setupCancellation: new AbortController() };
+    if (githubStart && workflowWrites.has(slug))
+      return context.json(coreTextWire({ reason: coreText({ code: "gate.activeWrite" }) }), 409);
+    if (githubStart) workflowWrites.add(slug);
     try {
-      state.releaseOwnership = reserveStintWorkItem(
-        prepareLogs(root, "stint-owners").directory,
-        workItem.slug,
+      const result = await prepareStintBrief(
+        readProjectFiles,
+        body.workItem,
+        "ticket" in body ? (body.ticket as number | null) : null,
+        root,
+        registry,
+        "agent" in body ? (body.agent as string) : undefined,
+        "permissionLevel" in body ? (body.permissionLevel as PermissionLevel) : undefined,
+        githubSource,
       );
-    } catch (error) {
-      return context.json(coreTextWire({ reason: errorText(error) }), 409);
-    }
-    const streaming = context.req.header("accept") === "application/x-ndjson";
-    const cancelSetup = () => {
-      if (state.stopRequested || state.ending || state.suspending) return;
-      try {
-        state.recordStop?.();
-      } catch (error) {
-        // A disconnected client cannot receive an error; keep running without durable intent.
-        console.error(
-          "Could not record Stop intent; disconnected stint left running:",
-          state.id,
-          error,
+      refresh();
+      if ("reason" in result)
+        return context.json(
+          coreTextWire({ reason: result.reason }),
+          result.status === 404 ? 409 : result.status,
         );
-        return;
-      }
-      state.stopRequested = true;
-      state.setupCancellation?.abort();
-      void state.handle?.cancel();
-    };
-    const requestSignal = context.req.raw.signal;
-    requestSignal.addEventListener("abort", cancelSetup, { once: true });
-    if (requestSignal.aborted) cancelSetup();
-    let send: (message: unknown) => void = () => {};
-    function progress(event: AgentPreparationProgress) {
-      send({ type: "preparation", stintId: state.id, progress: event });
-    }
-    active.set(workItem.slug, state);
-    const runStart = async () => {
-      let prepared: () => void = () => {};
-      state.preparation = new Promise<void>((resolvePreparation) => {
-        prepared = resolvePreparation;
-      });
+      const { workItem, ticket } = result;
+      const agentId = "agent" in body ? (body.agent as string) : result.brief.agent;
+      const agent = registry.get(agentId);
+      if (!agent)
+        return context.json(
+          coreTextWire({
+            reason: coreText({ code: "agent.notRegistered", params: { agent: agentId } }),
+          }),
+          400,
+        );
+      await refreshAgentAvailability(agent, true);
+      const unavailable = agentUnavailable(agent);
+      if (unavailable) return context.json(coreTextWire({ reason: unavailable }), 409);
+      if (isChecking(workItem.slug))
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "stint.checksActive" }) }),
+          409,
+        );
+      if (active.has(workItem.slug) || (!githubStart && workflowWrites.has(workItem.slug)))
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "stint.alreadyActive" }) }),
+          409,
+        );
+      if (
+        (workItem.github
+          ? githubSource?.getSnapshot()
+          : indexProject(readProjectFiles().files, { name: "" })
+        )?.workItems.find(({ slug }) => slug === workItem.slug)?.stage !== workItem.stage
+      )
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "stint.stageChanged" }) }),
+          409,
+        );
+      const state: ActiveStint = { id: randomUUID(), setupCancellation: new AbortController() };
       try {
-        state.setupCancellation?.signal.throwIfAborted();
-        let preparedAgent: PreparedAgent | undefined;
-        let selected: AgentSelection | PreparedAgent | undefined;
-        const prepareOverride = options.prepareAgent;
-        const cachedAgent = agent.id === "claude" || agent.id === "codex" ? agent.id : undefined;
-        const prepareAgent =
-          prepareOverride && cachedAgent
-            ? (preparation: Omit<AgentPreparationOptions, "agent">) =>
-                prepareOverride({ ...preparation, agent: cachedAgent })
-            : options.launchAgent
-              ? undefined
-              : agent.prepare;
-        if (prepareAgent) {
-          try {
-            selected = await prepareAgent({
-              cwd: root,
-              signal: state.setupCancellation?.signal,
-              onProgress: (event) => {
-                progress(event);
-                agent.availability = {
-                  available: false,
-                  canStart: true,
-                  kind:
-                    event.reason === "incompatible" || event.reason === "below-tested-range"
-                      ? "incompatible"
-                      : "not-prepared",
-                  selection: event,
-                  installedIdentity:
-                    (event.source === "installed" ? event.executable?.identity : undefined) ??
-                    agent.availability?.installedIdentity,
-                };
-              },
-              ...(streaming
-                ? {
-                    beforePrepare: (event, signal) =>
-                      new Promise<void>((resolve, reject) => {
-                        const abort = () => {
-                          state.confirmSource = undefined;
-                          reject(signal.reason);
-                        };
-                        if (signal.aborted) {
-                          abort();
-                          return;
-                        }
-                        signal.addEventListener("abort", abort, { once: true });
-                        state.confirmSource = () => {
-                          signal.removeEventListener("abort", abort);
-                          state.confirmSource = undefined;
-                          resolve();
-                        };
-                        progress({ ...event, phase: "confirm" });
-                      }),
-                  }
-                : {}),
-            });
-            if ("adapterEntry" in selected) preparedAgent = selected;
-            agent.availability = {
-              ...agent.availability,
-              available: false,
-              canStart: true,
-              kind: "not-prepared",
-              selection: selected,
-            };
-            progress({ ...selected, phase: "ready" });
-          } catch (error) {
-            const auth =
-              error instanceof AgentAuthenticationError ||
-              (error instanceof Error &&
-                (("code" in error && error.code === -32000) ||
-                  /authentication required/i.test(error.message)))
-                ? new AgentAuthenticationError(agent)
-                : undefined;
-            agent.availability = {
-              ...agent.availability,
-              available: false,
-              canStart: true,
-              kind: auth
-                ? "login-required"
-                : state.stopRequested
-                  ? "not-prepared"
-                  : "preparation-failed",
-              reason: auth ? auth.coreText : errorText(error),
-              checkedAt: new Date().toISOString(),
-            };
-            send({ type: "availability", agent: agent.id, availability: agent.availability });
-            refresh();
-            throw auth ?? error;
-          }
-        }
-        state.setupCancellation?.signal.throwIfAborted();
-        if (selected?.source === "pending")
-          throw new Error("Agent source must be selected before launch.");
-        const project = readProjectFiles();
-        const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
-        if (discoveryFailure) throw new Error(discoveryFailure.message);
-        const firstWorktree = !project.worktreePaths.has(workItem.slug);
-        const worktree = await ensureWorktree(root, workItem.slug);
-        worktree.path = realpathSync(worktree.path);
-        if (closing) throw new CoreTextError({ code: "server.stopping" });
-        let inheritedAgents = false;
-        if (firstWorktree) {
-          for (const stage of result.workflows[workItem.workflow].stages) {
-            const choice = workItem.stages[stage.id]?.agent;
-            if (
-              typeof choice === "string" &&
-              writeStageAgentWorkflow(worktree.path, workItem, stage.id, choice)
-            )
-              inheritedAgents = true;
-          }
-        }
-        const prepared = await prepareStintBrief(
-          readProjectFiles,
+        state.releaseOwnership = reserveStintWorkItem(
+          prepareLogs(root, "stint-owners").directory,
           workItem.slug,
-          ticket?.number ?? null,
-          root,
-          registry,
-          agent.id,
-          result.brief.permissionLevel,
         );
-        if (prepared.reason) throw new CoreTextError(prepared.reason);
-        const { stage } = prepared;
-        let brief = { ...prepared.brief, agent: agent.id };
-        const id = state.id as string;
-        const logs = prepareLogs(root);
-        const setupMessages: CoreText[] = [];
-        const setupFiles: string[] = [];
-        if (inheritedAgents) setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
-        let setupError: unknown;
-        let setupFailed = false;
+      } catch (error) {
+        return context.json(coreTextWire({ reason: errorText(error) }), 409);
+      }
+      const streaming = context.req.header("accept") === "application/x-ndjson";
+      const cancelSetup = () => {
+        if (state.stopRequested || state.ending || state.suspending) return;
         try {
-          ensureLocalIgnore(worktree.path);
-          if (
-            !workItem.stints.length &&
-            typeof prepared.workItem.stages[stage.id]?.agent !== "string" &&
-            writeFirstStintWorkflow(worktree.path, workItem, stage.id, agent.id)
-          ) {
-            setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
-            setupMessages.push(
-              coreText({ code: "stream.wroteWorkflow", params: { agent: agent.displayName } }),
-            );
-          }
-          await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
+          state.recordStop?.();
         } catch (error) {
-          setupFailed = true;
-          setupError = error;
+          // A disconnected client cannot receive an error; keep running without durable intent.
+          console.error(
+            "Could not record Stop intent; disconnected stint left running:",
+            state.id,
+            error,
+          );
+          return;
         }
-        const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-          cwd: worktree.path,
-          encoding: "utf8",
-        }).trim();
-        if (stage.gate === "evidence" && !setupFailed) {
-          const review = await prepareStintBrief(
+        state.stopRequested = true;
+        state.setupCancellation?.abort();
+        void state.handle?.cancel();
+      };
+      const requestSignal = context.req.raw.signal;
+      requestSignal.addEventListener("abort", cancelSetup, { once: true });
+      if (requestSignal.aborted) cancelSetup();
+      let send: (message: unknown) => void = () => {};
+      function progress(event: AgentPreparationProgress) {
+        send({ type: "preparation", stintId: state.id, progress: event });
+      }
+      active.set(workItem.slug, state);
+      const runStart = async () => {
+        let prepared: () => void = () => {};
+        state.preparation = new Promise<void>((resolvePreparation) => {
+          prepared = resolvePreparation;
+        });
+        try {
+          state.setupCancellation?.signal.throwIfAborted();
+          let preparedAgent: PreparedAgent | undefined;
+          let selected: AgentSelection | PreparedAgent | undefined;
+          const prepareOverride = options.prepareAgent;
+          const cachedAgent = agent.id === "claude" || agent.id === "codex" ? agent.id : undefined;
+          const prepareAgent =
+            prepareOverride && cachedAgent
+              ? (preparation: Omit<AgentPreparationOptions, "agent">) =>
+                  prepareOverride({ ...preparation, agent: cachedAgent })
+              : options.launchAgent
+                ? undefined
+                : agent.prepare;
+          if (prepareAgent) {
+            try {
+              selected = await prepareAgent({
+                cwd: root,
+                signal: state.setupCancellation?.signal,
+                onProgress: (event) => {
+                  progress(event);
+                  agent.availability = {
+                    available: false,
+                    canStart: true,
+                    kind:
+                      event.reason === "incompatible" || event.reason === "below-tested-range"
+                        ? "incompatible"
+                        : "not-prepared",
+                    selection: event,
+                    installedIdentity:
+                      (event.source === "installed" ? event.executable?.identity : undefined) ??
+                      agent.availability?.installedIdentity,
+                  };
+                },
+                ...(streaming
+                  ? {
+                      beforePrepare: (event, signal) =>
+                        new Promise<void>((resolve, reject) => {
+                          const abort = () => {
+                            state.confirmSource = undefined;
+                            reject(signal.reason);
+                          };
+                          if (signal.aborted) {
+                            abort();
+                            return;
+                          }
+                          signal.addEventListener("abort", abort, { once: true });
+                          state.confirmSource = () => {
+                            signal.removeEventListener("abort", abort);
+                            state.confirmSource = undefined;
+                            resolve();
+                          };
+                          progress({ ...event, phase: "confirm" });
+                        }),
+                    }
+                  : {}),
+              });
+              if ("adapterEntry" in selected) preparedAgent = selected;
+              agent.availability = {
+                ...agent.availability,
+                available: false,
+                canStart: true,
+                kind: "not-prepared",
+                selection: selected,
+              };
+              progress({ ...selected, phase: "ready" });
+            } catch (error) {
+              const auth =
+                error instanceof AgentAuthenticationError ||
+                (error instanceof Error &&
+                  (("code" in error && error.code === -32000) ||
+                    /authentication required/i.test(error.message)))
+                  ? new AgentAuthenticationError(agent)
+                  : undefined;
+              agent.availability = {
+                ...agent.availability,
+                available: false,
+                canStart: true,
+                kind: auth
+                  ? "login-required"
+                  : state.stopRequested
+                    ? "not-prepared"
+                    : "preparation-failed",
+                reason: auth ? auth.coreText : errorText(error),
+                checkedAt: new Date().toISOString(),
+              };
+              send({ type: "availability", agent: agent.id, availability: agent.availability });
+              refresh();
+              throw auth ?? error;
+            }
+          }
+          state.setupCancellation?.signal.throwIfAborted();
+          if (selected?.source === "pending")
+            throw new Error("Agent source must be selected before launch.");
+          if (workItem.github) {
+            const verified = await prepareStintBrief(
+              readProjectFiles,
+              workItem.slug,
+              ticket?.number ?? null,
+              root,
+              registry,
+              agent.id,
+              result.brief.permissionLevel,
+              githubSource,
+            );
+            if (verified.reason) throw new CoreTextError(verified.reason);
+          }
+          const project = readProjectFiles();
+          const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
+          if (discoveryFailure) throw new Error(discoveryFailure.message);
+          const firstWorktree = !project.worktreePaths.has(workItem.slug);
+          const worktree = await ensureWorktree(root, workItem.slug);
+          worktree.path = realpathSync(worktree.path);
+          if (closing) throw new CoreTextError({ code: "server.stopping" });
+          let inheritedAgents = false;
+          if (firstWorktree && !workItem.github) {
+            for (const stage of result.workflows[workItem.workflow].stages) {
+              const choice = workItem.stages[stage.id]?.agent;
+              if (
+                typeof choice === "string" &&
+                writeStageAgentWorkflow(worktree.path, workItem, stage.id, choice)
+              )
+                inheritedAgents = true;
+            }
+          }
+          const prepared = await prepareStintBrief(
             readProjectFiles,
             workItem.slug,
             ticket?.number ?? null,
             root,
             registry,
             agent.id,
-            brief.permissionLevel,
+            result.brief.permissionLevel,
+            githubSource,
           );
-          if (review.reason) throw new CoreTextError(review.reason);
-          brief = { ...review.brief, agent: agent.id };
-        }
-        const path = join(logs.directory, `${id}.jsonl`);
-        const started: StintLogEntry = {
-          type: "started",
-          at: new Date().toISOString(),
-          stint: {
-            id,
-            workItem: workItem.slug,
-            stage: stage.id,
-            ticket: ticket?.number ?? null,
-            agent: agent.id,
-            worktree,
-            baseCommit,
-            brief,
-          },
-        };
-        writeFileSync(path, `${JSON.stringify(coreTextWire(started))}\n`, { flag: "wx" });
-        activeStintIds.add(id);
-        const sequence = 1;
-        broadcast(
-          coreTextWire({
-            type: "stint",
-            stintId: id,
-            workItem: workItem.slug,
-            sequence,
-            entry: started,
-          }) as StintLiveMessage,
-        );
-        refresh();
-        const reason = await runStint(started, state, agent, stage.gate === "evidence", sequence, {
-          preparedAgent,
-          selected,
-          beforeLaunch: async (append) => {
-            let setupMessage = 0;
-            const progress = (text: CoreText) =>
-              append({
-                type: "event",
-                at: new Date().toISOString(),
-                event: {
-                  type: "message",
-                  id: `setup-${++setupMessage}`,
-                  ...coreTextFields("text", text),
-                },
-              });
-            for (const text of setupMessages) progress(text);
-            if (setupFailed) throw setupError;
-            const previous = workItem.stints[0];
-            await installWorktreeDependencies(
-              worktree.path,
-              progress,
-              !!previous && ["failed", "interrupted", "stopped"].includes(previous.status),
-              state.setupCancellation?.signal,
+          if (prepared.reason) throw new CoreTextError(prepared.reason);
+          const { stage } = prepared;
+          let brief = { ...prepared.brief, agent: agent.id };
+          const id = state.id as string;
+          const logs = prepareLogs(root);
+          const setupMessages: CoreText[] = [];
+          const setupFiles: string[] = [];
+          if (inheritedAgents) setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
+          let setupError: unknown;
+          let setupFailed = false;
+          try {
+            ensureLocalIgnore(worktree.path);
+            if (workItem.github && githubSource) {
+              const github = githubSource.getGithub();
+              const item = github?.items.find((entry) => entry.number === workItem.github?.number);
+              if (!github || !item) throw new CoreTextError({ code: "gate.identityAmbiguous" });
+              await saveGithubWorkflow(worktree.path, github, item, workItem.workflow, stage.id);
+            }
+            if (
+              !workItem.github &&
+              !workItem.stints.length &&
+              typeof prepared.workItem.stages[stage.id]?.agent !== "string" &&
+              writeFirstStintWorkflow(worktree.path, workItem, stage.id, agent.id)
+            ) {
+              setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
+              setupMessages.push(
+                coreText({ code: "stream.wroteWorkflow", params: { agent: agent.displayName } }),
+              );
+            }
+            await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
+          } catch (error) {
+            setupFailed = true;
+            setupError = error;
+          }
+          const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+            cwd: worktree.path,
+            encoding: "utf8",
+          }).trim();
+          if (stage.gate === "evidence" && !setupFailed) {
+            const review = await prepareStintBrief(
+              readProjectFiles,
+              workItem.slug,
+              ticket?.number ?? null,
+              root,
+              registry,
+              agent.id,
+              brief.permissionLevel,
+              githubSource,
             );
-            if (closing) throw new CoreTextError({ code: "server.stopping" });
-          },
-          send,
-        });
-        if (reason) return context.json(coreTextWire({ reason }), 503);
-        return context.json(coreTextWire({ stint: foldStintLog([started]) }), 201);
-      } catch (error) {
-        state.releaseOwnership?.();
-        state.releaseOwnership = undefined;
-        active.delete(workItem.slug);
-        return context.json(
-          coreTextWire({
-            reason: state.stopRequested
-              ? coreText({ code: "agent.preparationCancelled" })
-              : errorText(error),
-          }),
-          503,
-        );
-      } finally {
-        requestSignal.removeEventListener("abort", cancelSetup);
-        prepared();
-      }
-    };
-    if (!streaming) return runStart();
-    context.header("Content-Type", "application/x-ndjson");
-    context.header("Cache-Control", "no-store");
-    return stream(context, async (output) => {
-      send = (message) => {
-        void output.write(`${JSON.stringify(coreTextWire(message))}\n`).catch(() => {});
+            if (review.reason) throw new CoreTextError(review.reason);
+            brief = { ...review.brief, agent: agent.id };
+          }
+          const path = join(logs.directory, `${id}.jsonl`);
+          const started: StintLogEntry = {
+            type: "started",
+            at: new Date().toISOString(),
+            stint: {
+              id,
+              workItem: workItem.slug,
+              stage: stage.id,
+              ticket: ticket?.number ?? null,
+              agent: agent.id,
+              worktree,
+              baseCommit,
+              brief,
+            },
+          };
+          writeFileSync(path, `${JSON.stringify(coreTextWire(started))}\n`, { flag: "wx" });
+          activeStintIds.add(id);
+          const sequence = 1;
+          broadcast(
+            coreTextWire({
+              type: "stint",
+              stintId: id,
+              workItem: workItem.slug,
+              sequence,
+              entry: started,
+            }) as StintLiveMessage,
+          );
+          refresh();
+          const reason = await runStint(
+            started,
+            state,
+            agent,
+            stage.gate === "evidence",
+            sequence,
+            {
+              preparedAgent,
+              selected,
+              beforeLaunch: async (append) => {
+                let setupMessage = 0;
+                const progress = (text: CoreText) =>
+                  append({
+                    type: "event",
+                    at: new Date().toISOString(),
+                    event: {
+                      type: "message",
+                      id: `setup-${++setupMessage}`,
+                      ...coreTextFields("text", text),
+                    },
+                  });
+                for (const text of setupMessages) progress(text);
+                if (setupFailed) throw setupError;
+                const previous = workItem.stints[0];
+                await installWorktreeDependencies(
+                  worktree.path,
+                  progress,
+                  !!previous && ["failed", "interrupted", "stopped"].includes(previous.status),
+                  state.setupCancellation?.signal,
+                );
+                if (closing) throw new CoreTextError({ code: "server.stopping" });
+              },
+              send,
+            },
+          );
+          if (reason) return context.json(coreTextWire({ reason }), 503);
+          return context.json(coreTextWire({ stint: foldStintLog([started]) }), 201);
+        } catch (error) {
+          state.releaseOwnership?.();
+          state.releaseOwnership = undefined;
+          active.delete(workItem.slug);
+          return context.json(
+            coreTextWire({
+              reason: state.stopRequested
+                ? coreText({ code: "agent.preparationCancelled" })
+                : errorText(error),
+            }),
+            503,
+          );
+        } finally {
+          requestSignal.removeEventListener("abort", cancelSetup);
+          prepared();
+        }
       };
-      output.onAbort(cancelSetup);
-      send({ type: "starting", stintId: state.id });
-      const response = await runStart();
-      await output.write(
-        `${JSON.stringify({ type: "result", status: response.status, body: await response.json() })}\n`,
-      );
-    });
+      if (!streaming) return await runStart();
+      context.header("Content-Type", "application/x-ndjson");
+      context.header("Cache-Control", "no-store");
+      return await stream(context, async (output) => {
+        send = (message) => {
+          void output.write(`${JSON.stringify(coreTextWire(message))}\n`).catch(() => {});
+        };
+        output.onAbort(cancelSetup);
+        send({ type: "starting", stintId: state.id });
+        const response = await runStart();
+        await output.write(
+          `${JSON.stringify({ type: "result", status: response.status, body: await response.json() })}\n`,
+        );
+      });
+    } finally {
+      if (githubStart) workflowWrites.delete(slug);
+    }
   });
   function verifyRecoveryWorktree(
     stint: Pick<Stint, "id" | "workItem" | "stage" | "ticket" | "worktree" | "baseCommit">,

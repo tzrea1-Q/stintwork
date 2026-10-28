@@ -21,6 +21,25 @@ type Issue = {
 };
 type Comment = { id: number; node_id: string; body: string };
 
+export function githubDetailCoolingDown(github: { retryAt?: string }) {
+  return !!github.retryAt && Date.parse(github.retryAt) > Date.now();
+}
+
+export function createDetailPublisher() {
+  const sequences = new Map<number, { next: number; published: number }>();
+  return (number: number) => {
+    const state = sequences.get(number) ?? { next: 0, published: 0 };
+    sequences.set(number, state);
+    const sequence = ++state.next;
+    return (publish: () => void) => {
+      if (sequence < state.published) return false;
+      state.published = sequence;
+      publish();
+      return true;
+    };
+  };
+}
+
 /** Read one work item. A failed connection aborts the snapshot. */
 export async function readGithubTickets(
   root: string,

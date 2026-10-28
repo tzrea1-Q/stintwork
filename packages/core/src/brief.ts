@@ -36,6 +36,15 @@ export type BriefInput = {
   changedPaths?: readonly string[];
   checkpointCommit?: string | null;
   reviewRange?: { mergeBase: string; headCommit: string };
+  github?: {
+    repository: string;
+    repositoryId: string;
+    parent: { number: number; url: string; id: string };
+    ticket?: { number: number; url: string; id: string } | null;
+    blockers: readonly number[];
+    fetchedAt: string;
+    worktreePath?: string;
+  };
 };
 
 export function briefAvailability(
@@ -73,6 +82,7 @@ export function compileBrief({
   changedPaths = [],
   checkpointCommit = null,
   reviewRange,
+  github,
 }: BriefInput): Brief {
   const pointers: BriefPointer[] = [];
   function addPointer(path: string, reason: CoreText) {
@@ -90,6 +100,114 @@ export function compileBrief({
       path,
       reason: coreText({ code: "brief.decision", params: { title: decisionTitle } }),
     });
+  }
+  if (github) {
+    const handoff = lastHandoff ? { ...lastHandoff } : null;
+    const changed = [...new Set(changedPaths)].sort();
+    const issues = [
+      github.parent.number,
+      ...(github.ticket ? [github.ticket.number] : []),
+      ...github.blockers,
+    ];
+    const range = reviewRange
+      ? `${reviewRange.mergeBase}...${reviewRange.headCommit}`
+      : `main...stintwork/${workItem.slug}`;
+    const prompt = [
+      ...(stage.skill
+        ? [
+            `${stage.skill} ${stage.gate === "evidence" ? range : (github.ticket?.url ?? github.parent.url)}`,
+          ]
+        : [github.parent.url]),
+      `Repository: github.com/${github.repository} (repository node ID: ${github.repositoryId})`,
+      `Parent issue #${github.parent.number}: ${github.parent.url} (node ID: ${github.parent.id})`,
+      ...(github.ticket
+        ? [
+            `Selected ticket #${github.ticket.number}: ${github.ticket.url} (node ID: ${github.ticket.id})`,
+          ]
+        : []),
+      `Snapshot time: ${github.fetchedAt}`,
+      [
+        "Refetch the issues before work:",
+        ...[...new Set(issues)].map(
+          (number) => `- gh issue view ${number} -R ${github.repository} --comments`,
+        ),
+        ...(["spec", "tickets"].includes(stage.gate ?? "") || stage.column === "clarify"
+          ? [`- gh api repos/${github.repository}/issues/${github.parent.number}/sub_issues`]
+          : []),
+      ].join("\n"),
+      ["Read first:", ...pointers.map(({ path, reason }) => `- ${path} — ${reason.text}`)].join(
+        "\n",
+      ),
+      ...(stage.gate === "evidence"
+        ? [
+            `Review diff range: ${range} (merge base to reviewed commit).`,
+            ...(reviewRange ? [`Reviewed commit: ${reviewRange.headCommit}`] : []),
+            `Review both Standards and Spec${stage.skill ? ` with ${stage.skill}` : ""}. Do not implement fixes or change project files. Findings will be requested after the handoff.`,
+          ]
+        : []),
+      handoff
+        ? `Last handoff (${handoff.stint}, ${handoff.agent}):\n\n### Where it stopped\n${handoff.stoppedAt}\n\n### What is unresolved\n${handoff.unresolved}\n\n### Suggested next step\n${handoff.nextStep}`
+        : "Last handoff: none — start from the project conventions and work item scope.",
+      ...developerNotes.map(
+        (note) =>
+          `${note.source === "review" ? "Review" : "Developer"} note (${note.at}):\n${note.text}`,
+      ),
+      ...(checkpointCommit ? [`Checkpoint commit: ${checkpointCommit}`] : []),
+      [
+        "Changed since the last handoff:",
+        ...(changed.length ? changed.map((path) => `- ${path}`) : ["- none"]),
+        "Where the handoff and the files disagree, the files win.",
+      ].join("\n"),
+      [
+        "Working instructions:",
+        "- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
+        github.worktreePath
+          ? `- Work in the worktree at ${github.worktreePath} on branch stintwork/${workItem.slug}.`
+          : `- Work in the work item worktree on branch stintwork/${workItem.slug}.`,
+        ...(stage.gate === "spec"
+          ? [
+              "- Publish the spec to the parent issue body through the configured tracker skill and gh.",
+            ]
+          : []),
+        ...(stage.gate === "tickets"
+          ? ["- Publish tickets as direct sub-issues through the configured tracker skill and gh."]
+          : []),
+        ...(stage.gate === "manual" && stage.column === "clarify"
+          ? [
+              "- Settle open questions; record agreed terms in GLOSSARY.md and decisions in docs/adr/.",
+              "- Do not write the spec or tickets; later stages do.",
+            ]
+          : []),
+        ...(github.ticket && stage.column === "implement"
+          ? [
+              `- Finish only selected ticket #${github.ticket.number}.`,
+              "- Keep the project checks green.",
+              `- Commit referencing the issue (#${github.ticket.number}); do not push.`,
+            ]
+          : [
+              `- Work on the ${stage.name} stage${github.ticket ? ` for ticket #${github.ticket.number}` : ""} only.`,
+              "- Keep the project checks green.",
+              "- Leave stage gate approval to the developer.",
+              "- Do not push.",
+            ]),
+        stage.gate === "evidence"
+          ? "- Do not change GitHub issues; findings are requested after the handoff."
+          : "- Update issue status and comments through the configured tracker skill and gh; Stintwork does not write issues.",
+        "- Record only checks actually run, with their results.",
+        ...(github.ticket && stage.column === "implement"
+          ? ["- Leave gate approval to the developer."]
+          : []),
+      ].join("\n"),
+    ].join("\n\n");
+    return {
+      skill: stage.skill,
+      pointers,
+      lastHandoff: handoff,
+      developerNotes: developerNotes.map((note) => ({ ...note })),
+      changedPaths: changed,
+      checkpointCommit,
+      prompt,
+    };
   }
   if (workItem.spec) addPointer(workItem.spec.path, coreText({ code: "brief.scope" }));
   if (ticket) addPointer(ticket.path, coreText({ code: "brief.ticketScope" }));

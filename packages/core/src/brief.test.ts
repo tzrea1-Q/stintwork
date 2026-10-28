@@ -101,6 +101,152 @@ function input(files: Record<string, string> = contents): BriefInput {
   };
 }
 
+test("GitHub ticket brief uses issue identities and read-only explicit-repository commands", () => {
+  const github = {
+    repository: "owner/repo",
+    repositoryId: "R_1",
+    parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+    ticket: { number: 8, url: "https://github.com/owner/repo/issues/8", id: "I_8" },
+    blockers: [9, 10],
+    fetchedAt: "2026-10-28T12:00:00Z",
+  };
+  const brief = compileBrief({
+    ...input(),
+    workItem: { slug: "github-7", spec: null },
+    github: { ...github, worktreePath: "/tmp/worktree" },
+  });
+  expect(brief.prompt).toContain(
+    "- Work in the worktree at /tmp/worktree on branch stintwork/github-7.",
+  );
+  expect(brief.prompt).toContain("- Update issue status and comments");
+  expect(brief.prompt.startsWith(`/implement ${github.ticket.url}\n`)).toBe(true);
+  expect(brief.prompt).toContain(
+    "Working instructions:\n- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
+  );
+  expect(brief.prompt).toContain("- Keep the project checks green.");
+  expect(brief.prompt).toContain("- Finish only selected ticket #8.");
+  expect(brief.prompt).toContain("- Commit referencing the issue (#8); do not push.");
+  for (const expected of [
+    "github.com/owner/repo",
+    "R_1",
+    "I_7",
+    "I_8",
+    github.parent.url,
+    github.ticket.url,
+    github.fetchedAt,
+    "stintwork/github-7",
+    ...[7, 8, 9, 10].map((number) => `gh issue view ${number} -R owner/repo --comments`),
+  ])
+    expect(brief.prompt).toContain(expected);
+  for (const forbidden of [".scratch", "Status", "Brief preview", "The first stint"])
+    expect(brief.prompt).not.toContain(forbidden);
+});
+
+test("GitHub briefs preserve paths supplied in handoffs, notes, changes and worktrees", () => {
+  const path = ".scratch/notes/x.md";
+  const brief = compileBrief({
+    ...input(),
+    stage: builtInWorkflows.feature.stages[4],
+    lastHandoff: { stint: "s", agent: "codex", stoppedAt: path, unresolved: path, nextStep: path },
+    developerNotes: [{ id: "note", at: "2026-10-28", text: path }],
+    changedPaths: [path],
+    github: {
+      repository: "owner/repo",
+      repositoryId: "R_1",
+      parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+      blockers: [],
+      fetchedAt: "2026-10-28",
+      worktreePath: "/tmp/.scratch/project",
+    },
+  });
+  expect(brief.prompt.match(/\.scratch\/notes\/x\.md/g)).toHaveLength(5);
+  expect(brief.prompt).toContain("/tmp/.scratch/project");
+  expect(brief.pointers.map((pointer) => pointer.path)).not.toContain(specPath);
+  expect(brief.pointers.map((pointer) => pointer.path)).not.toContain(ticketPath);
+});
+
+test("GitHub review and planning briefs respect stage ownership", () => {
+  const github = {
+    repository: "owner/repo",
+    repositoryId: "R_1",
+    parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+    blockers: [],
+    fetchedAt: "2026-10-28T12:00:00Z",
+  };
+  const base = { ...input(), workItem: { slug: "github-7", spec: null }, ticket: null, github };
+  const review = compileBrief({
+    ...base,
+    stage: builtInWorkflows.feature.stages[4],
+    reviewRange: { mergeBase: "base", headCommit: "reviewed" },
+  }).prompt;
+  expect(review.startsWith("/code-review base...reviewed\n")).toBe(true);
+  expect(review).toContain("Review diff range: base...reviewed");
+  expect(review).toContain("Reviewed commit: reviewed");
+  expect(review).toContain(
+    "Do not implement fixes or change project files. Findings will be requested after the handoff.",
+  );
+  expect(review).not.toContain(`/code-review ${github.parent.url}`);
+  expect(review).not.toContain("Update issue status");
+  expect(review).toContain(
+    "- Do not change GitHub issues; findings are requested after the handoff.",
+  );
+
+  const ticketReview = compileBrief({
+    ...base,
+    stage: builtInWorkflows.feature.stages[4],
+    github: {
+      ...github,
+      ticket: { number: 8, url: "https://github.com/owner/repo/issues/8", id: "I_8" },
+    },
+  }).prompt;
+  expect(ticketReview).not.toContain("Finish only");
+  expect(ticketReview).not.toContain("Commit referencing");
+  expect(ticketReview).toContain("Do not implement fixes or change project files.");
+  expect(ticketReview).toContain("- Work on the Review stage for ticket #8 only.");
+  expect(ticketReview).toContain("- Leave stage gate approval to the developer.");
+  expect(ticketReview).toContain("- Do not push.");
+
+  for (const stage of [builtInWorkflows.feature.stages[0], builtInWorkflows.bug.stages[0]]) {
+    const prompt = compileBrief({ ...base, stage }).prompt;
+    expect(prompt).toContain(
+      "Working instructions:\n- Do not commit secrets (.env files, keys, credentials) or build output; leave them uncommitted and mention them in the handoff.",
+    );
+    expect(prompt).toContain("- Keep the project checks green.");
+    expect(prompt.toLowerCase()).not.toContain("publish");
+    expect(prompt).toContain(
+      "Settle open questions; record agreed terms in GLOSSARY.md and decisions in docs/adr/.",
+    );
+    expect(prompt).toContain("Do not write the spec or tickets");
+  }
+  const spec = compileBrief({ ...base, stage: builtInWorkflows.feature.stages[1] }).prompt;
+  const tickets = compileBrief({ ...base, stage: builtInWorkflows.feature.stages[2] }).prompt;
+  expect(spec).toContain("Publish the spec to the parent issue body");
+  expect(spec).not.toContain("Publish tickets");
+  expect(tickets).toContain("Publish tickets as direct sub-issues");
+  expect(tickets).not.toContain("Publish the spec");
+});
+
+test("GitHub tickets gate publishes direct sub-issues through the configured skill", () => {
+  const brief = compileBrief({
+    ...input(),
+    workItem: { slug: "github-7", spec: null },
+    ticket: null,
+    stage: builtInWorkflows.feature.stages[2],
+    github: {
+      repository: "owner/repo",
+      repositoryId: "R_1",
+      parent: { number: 7, url: "https://github.com/owner/repo/issues/7", id: "I_7" },
+      blockers: [],
+      fetchedAt: "2026-10-28T12:00:00Z",
+    },
+  });
+  expect(brief.prompt).toContain(
+    "Publish tickets as direct sub-issues through the configured tracker skill and gh",
+  );
+  expect(brief.prompt).toContain("gh api repos/owner/repo/issues/7/sub_issues");
+  expect(brief.prompt).not.toContain(".scratch");
+});
+
 test("compiles real file pointers with reasons and the validated prompt order", () => {
   const brief = compileBrief(input());
   expect(brief.skill).toBe("/implement");

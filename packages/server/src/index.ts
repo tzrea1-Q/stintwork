@@ -40,7 +40,11 @@ import {
   githubTrackerRepository,
   type GithubDiscovery,
 } from "./github-discovery.js";
-import { readGithubTickets } from "./github-tickets.js";
+import {
+  createDetailPublisher,
+  githubDetailCoolingDown,
+  readGithubTickets,
+} from "./github-tickets.js";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
@@ -83,8 +87,41 @@ export function createProjectServer(
   let cached: { viewer: string; origin: string; data: GithubDiscovery } | undefined;
   let knownRepository: { repository: string; repositoryId: string } | undefined;
   const knownIssues = new Map<number, string>();
+  function registerDetailIdentities(detail: Awaited<ReturnType<typeof readGithubTickets>>) {
+    const identities = new Map<number, string>();
+    for (const ticket of detail.tickets) {
+      for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {
+        const prior = identities.get(reference.number) ?? knownIssues.get(reference.number);
+        if (prior && prior !== reference.id) throw new GithubReadError("identity");
+        identities.set(reference.number, reference.id);
+      }
+    }
+    for (const [number, id] of identities) knownIssues.set(number, id);
+  }
   let discoveryRunning = false;
   let detailRunning = false;
+  const pendingStintDetails = new Set<number>();
+  function drainStintDetails() {
+    if (discoveryRunning || detailRunning) return;
+    const number = pendingStintDetails.values().next().value;
+    if (number === undefined) return;
+    pendingStintDetails.delete(number);
+    void refreshGithubDetail(number)
+      .then((status) => {
+        if (status === 429 && github) {
+          failGithubDetail(github, number, new GithubReadError("rate-limited", github.retryAt));
+          refresh();
+        }
+        drainStintDetails();
+      })
+      .catch((error: unknown) => {
+        if (github) {
+          failGithubDetail(github, number, error);
+          refresh();
+        }
+        drainStintDetails();
+      });
+  }
   const detailFailures = new Map<string, GithubReadError>();
   let discoveryFailure:
     | Pick<GithubDiscovery, "error" | "errorCode" | "retryAt" | "retryable">
@@ -485,6 +522,7 @@ export function createProjectServer(
     } finally {
       updateGithubFreshness();
       discoveryRunning = false;
+      drainStintDetails();
     }
   }
   let initialization: Promise<void> | undefined;
@@ -542,11 +580,8 @@ export function createProjectServer(
     refresh();
     return context.json(coreTextWire(snapshot));
   });
-  app.post("/api/github/items/:number/refresh", async (context) => {
-    const origin = context.req.header("origin");
-    if (origin && origin !== new URL(context.req.url).origin)
-      return context.text("Origin mismatch", 403);
-    const number = Number(context.req.param("number"));
+  const beginDetail = createDetailPublisher();
+  async function refreshGithubDetail(number: number) {
     const item = github?.items.find((entry) => entry.number === number);
     if (
       !item ||
@@ -556,12 +591,13 @@ export function createProjectServer(
       detailRunning ||
       discoveryRunning
     )
-      return context.text("Work item unavailable", 409);
+      return 409;
     detailRunning = true;
     const source = githubSource;
     const current = github;
     item.discoveryComplete ??= item.complete;
     let verified = false;
+    let publish: ReturnType<typeof beginDetail> | undefined;
     try {
       const currentOrigin = await githubOrigin(root);
       const viewer = await githubViewer(root);
@@ -575,8 +611,7 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       }
       verified = true;
-      if (github.retryAt && Date.parse(github.retryAt) > Date.now())
-        return context.json(coreTextWire(snapshot), 429);
+      if (githubDetailCoolingDown(github)) return 429;
       const repository = await githubTrackerRepository(root);
       if (
         repository.repositoryId !== current.repositoryId ||
@@ -585,23 +620,18 @@ export function createProjectServer(
         verified = false;
         throw new GithubReadError("identity");
       }
+      publish = beginDetail(number);
       const detail = await readGithubTickets(root, github.repository, item.id, number);
       if (github !== current || githubSource !== source) throw new GithubReadError("identity");
-      const identities = new Map<number, string>();
-      for (const ticket of detail.tickets) {
-        for (const reference of [{ number: ticket.number, id: ticket.id }, ...ticket.blockers]) {
-          const prior = identities.get(reference.number) ?? knownIssues.get(reference.number);
-          if (prior && prior !== reference.id) throw new GithubReadError("identity");
-          identities.set(reference.number, reference.id);
-        }
-      }
-      for (const [issueNumber, id] of identities) knownIssues.set(issueNumber, id);
-      item.detail = { ...detail, fetchedAt: new Date().toISOString() };
-      item.complete = item.discoveryComplete && detail.complete;
-      detailFailures.delete(item.id);
-      updateGithubFreshness();
+      registerDetailIdentities(detail);
+      publish(() => {
+        item.detail = { ...detail, fetchedAt: new Date().toISOString() };
+        item.complete = (item.discoveryComplete ?? item.complete) && detail.complete;
+        detailFailures.delete(item.id);
+        updateGithubFreshness();
+      });
       refresh();
-      return context.json(coreTextWire(snapshot));
+      return 200;
     } catch (error) {
       const failure = classifyGithubError(error);
       if (!verified) {
@@ -612,7 +642,8 @@ export function createProjectServer(
         detailFailures.clear();
       }
       if (github) {
-        failGithubDetail(current, number, failure);
+        if (publish) publish(() => failGithubDetail(current, number, failure));
+        else failGithubDetail(current, number, failure);
       } else {
         github = {
           repository: "",
@@ -629,13 +660,49 @@ export function createProjectServer(
         };
       }
       refresh();
-      return context.json(coreTextWire(snapshot), 503);
+      return 503;
     } finally {
       detailRunning = false;
+      drainStintDetails();
     }
+  }
+  app.post("/api/github/items/:number/refresh", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.text("Origin mismatch", 403);
+    const status = await refreshGithubDetail(Number(context.req.param("number")));
+    if (status === 409) return context.text("Work item unavailable", 409);
+    return context.json(coreTextWire(snapshot), status as 200 | 429 | 503);
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
-  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh);
+  const githubBriefSource = {
+    beginDetail,
+    getGithub: () => github,
+    getSnapshot: () => snapshot,
+    discoveryFailed: () => !!discoveryFailure,
+    verifyIdentity: async (expected: GithubDiscovery) => {
+      const source = githubSource;
+      if (!source || github !== expected) return false;
+      const valid = await verifyGithubGateIdentity(root, expected, source);
+      return valid && github === expected && githubSource === source;
+    },
+    detailFailed: failGithubDetail,
+    registerDetailIdentities: (
+      current: GithubDiscovery,
+      detail: Awaited<ReturnType<typeof readGithubTickets>>,
+    ) => {
+      if (github !== current) throw new GithubReadError("identity");
+      registerDetailIdentities(detail);
+    },
+    detailSucceeded: (current: GithubDiscovery, number: number) => {
+      if (github !== current) return;
+      const item = current.items.find((entry) => entry.number === number);
+      if (item) detailFailures.delete(item.id);
+      updateGithubFreshness();
+    },
+    refresh,
+  };
+  addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh, githubBriefSource);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles);
@@ -657,6 +724,11 @@ export function createProjectServer(
     checks.isActive,
     readReviewEvidence,
     (warning) => recoveryWarnings.push(warning),
+    githubBriefSource,
+    async (number) => {
+      pendingStintDetails.add(number);
+      drainStintDetails();
+    },
   );
   addGithubGateRoutes(
     app,

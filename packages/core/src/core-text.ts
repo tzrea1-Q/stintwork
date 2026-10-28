@@ -113,6 +113,8 @@ export const coreTextEnglish = {
   "brief.decision": template({ title: "string" }, ({ title }) => `Decision record: ${title}`),
   "brief.noSkill": "This stage has no stint skill.",
   "brief.ticketResolved": "This ticket is resolved.",
+  "brief.ticketCancelled": "This ticket is cancelled.",
+  "brief.ticketUnknown": "This ticket has an unknown state.",
   "brief.blockedBy": template(
     { tickets: "string" },
     ({ tickets }) => `Blocked by ticket ${tickets}.`,
