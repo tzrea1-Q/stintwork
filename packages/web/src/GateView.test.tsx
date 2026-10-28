@@ -82,6 +82,46 @@ test("Chinese gate translates its required path but keeps parser warnings verbat
   expect(screen.getByText("spec.md 存在且可解析")).toBeInTheDocument();
 });
 
+test.each([
+  [
+    "en",
+    "The GitHub parent issue body is empty",
+    "Edit parent issue on GitHub",
+    "Refresh GitHub evidence",
+  ],
+  ["zh-CN", "GitHub 父 Issue 的正文为空", "在 GitHub 上编辑父 Issue", "刷新 GitHub 证据"],
+])(
+  "empty GitHub Spec offers an issue link and refresh in %s",
+  (language, reason, link, refresh) => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = project("spec").workItems[0];
+    item.spec = null;
+    item.github = {
+      repository: "a/b",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://github.com/a/b/issues/1",
+      complete: true,
+      reviewDigest: "digest",
+      reviewHead: "head",
+    };
+    item.stages.clarify = { approved: { remoteState: "current" } };
+    item.stints = [{ ...stint, stage: "spec", ticket: null }];
+    render(
+      <LanguageProvider>
+        <GateView item={item} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(reason);
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("href", item.github.url);
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("target", "_blank");
+    expect(screen.getByRole("link", { name: link })).toHaveAttribute("rel", "noreferrer");
+    expect(screen.getByRole("button", { name: refresh })).toBeEnabled();
+    expect(screen.queryByText(/\.scratch\/github-1\/spec\.md/)).not.toBeInTheDocument();
+  },
+);
+
 function reviewItem() {
   const item = project("review").workItems[0];
   item.headCommit = "head";
@@ -467,9 +507,9 @@ for (const language of ["en", "zh-CN"] as const) {
                 unknown: "Approval status is unknown; GitHub evidence is unavailable.",
               }
             : {
-                current: "批准状态为当前。",
-                stale: "批准已过期；GitHub 证据已变化。",
-                unknown: "批准状态未知；无法获取 GitHub 证据。",
+                current: "批准仍然有效。",
+                stale: "GitHub 证据已变化，批准已过期。",
+                unknown: "无法获取 GitHub 证据，批准状态未知。",
               })[state],
         ),
       ).toBeInTheDocument();
@@ -498,7 +538,7 @@ for (const language of ["en", "zh-CN"] as const) {
       screen.getByText(
         language === "en"
           ? "Refresh complete GitHub evidence before approving."
-          : "批准前请刷新完整的 GitHub 证据。",
+          : "批准前请刷新 GitHub 证据，获取完整信息。",
       ),
     ).toBeInTheDocument();
   });
@@ -597,12 +637,12 @@ test.each(["en", "zh-CN"] as const)(
       screen.getByText(
         language === "en"
           ? /Approval is stale; GitHub evidence changed/
-          : /批准已过期；GitHub 证据已变化/,
+          : /GitHub 证据已变化，批准已过期/,
       ),
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        language === "en" ? /Approval status is unknown/ : /批准状态未知；无法获取 GitHub 证据/,
+        language === "en" ? /Approval status is unknown/ : /无法获取 GitHub 证据，批准状态未知/,
       ),
     ).toBeInTheDocument();
   },

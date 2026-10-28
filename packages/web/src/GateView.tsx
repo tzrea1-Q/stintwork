@@ -39,6 +39,10 @@ export function GateView({
   const github = item.github;
   const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
   const gate = gateReadiness(item, workflows);
+  const emptyGithubSpec =
+    !!github &&
+    item.spec === null &&
+    gate.conditions.some((condition) => condition.action.code === "gate.githubSpecRequired");
   const stages = workflows[item.workflow].stages;
   const position = stages.findIndex(({ id }) => id === item.stage);
   const current = stages[position];
@@ -143,6 +147,13 @@ export function GateView({
       ) : (
         <p>{t.stints.noWarnings}</p>
       )}
+      {emptyGithubSpec && github && (
+        <p>
+          <a href={github.url} target="_blank" rel="noreferrer">
+            {t.stints.githubOpenIssue}
+          </a>
+        </p>
+      )}
       {github && !reviewAvailable && <p>{t.stints.githubDetailRequired}</p>}
       {github &&
         stages
@@ -191,7 +202,7 @@ export function GateView({
           {t.stints.reopen(stageName(workflows[item.workflow], stage, t))}
         </Button>
       ))}
-      {github && (refreshNeeded || !reviewAvailable) && (
+      {github && (refreshNeeded || !reviewAvailable || emptyGithubSpec) && (
         <Button
           type="button"
           disabled={saving}

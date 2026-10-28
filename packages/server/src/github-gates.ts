@@ -154,7 +154,7 @@ export function addGithubGateRoutes(
       if (getSnapshot().github?.errorCode === "identity")
         return context.json(
           coreTextWire({
-            reason: "GitHub identity is ambiguous. Developer resolution is required.",
+            reason: coreText({ code: "gate.identityAmbiguous" }),
             code: "identity",
           }),
           409,
@@ -193,7 +193,7 @@ export function addGithubGateRoutes(
         if (!identityValid)
           return context.json(
             coreTextWire({
-              reason: "GitHub identity is ambiguous. Developer resolution is required.",
+              reason: coreText({ code: "gate.identityAmbiguous" }),
               code: "identity",
             }),
             409,
@@ -210,7 +210,7 @@ export function addGithubGateRoutes(
         )
           return context.json(
             coreTextWire({
-              reason: "GitHub identity is ambiguous. Developer resolution is required.",
+              reason: coreText({ code: "gate.identityAmbiguous" }),
               code: "identity",
             }),
             409,

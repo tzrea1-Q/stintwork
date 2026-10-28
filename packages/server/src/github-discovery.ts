@@ -2,7 +2,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { shipGit } from "./pull-requests.js";
-import { githubWorkflowPath, type RepoFiles } from "@stintwork/core";
+import { coreTextEnglish, githubWorkflowPath, type RepoFiles } from "@stintwork/core";
 import { parseDocument } from "yaml";
 
 const execute = promisify(execFile);
@@ -25,7 +25,7 @@ const errorMessages: Record<GithubErrorCode, string> = {
   "server-error": "GitHub could not be reached. Showing stale data when available.",
   incomplete: "Results are incomplete; dependencies and approvals may be unknown.",
   cap: "Results are incomplete; a connection reached its safety cap.",
-  identity: "GitHub identity is ambiguous. Developer resolution is required.",
+  identity: coreTextEnglish["gate.identityAmbiguous"],
 };
 export class GithubReadError extends Error {
   constructor(

@@ -169,7 +169,7 @@ export function createProjectServer(
       } catch {
         item.bound = false;
         data.complete = false;
-        data.error = "GitHub identity is ambiguous. Developer resolution is required.";
+        data.error = new GithubReadError("identity").message;
         data.errorCode = "identity";
       }
     }
@@ -199,7 +199,7 @@ export function createProjectServer(
           ...safeGithub,
           items: [],
           complete: false,
-          error: "GitHub identity is ambiguous. Developer resolution is required.",
+          error: new GithubReadError("identity").message,
           errorCode: "identity",
         };
       }

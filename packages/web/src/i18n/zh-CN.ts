@@ -640,12 +640,13 @@ export const zhCN: Catalog = {
     gate: (name) => joinChinese(name, "关卡"),
     gateConditions: (name) => joinChinese(name, "关卡条件"),
     readyToApprove: "可批准",
-    githubDetailRequired: "批准前请刷新完整的 GitHub 证据。",
+    githubDetailRequired: "批准前请刷新 GitHub 证据，获取完整信息。",
     githubRefresh: "刷新 GitHub 证据",
+    githubOpenIssue: "在 GitHub 上编辑父 Issue",
     githubApproval: {
-      current: "批准状态为当前。",
-      stale: "批准已过期；GitHub 证据已变化。",
-      unknown: "批准状态未知；无法获取 GitHub 证据。",
+      current: "批准仍然有效。",
+      stale: "GitHub 证据已变化，批准已过期。",
+      unknown: "无法获取 GitHub 证据，批准状态未知。",
     },
     ready: "已就绪",
     blocked: "受阻",
@@ -923,6 +924,9 @@ export const zhCN: Catalog = {
     "gate.manualApproval": "由开发者批准，无需输出文件",
     "gate.approve": "审阅此阶段，确认满意后批准。",
     "gate.specOutput": "spec.md 存在且可解析",
+    "gate.githubSpecOutput": "GitHub 父 Issue 的正文不为空",
+    "gate.githubSpecRequired":
+      "GitHub 父 Issue 的正文为空。请在 GitHub 上编辑正文，然后刷新 GitHub 证据。",
     "gate.writeSpec": ({ path, warning }) =>
       joinChinese("编写或编辑 ", path, "，加入非空的 # 标题。", warning ? ` ${warning}` : ""),
     "gate.ticketsOutput": "至少有一个工单，没有工单警告，且依赖顺序有效",
@@ -1006,6 +1010,8 @@ export const zhCN: Catalog = {
     "memory.activeWrite": "此工作项有活跃的 Stint 或审查写入。",
     "agent.activeWrite": "此工作项已有活跃的 Stint 或工作流写入。",
     "review.activeWrite": "此工作项有活跃的 Stint、检查或审查写入。",
+    "gate.identityAmbiguous":
+      "GitHub 账号或仓库与 Stintwork 的记录不再一致。请检查 gh 登录的是哪个账号，以及仓库是否已重命名或转移，然后刷新 GitHub 证据。",
     "gate.detailUnavailable": "无法获取完整的 GitHub 证据。",
     "gate.evidenceChanged": "GitHub 证据在审阅后发生了变化。",
     "gate.headChanged": "工作树 HEAD 在审阅后发生了变化。",

@@ -392,7 +392,10 @@ test.each([
       action,
     );
     expect(response.status).toBe(409);
-    expect((await response.json()).code).toBe("identity");
+    expect(await response.json()).toMatchObject({
+      code: "identity",
+      reasonMessage: { code: "gate.identityAmbiguous" },
+    });
   }
   expect(git("rev-list", "--count", "HEAD")).toBe("2");
 });
@@ -488,7 +491,10 @@ test("refuses a mismatched record in an unbound worktree", async () => {
   writeFileSync(join(worktree, path), existing);
   const response = await request();
   expect(response.status).toBe(409);
-  expect((await response.json()).code).toBe("identity");
+  expect(await response.json()).toMatchObject({
+    code: "identity",
+    reasonMessage: { code: "gate.identityAmbiguous" },
+  });
   expect(readFileSync(join(worktree, path), "utf8")).toBe(existing);
 });
 

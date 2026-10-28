@@ -19,6 +19,8 @@ Extend the existing workflow and gate path to the issue-keyed worktree file and 
 
 ## Comments
 
+**Codex, 2026-10-28:** Empty GitHub parent bodies now show an issue-specific Spec requirement, an external issue link and a refresh action; local Spec guidance is unchanged. GitHub gate identity refusals use bilingual catalog text, and approval and refresh copy was reviewed in Chinese. Regression tests cover the recovery, refusal and catalogs. Format, lint, typecheck, web/core/git Vitest (1,720 tests) and the GitHub gate server tests (28 tests) passed. No commit was made.
+
 **Codex, 2026-10-28:** Failed fresh reads before approval or reopen now invalidate the affected item's cached detail and publish the updated snapshot. Transient failures retain stale detail and make approvals unknown; identity mismatches clear retained detail, including the discovery fallback. The same failure handling applies to post-commit reads and preceding-approval checks. No commit was made.
 
 **Codex, 2026-10-28:** GitHub workflow writes now refuse an existing untracked record without changing it; absent records still create and commit, and failed creates roll back. Empty or whitespace-only GitHub parent bodies no longer satisfy the Spec gate, with the same refusal reason as local missing output. Regression tests cover these cases and nonempty bodies. Format, lint, typecheck, web/core/git Vitest (1,717 tests) and workflow-writes Vitest (13 tests) passed. No commit was made.

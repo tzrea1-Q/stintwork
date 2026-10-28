@@ -73,6 +73,9 @@ export const coreTextEnglish = {
   "gate.manualApproval": "Developer approval; no file output required",
   "gate.approve": "Review the stage and approve when satisfied.",
   "gate.specOutput": "spec.md exists and parses",
+  "gate.githubSpecOutput": "The GitHub parent issue body is not empty",
+  "gate.githubSpecRequired":
+    "The GitHub parent issue body is empty. Edit it on GitHub, then refresh GitHub evidence.",
   "gate.writeSpec": template(
     { path: "string", warning: "string" },
     ({ path, warning }) =>
@@ -191,6 +194,8 @@ export const coreTextEnglish = {
   "memory.activeWrite": "A stint or review write is active for this work item.",
   "agent.activeWrite": "A stint or workflow write is already active for this work item.",
   "review.activeWrite": "A stint, check or review write is active for this work item.",
+  "gate.identityAmbiguous":
+    "The GitHub account or repository no longer matches Stintwork's records. Check which account gh is signed in to and whether the repository was renamed or transferred, then refresh GitHub evidence.",
   "gate.detailUnavailable": "Complete GitHub evidence is unavailable.",
   "gate.evidenceChanged": "GitHub evidence changed since review.",
   "gate.headChanged": "The worktree HEAD changed since review.",

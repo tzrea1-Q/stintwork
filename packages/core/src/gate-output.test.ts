@@ -54,9 +54,9 @@ test.each([
   const gate = gateReadiness(item);
   expect(gate.ready).toBe(ready);
   if (!ready) {
-    const local = project("spec").item;
-    local.slug = item.slug;
-    expect(gate.reason).toEqual(gateReadiness(local).reason);
+    expect(gate.reason?.code).toBe("gate.githubSpecRequired");
+    expect(gate.conditions[0].label.code).toBe("gate.githubSpecOutput");
+    expect(gateReadiness(project("spec").item).reason?.code).toBe("gate.writeSpec");
   }
   expect(gateReadiness(project("spec", { [specPath]: "# Spec" }).item).ready).toBe(true);
 });

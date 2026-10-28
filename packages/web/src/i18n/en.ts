@@ -625,6 +625,7 @@ export const en = {
     readyToApprove: "Ready to approve",
     githubDetailRequired: "Refresh complete GitHub evidence before approving.",
     githubRefresh: "Refresh GitHub evidence",
+    githubOpenIssue: "Edit parent issue on GitHub",
     githubApproval: {
       current: "Approval is current.",
       stale: "Approval is stale; GitHub evidence changed.",

@@ -273,3 +273,12 @@ test("Chinese catalogs have exactly the English keys and translated, nonempty en
   }
   check(en, zhCN);
 });
+
+test("GitHub gate identity refusal is available in both catalogs", () => {
+  expect(en.coreText["gate.identityAmbiguous"]).toBe(
+    "The GitHub account or repository no longer matches Stintwork's records. Check which account gh is signed in to and whether the repository was renamed or transferred, then refresh GitHub evidence.",
+  );
+  expect(zhCN.coreText["gate.identityAmbiguous"]).toBe(
+    "GitHub 账号或仓库与 Stintwork 的记录不再一致。请检查 gh 登录的是哪个账号，以及仓库是否已重命名或转移，然后刷新 GitHub 证据。",
+  );
+});
