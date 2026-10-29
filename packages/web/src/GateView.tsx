@@ -196,7 +196,8 @@ export function GateView({
             "stateReason" in approval &&
             approval.stateReason === "head-changed" ? (
             <p key={stage.id}>
-              {stageName(workflows[item.workflow], stage, t)}: {t.stints.localApprovalStale}
+              {stageName(workflows[item.workflow], stage, t)}:{" "}
+              {t.stints.localApprovalStale(stageName(workflows[item.workflow], stage, t))}
             </p>
           ) : null;
         })}

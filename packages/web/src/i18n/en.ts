@@ -654,7 +654,8 @@ export const en = {
     gateApproved: (name: string) => `Gate approved. Stage advances to ${name}.`,
     localApprovalStaleAfterApprove: (name: string) =>
       `Gate approved, but HEAD changed while the approval was recorded. The approval is stale; reopen ${name} to review the newer commits.`,
-    localApprovalStale: "Approval is stale; HEAD changed while it was recorded.",
+    localApprovalStale: (name: string) =>
+      `Approval is stale; HEAD changed while it was recorded. Reopen ${name} to review the newer commits.`,
     gateReopened: (name: string) => `${name} reopened.`,
     gate: (name: string) => `${name} gate`,
     gateConditions: (name: string) => `${name} gate conditions`,

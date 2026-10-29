@@ -672,7 +672,8 @@ export const zhCN: Catalog = {
         name,
         "以审查较新的提交。",
       ),
-    localApprovalStale: "批准已过期；记录批准时 HEAD 已变化。",
+    localApprovalStale: (name) =>
+      joinChinese("批准已过期；记录批准时 HEAD 已变化。请重新开启", name, "以审查较新的提交。"),
     gateReopened: (name) => joinChinese(name, "已重新开启。"),
     gate: (name) => joinChinese(name, "关卡"),
     gateConditions: (name) => joinChinese(name, "关卡条件"),

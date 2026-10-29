@@ -685,8 +685,11 @@ test.each([
 );
 
 test.each([
-  ["en", "Implement: Approval is stale; HEAD changed while it was recorded."],
-  ["zh-CN", "实现: 批准已过期；记录批准时 HEAD 已变化。"],
+  [
+    "en",
+    "Implement: Approval is stale; HEAD changed while it was recorded. Reopen Implement to review the newer commits.",
+  ],
+  ["zh-CN", "实现: 批准已过期；记录批准时 HEAD 已变化。请重新开启实现以审查较新的提交。"],
 ])("a projected stale local approval is listed with its stage (%s)", (language, line) => {
   localStorage.setItem(languageStorageKey, language);
   const item = project("review", true).workItems[0];
@@ -707,6 +710,44 @@ test.each([
     </LanguageProvider>,
   );
   expect(screen.queryByText(line)).not.toBeInTheDocument();
+});
+
+test.each([
+  [
+    "en",
+    "Implement: Approval is stale; HEAD changed while it was recorded. Reopen Implement to review the newer commits.",
+    "Reopen Implement",
+  ],
+  [
+    "zh-CN",
+    "实现: 批准已过期；记录批准时 HEAD 已变化。请重新开启实现以审查较新的提交。",
+    "重新开启实现",
+  ],
+])("local stale approval survives the stage advance (%s)", (language, line, reopen) => {
+  localStorage.setItem(languageStorageKey, language);
+  const item = project().workItems[0];
+  const { rerender } = render(
+    <LanguageProvider>
+      <GateView key={item.stage} item={item} />
+    </LanguageProvider>,
+  );
+  const advanced = project("review").workItems[0];
+  advanced.stages.implement = {
+    approved: {
+      by: "You",
+      at: "2026-10-09T10:00:00Z",
+      commit: "checkpoint",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  rerender(
+    <LanguageProvider>
+      <GateView key={advanced.stage} item={advanced} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(line)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: reopen })).toBeInTheDocument();
 });
 
 test("local gate keeps its original request and confirmation", async () => {

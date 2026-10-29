@@ -108,6 +108,7 @@ const samples: Record<string, unknown[][]> = {
   "stints.ticket": [[null], [1]],
   "stints.gateApproved": [["Stage 自定义"], ["审查"]],
   "stints.localApprovalStaleAfterApprove": [["Stage 自定义"], ["审查"]],
+  "stints.localApprovalStale": [["Stage 自定义"], ["审查"]],
   "stints.gateReopened": [["Stage 自定义"]],
   "stints.gate": [["Stage 自定义"]],
   "stints.gateConditions": [["Stage 自定义"]],
