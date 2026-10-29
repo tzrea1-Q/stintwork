@@ -263,6 +263,18 @@ test("local approve reopen approve matches main workflow bytes", async () => {
   mkdirSync(join(root, ".scratch/local"), { recursive: true });
   const path = join(root, ".scratch/local/workflow.yaml");
   writeFileSync(path, "workflow: feature\nstage: spec\n");
+  execFileSync("git", ["-C", root, "add", ".scratch/local/workflow.yaml"]);
+  execFileSync("git", [
+    "-C",
+    root,
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.com",
+    "commit",
+    "-qm",
+    "workflow",
+  ]);
   const operations = [
     ["spec", "approve", "2026-01-01T00:00:00Z", "a"],
     ["tickets", "reopen", "2026-01-02T00:00:00Z", "b"],
@@ -295,3 +307,79 @@ stages:
       commit: b
 `);
 });
+
+for (const [name, kind] of [
+  ["local write refuses a staged workflow edit without touching file or index", "staged"],
+  ["local write refuses an unstaged workflow edit without touching file or index", "unstaged"],
+  ["local write refuses a partially staged workflow and keeps its index state", "partial"],
+  ["local write refuses an untracked existing workflow without changing it", "untracked"],
+] as const) {
+  test(name, async () => {
+    const root = repo();
+    const path = ".scratch/local/workflow.yaml";
+    const file = join(root, path);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+    mkdirSync(join(root, ".scratch/local"), { recursive: true });
+    writeFileSync(join(root, ".scratch/local/spec.md"), "# Local\n");
+    git("add", ".scratch/local/spec.md");
+    git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "directory");
+    writeFileSync(file, "workflow: feature\nstage: spec\n");
+    if (kind !== "untracked") {
+      git("add", path);
+      git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "workflow");
+      if (kind !== "unstaged") {
+        writeFileSync(file, "workflow: feature\nstage: spec\n# staged\n");
+        git("add", path);
+      }
+      if (kind !== "staged") writeFileSync(file, `${readFileSync(file, "utf8")}# unstaged\n`);
+    }
+    const bytes = readFileSync(file);
+    const index = git("ls-files", "--stage", "--", path);
+    const blob = kind === "partial" ? git("show", `:${path}`) : undefined;
+    const head = git("rev-parse", "HEAD");
+    let called = false;
+    await expect(
+      saveWorkItemWorkflow(
+        root,
+        "local",
+        (text) => {
+          called = true;
+          return `${text}changed: true\n`;
+        },
+        "update",
+      ),
+    ).rejects.toMatchObject({ coreText: { code: "workflow.dirtyFile" } });
+    expect(called).toBe(false);
+    expect(readFileSync(file)).toEqual(bytes);
+    expect(git("ls-files", "--stage", "--", path)).toBe(index);
+    if (blob !== undefined) expect(git("show", `:${path}`)).toBe(blob);
+    expect(git("rev-parse", "HEAD")).toBe(head);
+  });
+}
+
+for (const [name, existing] of [
+  ["local write commits a clean workflow", true],
+  ["local write creates and commits a new workflow", false],
+] as const) {
+  test(name, async () => {
+    const root = repo();
+    const path = ".scratch/local/workflow.yaml";
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+    mkdirSync(join(root, ".scratch/local"), { recursive: true });
+    writeFileSync(join(root, ".scratch/local/spec.md"), "# Local\n");
+    if (existing) writeFileSync(join(root, path), "workflow: feature\n");
+    git("add", ".scratch/local");
+    git("-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-qm", "fixture");
+    const commit = await saveWorkItemWorkflow(
+      root,
+      "local",
+      () => "workflow: feature\nstage: spec\n",
+      "update",
+    );
+    expect(commit).toMatch(/^[a-f0-9]{40,64}$/);
+    expect(git("show", `HEAD:${path}`)).toBe(readFileSync(join(root, path), "utf8"));
+    expect(git("status", "--porcelain", "--", path)).toBe("");
+  });
+}

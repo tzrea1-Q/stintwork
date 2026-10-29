@@ -11,6 +11,23 @@ import {
   type GithubDiscovery,
 } from "./github-discovery.js";
 
+function checkWorkflowIndex(root: string, relative: string) {
+  const indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
+    cwd: root,
+    encoding: "utf8",
+  }).trim();
+  if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
+    throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
+  for (const args of [["--cached", "HEAD"], []])
+    if (
+      execFileSync("git", ["diff", "--no-ext-diff", "--name-only", "-z", ...args, "--", relative], {
+        cwd: root,
+      }).length
+    )
+      throw new CoreTextError({ code: "workflow.dirtyFile" });
+  return indexEntry;
+}
+
 export async function saveGithubWorkflow(
   root: string,
   discovery: GithubDiscovery,
@@ -29,22 +46,7 @@ export async function saveGithubWorkflow(
   )
     throw new GithubReadError("identity");
   return withRepoLock(root, async () => {
-    const indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
-      cwd: root,
-      encoding: "utf8",
-    }).trim();
-    if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
-      throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
-    for (const args of [["--cached", "HEAD"], []]) {
-      if (
-        execFileSync(
-          "git",
-          ["diff", "--no-ext-diff", "--name-only", "-z", ...args, "--", relative],
-          { cwd: root },
-        ).length
-      )
-        throw new CoreTextError({ code: "workflow.dirtyFile" });
-    }
+    const indexEntry = checkWorkflowIndex(root, relative);
     let directory = root;
     for (const part of relative.split("/").slice(0, -1)) {
       directory = join(directory, part);
@@ -139,16 +141,11 @@ export async function saveWorkItemWorkflow(
   const path = join(root, relative);
   let existing: string | undefined;
   let written = "";
-  let indexEntry = "";
+  const indexEntry = checkWorkflowIndex(root, relative);
   const changed = writeWorkItemWorkflow(root, slug, (text) => {
     existing = text;
+    if (text !== undefined && !indexEntry) throw new CoreTextError({ code: "workflow.dirtyFile" });
     written = update(text);
-    indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
-      cwd: root,
-      encoding: "utf8",
-    }).trim();
-    if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
-      throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
     return written;
   });
   try {

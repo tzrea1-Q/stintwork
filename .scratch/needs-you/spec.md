@@ -95,7 +95,7 @@ Answering an item acts immediately and removes it. When a new item arrives, the 
   - Clarify, Spec and Tickets are ready when their stage stint has finished with a handoff.
   - Review is ready when its stint finished.
 
-  The server exposes approve and reopen actions. Approve writes the approval and the next stage into `workflow.yaml`, committing it on the work item branch when a worktree exists (ADR 0009) or writing it in the main checkout otherwise. It refuses while a stint is running. Checks-based gates (CI, test results) move to M4 with review.
+  The server exposes approve and reopen actions. Approve writes the approval and the next stage into `workflow.yaml`, committing it on the work item branch when a worktree exists (ADR 0009) or writing it in the main checkout otherwise. It refuses while a stint is running. Stintwork refuses to change `workflow.yaml` while it has staged, unstaged or untracked changes and asks the developer to commit or discard them first; a missing file is created. Checks-based gates (CI, test results) move to M4 with review.
 - **Stage-level stints.** Stints can start on any stage whose skill is defined, with or without a ticket. The brief for a stage-level stint points at the work item's spec (or "no spec yet") and invokes the stage's skill. One active stint per work item still applies.
 - **Agents.** `agents` keeps its agent-neutral interface and adds two launchers:
   - Claude Code through `@agentclientprotocol/claude-agent-acp`, pinned, run against the developer's installed `claude` executable and login;
