@@ -611,6 +611,58 @@ test.each([
   expect(screen.queryByText(/42 issues scanned/)).not.toBeInTheDocument();
 });
 
+test("keeps the GitHub drawer open while its item is redacted", async () => {
+  const snapshot = githubProject();
+  if (!snapshot.github) throw new Error("Missing GitHub snapshot");
+  snapshot.workItems = [{ ...snapshot.workItems[0], slug: "github-1" }];
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  await userEvent.click(screen.getByRole("button", { name: /^Open github-1:/ }));
+  expect(new URL(window.location.href).searchParams.get("item")).toBe("github-1");
+  const redacted = {
+    ...snapshot,
+    workItems: [],
+    github: { ...snapshot.github, verifying: true },
+  };
+  rerender(<Board snapshot={redacted} />);
+  expect(screen.getByRole("dialog", { name: "Verifying GitHub account…" })).toBeVisible();
+  expect(new URL(window.location.href).searchParams.get("item")).toBe("github-1");
+  rerender(<Board snapshot={snapshot} />);
+  expect(screen.getByRole("dialog")).toHaveTextContent(snapshot.workItems[0].title);
+  rerender(<Board snapshot={{ ...redacted, github: { ...redacted.github, verifying: false } }} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(new URL(window.location.href).searchParams.has("item")).toBe(false);
+});
+
+test.each([
+  [
+    "en",
+    "GitHub could not be reached. Showing stale data when available.",
+    "Retry",
+    "Verifying GitHub account…",
+  ],
+  ["zh-CN", "无法连接 GitHub。如有旧数据，将显示旧数据。", "重试", "正在验证 GitHub 账号…"],
+])("redacted GitHub errors offer recovery in %s", (language, error, retry, verifying) => {
+  localStorage.setItem(languageStorageKey, language);
+  const snapshot = githubProject();
+  if (!snapshot.github) throw new Error("Missing GitHub snapshot");
+  snapshot.workItems = [];
+  snapshot.github = {
+    ...snapshot.github,
+    verifying: true,
+    discoveryFailed: true,
+    error: "offline",
+    errorCode: "offline",
+  };
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(error)).toBeVisible();
+  expect(screen.getByRole("button", { name: retry })).toBeEnabled();
+  expect(screen.getByText(verifying)).toBeVisible();
+});
+
 test("GitHub fresh and partial status expose keyboard actions", async () => {
   const user = userEvent.setup();
   const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));

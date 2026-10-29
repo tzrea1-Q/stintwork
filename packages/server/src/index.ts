@@ -405,8 +405,8 @@ export function createProjectServer(
     const origin = await githubOrigin(root).catch(() => undefined);
     if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
-    if (!origin && !githubRateLimitCoolingDown(github)) return false;
-    if (!origin || origin.toLowerCase() !== source.origin.toLowerCase()) {
+    if (!origin) return false;
+    if (origin.toLowerCase() !== source.origin.toLowerCase()) {
       if (githubRateLimitCoolingDown(github)) {
         clearGithubIdentity();
         return false;
@@ -420,6 +420,7 @@ export function createProjectServer(
     if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
     if (local && local === source.viewer.login) return true;
+    if (!local) return false;
     if (githubRateLimitCoolingDown(github)) {
       clearGithubIdentity();
       return false;
@@ -496,7 +497,7 @@ export function createProjectServer(
         }
         const local = origin ? await localViewer() : "";
         if (lifetime.signal.aborted || githubSource !== source) return;
-        if (wasOffline && local !== source.viewer.login) {
+        if (wasOffline && local && local !== source.viewer.login) {
           trackerGeneration++;
           clearGithub();
           refresh();
@@ -757,7 +758,7 @@ export function createProjectServer(
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
           if (lifetime.signal.aborted || generation !== trackerGeneration) return;
-          if (wasOffline && local !== githubSource.viewer.login) {
+          if (wasOffline && local && local !== githubSource.viewer.login) {
             trackerGeneration++;
             clearGithub();
             return;
@@ -872,10 +873,7 @@ export function createProjectServer(
     if (
       githubRateLimitCoolingDown(github) &&
       githubSource &&
-      (path.startsWith("/api/github/discovery/") ||
-        path === "/api/stints" ||
-        path.includes("/brief-preview") ||
-        path.includes("/gates/"))
+      (path === "/api/stints" || path.includes("/brief-preview") || path.includes("/gates/"))
     ) {
       if (!(await verifyOfflineViewer())) return context.json(coreTextWire(publicSnapshot()), 503);
     }
@@ -995,7 +993,7 @@ export function createProjectServer(
             githubSource !== source
           )
             return 409;
-          if (wasOffline && local !== source.viewer.login) {
+          if (wasOffline && local && local !== source.viewer.login) {
             trackerGeneration++;
             clearGithub();
             return 409;

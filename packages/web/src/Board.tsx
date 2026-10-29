@@ -19,6 +19,7 @@ import { stageName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
+import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
 export function Board({
   snapshot,
@@ -45,6 +46,7 @@ export function Board({
   const scroll = useRef<HTMLElement>(null);
   const stageScroll = useRef<HTMLDivElement>(null);
   const openItem = snapshot.workItems.find((item) => item.slug === openSlug);
+  const verifyingItem = !!openSlug && githubTracker && !!snapshot.github?.verifying && !openItem;
   const milestone = snapshot.milestones.some((entry) => entry.id === selectedMilestone)
     ? selectedMilestone
     : "";
@@ -76,11 +78,11 @@ export function Board({
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (openItem) url.searchParams.set("item", openItem.slug);
+    if (openSlug && (openItem || verifyingItem)) url.searchParams.set("item", openSlug);
     else url.searchParams.delete("item");
     window.history.replaceState(window.history.state, "", url);
 
-    if (!openItem && previousItem.current) {
+    if (!openItem && !verifyingItem && previousItem.current) {
       setOpenSlug(null);
       const card = Array.from(
         scroll.current?.querySelectorAll<HTMLButtonElement>("[data-work-item]") ?? [],
@@ -89,8 +91,8 @@ export function Board({
       if (lane) lane.open = true;
       (card ?? document.getElementById("command-palette-trigger"))?.focus();
     }
-    previousItem.current = openItem?.slug ?? null;
-  }, [openItem]);
+    if (!verifyingItem) previousItem.current = openItem?.slug ?? null;
+  }, [openItem, openSlug, verifyingItem]);
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
@@ -100,7 +102,14 @@ export function Board({
         setPaletteOpen((open) => !open);
         return;
       }
-      if (openItem || paletteOpen || needsYouOpen || !(event.target instanceof HTMLElement)) return;
+      if (
+        openItem ||
+        verifyingItem ||
+        paletteOpen ||
+        needsYouOpen ||
+        !(event.target instanceof HTMLElement)
+      )
+        return;
       if (
         event.target.closest(
           "input, textarea, select, [contenteditable]:not([contenteditable=false]), dialog[open]",
@@ -152,7 +161,7 @@ export function Board({
       document.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("popstate", handlePopstate);
     };
-  }, [openItem, paletteOpen, needsYouOpen, createOpen, customiseId, githubTracker]);
+  }, [openItem, verifyingItem, paletteOpen, needsYouOpen, createOpen, customiseId, githubTracker]);
 
   return (
     <div className="pipeline-app flex h-dvh min-w-0 flex-col">
@@ -281,7 +290,9 @@ export function Board({
             )}
           </div>
         )}
-        {githubTracker && !snapshot.github?.verifying && <GithubStatus github={snapshot.github} />}
+        {githubTracker && (!snapshot.github?.verifying || snapshot.github.error) && (
+          <GithubStatus github={snapshot.github} />
+        )}
         <section
           className="board-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
           ref={scroll}
@@ -430,6 +441,19 @@ export function Board({
           onClose={() => setOpenSlug(null)}
           onCustomiseWorkflow={setCustomiseId}
         />
+      )}
+      {verifyingItem && (
+        <Sheet
+          open
+          onOpenChange={(open) => {
+            if (!open) setOpenSlug(null);
+          }}
+        >
+          <SheetContent aria-describedby={undefined}>
+            <SheetTitle>{t.board.verifyingGithub}</SheetTitle>
+            <Button onClick={() => setOpenSlug(null)}>{t.stints.closeWorkItem}</Button>
+          </SheetContent>
+        </Sheet>
       )}
       {paletteOpen && (
         <CommandPalette
