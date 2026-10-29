@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AttentionItem } from "@stintwork/core";
+import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useRef, useState } from "react";
 import { en, type Catalog } from "./i18n/en";
 import { useLanguage, type Language } from "./i18n/language";
+import { stageName } from "./i18n/workflow-names";
 
 const preferenceKey = "stintwork.attention-notifications";
 
@@ -38,7 +39,20 @@ export function attentionTitle(
   }
 }
 
-export function useAttentionAlerts(items: AttentionItem[], projectName: string) {
+export function attentionStageName(
+  item: AttentionItem,
+  snapshot: Pick<ProjectSnapshot, "workItems" | "workflows">,
+  t: Catalog,
+) {
+  if (item.kind !== "gate-ready" && item.kind !== "approval-stale") return undefined;
+  const workItem = snapshot.workItems.find(({ slug }) => slug === item.workItem);
+  const workflow = workItem && snapshot.workflows[workItem.workflow];
+  const stage = workflow?.stages.find(({ id }) => id === item.stage);
+  return workflow && stage ? stageName(workflow, stage, t) : item.stage;
+}
+
+export function useAttentionAlerts(snapshot: ProjectSnapshot) {
+  const { attentionItems: items, name: projectName, workItems, workflows } = snapshot;
   const { t, language } = useLanguage();
   const [enabled, setEnabled] = useState(() => {
     try {
@@ -76,7 +90,13 @@ export function useAttentionAlerts(items: AttentionItem[], projectName: string) 
       ) {
         try {
           new Notification(t.needsYou.notificationTitle(projectName), {
-            body: attentionTitle(item, t, language),
+            body: attentionTitle(
+              item,
+              t,
+              language,
+              undefined,
+              attentionStageName(item, { workItems, workflows }, t),
+            ),
             tag: item.id,
           });
         } catch {
@@ -85,7 +105,7 @@ export function useAttentionAlerts(items: AttentionItem[], projectName: string) 
       }
       seen.current.add(item.id);
     }
-  }, [items, enabled, supported, projectName, t, language]);
+  }, [items, enabled, supported, projectName, t, language, workItems, workflows]);
 
   async function toggle() {
     if (!supported || requesting) return;

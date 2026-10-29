@@ -9,7 +9,7 @@ import { PermissionAnswer } from "./PermissionAnswer";
 import { HandoffAnswer } from "./HandoffAnswer";
 import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
-import { attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
+import { attentionStageName, attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
 import {
   CoreTextError,
   readResponseJson,
@@ -345,7 +345,8 @@ export function NeedsYouQueue({
           <footer className="needs-you-footer shrink-0 border-t border-border bg-surface p-4 text-xs wrap-anywhere sm:p-6 [&_p]:mt-2">
             {answerError && (
               <p role="alert" className="warning text-warning">
-                {answerItem && `${attentionTitle(answerItem, t, language)}: `}
+                {answerItem &&
+                  `${attentionTitle(answerItem, t, language, undefined, attentionStageName(answerItem, snapshot, t))}: `}
                 {answerError}
               </p>
             )}

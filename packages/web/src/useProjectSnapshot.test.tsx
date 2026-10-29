@@ -1192,3 +1192,28 @@ test("accepts stale approval attention over HTTP and live snapshots", async () =
   expect(result.current.snapshot).toEqual(next);
   expect(result.current.connection).toBe("live");
 });
+
+test("accepts a stale approval with an invalid timestamp over HTTP and live snapshots", async () => {
+  const next = mixedAttentionSnapshot();
+  next.workItems[0].stage = "tickets";
+  next.workItems[0].column = "tickets";
+  next.workItems[0].stages.spec = {
+    approved: {
+      by: "Developer",
+      at: "not a date",
+      commit: "abc",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  next.attentionItems = deriveAttentionItems(next);
+  expect(next.attentionItems).toContainEqual(
+    expect.objectContaining({ kind: "approval-stale", raisedAt: "1970-01-01T00:00:00.000Z" }),
+  );
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot(next));
+  expect(result.current.snapshot).toEqual(next);
+  expect(result.current.connection).toBe("live");
+});

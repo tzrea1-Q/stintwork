@@ -228,7 +228,7 @@ for (const language of ["en", "zh-CN"] as const) {
         snapshot.attentionItems = [
           {
             kind: "approval-stale",
-            id: `approval-stale:${JSON.stringify([item.slug, "spec"])}`,
+            id: `approval-stale:${JSON.stringify([item.slug, "spec", "2026-10-29T12:00:00Z", "abc"])}`,
             workItem: item.slug,
             stage: "spec",
             ticket: null,

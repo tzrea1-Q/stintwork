@@ -354,7 +354,7 @@ test("only stale local approvals before the current stage need attention", () =>
       ticket: null,
       stintId: null,
       agent: null,
-      id: 'approval-stale:["first","spec"]',
+      id: 'approval-stale:["first","spec","2026-10-29T12:00:00Z","abc"]',
       title: "Spec approval is stale",
       details:
         "HEAD changed while the approval was recorded. Reopen Spec to review the newer commits.",
@@ -381,4 +381,26 @@ test("only stale local approvals before the current stage need attention", () =>
     complete: true,
   };
   expect(stale()).toEqual([]);
+});
+
+test("stale approval identity changes with the recorded approval and invalid dates fall back", () => {
+  const workItem = item("tickets");
+  const approved = {
+    by: "Developer",
+    at: "2026-10-29T12:00:00Z",
+    commit: "abc",
+    state: "stale",
+    stateReason: "head-changed",
+  };
+  workItem.stages.spec = { approved };
+  const stale = () =>
+    deriveAttentionItems({ workItems: [workItem] }).find(({ kind }) => kind === "approval-stale");
+  const first = stale();
+  approved.at = "2026-10-29T12:01:00Z";
+  expect(stale()?.id).not.toBe(first?.id);
+  const second = stale();
+  approved.commit = "def";
+  expect(stale()?.id).not.toBe(second?.id);
+  approved.at = "not a date";
+  expect(stale()?.raisedAt).toBe("1970-01-01T00:00:00.000Z");
 });

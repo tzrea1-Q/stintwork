@@ -41,7 +41,7 @@ export function Board({
   const [createOpen, setCreateOpen] = useState(false);
   const [customiseId, setCustomiseId] = useState<string | null>(null);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
-  const alerts = useAttentionAlerts(snapshot.attentionItems, snapshot.name);
+  const alerts = useAttentionAlerts(snapshot);
   const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
   const stageScroll = useRef<HTMLDivElement>(null);

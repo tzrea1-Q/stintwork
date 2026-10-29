@@ -134,15 +134,16 @@ export function deriveStaleApprovalAttentionItems(
         !("state" in approval) ||
         approval.state !== "stale" ||
         !("stateReason" in approval) ||
-        approval.stateReason !== "head-changed" ||
-        !("at" in approval) ||
-        typeof approval.at !== "string"
+        approval.stateReason !== "head-changed"
       )
         return [];
+      const at = "at" in approval && typeof approval.at === "string" ? approval.at : "";
+      const commit =
+        "commit" in approval && typeof approval.commit === "string" ? approval.commit : "";
       return [
         {
           kind: "approval-stale" as const,
-          id: `approval-stale:${JSON.stringify([item.slug, id])}`,
+          id: `approval-stale:${JSON.stringify([item.slug, id, at, commit])}`,
           workItem: item.slug,
           stage: id,
           ticket: null,
@@ -150,7 +151,7 @@ export function deriveStaleApprovalAttentionItems(
           agent: null,
           title: `${name} approval is stale`,
           details: `HEAD changed while the approval was recorded. Reopen ${name} to review the newer commits.`,
-          raisedAt: approval.at,
+          raisedAt: Number.isFinite(Date.parse(at)) ? at : "1970-01-01T00:00:00.000Z",
         },
       ];
     });
