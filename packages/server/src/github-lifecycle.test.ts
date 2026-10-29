@@ -128,6 +128,77 @@ test.each(["changed", "logout", "offline"])(
   },
 );
 
+test("offline discovery cannot authorize an unavailable viewer", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-discovery-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+      "config get": { stdout: "101" },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    expect((await get()).github.items).toHaveLength(1);
+    await gh.script({
+      ...replies,
+      "api graphql": { code: 1, effect: "process.stderr.write('network error')" },
+    });
+    const failed = await (
+      await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+    ).json();
+    expect(failed.github.errorCode).toBe("offline");
+    now += 60_001;
+    await gh.script({
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('ambiguous authentication')" },
+    });
+    const before = (await gh.calls()).filter(
+      ({ args }) => args[0] === "api" && args[1] === "user",
+    ).length;
+    await get();
+    await expect
+      .poll(
+        async () =>
+          (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length,
+      )
+      .toBeGreaterThan(before);
+    await expect.poll(async () => (await get()).github.items).toEqual([]);
+    expect((await get()).github).toMatchObject({ errorCode: "offline", items: [] });
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.each([
   ["same", { stdout: "101" }, true],
   ["different", { stdout: "202" }, false],
