@@ -36,6 +36,8 @@ const scenarios = [
   "detail-first",
   "discovery-first",
   "isolated-details",
+  "cooldown",
+  "detail-cooldown",
 ] as const;
 
 test.each(scenarios)(
@@ -148,7 +150,8 @@ test.each(scenarios)(
       });
       const replies = {
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
+        "config get": { stdout: "101" },
         "api repos/github/gh-aw": { stdout: repo },
         "api graphql":
           scenario === "load-more"
@@ -173,7 +176,9 @@ test.each(scenarios)(
       };
       await gh.script(replies);
       const { createProjectServer } = await import("./index.js");
-      const server = createProjectServer(root, join(root, "web"));
+      const server = createProjectServer(root, join(root, "web"), {
+        githubViewerIntervalMs: scenario === "cooldown" ? 100 : undefined,
+      });
       try {
         live.messages.length = 0;
         const initial = await (
@@ -195,10 +200,119 @@ test.each(scenarios)(
         ]);
         expect(broadcast?.workItems[0]).toEqual(initial.workItems[0]);
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
+        if (scenario === "cooldown") {
+          await server.start();
+          live.messages.length = 0;
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw": {
+              code: 1,
+              effect:
+                "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 60\\n')",
+            },
+          });
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          const discoveryCalls = await gh.calls();
+          const repositoryCall =
+            discoveryCalls.length -
+            1 -
+            [...discoveryCalls]
+              .reverse()
+              .findIndex(({ args }) => args[0] === "api" && args[1] === "repos/github/gh-aw");
+          expect(
+            discoveryCalls
+              .slice(repositoryCall + 1)
+              .some(({ args }) => args[0] === "api" && args[1] === "user"),
+          ).toBe(false);
+          await expect
+            .poll(() =>
+              live.messages.some((message) => {
+                const snapshot = JSON.parse(message);
+                return (
+                  snapshot.github?.errorCode === "rate-limited" &&
+                  snapshot.github.stale &&
+                  snapshot.workItems.length === 1
+                );
+              }),
+            )
+            .toBe(true);
+          const before = (await gh.calls()).length;
+          const response = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(response.status).toBe(429);
+          expect(await response.json()).toMatchObject({
+            reason: expect.stringContaining("GitHub rate limit reached"),
+            github: { errorCode: "rate-limited" },
+          });
+          expect((await gh.calls()).slice(before).every(({ args }) => args[0] === "config")).toBe(
+            true,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 350));
+          expect(
+            (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
+          ).toHaveLength(
+            discoveryCalls.filter(({ args }) => args[0] === "api" && args[1] === "user").length,
+          );
+          return;
+        }
+        if (scenario === "detail-cooldown") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              code: 1,
+              effect:
+                "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 60\\n')",
+            },
+          });
+          const failed = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(failed.status).toBe(503);
+          const failure = await failed.json();
+          expect(failure.github).toMatchObject({
+            errorCode: "rate-limited",
+            retryAt: expect.any(String),
+          });
+          const before = (await gh.calls()).length;
+          const blocked = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(blocked.status).toBe(429);
+          expect(await blocked.json()).toMatchObject({
+            reason: expect.stringContaining("GitHub rate limit reached"),
+          });
+          expect((await gh.calls()).slice(before).every(({ args }) => args[0] === "config")).toBe(
+            true,
+          );
+          await gh.script(replies);
+          const clock = vi
+            .spyOn(Date, "now")
+            .mockReturnValue(Date.parse(failure.github.retryAt) + 1);
+          try {
+            const recovered = await server.app.request("/api/github/items/1433/refresh", {
+              method: "POST",
+            });
+            expect(recovered.status).toBe(200);
+            expect(
+              (await gh.calls())
+                .slice(before)
+                .some(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+            ).toBe(true);
+          } finally {
+            clock.mockRestore();
+          }
+          return;
+        }
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
         if (scenario === "isolated-details") {
           type Snapshot = {
-            github: { stale: boolean; complete: boolean; errorCode?: string };
+            github: {
+              stale: boolean;
+              discoveryFailed: boolean;
+              complete: boolean;
+              errorCode?: string;
+            };
             workItems: {
               github: { number: number };
               tickets: { status: string; blocked: boolean }[];
@@ -240,6 +354,7 @@ test.each(scenarios)(
             },
           });
           const detailFailed = await post("/api/github/items/1533/refresh");
+          expect(detailFailed.github.discoveryFailed).toBe(false);
           expectKnown(detailFailed, 1433);
           expectUnknown(detailFailed, 1533);
           await gh.script(replies);
@@ -251,6 +366,7 @@ test.each(scenarios)(
           const discoveryFailed = await post("/api/github/discovery/refresh");
           expect(discoveryFailed.github).toMatchObject({
             stale: true,
+            discoveryFailed: true,
             complete: false,
             errorCode: "server-error",
           });
@@ -260,6 +376,7 @@ test.each(scenarios)(
           const retryWithDiscoveryFailure = await post("/api/github/items/1433/refresh");
           expect(retryWithDiscoveryFailure.github).toMatchObject({
             stale: true,
+            discoveryFailed: true,
             complete: false,
             errorCode: "server-error",
           });
@@ -345,7 +462,9 @@ test.each(scenarios)(
         });
         await gh.script({
           "auth status": {},
-          "api user": { stdout: scenario === "viewer" ? "202" : "101" },
+          "api user": {
+            stdout: scenario === "viewer" ? { id: 202, login: "202" } : { id: 101, login: "101" },
+          },
           [`api repos/${newRepo.full_name}`]: { stdout: newRepo },
           "api graphql": scenario === "load-more" ? morePages : { stdout: refreshPage },
         });
@@ -372,7 +491,7 @@ test.each(scenarios)(
           if (scenario === "load-more") {
             await gh.script({
               "auth status": {},
-              "api user": { stdout: "101" },
+              "api user": { stdout: { id: 101, login: "101" } },
               "api repos/github/gh-aw": { stdout: repo },
               "api graphql": { stdout: page([]) },
             });

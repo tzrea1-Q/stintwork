@@ -196,6 +196,22 @@ export const coreTextEnglish = {
   "memory.activeWrite": "A stint or review write is active for this work item.",
   "agent.activeWrite": "A stint or workflow write is already active for this work item.",
   "review.activeWrite": "A stint, check or review write is active for this work item.",
+  "github.labelledChildExcluded": template(
+    { issue: "string" },
+    ({ issue }) => `Issue #${issue}: labelled child excluded.`,
+  ),
+  "github.childrenExcluded": template(
+    { issue: "string" },
+    ({ issue }) => `Issue #${issue}: cross-repository or nested children excluded.`,
+  ),
+  "github.relationshipCap": template(
+    { issue: "string" },
+    ({ issue }) => `Issue #${issue}: relationship safety cap reached.`,
+  ),
+  "github.relationshipIncomplete": template(
+    { issue: "string" },
+    ({ issue }) => `Issue #${issue}: relationship unavailable or incomplete.`,
+  ),
   "gate.identityAmbiguous":
     "The GitHub account or repository no longer matches Stintwork's records. Check which account gh is signed in to and whether the repository was renamed or transferred, then refresh GitHub evidence.",
   "gate.detailUnavailable": "Complete GitHub evidence is unavailable.",

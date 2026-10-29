@@ -574,3 +574,341 @@ test("shows an effort without inventing a stage or spec and handles Escape", asy
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(card).toHaveFocus();
 });
+
+function githubProject() {
+  const snapshot = project();
+  snapshot.setup.tracker = "github-issues";
+  snapshot.github = {
+    repository: "example/project",
+    repositoryId: "R_1",
+    items: [],
+    scanned: 42,
+    cursor: null,
+    complete: true,
+    pages: [],
+    warnings: [],
+    fetchedAt: "2026-10-28T12:00:00Z",
+  };
+  return snapshot;
+}
+
+test.each([
+  ["en", "Verifying GitHub account…", "No work items yet"],
+  ["zh-CN", "正在验证 GitHub 账号…", "还没有工作项"],
+])("redacted GitHub snapshot shows verification in %s", (language, verifying, empty) => {
+  localStorage.setItem(languageStorageKey, language);
+  const snapshot = githubProject();
+  snapshot.workItems = [];
+  if (!snapshot.github) throw new Error("Missing GitHub snapshot");
+  snapshot.github = { ...snapshot.github, verifying: true, complete: true };
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(verifying)).toBeVisible();
+  expect(screen.queryByText(empty)).not.toBeInTheDocument();
+  expect(screen.queryByText(/42 issues scanned/)).not.toBeInTheDocument();
+});
+
+test("keeps the GitHub drawer open while its item is redacted", async () => {
+  const snapshot = githubProject();
+  if (!snapshot.github) throw new Error("Missing GitHub snapshot");
+  snapshot.workItems = [{ ...snapshot.workItems[0], slug: "github-1" }];
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  await userEvent.click(screen.getByRole("button", { name: /^Open github-1:/ }));
+  expect(new URL(window.location.href).searchParams.get("item")).toBe("github-1");
+  const redacted = {
+    ...snapshot,
+    workItems: [],
+    github: { ...snapshot.github, verifying: true },
+  };
+  rerender(<Board snapshot={redacted} />);
+  expect(screen.getByRole("dialog", { name: "Verifying GitHub account…" })).toBeVisible();
+  expect(new URL(window.location.href).searchParams.get("item")).toBe("github-1");
+  rerender(<Board snapshot={snapshot} />);
+  expect(screen.getByRole("dialog")).toHaveTextContent(snapshot.workItems[0].title);
+  rerender(<Board snapshot={{ ...redacted, github: { ...redacted.github, verifying: false } }} />);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(new URL(window.location.href).searchParams.has("item")).toBe(false);
+});
+
+test.each([
+  [
+    "en",
+    "GitHub could not be reached. Showing stale data when available.",
+    "Retry",
+    "Verifying GitHub account…",
+  ],
+  ["zh-CN", "无法连接 GitHub。如有旧数据，将显示旧数据。", "重试", "正在验证 GitHub 账号…"],
+])("redacted GitHub errors offer recovery in %s", (language, error, retry, verifying) => {
+  localStorage.setItem(languageStorageKey, language);
+  const snapshot = githubProject();
+  if (!snapshot.github) throw new Error("Missing GitHub snapshot");
+  snapshot.workItems = [];
+  snapshot.github = {
+    ...snapshot.github,
+    verifying: true,
+    discoveryFailed: true,
+    error: "offline",
+    errorCode: "offline",
+  };
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(error)).toBeVisible();
+  expect(screen.getByRole("button", { name: retry })).toBeEnabled();
+  expect(screen.getByText(verifying)).toBeVisible();
+});
+
+test("GitHub fresh and partial status expose keyboard actions", async () => {
+  const user = userEvent.setup();
+  const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+  const snapshot = githubProject();
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  const region = screen.getByRole("status", { name: "GitHub discovery status" });
+  expect(within(region).getByText(/Fetched .*42 issues scanned/)).toBeInTheDocument();
+  const refresh = within(region).getByRole("button", { name: "Refresh" });
+  refresh.focus();
+  await user.tab({ shift: true });
+  await user.tab();
+  expect(refresh).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith("/api/github/discovery/refresh", { method: "POST" }),
+  );
+  snapshot.github = { ...snapshot.github!, complete: false, cursor: "next" };
+  rerender(<Board snapshot={snapshot} />);
+  expect(
+    within(region).getByText("Results are incomplete; dependencies and approvals may be unknown."),
+  ).toBeInTheDocument();
+  refresh.focus();
+  await user.tab();
+  expect(within(region).getByRole("button", { name: "Load more" })).toHaveFocus();
+  await user.keyboard("{Enter}");
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenCalledWith("/api/github/discovery/load-more", { method: "POST" }),
+  );
+});
+
+test("stale data is visible and stint start is disabled with a reason", async () => {
+  const snapshot = githubProject();
+  snapshot.github = {
+    ...snapshot.github!,
+    stale: true,
+    discoveryFailed: true,
+    error: "server error",
+    errorCode: "offline",
+  };
+  render(<Board snapshot={snapshot} />);
+  expect(screen.getByText(/Last successful fetch:/)).toBeInTheDocument();
+  expect(
+    screen.getByText("GitHub could not be reached. Showing stale data when available."),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
+  await userEvent.click(screen.getByRole("button", { name: /^Open board:/ }));
+  const start = screen.getAllByRole("button", { name: "Start stint" })[0];
+  expect(start).toBeDisabled();
+  expect(start).toHaveAccessibleDescription(
+    "GitHub data is stale. Refresh before starting a stint or approving a gate.",
+  );
+});
+
+test("unavailable and rate limited discovery never looks empty", () => {
+  const snapshot = githubProject();
+  snapshot.workItems = [];
+  snapshot.github = {
+    ...snapshot.github!,
+    fetchedAt: undefined,
+    repositoryId: "",
+    error: "limit",
+    errorCode: "rate-limited",
+    discoveryFailed: true,
+    retryAt: "2099-01-01T00:00:00Z",
+  };
+  render(<Board snapshot={snapshot} />);
+  expect(screen.getByText("GitHub issues unavailable")).toBeInTheDocument();
+  expect(screen.queryByText("No work items yet")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeDisabled();
+  expect(screen.getByText(/^Retry after/)).toBeInTheDocument();
+});
+
+test.each([
+  ["gh-missing", "未安装 GitHub CLI。请安装 `gh` 后重试。"],
+  ["login", "GitHub 登录不可用。请通过 `gh` 登录后重试。"],
+  ["unavailable", "仓库或 Issue 不可用。请检查仓库和访问权限后重试。"],
+  ["rate-limited", "已达到 GitHub 速率限制。请在提示的时间后重试。"],
+  ["offline", "无法连接 GitHub。如有旧数据，将显示旧数据。"],
+  ["server-error", "无法连接 GitHub。如有旧数据，将显示旧数据。"],
+  ["incomplete", "结果不完整；依赖关系和审批状态可能未知。"],
+  ["cap", "结果不完整；连接已达到安全上限。"],
+  ["identity", "无法验证 GitHub 身份。请刷新后继续。"],
+])("GitHub %s error is translated", (code, message) => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const snapshot = githubProject();
+  snapshot.github = {
+    ...snapshot.github!,
+    fetchedAt: undefined,
+    repositoryId: "",
+    error: "English server error",
+    errorCode: code,
+  };
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(message)).toBeInTheDocument();
+  expect(screen.queryByText("English server error")).not.toBeInTheDocument();
+  localStorage.removeItem(languageStorageKey);
+});
+
+test("local tracker has no GitHub discovery status", () => {
+  render(<Board snapshot={project()} />);
+  expect(screen.queryByRole("status", { name: "GitHub discovery status" })).not.toBeInTheDocument();
+});
+
+test("retry becomes available after the rate limit expires", async () => {
+  const snapshot = githubProject();
+  snapshot.github = {
+    ...snapshot.github!,
+    repositoryId: "",
+    fetchedAt: undefined,
+    error: "limit",
+    errorCode: "rate-limited",
+    discoveryFailed: true,
+    retryAt: new Date(Date.now() + 200).toISOString(),
+  };
+  render(<Board snapshot={snapshot} />);
+  const retry = screen.getByRole("button", { name: "Retry" });
+  expect(retry).toBeDisabled();
+  await waitFor(() => expect(retry).toBeEnabled());
+});
+
+test.each([false, true])(
+  "drawer freshness is scoped to each item; discovery failure=%s",
+  async (discoveryFailed) => {
+    const snapshot = githubProject();
+    snapshot.github = {
+      ...snapshot.github!,
+      stale: true,
+      discoveryFailed,
+      items: [
+        {
+          id: "A",
+          number: 1,
+          title: "A",
+          url: "https://example.com/1",
+          complete: true,
+          detail: { spec: "", tickets: [], stale: true },
+        },
+        {
+          id: "B",
+          number: 2,
+          title: "B",
+          url: "https://example.com/2",
+          complete: true,
+          detail: { spec: "", tickets: [] },
+        },
+      ],
+    };
+    for (const [slug, id, number] of [
+      ["board", "A", 1],
+      ["next", "B", 2],
+    ] as const) {
+      const item = snapshot.workItems.find((entry) => entry.slug === slug)!;
+      item.github = {
+        repository: "example/project",
+        repositoryId: "R_1",
+        issueId: id,
+        number,
+        url: `https://example.com/${number}`,
+        complete: true,
+        bound: true,
+      };
+    }
+    const user = userEvent.setup();
+    const { rerender } = render(<Board snapshot={snapshot} />);
+    await user.click(screen.getByRole("button", { name: /^Open board:/ }));
+    expect(screen.getAllByRole("button", { name: "Start stint" })[0]).toBeDisabled();
+    snapshot.github.items[0].detail = undefined;
+    snapshot.github.items[0].detailFailed = true;
+    rerender(<Board snapshot={snapshot} />);
+    expect(screen.getAllByRole("button", { name: "Start stint" })[0]).toBeDisabled();
+    await user.keyboard("{Escape}");
+    await user.click(screen.getByRole("button", { name: /^Open next:/ }));
+    const start = screen.getAllByRole("button", { name: "Start stint" })[0];
+    if (discoveryFailed) expect(start).toBeDisabled();
+    else expect(start).toBeEnabled();
+  },
+);
+
+test.each([
+  ["en", "Tickets not loaded", "Tickets may be outdated"],
+  ["zh-CN", "工单未加载", "工单可能已过时"],
+])(
+  "GitHub cards distinguish unloaded, stale and loaded tickets in %s",
+  (language, unloaded, outdated) => {
+    localStorage.setItem(languageStorageKey, language);
+    const github = {
+      repository: "example/project",
+      repositoryId: "R",
+      scanned: 1,
+      cursor: null,
+      complete: true,
+      pages: [],
+      warnings: [],
+      items: [
+        {
+          id: "I",
+          number: 1,
+          title: "Parent",
+          url: "https://github.com/example/project/issues/1",
+          complete: true,
+        },
+      ],
+    };
+    const files = createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub",
+    });
+    const snapshot = () => indexProject(files, { name: "Remote", github });
+    const { rerender } = render(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    const card = () => screen.getByRole("article", { name: /^github-1:/ });
+    expect(within(card()).getByText(unloaded)).toBeInTheDocument();
+    expect(within(card()).queryByText(/0\/0/)).not.toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
+    const detail = { spec: "", tickets: [], stale: true };
+    github.items[0] = { ...github.items[0], detail } as (typeof github.items)[0];
+    rerender(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    expect(within(card()).getByText(outdated)).toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
+    detail.stale = false;
+    github.items[0] = { ...github.items[0], detailFailed: true } as (typeof github.items)[0];
+    rerender(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    expect(within(card()).getByText(outdated)).toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
+    github.items[0] = { ...github.items[0], detailFailed: false } as (typeof github.items)[0];
+    rerender(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    expect(within(card()).getByText(/0\/0/)).toBeInTheDocument();
+    expect(within(card()).getByRole("progressbar")).toBeInTheDocument();
+    localStorage.removeItem(languageStorageKey);
+  },
+);

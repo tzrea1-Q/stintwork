@@ -21,8 +21,8 @@ type Issue = {
 };
 type Comment = { id: number; node_id: string; body: string };
 
-export function githubDetailCoolingDown(github: { retryAt?: string }) {
-  return !!github.retryAt && Date.parse(github.retryAt) > Date.now();
+export function githubRateLimitCoolingDown(github: { retryAt?: string } | undefined) {
+  return !!github?.retryAt && Date.parse(github.retryAt) > Date.now();
 }
 
 export function createDetailPublisher() {

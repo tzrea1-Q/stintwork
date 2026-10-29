@@ -9,7 +9,8 @@ import {
   type Warning,
 } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
@@ -21,7 +22,7 @@ import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
 import { ShipActions } from "./ShipActions";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
-import { ticketStatus, useLanguage } from "./i18n/language";
+import { ticketStatus, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
@@ -66,8 +67,12 @@ export function WorkItemDrawer({
   warnings = [],
   workflows = builtInWorkflows,
   onCustomiseWorkflow,
+  githubReadOnly = false,
+  githubRetryAt,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
+  githubRetryAt?: string;
   milestone?: Milestone;
   onClose: () => void;
   agents?: AgentProfile[];
@@ -76,6 +81,45 @@ export function WorkItemDrawer({
   onCustomiseWorkflow?: (id: string) => void;
 }) {
   const { t } = useLanguage();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshAttempt, setRefreshAttempt] = useState(0);
+  const [refreshError, setRefreshError] = useErrorText();
+  const refreshed = useRef<number>();
+  const githubNumber = item.github?.number;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Retry intentionally restarts this effect.
+  useEffect(() => {
+    if (githubNumber === undefined || refreshed.current === githubNumber) return;
+    const number = githubNumber;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    async function attempt(count: number) {
+      const delay = githubRetryAt ? Date.parse(githubRetryAt) - Date.now() : 0;
+      if (delay > 0) {
+        setRefreshing(false);
+        timer = setTimeout(() => void attempt(count), Math.min(delay, 2_147_483_647));
+        return;
+      }
+      setRefreshing(true);
+      setRefreshError("");
+      try {
+        await refreshGithubItem(number, t.stints.changeGateFailed);
+        if (!cancelled) refreshed.current = number;
+      } catch (cause) {
+        if (cancelled) return;
+        if (cause instanceof GithubRefreshConflict && count < 3) {
+          timer = setTimeout(() => void attempt(count + 1), 250 * count);
+          return;
+        }
+        setRefreshError(cause instanceof Error ? cause : t.stints.changeGateFailed);
+      }
+      if (!cancelled) setRefreshing(false);
+    }
+    void attempt(1);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [githubNumber, githubRetryAt, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
@@ -179,6 +223,19 @@ export function WorkItemDrawer({
               </div>
             )}
           </header>
+          {refreshing && (
+            <p role="status" className="px-4 text-sm text-muted sm:px-7">
+              {t.board.githubStatus.pending}
+            </p>
+          )}
+          {refreshError && (
+            <div className="px-4 text-sm text-warning sm:px-7">
+              <p role="alert">{refreshError}</p>
+              <Button variant="secondary" onClick={() => setRefreshAttempt((count) => count + 1)}>
+                {t.board.githubStatus.retry}
+              </Button>
+            </div>
+          )}
           {item.stage && !item.merged ? (
             <StageAgentRail key={item.slug} item={item} workflows={workflows} />
           ) : !item.merged ? (
@@ -232,6 +289,7 @@ export function WorkItemDrawer({
                 key={item.github ? item.slug : `${item.slug}:${item.stage}`}
                 item={item}
                 warnings={warnings}
+                githubReadOnly={githubReadOnly}
                 workflows={workflows}
               />
             )}
@@ -242,7 +300,11 @@ export function WorkItemDrawer({
                   <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
                     {t.stints.stageStint(stage ? stageName(workflow, stage, t) : "")}
                   </h3>
-                  <StageBriefPreview item={item} workflows={workflows} />
+                  <StageBriefPreview
+                    item={item}
+                    workflows={workflows}
+                    githubReadOnly={githubReadOnly}
+                  />
                 </section>
               )}
             <section id="drawer-spec" aria-labelledby="drawer-spec-title">
@@ -329,7 +391,12 @@ export function WorkItemDrawer({
                         </details>
                         <FilePath path={ticket.path} />
                         {!item.merged && (
-                          <TicketBriefPreview item={item} ticket={ticket} workflows={workflows} />
+                          <TicketBriefPreview
+                            item={item}
+                            ticket={ticket}
+                            workflows={workflows}
+                            githubReadOnly={githubReadOnly}
+                          />
                         )}
                       </li>
                     );

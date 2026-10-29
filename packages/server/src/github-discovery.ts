@@ -37,8 +37,15 @@ export class GithubReadError extends Error {
 }
 export function classifyGithubError(error: unknown): GithubReadError {
   if (error instanceof GithubReadError) return error;
-  const value = error as { code?: unknown; stderr?: unknown; stdout?: unknown } | null;
+  const value = error as {
+    code?: unknown;
+    stderr?: unknown;
+    stdout?: unknown;
+    killed?: unknown;
+    signal?: unknown;
+  } | null;
   if (value?.code === "ENOENT") return new GithubReadError("gh-missing");
+  if (value?.killed && value.signal === "SIGTERM") return new GithubReadError("offline");
   const detail = `${typeof value?.stderr === "string" ? value.stderr : ""}\n${typeof value?.stdout === "string" ? value.stdout.slice(0, 8192) : ""}`;
   if (/rate limit|secondary rate/i.test(detail)) {
     const seconds = /^retry-after:\s*(\d+)/im.exec(detail)?.[1];
@@ -56,7 +63,7 @@ export function classifyGithubError(error: unknown): GithubReadError {
     );
   }
   if (/HTTP 5\d\d|server error/i.test(detail)) return new GithubReadError("server-error");
-  if (/network|connect|timed? out|could not resolve|no such host|ENOTFOUND/i.test(detail))
+  if (/network|connect|timed? out|timeout|could not resolve|no such host|ENOTFOUND/i.test(detail))
     return new GithubReadError("offline");
   return new GithubReadError("unavailable");
 }
@@ -88,9 +95,13 @@ export async function githubOrigin(root: string) {
   return `${match[1]}/${match[2]}`;
 }
 
-export async function githubViewer(root: string): Promise<string> {
+export async function githubViewer(
+  root: string,
+  signal?: AbortSignal,
+): Promise<{ id: number; login: string }> {
   const options = {
     cwd: root,
+    signal,
     timeout: 60_000,
     maxBuffer: 1024 * 1024,
     env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
@@ -98,17 +109,49 @@ export async function githubViewer(root: string): Promise<string> {
   try {
     await execute("gh", ["auth", "status", "--active", "--hostname", "github.com"], options);
   } catch (error) {
-    if ((error as { code?: unknown })?.code === "ENOENT") throw new GithubReadError("gh-missing");
-    throw new GithubReadError("login");
+    const failure = classifyGithubError(error);
+    if (failure.code !== "unavailable") throw failure;
+    const value = error as { stderr?: unknown; stdout?: unknown };
+    const detail =
+      `${typeof value.stderr === "string" ? value.stderr : ""}\n${typeof value.stdout === "string" ? value.stdout : ""}`.trim();
+    if (
+      !detail ||
+      detail === "{}" ||
+      /not logged in|not logged into|no accounts|token[^\n]*invalid|authentication failed/i.test(
+        detail,
+      )
+    )
+      throw new GithubReadError("login");
+    throw failure;
   }
   try {
-    const { stdout } = await execute("gh", ["api", "user", "--jq", ".id"], options);
-    const id = stdout.trim();
-    if (!/^[1-9][0-9]*$/.test(id)) throw new GithubReadError("login");
-    return id;
+    const { stdout } = await execute(
+      "gh",
+      ["api", "user", "--jq", "{id: .id, login: .login}"],
+      options,
+    );
+    const { id, login } = JSON.parse(stdout) as { id: unknown; login: unknown };
+    if (
+      !Number.isSafeInteger(id) ||
+      (id as number) <= 0 ||
+      typeof login !== "string" ||
+      !/^[a-z\d](?:[a-z\d-]{0,37}[a-z\d])?$/i.test(login)
+    )
+      throw new GithubReadError("login");
+    return { id: id as number, login: login.toLowerCase() };
   } catch (error) {
     throw classifyGithubError(error);
   }
+}
+
+export async function githubLocalViewer(root: string): Promise<string> {
+  const { stdout } = await execute("gh", ["config", "get", "user", "-h", "github.com"], {
+    cwd: root,
+    timeout: 60_000,
+    maxBuffer: 1024 * 1024,
+    env: { ...process.env, GH_PROMPT_DISABLED: "1", GH_HOST: "github.com" },
+  });
+  return stdout.trim().toLowerCase();
 }
 
 export async function githubTrackerRepository(root: string) {
@@ -170,6 +213,7 @@ export type GithubDiscovery = {
     complete: boolean;
     bound?: boolean;
     provisional?: boolean;
+    detailFailed?: boolean;
     discoveryComplete?: boolean;
     detail?: {
       fetchedAt: string;
@@ -203,10 +247,20 @@ export type GithubDiscovery = {
   retryable?: boolean;
   membershipIncomplete?: boolean;
   warnings: string[];
+  warningMessages?: ({
+    code:
+      | "github.labelledChildExcluded"
+      | "github.childrenExcluded"
+      | "github.relationshipCap"
+      | "github.relationshipIncomplete";
+    params: { issue: string };
+  } | null)[];
   error?: string;
   errorCode?: GithubErrorCode;
   retryAt?: string;
   stale?: boolean;
+  discoveryFailed?: boolean;
+  verifying?: boolean;
   fetchedAt?: string;
 };
 
@@ -475,6 +529,18 @@ export async function discoverGithubWorkItems(
     result.errorCode = failure.code;
     if (failure.retryAt) result.retryAt = failure.retryAt;
   }
+  result.warningMessages = result.warnings.map((warning) => {
+    const match = /^Issue #(\d+): (.+)\.$/.exec(warning);
+    if (!match) return null;
+    const codes = {
+      "labelled child excluded": "github.labelledChildExcluded",
+      "cross-repository or nested children excluded": "github.childrenExcluded",
+      "relationship safety cap reached": "github.relationshipCap",
+      "relationship unavailable or incomplete": "github.relationshipIncomplete",
+    } as const;
+    const code = codes[match[2] as keyof typeof codes];
+    return code ? { code, params: { issue: match[1] } } : null;
+  });
   result.items.sort((a, b) => a.number - b.number);
   return result;
 }

@@ -78,7 +78,7 @@ test.each(["parent", "child", "blocker", "network"] as const)(
       process.env.PATH = gh.path;
       const replies = () => ({
         "auth status": {},
-        "api user": { stdout: "101" },
+        "api user": { stdout: { id: 101, login: "101" } },
         "api repos/github/spec-kit": { stdout: repo },
         "api graphql": { stdout: page },
         "api repos/github/spec-kit/issues/5000": { stdout: parent },
@@ -150,7 +150,7 @@ test.each(["parent", "child", "blocker", "network"] as const)(
           });
           await gh.script({
             "auth status": {},
-            "api user": { stdout: "101" },
+            "api user": { stdout: { id: 101, login: "101" } },
             "api repos/github/spec-kit": {
               code: 1,
               effect: "process.stderr.write('network unreachable')",

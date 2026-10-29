@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Button } from "./ui/Button";
+import { refreshGithubItem } from "./github-refresh";
 import {
   translateCoreText,
   readResponseJson,
@@ -26,8 +27,10 @@ export function GateView({
   item,
   warnings = [],
   workflows = builtInWorkflows,
+  githubReadOnly = false,
 }: {
   item: BoardWorkItem;
+  githubReadOnly?: boolean;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
@@ -175,12 +178,18 @@ export function GateView({
               </p>
             );
           })}
+      {githubReadOnly && <p>{t.board.githubStatus.readOnly}</p>}
       {gate.nextStage && (
         <Button
           type="button"
           variant="primary"
           disabled={
-            !gate.ready || saving || !!message || refreshNeeded || (!!github && !reviewAvailable)
+            githubReadOnly ||
+            !gate.ready ||
+            saving ||
+            !!message ||
+            refreshNeeded ||
+            (!!github && !reviewAvailable)
           }
           onClick={() => void act(current.id, "approve")}
         >
@@ -192,6 +201,7 @@ export function GateView({
           key={stage.id}
           type="button"
           disabled={
+            githubReadOnly ||
             saving ||
             !!message ||
             !!item.activeStint ||
@@ -209,21 +219,13 @@ export function GateView({
           onClick={async () => {
             setSaving(true);
             try {
-              const response = await fetch(`/api/github/items/${github.number}/refresh`, {
-                method: "POST",
-              });
-              if (!response.ok)
-                throw new CoreTextError(
-                  await readResponseJson(response),
-                  t.stints.changeGateFailed,
-                );
+              await refreshGithubItem(github.number, t.stints.changeGateFailed);
               setRefreshNeeded(false);
               setMessage("");
               setError("");
             } catch (cause) {
               setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
             } finally {
-              window.dispatchEvent(new Event("stintwork:refresh-project"));
               setSaving(false);
             }
           }}

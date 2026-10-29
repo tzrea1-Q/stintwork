@@ -136,16 +136,22 @@ export function WorkItemCard({
         </div>
       )}
       <div className="ticket-progress flex items-center justify-between gap-2 text-xs text-muted">
-        <span>
-          {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
-          {t.card.tickets}
-        </span>
-        <progress
-          className="h-1 w-11 appearance-none overflow-hidden rounded-sm border-0 bg-surface-hover [&::-webkit-progress-bar]:bg-surface-hover [&::-webkit-progress-value]:bg-accent [&::-moz-progress-bar]:bg-accent"
-          aria-label={t.card.progress(item.slug)}
-          max={Math.max(1, item.tickets.length)}
-          value={resolved}
-        />
+        {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
+          <span>{item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}</span>
+        ) : (
+          <>
+            <span>
+              {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
+              {t.card.tickets}
+            </span>
+            <progress
+              className="h-1 w-11 appearance-none overflow-hidden rounded-sm border-0 bg-surface-hover [&::-webkit-progress-bar]:bg-surface-hover [&::-webkit-progress-value]:bg-accent [&::-moz-progress-bar]:bg-accent"
+              aria-label={t.card.progress(item.slug)}
+              max={Math.max(1, item.tickets.length)}
+              value={resolved}
+            />
+          </>
+        )}
       </div>
     </article>
   );

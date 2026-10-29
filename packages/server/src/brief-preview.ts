@@ -24,7 +24,7 @@ import { type AgentRegistry, refreshAgentAvailability, findingsFormat } from "@s
 import type { Hono } from "hono";
 import { changedSince, workItemDiff, worktreePath } from "@stintwork/git";
 import {
-  githubDetailCoolingDown,
+  githubRateLimitCoolingDown,
   readGithubTickets,
   type createDetailPublisher,
 } from "./github-tickets.js";
@@ -127,7 +127,7 @@ export async function prepareStintBrief(
       return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
     if (githubSource.discoveryFailed())
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
-    if (githubDetailCoolingDown(github))
+    if (githubRateLimitCoolingDown(github))
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     const publish = githubSource.beginDetail(remote.number);
     try {

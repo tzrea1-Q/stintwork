@@ -35,12 +35,14 @@ import type { ReviewEvidenceReader } from "./review-evidence.js";
 export async function verifyGithubGateIdentity(
   root: string,
   expected: GithubDiscovery,
-  source: { viewer: string; origin: string },
+  source: { viewer: { id: number; login: string }; origin: string },
+  signal?: AbortSignal,
 ) {
-  const viewer = await githubViewer(root);
+  const viewer = await githubViewer(root, signal);
+  if (signal?.aborted) return false;
   const repository = await githubTrackerRepository(root);
   return (
-    viewer === source.viewer &&
+    viewer.id === source.viewer.id &&
     repository.repository.toLowerCase() === source.origin.toLowerCase() &&
     repository.repository.toLowerCase() === expected.repository.toLowerCase() &&
     repository.repositoryId === expected.repositoryId
@@ -113,6 +115,7 @@ export function addGithubGateRoutes(
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>,
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void,
   readReviewEvidence?: ReviewEvidenceReader,
+  discoveryFailed: () => boolean = () => false,
 ) {
   const readMemoryProposals = createMemoryProposalReader(root);
   for (const action of ["approve", "reopen"] as const)
@@ -195,12 +198,14 @@ export function addGithubGateRoutes(
           409,
         );
       try {
+        if (discoveryFailed()) return refuse("gate.detailUnavailable");
         let identityValid = false;
         try {
           identityValid = await verifyIdentity(github);
         } catch {
           // An unverified identity cannot authorize a write.
         }
+        if (discoveryFailed()) return refuse("gate.detailUnavailable");
         if (!identityValid)
           return context.json(
             coreTextWire({

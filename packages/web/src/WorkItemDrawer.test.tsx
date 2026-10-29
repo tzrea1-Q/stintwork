@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
@@ -177,3 +177,169 @@ test("the drawer does not claim a worktree for a main-checkout work item", () =>
   expect(screen.queryByText("Work item files live in this worktree:")).not.toBeInTheDocument();
   expect(screen.getByText(".scratch/first/spec.md")).toBeInTheDocument();
 });
+
+test("opening a GitHub drawer refreshes once, including after reopening", async () => {
+  let finish!: (response: Response) => void;
+  const fetcher = vi.fn((url: string) =>
+    url === "/api/agents"
+      ? Promise.resolve(new Response(JSON.stringify({ agents: [] })))
+      : new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const refresh = vi.fn();
+  window.addEventListener("stintwork:refresh-project", refresh);
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: true,
+  };
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh")).toHaveLength(
+    1,
+  );
+  expect(fetcher).toHaveBeenCalledWith("/api/github/items/1/refresh", { method: "POST" });
+  expect(screen.getByText("Refreshing…")).toBeInTheDocument();
+  view.rerender(<WorkItemDrawer item={{ ...item }} onClose={() => {}} />);
+  expect(fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh")).toHaveLength(
+    1,
+  );
+  finish(new Response("{}"));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  view.unmount();
+  const reopened = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh")).toHaveLength(
+    2,
+  );
+  finish(new Response("{}"));
+  await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+  reopened.unmount();
+  window.removeEventListener("stintwork:refresh-project", refresh);
+});
+
+test("opening a GitHub drawer waits for the rate limit deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetcher = vi.fn(async (_url: string) => new Response("{}"));
+    vi.stubGlobal("fetch", fetcher);
+    const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+      name: "Project",
+    }).workItems[0];
+    item.github = {
+      repository: "a/b",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://example.com/1",
+      complete: true,
+    };
+    const view = render(
+      <WorkItemDrawer
+        item={item}
+        onClose={() => {}}
+        githubRetryAt={new Date(Date.now() + 1000).toISOString()}
+      />,
+    );
+    expect(
+      fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh"),
+    ).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1001);
+    });
+    expect(
+      fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh"),
+    ).toHaveLength(1);
+    view.unmount();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("local drawers do not refresh and GitHub refresh failure is shown", async () => {
+  const fetcher = vi.fn(async (url: string) =>
+    url === "/api/agents"
+      ? new Response(JSON.stringify({ agents: [] }))
+      : new Response(JSON.stringify({ reason: "Refresh failed" }), { status: 500 }),
+  );
+  vi.stubGlobal("fetch", fetcher);
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(fetcher.mock.calls.some(([url]) => String(url).includes("/api/github/items/"))).toBe(
+    false,
+  );
+  view.unmount();
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: true,
+  };
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(await screen.findByRole("alert")).toHaveTextContent("Refresh failed");
+});
+
+test.each(["success", "closed", "exhausted"])(
+  "drawer retries a conflicting refresh: %s",
+  async (scenario) => {
+    const fetcher = vi.fn(async (url: string) => {
+      if (url === "/api/agents") return new Response(JSON.stringify({ agents: [] }));
+      const attempts = fetcher.mock.calls.filter(([path]) =>
+        path.includes("/api/github/items/"),
+      ).length;
+      return new Response("{}", { status: scenario === "success" && attempts > 1 ? 200 : 409 });
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+      name: "Project",
+    }).workItems[0];
+    item.github = {
+      repository: "a/b",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://example.com/1",
+      complete: true,
+    };
+    const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+    await waitFor(() =>
+      expect(fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/"))).toHaveLength(
+        1,
+      ),
+    );
+    if (scenario === "closed") {
+      view.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 850));
+      expect(fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/"))).toHaveLength(
+        1,
+      );
+    } else {
+      view.rerender(<WorkItemDrawer item={{ ...item }} onClose={() => {}} />);
+      if (scenario === "success") {
+        await waitFor(() =>
+          expect(
+            fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/")),
+          ).toHaveLength(2),
+        );
+        await waitFor(() => expect(screen.queryByText("Refreshing…")).not.toBeInTheDocument());
+        expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      } else {
+        expect(await screen.findByRole("alert", {}, { timeout: 2000 })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+        expect(
+          fetcher.mock.calls.filter(([url]) => url.includes("/api/github/items/")),
+        ).toHaveLength(3);
+      }
+    }
+  },
+);
