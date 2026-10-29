@@ -92,7 +92,15 @@ export function GateView({
       }
       const next = stages.find(({ id }) => id === result.stage);
       const name = next ? stageName(workflows[item.workflow], next, t) : result.stage;
-      setMessage(action === "approve" ? t.stints.gateApproved(name) : t.stints.gateReopened(name));
+      setMessage(
+        action === "approve"
+          ? result.approval === "stale"
+            ? t.stints.localApprovalStaleAfterApprove(
+                stageName(workflows[item.workflow], current, t),
+              )
+            : t.stints.gateApproved(name)
+          : t.stints.gateReopened(name),
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
     } finally {
@@ -178,6 +186,21 @@ export function GateView({
               </p>
             );
           })}
+      {!github &&
+        earlier.map((stage) => {
+          const approval = item.stages[stage.id]?.approved;
+          return approval &&
+            typeof approval === "object" &&
+            "state" in approval &&
+            approval.state === "stale" &&
+            "stateReason" in approval &&
+            approval.stateReason === "head-changed" ? (
+            <p key={stage.id}>
+              {stageName(workflows[item.workflow], stage, t)}:{" "}
+              {t.stints.localApprovalStale(stageName(workflows[item.workflow], stage, t))}
+            </p>
+          ) : null;
+        })}
       {githubReadOnly && <p>{t.board.githubStatus.readOnly}</p>}
       {gate.nextStage && (
         <Button

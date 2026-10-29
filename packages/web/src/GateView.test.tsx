@@ -648,6 +648,126 @@ test.each(["en", "zh-CN"] as const)(
   },
 );
 
+test.each([
+  [
+    "en",
+    "Approve Implement",
+    "Gate approved, but HEAD changed while the approval was recorded. The approval is stale; reopen Implement to review the newer commits.",
+  ],
+  [
+    "zh-CN",
+    "批准实现",
+    "关卡已批准，但记录批准时 HEAD 已变化。批准已过期；请重新开启实现以审查较新的提交。",
+  ],
+])(
+  "local stale approve response shows the head-changed message (%s)",
+  async (language, button, message) => {
+    localStorage.setItem(languageStorageKey, language);
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValue(
+          new Response(
+            JSON.stringify({ stage: "review", approval: "stale", reason: "head-changed" }),
+          ),
+        ),
+    );
+    render(
+      <LanguageProvider>
+        <GateView item={project().workItems[0]} />
+      </LanguageProvider>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: button }));
+    expect(screen.getByText(message)).toBeInTheDocument();
+    expect(screen.queryByText("Gate approved. Stage advances to Review.")).not.toBeInTheDocument();
+  },
+);
+
+test.each([
+  [
+    "en",
+    "Implement: Approval is stale; HEAD changed while it was recorded. Reopen Implement to review the newer commits.",
+  ],
+  ["zh-CN", "实现: 批准已过期；记录批准时 HEAD 已变化。请重新开启实现以审查较新的提交。"],
+])("a projected stale local approval is listed with its stage (%s)", (language, line) => {
+  localStorage.setItem(languageStorageKey, language);
+  const item = project("review", true).workItems[0];
+  const approval = { by: "You", at: "2026-10-09T10:00:00Z", commit: "checkpoint" };
+  item.stages.implement = {
+    approved: { ...approval, state: "stale", stateReason: "head-changed" },
+  };
+  const { rerender } = render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(line)).toBeInTheDocument();
+  item.stages.implement = { approved: approval };
+  rerender(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  expect(screen.queryByText(line)).not.toBeInTheDocument();
+});
+
+test.each([
+  [
+    "en",
+    "Implement: Approval is stale; HEAD changed while it was recorded. Reopen Implement to review the newer commits.",
+    "Reopen Implement",
+  ],
+  [
+    "zh-CN",
+    "实现: 批准已过期；记录批准时 HEAD 已变化。请重新开启实现以审查较新的提交。",
+    "重新开启实现",
+  ],
+])("local stale approval survives the stage advance (%s)", (language, line, reopen) => {
+  localStorage.setItem(languageStorageKey, language);
+  const item = project().workItems[0];
+  const { rerender } = render(
+    <LanguageProvider>
+      <GateView key={item.stage} item={item} />
+    </LanguageProvider>,
+  );
+  const advanced = project("review").workItems[0];
+  advanced.stages.implement = {
+    approved: {
+      by: "You",
+      at: "2026-10-09T10:00:00Z",
+      commit: "checkpoint",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  rerender(
+    <LanguageProvider>
+      <GateView key={advanced.stage} item={advanced} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(line)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: reopen })).toBeInTheDocument();
+});
+
+test("a reopened local stage does not ask to reopen its stale approval again", () => {
+  const item = project("implement").workItems[0];
+  item.stages.implement = {
+    approved: {
+      by: "You",
+      at: "2026-10-09T10:00:00Z",
+      commit: "checkpoint",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+    reopened: { by: "You", at: "2026-10-09T10:05:00Z", commit: "later" },
+  };
+  item.stages.review = { approved: { state: "stale", stateReason: "head-changed" } };
+  render(<GateView item={item} />);
+  expect(screen.queryByText(/Approval is stale; HEAD changed/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reopen Implement" })).not.toBeInTheDocument();
+});
+
 test("local gate keeps its original request and confirmation", async () => {
   const item = project().workItems[0];
   const fetcher = vi

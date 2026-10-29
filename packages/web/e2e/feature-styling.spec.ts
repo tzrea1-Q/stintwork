@@ -78,6 +78,7 @@ for (const language of ["en", "zh-CN"] as const) {
       : (["light"] as const)) {
       test.describe(`feature styling ${width}px ${language} ${colorScheme}`, () => {
         let snapshot: ProjectSnapshot;
+        let publish: () => Promise<void>;
         test.beforeEach(async ({ page }) => {
           snapshot = { ...dialogSnapshot, workItems: [{ ...dialogItem, stints: [recorded] }] };
           await page.setViewportSize({ width, height: 900 });
@@ -87,9 +88,17 @@ for (const language of ["en", "zh-CN"] as const) {
             language,
           );
           await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
-          await page.routeWebSocket("**/api/live", (socket) =>
-            socket.send(JSON.stringify(snapshot)),
-          );
+          const connected = requestGate();
+          let send = () => {};
+          publish = async () => {
+            await connected.ready;
+            send();
+          };
+          await page.routeWebSocket("**/api/live", (socket) => {
+            send = () => socket.send(JSON.stringify(snapshot));
+            send();
+            connected.release();
+          });
           await page.route("**/api/agents", (route) => route.fulfill({ json: { agents: [] } }));
           await page.route("**/api/stints/recorded-stint", (route) =>
             route.fulfill({ json: { stint: recorded } }),
@@ -135,6 +144,117 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(gate.getByText(t.stints.githubApproval.stale)).toBeVisible();
           await expect(gate.getByRole("button", { name: t.stints.githubRefresh })).toBeVisible();
           await capture(page, drawer, info, "github-gate-stale");
+        });
+
+        test("local gate shows a stale approval after a HEAD race", async ({ page }, info) => {
+          await page.route("**/api/work-items/*/gates/spec/approve", (route) =>
+            route.fulfill({
+              json: { stage: "tickets", approval: "stale", reason: "head-changed" },
+            }),
+          );
+          await page.goto("/");
+          await page
+            .getByRole("button", {
+              name: t.card.open(dialogItem.slug, dialogItem.title),
+              exact: true,
+            })
+            .click();
+          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const gate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.spec),
+          });
+          await gate
+            .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
+            .click();
+          await expect(
+            gate.getByText(
+              t.stints.localApprovalStaleAfterApprove(t.workflows.feature.stages.spec),
+            ),
+          ).toBeVisible();
+          await capture(page, drawer, info, "local-gate-stale");
+        });
+
+        test("local gate lists a projected stale approval", async ({ page }, info) => {
+          snapshot.workItems[0].stages = {
+            clarify: {
+              approved: {
+                by: "You",
+                at: "2026-10-13T10:00:00Z",
+                commit: "head",
+                state: "stale",
+                stateReason: "head-changed",
+              },
+            },
+          };
+          await page.goto("/");
+          await page
+            .getByRole("button", {
+              name: t.card.open(dialogItem.slug, dialogItem.title),
+              exact: true,
+            })
+            .click();
+          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const gate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.spec),
+          });
+          const line = gate.getByText(
+            `${t.workflows.feature.stages.clarify}: ${t.stints.localApprovalStale(t.workflows.feature.stages.clarify)}`,
+          );
+          await expect(line).toBeVisible();
+          await line.scrollIntoViewIfNeeded();
+          await capture(page, drawer, info, "local-gate-stale-projected");
+        });
+
+        test("local stale approval survives the stage advance", async ({ page }, info) => {
+          await page.route("**/api/work-items/*/gates/spec/approve", async (route) => {
+            snapshot.workItems[0] = {
+              ...snapshot.workItems[0],
+              stage: "tickets",
+              column: "tickets",
+              stages: {
+                ...snapshot.workItems[0].stages,
+                spec: {
+                  approved: {
+                    by: "You",
+                    at: "2026-10-13T10:00:00Z",
+                    commit: "head",
+                    state: "stale",
+                    stateReason: "head-changed",
+                  },
+                },
+              },
+            };
+            await route.fulfill({
+              json: { stage: "tickets", approval: "stale", reason: "head-changed" },
+            });
+            await publish();
+          });
+          await page.goto("/");
+          await page
+            .getByRole("button", {
+              name: t.card.open(dialogItem.slug, dialogItem.title),
+              exact: true,
+            })
+            .click();
+          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const specGate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.spec),
+          });
+          await specGate
+            .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
+            .click();
+          const gate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.tickets),
+          });
+          const line = gate.getByText(
+            `${t.workflows.feature.stages.spec}: ${t.stints.localApprovalStale(t.workflows.feature.stages.spec)}`,
+          );
+          await expect(line).toBeVisible();
+          await expect(
+            gate.getByRole("button", { name: t.stints.reopen(t.workflows.feature.stages.spec) }),
+          ).toBeVisible();
+          await line.scrollIntoViewIfNeeded();
+          await capture(page, drawer, info, "local-gate-stale-advanced");
         });
 
         test("gate, handoff and replay keep long code inside their own boxes", async ({

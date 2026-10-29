@@ -426,6 +426,42 @@ test("a finished GitHub refresh reloads the snapshot when no live update arrives
   expect(screen.getByRole("button", { name: "Refresh GitHub evidence" })).toBeEnabled();
 });
 
+test("HTTP and live snapshots accept an advanced stage with a stale local approval", async () => {
+  const initial = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/board/spec.md": "# Pipeline",
+      ".scratch/board/workflow.yaml": "workflow: feature\nstage: spec\n",
+    }),
+    { name: "Stintwork" },
+  );
+  const advanced = structuredClone(initial);
+  advanced.workItems[0].stage = "tickets";
+  advanced.workItems[0].column = "tickets";
+  advanced.workItems[0].stages.spec = {
+    approved: {
+      by: "You",
+      at: "2026-10-13T10:00:00Z",
+      commit: "head",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  vi.mocked(fetch).mockResolvedValue(response(advanced));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(advanced));
+  act(() => TestSocket.instances[0].sendSnapshot(initial));
+  expect(result.current.snapshot).toEqual(initial);
+  act(() => TestSocket.instances[0].sendSnapshot(advanced));
+  expect(result.current.snapshot).toEqual(advanced);
+  expect(result.current.connection).toBe("live");
+
+  const mismatched = structuredClone(advanced);
+  mismatched.workItems[0].column = "spec";
+  act(() => TestSocket.instances[0].sendSnapshot(mismatched));
+  expect(result.current.snapshot).toEqual(advanced);
+  expect(result.current.connection).toBe("reconnecting");
+});
+
 test("reads the initial project and replaces it with live snapshots", async () => {
   const { result } = renderHook(useProjectSnapshot);
   await waitFor(() => expect(result.current.snapshot).toEqual(snapshot));
