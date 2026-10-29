@@ -20,7 +20,7 @@ Protect local work item workflow writes from overwriting staged, unstaged or unt
 - [ ] First-stint setup refuses a dirty workflow in an existing worktree without changing its file, index or HEAD.
 - [ ] Local and GitHub writes refuse workflow files with assume-unchanged or skip-worktree index flags.
 - [ ] First-stint setup refuses workflow edits or index changes made while its brief is prepared, preserving file and HEAD.
-- [ ] A failed brief after inheriting stage agents restores unchanged setup edits so a retry can start, while preserving developer changes.
+- [ ] A failed brief after inheriting stage agents commits unchanged inherited setup edits so a retry can start with them, while preserving developer changes.
 - [ ] A first stint refused during brief preparation retains first-stint agent setup on retry.
 
 ## Comments

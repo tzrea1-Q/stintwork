@@ -29,7 +29,7 @@ import {
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type AgentLauncher,
@@ -1140,10 +1140,6 @@ export function addStintRoutes(
               ? assertWorkflowUnchanged(worktree.path, workflowPath)
               : "";
           const workflowFile = join(worktree.path, workflowPath);
-          const beforeInheritance =
-            firstWorktree && !workItem.github && lstatSync(workflowFile, { throwIfNoEntry: false })
-              ? readFileSync(workflowFile)
-              : undefined;
           let inheritedAgents = false;
           if (firstWorktree && !workItem.github) {
             for (const stage of result.workflows[workItem.workflow].stages) {
@@ -1171,19 +1167,14 @@ export function addStintRoutes(
             if (prepared.reason) throw new CoreTextError(prepared.reason);
           } catch (error) {
             if (inheritedBytes) {
-              let unchanged = false;
               try {
                 assertWorkflowUnchanged(worktree.path, workflowPath, {
                   indexEntry: workflowIndex,
                   bytes: inheritedBytes,
                 });
-                unchanged = true;
+                await commitStintworkSetup(worktree.path, workItem.slug, [workflowPath]);
               } catch {
-                // Preserve developer changes to the file or index.
-              }
-              if (unchanged) {
-                if (beforeInheritance) writeFileSync(workflowFile, beforeInheritance);
-                else rmSync(workflowFile);
+                // Preserve developer changes and report the original brief failure.
               }
             }
             throw error;
