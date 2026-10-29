@@ -151,9 +151,12 @@ export function createProjectServer(
       delete github.errorCode;
     }
     const retryAt = [
-      discoveryFailure?.retryAt,
-      viewerFailure?.retryAt,
-      ...github.items.map((item) => detailFailures.get(item.id)?.retryAt),
+      discoveryFailure?.errorCode === "rate-limited" ? discoveryFailure.retryAt : undefined,
+      viewerFailure?.errorCode === "rate-limited" ? viewerFailure.retryAt : undefined,
+      ...github.items.map((item) => {
+        const failure = detailFailures.get(item.id);
+        return failure?.code === "rate-limited" ? failure.retryAt : undefined;
+      }),
     ]
       .filter((value): value is string => !!value)
       .sort()
@@ -386,7 +389,8 @@ export function createProjectServer(
 
   let viewerCheck: Promise<void> | undefined;
   function checkGithubViewer() {
-    if (lifetime.signal.aborted || coolingDown()) return Promise.resolve();
+    if (lifetime.signal.aborted || discoveryRunning || detailRunning || coolingDown())
+      return Promise.resolve();
     viewerCheck ??= runGithubViewerCheck().finally(() => {
       viewerCheck = undefined;
     });
@@ -533,6 +537,8 @@ export function createProjectServer(
     let origin: string | undefined;
     const changedIssues = new Set<number>();
     try {
+      await viewerCheck;
+      if (lifetime.signal.aborted || generation !== trackerGeneration || coolingDown()) return;
       origin = await githubOrigin(root);
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (githubSource && githubSource.origin.toLowerCase() !== origin.toLowerCase()) {
@@ -846,7 +852,12 @@ export function createProjectServer(
       discoveryRunning
     )
       return 409;
-    if (githubDetailCoolingDown(github)) return 429;
+    if (
+      githubDetailCoolingDown(github) &&
+      (discoveryFailure?.errorCode === "rate-limited" ||
+        viewerFailure?.errorCode === "rate-limited")
+    )
+      return 429;
     detailRunning = true;
     const source = githubSource;
     const generation = trackerGeneration;
@@ -855,6 +866,15 @@ export function createProjectServer(
     let verified = false;
     let publish: ReturnType<typeof beginDetail> | undefined;
     try {
+      await viewerCheck;
+      if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
+        return 409;
+      if (
+        coolingDown() &&
+        (discoveryFailure?.errorCode === "rate-limited" ||
+          viewerFailure?.errorCode === "rate-limited")
+      )
+        return 429;
       const currentOrigin = await githubOrigin(root);
       if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
         return 409;
@@ -872,6 +892,9 @@ export function createProjectServer(
         throw new GithubReadError("identity");
       }
       viewerVerifiedAt = viewerNow();
+      offlineViewer = false;
+      viewerFailure = undefined;
+      updateGithubFreshness();
       verified = true;
       if (githubDetailCoolingDown(github)) return 429;
       const repository = await githubTrackerRepository(root);

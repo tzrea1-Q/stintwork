@@ -94,6 +94,7 @@ export const en = {
     previousStages: "Previous stages",
     nextStages: "Next stages",
     stages: "Pipeline stages",
+    verifyingGithub: "Verifying GitHub account…",
     empty: "No work items yet",
     startWithSpec: "Start with a spec in ",
     addTickets: "Add tickets in ",

@@ -218,9 +218,11 @@ export function Board({
                 </SelectContent>
               </Select>
             </div>
-            <span className="board-stats whitespace-nowrap">
-              {t.board.counts(active.length, shipped.length)}
-            </span>
+            {!snapshot.github?.verifying && (
+              <span className="board-stats whitespace-nowrap">
+                {t.board.counts(active.length, shipped.length)}
+              </span>
+            )}
           </div>
           <div className="board-toolbar-actions flex shrink-0 items-center gap-2">
             <RoadmapEditor snapshot={snapshot} />
@@ -279,18 +281,22 @@ export function Board({
             )}
           </div>
         )}
-        {githubTracker && <GithubStatus github={snapshot.github} />}
+        {githubTracker && !snapshot.github?.verifying && <GithubStatus github={snapshot.github} />}
         <section
           className="board-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
           ref={scroll}
           aria-label={t.board.stages}
         >
-          {githubTracker &&
-          (!snapshot.github ||
-            (!snapshot.github.fetchedAt &&
-              !snapshot.github.repositoryId &&
-              !!snapshot.github.error) ||
-            (!snapshot.github.complete && snapshot.workItems.length === 0)) ? null : snapshot
+          {githubTracker && snapshot.github?.verifying ? (
+            <p className="mt-4 text-muted" role="status">
+              {t.board.verifyingGithub}
+            </p>
+          ) : githubTracker &&
+            (!snapshot.github ||
+              (!snapshot.github.fetchedAt &&
+                !snapshot.github.repositoryId &&
+                !!snapshot.github.error) ||
+              (!snapshot.github.complete && snapshot.workItems.length === 0)) ? null : snapshot
               .workItems.length === 0 ? (
             <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
               <FolderOpen className="size-icon-lg muted text-muted" aria-hidden="true" />

@@ -929,6 +929,89 @@ test("failed detail invokes the shared failure handler", async () => {
   expect(fixture.failures()).toBe(1);
 });
 
+test.each([false, true])(
+  "detail viewer recovery preserves discovery failure: %s",
+  async (discoveryFails) => {
+    const { root, gh, ghReplies } = await setup();
+    mkdirSync(join(root, "web"));
+    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+    const page = JSON.parse(
+      readFileSync(
+        new URL("../test/fixtures/github-discovery/issues.json", import.meta.url),
+        "utf8",
+      ),
+    );
+    Object.assign(page.data.repository, { id: "R_1", nameWithOwner: "Example/Project" });
+    page.data.repository.issues.nodes = [
+      {
+        id: "I_1",
+        number: 1,
+        title: "Parent",
+        url: parent.html_url,
+        parent: null,
+        labels: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+        subIssues: {
+          nodes: [{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }],
+          totalCount: 1,
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      },
+    ];
+    page.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
+    const replies = {
+      ...ghReplies,
+      "config get": { stdout: "101" },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    let finish = () => {};
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"), {
+      githubViewerNow: () => now,
+      launchAgent: () => ({
+        done: new Promise((resolve) => {
+          finish = () => resolve({ stopReason: "end_turn" });
+        }),
+        cancel: async () => finish(),
+      }),
+    });
+    try {
+      const get = async () => (await server.app.request("/api/project")).json();
+      await get();
+      if (discoveryFails) {
+        await gh.script({
+          ...replies,
+          "api repos/Example/Project": { code: 1, effect: "process.stderr.write('HTTP 500')" },
+        });
+        await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+      }
+      await gh.script({
+        ...replies,
+        "api user": { code: 1, effect: "process.stderr.write('network error')" },
+      });
+      now += 60_001;
+      await get();
+      await expect
+        .poll(async () => (await get()).github?.errorCode)
+        .toBe(discoveryFails ? "server-error" : "offline");
+      await gh.script(replies);
+      const response = await server.app.request("/api/github/items/1/refresh", { method: "POST" });
+      expect(response.status).toBe(200);
+      expect((await response.json()).github.discoveryFailed).toBe(discoveryFails);
+      const start = await server.app.request("/api/stints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workItem: "github-1", ticket: 2, agent: "codex" }),
+      });
+      expect(start.status, await start.clone().text()).toBe(discoveryFails ? 409 : 201);
+      finish();
+    } finally {
+      await server.stop();
+    }
+  },
+);
+
 test.each(["updated", "failed", "local"] as const)(
   "stint completion refreshes GitHub detail (%s)",
   async (scenario) => {

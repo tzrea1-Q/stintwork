@@ -108,6 +108,7 @@ export const zhCN: Catalog = {
     previousStages: "前面的阶段",
     nextStages: "后面的阶段",
     stages: "流水线阶段",
+    verifyingGithub: "正在验证 GitHub 账号…",
     empty: "还没有工作项",
     startWithSpec: "先在此路径编写规格说明：",
     addTickets: "在此路径添加工单：",

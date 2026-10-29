@@ -175,7 +175,9 @@ test.each(scenarios)(
       };
       await gh.script(replies);
       const { createProjectServer } = await import("./index.js");
-      const server = createProjectServer(root, join(root, "web"));
+      const server = createProjectServer(root, join(root, "web"), {
+        githubViewerIntervalMs: scenario === "cooldown" ? 100 : undefined,
+      });
       try {
         live.messages.length = 0;
         const initial = await (
@@ -198,16 +200,29 @@ test.each(scenarios)(
         expect(broadcast?.workItems[0]).toEqual(initial.workItems[0]);
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
         if (scenario === "cooldown") {
+          await server.start();
           live.messages.length = 0;
           await gh.script({
             ...replies,
             "api repos/github/gh-aw": {
               code: 1,
               effect:
-                "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 60\\n')",
+                "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 60\\n')",
             },
           });
           await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          const discoveryCalls = await gh.calls();
+          const repositoryCall =
+            discoveryCalls.length -
+            1 -
+            [...discoveryCalls]
+              .reverse()
+              .findIndex(({ args }) => args[0] === "api" && args[1] === "repos/github/gh-aw");
+          expect(
+            discoveryCalls
+              .slice(repositoryCall + 1)
+              .some(({ args }) => args[0] === "api" && args[1] === "user"),
+          ).toBe(false);
           await expect
             .poll(() =>
               live.messages.some((message) => {
@@ -230,6 +245,12 @@ test.each(scenarios)(
             github: { errorCode: "rate-limited" },
           });
           expect(await gh.calls()).toHaveLength(before);
+          await new Promise((resolve) => setTimeout(resolve, 350));
+          expect(
+            (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
+          ).toHaveLength(
+            discoveryCalls.filter(({ args }) => args[0] === "api" && args[1] === "user").length,
+          );
           return;
         }
         const fetchedAt = initial.github.items[0].detail.fetchedAt;

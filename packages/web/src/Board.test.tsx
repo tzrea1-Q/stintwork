@@ -592,6 +592,25 @@ function githubProject() {
   return snapshot;
 }
 
+test.each([
+  ["en", "Verifying GitHub account…", "No work items yet"],
+  ["zh-CN", "正在验证 GitHub 账号…", "还没有工作项"],
+])("redacted GitHub snapshot shows verification in %s", (language, verifying, empty) => {
+  localStorage.setItem(languageStorageKey, language);
+  const snapshot = githubProject();
+  snapshot.workItems = [];
+  if (!snapshot.github) throw new Error("Missing GitHub snapshot");
+  snapshot.github = { ...snapshot.github, verifying: true, complete: true };
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText(verifying)).toBeVisible();
+  expect(screen.queryByText(empty)).not.toBeInTheDocument();
+  expect(screen.queryByText(/42 issues scanned/)).not.toBeInTheDocument();
+});
+
 test("GitHub fresh and partial status expose keyboard actions", async () => {
   const user = userEvent.setup();
   const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
