@@ -19,6 +19,7 @@ export type Ticket = {
   resolved: boolean;
   blockedBy: number[];
   blocked: boolean;
+  blockers?: { id: string; number: number; state: string }[];
   comments: string[];
   /** The full ticket Markdown, for display. */
   body: string;

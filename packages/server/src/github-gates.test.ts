@@ -624,6 +624,60 @@ test.each(["closed", "open", "inaccessible"] as const)(
   },
 );
 
+test.each(["mixed", "open external", "cycle", "missing", "unknown state"] as const)(
+  "approval revalidates dependencies: %s",
+  async (scenario) => {
+    const issueFor = (number: number, state = "open") => ({
+      ...parent,
+      node_id: `I_${number}`,
+      number,
+      html_url: `https://github.com/Example/Project/issues/${number}`,
+      state,
+      body: "Ticket",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    });
+    const first = issueFor(11);
+    const second = issueFor(12);
+    const external = issueFor(
+      99,
+      scenario === "mixed" ? "closed" : scenario === "unknown state" ? "unknown" : "open",
+    );
+    const firstBlockers = scenario === "cycle" ? [second] : [];
+    const secondBlockers =
+      scenario === "cycle" ? [first] : scenario === "missing" ? [] : [first, external];
+    if (scenario === "missing") second.body = "Blocked by: #99";
+    first.issue_dependencies_summary.total_blocked_by = firstBlockers.length;
+    second.issue_dependencies_summary.total_blocked_by = secondBlockers.length;
+    const replies: Record<string, GhReply> = {
+      [issue]: { stdout: { ...parent, sub_issues_summary: { total: 2 } } },
+      [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [first, second] },
+      "api repos/Example/Project/issues/99": { code: 1, effect: "console.error('HTTP 404')" },
+    };
+    for (const [child, blockers] of [
+      [first, firstBlockers],
+      [second, secondBlockers],
+    ] as const) {
+      const path = `api repos/Example/Project/issues/${child.number}`;
+      replies[`${path}/labels?per_page=100&page=1`] = { stdout: [] };
+      replies[`${path}/comments?per_page=100&page=1`] = { stdout: [] };
+      replies[`${path}/dependencies/blocked_by?per_page=100&page=1`] = { stdout: blockers };
+    }
+    const { root, request, reviewedHead } = await setup(replies, "tickets");
+    let reviewedDigest = "unavailable";
+    try {
+      const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+      reviewedDigest = await githubEvidenceDigest(
+        { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
+        true,
+      );
+    } catch {
+      /* Invalid remote data must be refused by the approval read. */
+    }
+    const response = await request({ stage: "tickets", reviewedHead, reviewedDigest });
+    expect(response.status, await response.clone().text()).toBe(scenario === "mixed" ? 200 : 409);
+  },
+);
+
 test.each(["approve", "reopen"] as const)(
   "%s preserves checkout history when the worktree has no record",
   async (action) => {

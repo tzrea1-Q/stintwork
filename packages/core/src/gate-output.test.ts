@@ -75,6 +75,7 @@ test("GitHub tickets gate uses resolved external blockers and requires fresh dir
   item.stages.clarify = { approved: { remoteState: "current" } };
   item.stages.spec = { approved: { remoteState: "current" } };
   item.tickets[0].blockedBy = [99];
+  item.tickets[0].blockers = [{ id: "I_99", number: 99, state: "closed" }];
   expect(gateReadiness(item).ready).toBe(true);
   item.tickets[0].blocked = true;
   expect(gateReadiness(item).ready).toBe(false);
@@ -91,6 +92,47 @@ test("GitHub tickets gate uses resolved external blockers and requires fresh dir
   const local = project("tickets", { [ticketPath]: ticket }).item;
   local.tickets[0].blockedBy = [99];
   expect(gateReadiness(local).ready).toBe(false);
+});
+
+test.each([
+  ["ordered sibling and closed external", [11, 99], ["open", "closed"], true, true],
+  ["open external", [99], ["open"], true, false],
+  ["unknown dependency", [], [], true, false],
+  ["partial dependency list", [11, 99], ["open"], true, false],
+  ["unknown external state", [99], ["unknown"], true, false],
+] as const)("GitHub tickets gate: %s", (_name, numbers, states, blocked, ready) => {
+  const { item } = project("tickets", {
+    [ticketPath]: ticket,
+    ".scratch/first/issues/02-second.md": ticket,
+  });
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "url",
+    complete: true,
+    reviewDigest: "digest",
+  };
+  item.stages.clarify = { approved: { remoteState: "current" } };
+  item.stages.spec = { approved: { remoteState: "current" } };
+  item.tickets[0].number = 11;
+  item.tickets[1].number = 12;
+  item.tickets[1].blockedBy = [...numbers];
+  item.tickets[1].blockers = states.map((state, i) => ({
+    id: `I_${numbers[i]}`,
+    number: numbers[i],
+    state,
+  }));
+  item.tickets[1].blocked = blocked;
+  expect(gateReadiness(item).ready).toBe(ready);
+  item.tickets[0].blockedBy = [12];
+  item.tickets[0].blockers = [{ id: "I_12", number: 12, state: "open" }];
+  item.tickets[0].blocked = true;
+  item.tickets[1].blockedBy = [11];
+  item.tickets[1].blockers = [{ id: "I_11", number: 11, state: "open" }];
+  item.tickets[1].blocked = true;
+  expect(gateReadiness(item).ready).toBe(false);
 });
 
 function project(stage: string, output: Record<string, string> = {}, workflow = "feature") {
