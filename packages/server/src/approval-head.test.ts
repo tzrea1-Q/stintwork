@@ -172,3 +172,15 @@ test("a root-commit record does not hide a raced record in another stage", () =>
     stateReason: "head-changed",
   });
 });
+
+test("an uncommitted worktree copy follows the checkout history", () => {
+  const f = fixture();
+  const worktree = `${f.root}-worktree`;
+  roots.push(worktree);
+  git(f.root, "worktree", "add", "-qb", "work", worktree);
+  f.advance();
+  f.write();
+  f.commitWorkflow();
+  f.write(worktree);
+  expect(f.check(worktree, () => f.text)).toBe(true);
+});

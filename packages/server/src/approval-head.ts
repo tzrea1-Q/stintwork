@@ -67,12 +67,13 @@ export function approvalHeadChanged({
       })
         .trim()
         .split(" ")[0];
-      if (!parent) return undefined;
+      if (!parent) throw new Error("Approval introducing commit has no parent");
       if (matches(readVersion(parent))) continue;
       if (allowCheckout && matches(checkoutText?.()))
         return checkHistory(root, false) ?? parent !== approval.commit;
       return parent !== approval.commit;
     }
+    if (allowCheckout && matches(checkoutText?.())) return checkHistory(root, false);
     return undefined;
   };
   const result = checkHistory(directory, !!checkoutText);
