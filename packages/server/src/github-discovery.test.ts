@@ -1086,7 +1086,7 @@ test.each([
         scanned: 1,
         complete: false,
         errorCode: "rate-limited",
-        items: [{ number: 1 }],
+        items: outcome.endsWith("-limited") ? [] : [{ number: 1 }],
         pages: [{ cost: 102 }],
       });
       const label = {
@@ -1126,10 +1126,18 @@ test.each([
             ? [{ stdout: second }, { stdout: label }]
             : { code: 1, effect: "process.stderr.write('network is unreachable')" },
       });
+      const callsBeforeRetry = await gh.calls();
       const retried = await (
         await server.app.request("/api/github/discovery/load-more", { method: "POST" })
       ).json();
-      if (outcome === "success") {
+      if (outcome.endsWith("-limited")) {
+        expect(retried.github).toMatchObject({
+          complete: false,
+          errorCode: "rate-limited",
+          items: [],
+        });
+        expect(await gh.calls()).toEqual(callsBeforeRetry);
+      } else if (outcome === "success") {
         expect(retried.github).toMatchObject({
           scanned: 3,
           cursor: null,
@@ -1138,12 +1146,7 @@ test.each([
           pages: [{ cost: 102 }, { cost: 102 }, { cost: 1 }],
         });
         expect(retried.github.error).toBeUndefined();
-      } else if (
-        outcome === "identity" ||
-        outcome === "viewer" ||
-        outcome === "origin" ||
-        outcome.endsWith("-limited")
-      ) {
+      } else if (outcome === "identity" || outcome === "viewer" || outcome === "origin") {
         expect(retried.github).toMatchObject({ complete: false, errorCode: "identity", items: [] });
         expect(retried.workItems).toEqual([]);
       } else {

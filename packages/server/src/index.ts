@@ -133,14 +133,15 @@ export function createProjectServer(
   let discoveryFailure:
     | Pick<GithubDiscovery, "error" | "errorCode" | "retryAt" | "retryable">
     | undefined;
+  let viewerFailure: typeof discoveryFailure;
   function updateGithubFreshness() {
     if (!github) return;
-    github.discoveryFailed = !!discoveryFailure;
+    github.discoveryFailed = !!(discoveryFailure || viewerFailure);
     for (const item of github.items) item.detailFailed = detailFailures.has(item.id);
     const detailFailure = github.items.map((item) => detailFailures.get(item.id)).find(Boolean);
-    const failure = discoveryFailure ?? detailFailure;
+    const failure = discoveryFailure ?? viewerFailure ?? detailFailure;
     github.stale =
-      (!!discoveryFailure && !!githubSource) ||
+      (!!(discoveryFailure || viewerFailure) && !!githubSource) ||
       github.items.some((item) => item.detail?.stale || detailFailures.has(item.id));
     if (failure instanceof GithubReadError || failure?.error) {
       github.error = failure instanceof GithubReadError ? failure.message : failure.error;
@@ -151,6 +152,7 @@ export function createProjectServer(
     }
     const retryAt = [
       discoveryFailure?.retryAt,
+      viewerFailure?.retryAt,
       ...github.items.map((item) => detailFailures.get(item.id)?.retryAt),
     ]
       .filter((value): value is string => !!value)
@@ -298,15 +300,16 @@ export function createProjectServer(
   let metadataPoll: ReturnType<typeof setInterval> | undefined;
   let viewerPoll: ReturnType<typeof setInterval> | undefined;
   let viewerChecking = false;
-  let viewerFailure = false;
-  let previousDiscoveryFailure: typeof discoveryFailure;
   let viewerVerifiedAt = 0;
   let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
+  const coolingDown = () => !!github?.retryAt && Date.parse(github.retryAt) > Date.now();
   const viewerFresh = () =>
-    viewerVerifiedAt > 0 && viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
+    !coolingDown() &&
+    viewerVerifiedAt > 0 &&
+    viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
   function publicSnapshot(offlineVerified = false) {
-    return githubSource && !viewerFresh() && !(offlineViewer && offlineVerified)
+    return githubSource && !viewerFresh() && !((offlineViewer || coolingDown()) && offlineVerified)
       ? readSnapshot(undefined, true)
       : snapshot;
   }
@@ -341,8 +344,7 @@ export function createProjectServer(
     detailFailures.clear();
     viewerVerifiedAt = 0;
     offlineViewer = false;
-    viewerFailure = false;
-    previousDiscoveryFailure = undefined;
+    viewerFailure = undefined;
   }
 
   let localViewerCheck: Promise<string> | undefined;
@@ -358,10 +360,12 @@ export function createProjectServer(
     return localViewerCheck;
   }
   async function verifyOfflineViewer(): Promise<boolean> {
-    if (lifetime.signal.aborted || !offlineViewer || !githubSource) return false;
+    if (lifetime.signal.aborted || (!offlineViewer && !coolingDown()) || !githubSource)
+      return false;
     const source = githubSource;
     const origin = await githubOrigin(root).catch(() => undefined);
-    if (lifetime.signal.aborted || githubSource !== source || !offlineViewer) return false;
+    if (lifetime.signal.aborted || githubSource !== source || (!offlineViewer && !coolingDown()))
+      return false;
     if (!origin) return false;
     if (origin.toLowerCase() !== source.origin.toLowerCase()) {
       trackerGeneration++;
@@ -370,8 +374,10 @@ export function createProjectServer(
       return false;
     }
     const local = await localViewer();
-    if (lifetime.signal.aborted || githubSource !== source || !offlineViewer) return false;
+    if (lifetime.signal.aborted || githubSource !== source || (!offlineViewer && !coolingDown()))
+      return false;
     if (local && local === source.viewer.login) return true;
+    if (coolingDown()) return false;
     trackerGeneration++;
     clearGithub();
     refresh();
@@ -380,7 +386,7 @@ export function createProjectServer(
 
   let viewerCheck: Promise<void> | undefined;
   function checkGithubViewer() {
-    if (lifetime.signal.aborted) return Promise.resolve();
+    if (lifetime.signal.aborted || coolingDown()) return Promise.resolve();
     viewerCheck ??= runGithubViewerCheck().finally(() => {
       viewerCheck = undefined;
     });
@@ -418,17 +424,13 @@ export function createProjectServer(
         if (cached?.viewer.id === viewer.id) cached.viewer = viewer;
         viewerVerifiedAt = viewerNow();
         offlineViewer = false;
-        if (viewerFailure) discoveryFailure = previousDiscoveryFailure;
-        viewerFailure = false;
-        previousDiscoveryFailure = undefined;
+        viewerFailure = undefined;
         updateGithubFreshness();
         refresh();
       }
     } catch (error) {
       if (lifetime.signal.aborted || githubSource !== source) return;
       const failure = classifyGithubError(error);
-      if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
-      viewerFailure = true;
       viewerVerifiedAt = 0;
       const wasOffline = offlineViewer;
       offlineViewer = false;
@@ -467,7 +469,7 @@ export function createProjectServer(
           errorCode: failure.code,
         };
       }
-      discoveryFailure = {
+      viewerFailure = {
         error: failure.message,
         errorCode: failure.code,
         retryAt: failure.retryAt,
@@ -481,7 +483,6 @@ export function createProjectServer(
   }
 
   function refresh(paths?: readonly string[], force = false) {
-    if (lifetime.signal.aborted) return;
     const previousTracker = snapshot.setup.tracker;
     const previousPaths = watchedPaths;
     snapshot = readSnapshot(paths);
@@ -525,12 +526,7 @@ export function createProjectServer(
       clearGithub();
       return;
     }
-    if (
-      discoveryRunning ||
-      detailRunning ||
-      (!githubSource && github?.retryAt && Date.parse(github.retryAt) > Date.now())
-    )
-      return;
+    if (discoveryRunning || detailRunning || coolingDown()) return;
     discoveryRunning = true;
     const generation = trackerGeneration;
     let viewer: Awaited<ReturnType<typeof githubViewer>> | undefined;
@@ -556,10 +552,7 @@ export function createProjectServer(
       }
       viewerVerifiedAt = viewerNow();
       offlineViewer = false;
-      if (viewerFailure) discoveryFailure = previousDiscoveryFailure;
-      viewerFailure = false;
-      previousDiscoveryFailure = undefined;
-      if (github?.retryAt && Date.parse(github.retryAt) > Date.now()) return;
+      viewerFailure = undefined;
       const previous = github;
       const priorDiscoveryFailure = discoveryFailure;
       let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
@@ -687,7 +680,6 @@ export function createProjectServer(
     } catch (error) {
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       const failure = classifyGithubError(error);
-      const priorFailure = discoveryFailure;
       discoveryFailure = {
         error: failure.message,
         errorCode: failure.code,
@@ -714,8 +706,7 @@ export function createProjectServer(
           }
           offlineViewer = !!local && local === githubSource.viewer.login;
         }
-        if (!viewerFailure) previousDiscoveryFailure = priorFailure;
-        viewerFailure = true;
+        viewerFailure = { ...discoveryFailure };
         github = {
           ...cached.data,
           stale: true,
@@ -928,9 +919,7 @@ export function createProjectServer(
           }
           offlineViewer = !!local && local === source.viewer.login;
         }
-        if (!viewerFailure) previousDiscoveryFailure = discoveryFailure;
-        viewerFailure = true;
-        discoveryFailure = {
+        viewerFailure = {
           error: failure.message,
           errorCode: failure.code,
           retryAt: failure.retryAt,
@@ -978,7 +967,7 @@ export function createProjectServer(
     beginDetail,
     getGithub: () => github,
     getSnapshot: () => snapshot,
-    discoveryFailed: () => !!discoveryFailure,
+    discoveryFailed: () => !!(discoveryFailure || viewerFailure),
     verifyIdentity: async (expected: GithubDiscovery) => {
       const source = githubSource;
       if (!source || github !== expected) return false;

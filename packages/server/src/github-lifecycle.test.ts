@@ -956,3 +956,171 @@ test("stopping cancels an in-flight viewer authentication before the user check"
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each(["offline discovery", "rate limit"])(
+  "%s remains protected through viewer checks",
+  async (scenario) => {
+    const root = await mkdtemp(join(tmpdir(), "github-refresh-protection-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: { id: 101, login: "101" } },
+        "config get": { stdout: "101" },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
+        },
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      let now = 100_000;
+      const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+      server = instance;
+      const get = async () => (await instance.app.request("/api/project")).json();
+      await get();
+      await gh.script({
+        ...replies,
+        "api repos/example/project": {
+          code: 1,
+          effect:
+            scenario === "rate limit"
+              ? "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 2\\n')"
+              : "process.stderr.write('network error')",
+        },
+      });
+      const failed = await (
+        await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+      ).json();
+      expect(failed.github).toMatchObject({ discoveryFailed: true, stale: true });
+      await gh.script(replies);
+      now += 60_001;
+      if (scenario === "rate limit") {
+        const count = async () =>
+          (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length;
+        const before = await count();
+        expect((await get()).github).toMatchObject({
+          discoveryFailed: true,
+          stale: true,
+          items: [{ title: "Private" }],
+        });
+        await get();
+        expect(await count()).toBe(before);
+        await new Promise((resolve) => setTimeout(resolve, 2200));
+        await get();
+        await expect.poll(count).toBeGreaterThan(before);
+      } else {
+        await get();
+        await expect.poll(async () => (await get()).github?.verifying).not.toBe(true);
+        expect((await get()).github).toMatchObject({
+          discoveryFailed: true,
+          stale: true,
+          errorCode: "offline",
+        });
+        const start = await server.app.request("/api/stints", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workItem: "github-1", ticket: 1, agent: "codex" }),
+        });
+        expect(start.status).toBe(409);
+      }
+      const refreshed = await (
+        await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+      ).json();
+      expect(refreshed.github).toMatchObject({ discoveryFailed: false, stale: false });
+    } finally {
+      await server?.stop();
+      process.env.PATH = oldPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
+
+test("viewer polling respects discovery rate limit until its retry deadline", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-poll-cooldown-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  let socket: WebSocket | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "config get": { stdout: "101" },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    server = createProjectServer(root, join(root, "web"), { githubViewerIntervalMs: 100 });
+    const http = await server.start();
+    await gh.script({
+      ...replies,
+      "api repos/example/project": {
+        code: 1,
+        effect: "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 2\\n')",
+      },
+    });
+    const failed = await (
+      await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+    ).json();
+    expect(failed.github.errorCode).toBe("rate-limited");
+    await gh.script(replies);
+    http.listen(0, "127.0.0.1");
+    await once(http, "listening");
+    const address = http.address();
+    if (!address || typeof address === "string") throw new Error("Missing server address");
+    socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
+    await once(socket, "open");
+    const count = async () =>
+      (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length;
+    const before = await count();
+    await server.app.request("/api/project");
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(await count()).toBe(before);
+    await expect.poll(count, { timeout: 5000 }).toBeGreaterThan(before);
+  } finally {
+    socket?.terminate();
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
