@@ -43,7 +43,7 @@ import {
 } from "./github-discovery.js";
 import {
   createDetailPublisher,
-  githubDetailCoolingDown,
+  githubRateLimitCoolingDown,
   readGithubTickets,
 } from "./github-tickets.js";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
@@ -306,10 +306,9 @@ export function createProjectServer(
   let viewerVerifiedAt = 0;
   let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
-  const coolingDown = () => !!github?.retryAt && Date.parse(github.retryAt) > Date.now();
-  const localVerificationNeeded = () => offlineViewer || coolingDown();
+  const localVerificationNeeded = () => offlineViewer || githubRateLimitCoolingDown(github);
   const viewerFresh = () =>
-    !coolingDown() &&
+    !githubRateLimitCoolingDown(github) &&
     viewerVerifiedAt > 0 &&
     viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
   function publicSnapshot(offlineVerified = false) {
@@ -380,7 +379,7 @@ export function createProjectServer(
     if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
     if (local && local === source.viewer.login) return true;
-    if (coolingDown()) return false;
+    if (githubRateLimitCoolingDown(github)) return false;
     trackerGeneration++;
     clearGithub();
     refresh();
@@ -389,7 +388,12 @@ export function createProjectServer(
 
   let viewerCheck: Promise<void> | undefined;
   function checkGithubViewer() {
-    if (lifetime.signal.aborted || discoveryRunning || detailRunning || coolingDown())
+    if (
+      lifetime.signal.aborted ||
+      discoveryRunning ||
+      detailRunning ||
+      githubRateLimitCoolingDown(github)
+    )
       return Promise.resolve();
     viewerCheck ??= runGithubViewerCheck().finally(() => {
       viewerCheck = undefined;
@@ -530,7 +534,7 @@ export function createProjectServer(
       clearGithub();
       return;
     }
-    if (discoveryRunning || detailRunning || coolingDown()) return;
+    if (discoveryRunning || detailRunning || githubRateLimitCoolingDown(github)) return;
     discoveryRunning = true;
     const generation = trackerGeneration;
     let viewer: Awaited<ReturnType<typeof githubViewer>> | undefined;
@@ -538,7 +542,12 @@ export function createProjectServer(
     const changedIssues = new Set<number>();
     try {
       await viewerCheck;
-      if (lifetime.signal.aborted || generation !== trackerGeneration || coolingDown()) return;
+      if (
+        lifetime.signal.aborted ||
+        generation !== trackerGeneration ||
+        githubRateLimitCoolingDown(github)
+      )
+        return;
       origin = await githubOrigin(root);
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (githubSource && githubSource.origin.toLowerCase() !== origin.toLowerCase()) {
@@ -852,12 +861,7 @@ export function createProjectServer(
       discoveryRunning
     )
       return 409;
-    if (
-      githubDetailCoolingDown(github) &&
-      (discoveryFailure?.errorCode === "rate-limited" ||
-        viewerFailure?.errorCode === "rate-limited")
-    )
-      return 429;
+    if (githubRateLimitCoolingDown(github)) return 429;
     detailRunning = true;
     const source = githubSource;
     const generation = trackerGeneration;
@@ -869,12 +873,7 @@ export function createProjectServer(
       await viewerCheck;
       if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
         return 409;
-      if (
-        coolingDown() &&
-        (discoveryFailure?.errorCode === "rate-limited" ||
-          viewerFailure?.errorCode === "rate-limited")
-      )
-        return 429;
+      if (githubRateLimitCoolingDown(github)) return 429;
       const currentOrigin = await githubOrigin(root);
       if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
         return 409;
@@ -896,7 +895,7 @@ export function createProjectServer(
       viewerFailure = undefined;
       updateGithubFreshness();
       verified = true;
-      if (githubDetailCoolingDown(github)) return 429;
+      if (githubRateLimitCoolingDown(github)) return 429;
       const repository = await githubTrackerRepository(root);
       if (
         repository.repositoryId !== current.repositoryId ||

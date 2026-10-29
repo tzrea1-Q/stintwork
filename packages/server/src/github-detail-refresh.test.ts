@@ -37,6 +37,7 @@ const scenarios = [
   "discovery-first",
   "isolated-details",
   "cooldown",
+  "detail-cooldown",
 ] as const;
 
 test.each(scenarios)(
@@ -251,6 +252,52 @@ test.each(scenarios)(
           ).toHaveLength(
             discoveryCalls.filter(({ args }) => args[0] === "api" && args[1] === "user").length,
           );
+          return;
+        }
+        if (scenario === "detail-cooldown") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              code: 1,
+              effect:
+                "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 60\\n')",
+            },
+          });
+          const failed = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(failed.status).toBe(503);
+          const failure = await failed.json();
+          expect(failure.github).toMatchObject({
+            errorCode: "rate-limited",
+            retryAt: expect.any(String),
+          });
+          const before = (await gh.calls()).length;
+          const blocked = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(blocked.status).toBe(429);
+          expect(await blocked.json()).toMatchObject({
+            reason: expect.stringContaining("GitHub rate limit reached"),
+          });
+          expect(await gh.calls()).toHaveLength(before);
+          await gh.script(replies);
+          const clock = vi
+            .spyOn(Date, "now")
+            .mockReturnValue(Date.parse(failure.github.retryAt) + 1);
+          try {
+            const recovered = await server.app.request("/api/github/items/1433/refresh", {
+              method: "POST",
+            });
+            expect(recovered.status).toBe(200);
+            expect(
+              (await gh.calls())
+                .slice(before)
+                .some(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+            ).toBe(true);
+          } finally {
+            clock.mockRestore();
+          }
           return;
         }
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
