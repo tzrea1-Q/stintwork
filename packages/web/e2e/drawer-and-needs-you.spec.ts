@@ -206,6 +206,55 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(trigger).toBeFocused();
       });
 
+      test(`Needs you shows a stale local approval with a reopen action ${width}px ${language} ${colorScheme}`, async ({
+        page,
+      }, testInfo) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        const { snapshot, item } = await openFixture(page, language);
+        item.stage = "tickets";
+        item.column = "tickets";
+        item.stages.spec = {
+          approved: {
+            by: "Developer",
+            at: "2026-10-29T12:00:00Z",
+            commit: "abc",
+            state: "stale",
+            stateReason: "head-changed",
+          },
+        };
+        snapshot.workItems = [item];
+        snapshot.warnings = [];
+        snapshot.attentionItems = [
+          {
+            kind: "approval-stale",
+            id: `approval-stale:${JSON.stringify([item.slug, "spec", "2026-10-29T12:00:00Z", "abc"])}`,
+            workItem: item.slug,
+            stage: "spec",
+            ticket: null,
+            stintId: null,
+            agent: null,
+            title: "Spec approval is stale",
+            details:
+              "HEAD changed while the approval was recorded. Reopen Spec to review the newer commits.",
+            raisedAt: "2026-10-29T12:00:00Z",
+          },
+        ];
+        await page.goto("/");
+        await expect(page.locator("html")).toHaveAttribute("lang", language);
+        await page.locator("#needs-you-trigger").click();
+        const sheet = page.locator(".needs-you-queue");
+        const stage = language === "en" ? "Spec" : "规格说明";
+        await expect(
+          sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
+        ).toBeVisible();
+        await expect(sheet.getByText(t.needsYou.staleApprovalDetails(stage))).toBeVisible();
+        const reopen = sheet.getByRole("button", { name: t.stints.reopen(stage) });
+        await reopen.scrollIntoViewIfNeeded();
+        await expect(reopen).toBeVisible();
+        await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-approval-stale");
+      });
+
       test(`Needs you ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 900 });
         await page.emulateMedia({ colorScheme });

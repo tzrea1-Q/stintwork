@@ -92,6 +92,7 @@ export {
   type HandoffUnresolvedAttentionItem,
   type CheckpointWarningAttentionItem,
   type GateAttentionItem,
+  type StaleApprovalAttentionItem,
 } from "./attention.js";
 export {
   hasUnresolvedHandoff,

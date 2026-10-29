@@ -659,7 +659,7 @@ describe("Chinese Needs-you queue", () => {
     for (const body of [
       "权限请求：Check project request",
       "未解决的交接",
-      "implement 阶段已就绪，等待批准",
+      "实现阶段已就绪，等待批准",
       "custom-agent 需要登录",
       "分支中已提交风险文件",
     ])
@@ -735,4 +735,142 @@ describe("Chinese Needs-you queue", () => {
     expect(screen.getByText("此处不支持浏览器通知。")).toBeInTheDocument();
     expect(document.title).toBe("Project · Stintwork");
   });
+});
+
+test.each(["en", "zh-CN"] as const)(
+  "stale approval can be reopened and reports refusals (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    const snapshot = attentionSnapshot([]);
+    const item = snapshot.workItems[0];
+    item.stage = "tickets";
+    item.column = "tickets";
+    item.stages.spec = {
+      approved: {
+        by: "Developer",
+        at: "2026-10-29T12:00:00Z",
+        commit: "abc",
+        state: "stale",
+        stateReason: "head-changed",
+      },
+    };
+    snapshot.attentionItems = deriveAttentionItems(snapshot).filter(
+      ({ kind }) => kind === "approval-stale",
+    );
+    let resolve!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done;
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ reason: "Refused to reopen" }), { status: 409 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: `${t.topBar.needsYou} 1` }));
+    const sheet = within(screen.getByRole("dialog"));
+    const stage = language === "en" ? "Spec" : "规格说明";
+    expect(
+      sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
+    ).toBeVisible();
+    expect(sheet.getByText(t.needsYou.staleApprovalDetails(stage))).toBeVisible();
+    const button = sheet.getByRole("button", { name: t.stints.reopen(stage) });
+    await user.click(button);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/work-items/first/gates/spec/reopen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(button).toBeDisabled();
+    resolve(new Response("{}"));
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    expect(await sheet.findByRole("alert")).toHaveTextContent(
+      `${t.needsYou.staleApprovalTitle(stage)}: Refused to reopen`,
+    );
+    expect(button).toBeEnabled();
+  },
+);
+
+test("Chinese notifications translate the stage for gate-ready and stale approvals", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  localStorage.setItem("stintwork.attention-notifications", "enabled");
+  const notify = vi.fn(function (this: unknown) {});
+  vi.stubGlobal("Notification", Object.assign(notify, { permission: "granted" }));
+  const snapshot = attentionSnapshot([]);
+  const workItem = snapshot.workItems[0];
+  workItem.stage = "tickets";
+  workItem.column = "tickets";
+  workItem.stages.spec = {
+    approved: {
+      by: "Developer",
+      at: "2026-10-29T12:00:00Z",
+      commit: "abc",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  const stale = deriveAttentionItems(snapshot).find((item) => item.kind === "approval-stale");
+  if (!stale) throw new Error("Expected stale approval");
+  const { rerender } = render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  const gate: AttentionItem = {
+    ...stale,
+    kind: "gate-ready",
+    id: "gate-ready:spec",
+    title: "Spec ready to approve",
+  };
+  rerender(
+    <LanguageProvider>
+      <Board snapshot={{ ...snapshot, attentionItems: [gate, stale] }} />
+    </LanguageProvider>,
+  );
+  expect(notify).toHaveBeenCalledWith(
+    "Project · 待你处理",
+    expect.objectContaining({ body: zhCN.needsYou.stageReady("规格说明"), tag: gate.id }),
+  );
+  expect(notify).toHaveBeenCalledWith(
+    "Project · 待你处理",
+    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: stale.id }),
+  );
+  rerender(
+    <LanguageProvider>
+      <Board snapshot={{ ...snapshot, attentionItems: [] }} />
+    </LanguageProvider>,
+  );
+  workItem.stages.spec = {
+    approved: {
+      by: "Developer",
+      at: "2026-10-29T12:01:00Z",
+      commit: "def",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  const later = deriveAttentionItems(snapshot).find((item) => item.kind === "approval-stale");
+  if (!later) throw new Error("Expected later stale approval");
+  rerender(
+    <LanguageProvider>
+      <Board snapshot={{ ...snapshot, attentionItems: [later] }} />
+    </LanguageProvider>,
+  );
+  expect(notify).toHaveBeenCalledTimes(3);
+  expect(notify).toHaveBeenLastCalledWith(
+    "Project · 待你处理",
+    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: later.id }),
+  );
 });

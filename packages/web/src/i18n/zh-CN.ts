@@ -362,6 +362,10 @@ export const zhCN: Catalog = {
     checkpoint: "检查点",
     memoryProposal: "记忆提案",
     gateReady: "关卡已就绪",
+    approvalStale: "批准已过期",
+    staleApprovalTitle: (stage) => joinChinese(stage, "的批准已过期"),
+    staleApprovalDetails: (stage) =>
+      joinChinese("记录批准时 HEAD 已发生变化。请重新开启", stage, "以审查较新的提交。"),
     permissionRequested: "权限请求",
     permissionRequest: (title) => joinChinese("权限请求：", title),
     unresolvedHandoff: "未解决的交接",

@@ -72,6 +72,8 @@ const samples: Record<string, unknown[][]> = {
   ],
   "needsYou.permissionRequest": [["Agent title 原文"]],
   "needsYou.stageReady": [["Stage 自定义"]],
+  "needsYou.staleApprovalTitle": [["Stage 自定义"]],
+  "needsYou.staleApprovalDetails": [["Stage 自定义"]],
   "needsYou.loginTitle": [["Codex"]],
   "needsYou.loginInstructions": [["codex login"]],
   "needsYou.ticket": [[1], [2]],
