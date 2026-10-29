@@ -3,6 +3,31 @@ import type { ProjectSnapshot } from "./project.js";
 import type { ReviewGateCondition } from "./review-evidence.js";
 import type { WorkflowStage } from "./workflows.js";
 import { coreText } from "./core-text.js";
+import type { Ticket } from "./work-items.js";
+
+export function githubTicketsDependencyReady(tickets: Ticket[]): boolean {
+  const positions = new Map(tickets.map((ticket, index) => [ticket.number, index]));
+  return (
+    tickets.length > 0 &&
+    positions.size === tickets.length &&
+    tickets.every((ticket, index) => {
+      const blockers = ticket.blockers ?? [];
+      if (
+        ticket.status === "unknown" ||
+        blockers.length !== ticket.blockedBy.length ||
+        new Set(blockers.map((blocker) => blocker.number)).size !== blockers.length ||
+        ticket.blockedBy.some((number) => !blockers.some((blocker) => blocker.number === number)) ||
+        (ticket.blocked && !blockers.some((blocker) => blocker.state === "open"))
+      )
+        return false;
+      return blockers.every((blocker) => {
+        if (blocker.state !== "open" && blocker.state !== "closed") return false;
+        const position = positions.get(blocker.number);
+        return position === undefined ? blocker.state === "closed" : position < index;
+      });
+    })
+  );
+}
 
 export type GateCondition = Omit<ReviewGateCondition, "id"> & {
   id: ReviewGateCondition["id"] | "output";
@@ -42,14 +67,7 @@ export function outputGateConditions(
       ready:
         item.tickets.length > 0 &&
         (item.github
-          ? item.tickets.every(
-              (ticket, index) =>
-                ticket.status !== "unknown" &&
-                ticket.blockedBy.every((number) => (positions.get(number) ?? -1) < index) &&
-                (!ticket.blocked ||
-                  (ticket.blockedBy.length > 0 &&
-                    ticket.blockedBy.every((number) => positions.has(number)))),
-            )
+          ? githubTicketsDependencyReady(item.tickets)
           : !warning &&
             item.tickets.every((ticket, index) =>
               ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),

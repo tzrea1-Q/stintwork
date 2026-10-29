@@ -4,6 +4,8 @@ import {
   coreTextWire,
   errorText,
   githubEvidenceDigest,
+  githubTicketsDependencyReady,
+  orderTickets,
   gateReadiness,
   evidenceStale,
   workflowGate,
@@ -315,16 +317,24 @@ export function addGithubGateRoutes(
           if (
             action === "approve" &&
             stage.gate === "tickets" &&
-            (!detail.tickets.length ||
-              detail.tickets.some(
-                (ticket) =>
-                  ticket.blocked &&
-                  ticket.blockers.some(
-                    (blocker) =>
-                      blocker.state !== "closed" &&
-                      !detail.tickets.some((child) => child.number === blocker.number),
-                  ),
-              ))
+            !githubTicketsDependencyReady(
+              orderTickets(
+                detail.tickets.map((ticket) => ({
+                  ...ticket,
+                  slug: `github-${ticket.number}`,
+                  status:
+                    ticket.state === "open" ||
+                    (ticket.state === "closed" &&
+                      ["completed", "not_planned"].includes(ticket.stateReason ?? ""))
+                      ? ticket.state
+                      : "unknown",
+                  resolved: ticket.state === "closed",
+                  path: ticket.url,
+                })),
+                [],
+                true,
+              ),
+            )
           )
             throw new GithubReadError("incomplete");
           const input = { parentId: item.id, body: detail.spec, tickets: detail.tickets };
