@@ -187,7 +187,7 @@ export function GateView({
             );
           })}
       {!github &&
-        stages.map((stage) => {
+        earlier.map((stage) => {
           const approval = item.stages[stage.id]?.approved;
           return approval &&
             typeof approval === "object" &&

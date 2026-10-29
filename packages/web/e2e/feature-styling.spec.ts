@@ -210,6 +210,7 @@ for (const language of ["en", "zh-CN"] as const) {
             snapshot.workItems[0] = {
               ...snapshot.workItems[0],
               stage: "tickets",
+              column: "tickets",
               stages: {
                 ...snapshot.workItems[0].stages,
                 spec: {

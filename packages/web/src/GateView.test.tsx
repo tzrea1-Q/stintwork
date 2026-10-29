@@ -750,6 +750,24 @@ test.each([
   expect(screen.getByRole("button", { name: reopen })).toBeInTheDocument();
 });
 
+test("a reopened local stage does not ask to reopen its stale approval again", () => {
+  const item = project("implement").workItems[0];
+  item.stages.implement = {
+    approved: {
+      by: "You",
+      at: "2026-10-09T10:00:00Z",
+      commit: "checkpoint",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+    reopened: { by: "You", at: "2026-10-09T10:05:00Z", commit: "later" },
+  };
+  item.stages.review = { approved: { state: "stale", stateReason: "head-changed" } };
+  render(<GateView item={item} />);
+  expect(screen.queryByText(/Approval is stale; HEAD changed/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Reopen Implement" })).not.toBeInTheDocument();
+});
+
 test("local gate keeps its original request and confirmation", async () => {
   const item = project().workItems[0];
   const fetcher = vi
