@@ -498,6 +498,8 @@ export function createProjectServer(
         retryable: true,
       };
       viewerFailure = currentViewerFailure;
+      updateGithubFreshness();
+      refresh();
       if (failure.code === "offline" || failure.code === "server-error") {
         const origin = await githubOrigin(root).catch(() => undefined);
         if (lifetime.signal.aborted || githubSource !== source) return;
@@ -763,6 +765,8 @@ export function createProjectServer(
         const wasOffline = offlineViewer;
         offlineViewer = false;
         viewerFailure = { ...discoveryFailure };
+        updateGithubFreshness();
+        refresh();
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
           if (lifetime.signal.aborted || generation !== trackerGeneration) return;
@@ -998,6 +1002,8 @@ export function createProjectServer(
           retryAt: failure.retryAt,
           retryable: true,
         };
+        updateGithubFreshness();
+        refresh();
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
           if (
