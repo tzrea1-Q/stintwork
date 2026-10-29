@@ -10,7 +10,13 @@ import { HandoffAnswer } from "./HandoffAnswer";
 import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
 import { attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
-import { renderCoreText, useErrorText, useLanguage } from "./i18n/language";
+import {
+  CoreTextError,
+  readResponseJson,
+  renderCoreText,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
 import { Button } from "./ui/Button";
@@ -37,6 +43,30 @@ export function NeedsYouQueue({
   const [answerError, setAnswerError] = useErrorText();
   const [answerItem, setAnswerItem] = useState<AttentionItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  async function reopen(item: Extract<AttentionItem, { kind: "approval-stale" }>) {
+    setSaving(item.id);
+    setAnswerError("");
+    setAnswerItem(null);
+    try {
+      const response = await fetch(
+        `/api/work-items/${encodeURIComponent(item.workItem)}/gates/${encodeURIComponent(item.stage)}/reopen`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        },
+      );
+      const result = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(result, t.stints.changeGateFailed);
+    } catch (cause) {
+      setAnswerError(cause instanceof Error ? cause : t.stints.changeGateFailed);
+      setAnswerItem(item);
+    } finally {
+      setSaving(null);
+    }
+  }
 
   async function refreshAvailability() {
     setRefreshing(true);
@@ -128,7 +158,7 @@ export function NeedsYouQueue({
                   : workItem?.stints.find((entry) => entry.id === item.stintId);
               const workflow = workItem && snapshot.workflows[workItem.workflow];
               const stage =
-                item.kind === "gate-ready" && workflow
+                (item.kind === "gate-ready" || item.kind === "approval-stale") && workflow
                   ? workflow.stages.find((stage) => stage.id === item.stage)
                   : undefined;
               const title = attentionTitle(
@@ -194,10 +224,30 @@ export function NeedsYouQueue({
                           ? t.needsYou.checkpoint
                           : item.kind === "memory-proposal"
                             ? t.needsYou.memoryProposal
-                            : t.needsYou.gateReady}
+                            : item.kind === "approval-stale"
+                              ? t.needsYou.approvalStale
+                              : t.needsYou.gateReady}
                     {item.agent && ` · ${profile?.displayName ?? item.agent}`}
                   </p>
                   <h3>{title}</h3>
+                  {item.kind === "approval-stale" && (
+                    <>
+                      <p>
+                        {t.needsYou.staleApprovalDetails(
+                          workflow && stage ? stageName(workflow, stage, t) : item.stage,
+                        )}
+                      </p>
+                      <Button
+                        variant="secondary"
+                        disabled={saving !== null}
+                        onClick={() => void reopen(item)}
+                      >
+                        {t.stints.reopen(
+                          workflow && stage ? stageName(workflow, stage, t) : item.stage,
+                        )}
+                      </Button>
+                    </>
+                  )}
                   {item.kind === "permission" && stint && <StintRecovery stint={stint} />}
                   {item.kind === "checkpoint-warning" && (
                     <>

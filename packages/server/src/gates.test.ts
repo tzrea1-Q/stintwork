@@ -468,6 +468,18 @@ async function expectRacedApproval(useWorktree: boolean) {
     state: "stale",
     stateReason: "head-changed",
   });
+  const projected = await snapshot(project);
+  expect(projected.attentionItems).toContainEqual(
+    expect.objectContaining({ kind: "approval-stale", workItem: "first", stage: "implement" }),
+  );
+  expect(projected.attentionItems).not.toContainEqual(
+    expect.objectContaining({ kind: "gate-ready", workItem: "first", stage: "implement" }),
+  );
+  process.env.PATH = oldPath;
+  expect((await action(project, "implement", "reopen")).status).toBe(200);
+  expect((await snapshot(project)).attentionItems).not.toContainEqual(
+    expect.objectContaining({ kind: "approval-stale", workItem: "first", stage: "implement" }),
+  );
 }
 
 test("a local approval whose commit races a HEAD advance is reported stale with head-changed", async () => {

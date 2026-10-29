@@ -1167,3 +1167,28 @@ test("recovery reconnect retains one history and logical permission; success alo
     ),
   ).toHaveLength(2);
 });
+
+test("accepts stale approval attention over HTTP and live snapshots", async () => {
+  const next = mixedAttentionSnapshot();
+  next.workItems[0].stage = "tickets";
+  next.workItems[0].column = "tickets";
+  next.workItems[0].stages.spec = {
+    approved: {
+      by: "Developer",
+      at: "2026-10-29T12:00:00Z",
+      commit: "abc",
+      state: "stale",
+      stateReason: "head-changed",
+    },
+  };
+  next.attentionItems = deriveAttentionItems(next);
+  expect(next.attentionItems).toContainEqual(
+    expect.objectContaining({ kind: "approval-stale", stage: "spec" }),
+  );
+  vi.mocked(fetch).mockImplementation(async () => response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot(next));
+  expect(result.current.snapshot).toEqual(next);
+  expect(result.current.connection).toBe("live");
+});

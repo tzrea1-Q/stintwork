@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { CoreTextError, coreText, type CoreText } from "./core-text.js";
 import { parseDocument } from "yaml";
-import type { GateAttentionItem } from "./attention.js";
+import type { GateAttentionItem, StaleApprovalAttentionItem } from "./attention.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { StagedWorkItem } from "./stages.js";
 import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
@@ -114,6 +114,46 @@ export function deriveGateAttentionItems(
         raisedAt: stint?.endedAt ?? stint?.startedAt ?? "1970-01-01T00:00:00.000Z",
       },
     ];
+  });
+}
+
+export function deriveStaleApprovalAttentionItems(
+  snapshot: Pick<ProjectSnapshot, "workItems"> & Partial<Pick<ProjectSnapshot, "workflows">>,
+): StaleApprovalAttentionItem[] {
+  const workflows: WorkflowDefinitions = snapshot.workflows ?? builtInWorkflows;
+  return snapshot.workItems.flatMap((item) => {
+    if (item.merged || item.github) return [];
+    const stages = workflows[item.workflow].stages;
+    const position = stages.findIndex(({ id }) => id === item.stage);
+    if (position < 0) return [];
+    return stages.slice(0, position).flatMap(({ id, name }) => {
+      const approval = item.stages[id]?.approved;
+      if (
+        !approval ||
+        typeof approval !== "object" ||
+        !("state" in approval) ||
+        approval.state !== "stale" ||
+        !("stateReason" in approval) ||
+        approval.stateReason !== "head-changed" ||
+        !("at" in approval) ||
+        typeof approval.at !== "string"
+      )
+        return [];
+      return [
+        {
+          kind: "approval-stale" as const,
+          id: `approval-stale:${JSON.stringify([item.slug, id])}`,
+          workItem: item.slug,
+          stage: id,
+          ticket: null,
+          stintId: null,
+          agent: null,
+          title: `${name} approval is stale`,
+          details: `HEAD changed while the approval was recorded. Reopen ${name} to review the newer commits.`,
+          raisedAt: approval.at,
+        },
+      ];
+    });
   });
 }
 

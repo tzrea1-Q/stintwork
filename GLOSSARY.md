@@ -79,7 +79,7 @@ _Avoid_: Mode (an agent's own setting), sandbox
 ## The developer's attention
 
 **Attention item**:
-Something only the developer can resolve: an agent's question, a permission request, a gate approval, a review, or a memory proposal. "Needs you" is the list of open attention items, followed by project warnings. Project warnings are not attention items.
+Something only the developer can resolve: an agent's question, a permission request, a gate approval, a stale approval, a review, or a memory proposal. "Needs you" is the list of open attention items, followed by project warnings. Project warnings are not attention items.
 _Avoid_: Notification, inbox item, decision (reserved for decision records)
 
 **Project memory**:

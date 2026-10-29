@@ -11,8 +11,10 @@ export function attentionTitle(
   t: Catalog,
   language: Language,
   agent = item.agent ?? "",
-  stage = item.kind === "gate-ready" ? item.stage : "",
+  stage = item.kind === "gate-ready" || item.kind === "approval-stale" ? item.stage : "",
 ) {
+  if (item.kind === "approval-stale" && language === "en")
+    return stage === item.stage ? item.title : t.needsYou.staleApprovalTitle(stage);
   if (language === "en") return item.title;
   switch (item.kind) {
     case "permission":
@@ -21,6 +23,8 @@ export function attentionTitle(
         : t.needsYou.permissionRequest(item.title);
     case "handoff-unresolved":
       return t.needsYou.unresolvedHandoff;
+    case "approval-stale":
+      return t.needsYou.staleApprovalTitle(stage);
     case "gate-ready":
       return t.needsYou.stageReady(stage);
     case "login-required":

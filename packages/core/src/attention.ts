@@ -5,7 +5,7 @@ import type { ProjectSnapshot } from "./project.js";
 import type { CheckpointWarning, StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
 import type { StageId } from "./workflows.js";
-import { deriveGateAttentionItems } from "./gates.js";
+import { deriveGateAttentionItems, deriveStaleApprovalAttentionItems } from "./gates.js";
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 
 export type AttentionItemSource = {
@@ -60,11 +60,20 @@ export type GateAttentionItem = AttentionItemSource & {
   workItem: string;
   stage: StageId;
 };
+export type StaleApprovalAttentionItem = AttentionItemSource & {
+  kind: "approval-stale";
+  workItem: string;
+  stage: StageId;
+  ticket: null;
+  stintId: null;
+  agent: null;
+};
 export type AttentionItem =
   | PermissionAttentionItem
   | HandoffUnresolvedAttentionItem
   | CheckpointWarningAttentionItem
   | GateAttentionItem
+  | StaleApprovalAttentionItem
   | MemoryProposalAttentionItem
   | LoginRequiredAttentionItem;
 
@@ -203,7 +212,12 @@ export function deriveAttentionItems(
       raisedAt: agent.availability?.checkedAt ?? "1970-01-01T00:00:00.000Z",
       loginCommand: agent.capabilities.authenticationRequired.loginCommand,
     }));
-  return [...workItemAttention, ...deriveGateAttentionItems(snapshot), ...logins].sort(
+  return [
+    ...workItemAttention,
+    ...deriveGateAttentionItems(snapshot),
+    ...deriveStaleApprovalAttentionItems(snapshot),
+    ...logins,
+  ].sort(
     (first, second) =>
       first.raisedAt.localeCompare(second.raisedAt) || first.id.localeCompare(second.id),
   );

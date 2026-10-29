@@ -68,10 +68,12 @@ function isAttentionItem(value: unknown, stages: readonly WorkflowStage[]) {
       typeof value.loginCommand === "string" &&
       value.loginCommand.trim().length > 0) ||
       (typeof value.workItem === "string" &&
-        ((value.kind === "gate-ready" &&
+        (((value.kind === "gate-ready" || value.kind === "approval-stale") &&
           value.ticket === null &&
-          (value.stintId === null || typeof value.stintId === "string") &&
-          (value.agent === null || typeof value.agent === "string") &&
+          (value.stintId === null ||
+            (value.kind === "gate-ready" && typeof value.stintId === "string")) &&
+          (value.agent === null ||
+            (value.kind === "gate-ready" && typeof value.agent === "string")) &&
           stages.some((stage) => stage.id === value.stage)) ||
           (typeof value.stintId === "string" &&
             typeof value.agent === "string" &&

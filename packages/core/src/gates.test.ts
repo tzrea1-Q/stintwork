@@ -333,3 +333,52 @@ test("gate records preserve versioned GitHub evidence in YAML", () => {
     stages: { implement: { approved: record } },
   });
 });
+
+test("only stale local approvals before the current stage need attention", () => {
+  const workItem = item("tickets");
+  const approval = {
+    by: "Developer",
+    at: "2026-10-29T12:00:00Z",
+    commit: "abc",
+    state: "stale",
+    stateReason: "head-changed",
+  };
+  workItem.stages.spec = { approved: approval };
+  const stale = () =>
+    deriveAttentionItems({ workItems: [workItem] }).filter(({ kind }) => kind === "approval-stale");
+  expect(stale()).toEqual([
+    {
+      kind: "approval-stale",
+      workItem: "first",
+      stage: "spec",
+      ticket: null,
+      stintId: null,
+      agent: null,
+      id: 'approval-stale:["first","spec"]',
+      title: "Spec approval is stale",
+      details:
+        "HEAD changed while the approval was recorded. Reopen Spec to review the newer commits.",
+      raisedAt: approval.at,
+    },
+  ]);
+  workItem.stage = "spec";
+  expect(stale()).toEqual([]);
+  workItem.stage = "tickets";
+  workItem.stages.spec = {
+    approved: { by: approval.by, at: approval.at, commit: approval.commit },
+  };
+  expect(stale()).toEqual([]);
+  workItem.stages.spec = { approved: approval };
+  workItem.merged = { at: approval.at, commit: "abc" };
+  expect(stale()).toEqual([]);
+  delete workItem.merged;
+  workItem.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/a/b/issues/1",
+    complete: true,
+  };
+  expect(stale()).toEqual([]);
+});

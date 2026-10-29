@@ -736,3 +736,67 @@ describe("Chinese Needs-you queue", () => {
     expect(document.title).toBe("Project · Stintwork");
   });
 });
+
+test.each(["en", "zh-CN"] as const)(
+  "stale approval can be reopened and reports refusals (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    const snapshot = attentionSnapshot([]);
+    const item = snapshot.workItems[0];
+    item.stage = "tickets";
+    item.column = "tickets";
+    item.stages.spec = {
+      approved: {
+        by: "Developer",
+        at: "2026-10-29T12:00:00Z",
+        commit: "abc",
+        state: "stale",
+        stateReason: "head-changed",
+      },
+    };
+    snapshot.attentionItems = deriveAttentionItems(snapshot).filter(
+      ({ kind }) => kind === "approval-stale",
+    );
+    let resolve!: (response: Response) => void;
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((done) => {
+            resolve = done;
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ reason: "Refused to reopen" }), { status: 409 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: `${t.topBar.needsYou} 1` }));
+    const sheet = within(screen.getByRole("dialog"));
+    const stage = language === "en" ? "Spec" : "规格说明";
+    expect(
+      sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
+    ).toBeVisible();
+    expect(sheet.getByText(t.needsYou.staleApprovalDetails(stage))).toBeVisible();
+    const button = sheet.getByRole("button", { name: t.stints.reopen(stage) });
+    await user.click(button);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith("/api/work-items/first/gates/spec/reopen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(button).toBeDisabled();
+    resolve(new Response("{}"));
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    expect(await sheet.findByRole("alert")).toHaveTextContent("Refused to reopen");
+    expect(button).toBeEnabled();
+  },
+);

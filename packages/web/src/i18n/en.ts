@@ -347,6 +347,10 @@ export const en = {
     checkpoint: "Checkpoint",
     memoryProposal: "Memory proposal",
     gateReady: "Gate ready",
+    approvalStale: "Stale approval",
+    staleApprovalTitle: (stage: string) => `${stage} approval is stale`,
+    staleApprovalDetails: (stage: string) =>
+      `HEAD changed while the approval was recorded. Reopen ${stage} to review the newer commits.`,
     permissionRequested: "Permission requested",
     permissionRequest: (title: string) => title,
     unresolvedHandoff: "Unresolved handoff",
