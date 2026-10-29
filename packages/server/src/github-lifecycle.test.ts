@@ -283,6 +283,87 @@ test("offline auth retains data only while the local account matches and coalesc
   }
 });
 
+test("offline reads wait for an in-flight local account check", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-offline-wait-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    expect((await get()).github.items).toHaveLength(1);
+    now += 60_001;
+    const offline = {
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('network error')" },
+      "config get": { stdout: "101" },
+    };
+    await gh.script(offline);
+    await get();
+    await expect.poll(async () => (await get()).github?.errorCode).toBe("offline");
+    await gh.script({
+      ...offline,
+      "api user": {
+        code: 1,
+        effect:
+          "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300); process.stderr.write('network error')",
+      },
+      "config get": {
+        stdout: "101",
+        effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)",
+      },
+    });
+    const count = async () =>
+      (await gh.calls()).filter(({ args }) => args[0] === "config" && args[1] === "get").length;
+    const before = await count();
+    const results = await Promise.all(Array.from({ length: 3 }, get));
+    expect(await count()).toBe(before + 1);
+    for (const result of results)
+      expect(result.github).toMatchObject({ errorCode: "offline", items: [{ title: "Private" }] });
+    // A new retry may clear the fallback flag while its local check is still running.
+    expect((await get()).github.items).toHaveLength(1);
+    const after = await count();
+    await expect.poll(count).toBeGreaterThan(after);
+    expect((await get()).github).toMatchObject({
+      errorCode: "offline",
+      items: [{ title: "Private" }],
+    });
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.each(["changed", "case", "refresh", "token"])(
   "offline cache protects origin and token identity: %s",
   async (scenario) => {

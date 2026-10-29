@@ -321,7 +321,11 @@ export function createProjectServer(
   let viewerVerifiedAt = 0;
   let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
-  const localVerificationNeeded = () => offlineViewer || githubRateLimitCoolingDown(github);
+  const localVerificationNeeded = () =>
+    offlineViewer ||
+    github?.errorCode === "offline" ||
+    github?.errorCode === "server-error" ||
+    githubRateLimitCoolingDown(github);
   const viewerFresh = () =>
     !githubRateLimitCoolingDown(github) &&
     viewerVerifiedAt > 0 &&
@@ -425,6 +429,7 @@ export function createProjectServer(
       clearGithubIdentity();
       return false;
     }
+    if (!offlineViewer) return false;
     trackerGeneration++;
     clearGithub();
     refresh();
