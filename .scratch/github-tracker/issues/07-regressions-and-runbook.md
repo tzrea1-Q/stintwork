@@ -1,6 +1,6 @@
 # 07 — Verify the integrated flow and prepare the exit
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 06
 
 ## What to build
@@ -15,6 +15,14 @@ Exercise the full fixture-backed flow and write a concise coordinator runbook in
 - [x] Coordinator-only real gh, network, local sockets and browser checks are identified and no real-repo pass is claimed.
 
 ## Comments
+
+**Coordinator, 2026-10-28:** Resolved. Merged to main as `fc3b50d`.
+
+The full local verify passed on the merged tree: format:check, lint, typecheck, build, 3,144 unit tests across 171 files, smoke:package and test:e2e. There were 2 Codex review rounds; the last was clean. The round-1 fix: one shared Tickets dependency rule (ordered siblings; closed external blockers; cycles and unknown dependencies refuse).
+
+CI run 40815958375 did not run any job. GitHub reported that recent account payments failed or the spending limit must be raised. CI evidence for this merge is pending until the maintainer resolves billing and the run is re-run.
+
+All automated evidence here uses fake gh. No real-repo pass has been run; that is ticket 08.
 
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
 
