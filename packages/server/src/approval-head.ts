@@ -15,6 +15,7 @@ export function approvalHeadChanged({
   approval,
   matchesExtra,
   checkoutText,
+  historyKey,
 }: {
   directory: string;
   root: string;
@@ -23,9 +24,19 @@ export function approvalHeadChanged({
   approval: { at: string; commit: string };
   matchesExtra?: (doc: ReturnType<typeof parseDocument>) => boolean;
   checkoutText?: () => string | undefined;
+  historyKey?: readonly string[];
 }): boolean {
-  const key = JSON.stringify([directory, root, path, stage, approval.at, approval.commit]);
-  if (!matchesExtra && localCache.has(key)) return localCache.get(key) as boolean;
+  const key = JSON.stringify([
+    directory,
+    root,
+    path,
+    stage,
+    approval.at,
+    approval.commit,
+    historyKey,
+    ...(!matchesExtra && historyKey && checkoutText ? [checkoutText()] : []),
+  ]);
+  if (!matchesExtra && historyKey && localCache.has(key)) return localCache.get(key) as boolean;
   const matches = (text: string | undefined) => {
     if (text === undefined) return false;
     const doc = parseDocument(text);
@@ -50,18 +61,22 @@ export function approvalHeadChanged({
     }).trim();
     for (const introduced of commits ? commits.split("\n") : []) {
       if (!matches(readVersion(introduced))) continue;
-      const parent = execFileSync("git", ["rev-parse", `${introduced}^`], {
+      const parent = execFileSync("git", ["show", "-s", "--format=%P", introduced], {
         cwd,
         encoding: "utf8",
-      }).trim();
+      })
+        .trim()
+        .split(" ")[0];
+      if (!parent) return undefined;
       if (matches(readVersion(parent))) continue;
-      if (allowCheckout && matches(checkoutText?.())) return checkHistory(root, false);
+      if (allowCheckout && matches(checkoutText?.()))
+        return checkHistory(root, false) ?? parent !== approval.commit;
       return parent !== approval.commit;
     }
     return undefined;
   };
   const result = checkHistory(directory, !!checkoutText);
-  if (!matchesExtra && result !== undefined) localCache.set(key, result);
+  if (!matchesExtra && historyKey && result !== undefined) localCache.set(key, result);
   return result ?? false;
 }
 
@@ -74,20 +89,30 @@ export function projectLocalApprovals(
     if (item.github) continue;
     const directory = project.worktreePaths.get(item.slug) ?? root;
     const path = `.scratch/${item.slug}/workflow.yaml`;
-    const stale: typeof item.stages = {};
+    let historyKey: string[];
     try {
-      for (const [stage, record] of Object.entries(item.stages)) {
-        const approval = record.approved;
-        if (
-          !approval ||
-          typeof approval !== "object" ||
-          Array.isArray(approval) ||
-          !("at" in approval) ||
-          typeof approval.at !== "string" ||
-          !("commit" in approval) ||
-          typeof approval.commit !== "string"
-        )
-          continue;
+      historyKey = (directory === root ? [directory] : [directory, root]).map((cwd) =>
+        execFileSync("git", ["log", "-1", "--format=%H", "--", path], {
+          cwd,
+          encoding: "utf8",
+        }).trim(),
+      );
+    } catch {
+      continue;
+    }
+    for (const [stage, record] of Object.entries(item.stages)) {
+      const approval = record.approved;
+      if (
+        !approval ||
+        typeof approval !== "object" ||
+        Array.isArray(approval) ||
+        !("at" in approval) ||
+        typeof approval.at !== "string" ||
+        !("commit" in approval) ||
+        typeof approval.commit !== "string"
+      )
+        continue;
+      try {
         if (
           approvalHeadChanged({
             directory,
@@ -97,16 +122,13 @@ export function projectLocalApprovals(
             approval: { at: approval.at, commit: approval.commit },
             checkoutText:
               directory !== root ? () => createNodeRepoFiles(root).read(path) : undefined,
+            historyKey,
           })
         )
-          stale[stage] = {
-            ...record,
-            approved: { ...approval, state: "stale", stateReason: "head-changed" },
-          };
+          record.approved = { ...approval, state: "stale", stateReason: "head-changed" };
+      } catch {
+        // Leave this approval unchanged if its history cannot be read.
       }
-      Object.assign(item.stages, stale);
-    } catch {
-      // A failed history read must not alter the item's approval records.
     }
   }
 }
