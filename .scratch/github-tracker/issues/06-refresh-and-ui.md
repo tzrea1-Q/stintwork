@@ -1,6 +1,6 @@
 # 06 — Show freshness and recovery on the board
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 05
 
 ## What to build
@@ -15,9 +15,41 @@ Implement the specified open, post-stint and explicit refresh lifecycle, scoped 
 - [x] Missing gh, login, access/404, rate limit, network and incomplete states use the specified English and Chinese copy and offer retry.
 - [x] Identity/login changes clear cached private data; rate limits and bounded concurrency are respected.
 - [x] Behavior and keyboard tests use fixtures and fake gh without network; local tracker remains usable.
-- [ ] Coordinator runs browser layout cases at 1440, 1024, 768 and 390 in both languages, required colour schemes and records 1440/390 visual review; these require browser and local sockets.
+- [x] Coordinator runs browser layout cases at 1440, 1024, 768 and 390 in both languages, required colour schemes and records 1440/390 visual review; these require browser and local sockets.
 
 ## Comments
+
+**Coordinator, 2026-10-28:** Resolved. Merged as `17fcd9c`, with a follow-up in `cace70a`.
+
+The full verify passed: format:check, lint, typecheck, build, 3,130 unit tests across 170 files, smoke:package and test:e2e. There were 17 Codex review rounds; the last was clean. Fixes from earlier rounds:
+- read-only state is per item;
+- retry timing is measured from the current time;
+- repository-level status follows discovery failure, so Load more stays available;
+- opening an item refreshes its detail, with conflict retry;
+- partial discovery names the failed connections;
+- `gh` login changes are detected while the board is open;
+- GitHub data is served only to a viewer verified within 60 s;
+- a logout clears data, while offline keeps a same-login read-only view, verified through the local `gh` account;
+- token auth fails closed when offline;
+- an origin change clears the cache;
+- viewer identity is keyed by account ID;
+- the rate-limit cooldown is honoured everywhere, and identity is checked locally during a cooldown;
+- read-only state refuses gate writes;
+- a post-stint refresh waits out a cooldown;
+- redaction keeps the open drawer and the recovery controls;
+- cards show tickets as not loaded until detail arrives.
+
+Main CI run 40809010913 failed on ubuntu: the test `offline viewer local config same` raced on a slower machine. The follow-up `cace70a` makes offline requests await the in-flight local check and publishes the stale state before the fallback serves anything. Its test passed 5 sequential and 6 parallel stress runs, after 3 review rounds, the last clean. CI run 40813850516 then passed: checks, both browser shards, and package-smoke on ubuntu and macOS.
+
+Browser check on a scratch repo (origin `github/gh-aw`, more than 500 issues), using real read-only `gh`:
+- Widths 1440 (light and dark, en and zh-CN), 1024, 768 and 390 (light en, dark zh-CN). None has horizontal scroll.
+- The status row shows the fetch time, the scanned count, the incomplete badge with "more pages", and Refresh and Load more grouped together.
+- The card shows "Tickets not loaded" / "工单未加载" before its detail loads.
+- A live Load more raised the scan from 500 to 1,000 issues.
+- Opening the drawer loaded the detail.
+- Stale, offline, rate-limit and identity states were not reproduced live; the fake-gh tests cover them.
+
+The scratch server was stopped and the viewport reset.
 
 
 **Codex, 2026-10-27:** Filed in dependency order. No implementation or live GitHub exit check has been run in this docs-only filing.
