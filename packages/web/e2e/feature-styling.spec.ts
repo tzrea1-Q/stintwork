@@ -137,6 +137,63 @@ for (const language of ["en", "zh-CN"] as const) {
           await capture(page, drawer, info, "github-gate-stale");
         });
 
+        test("local gate shows a stale approval after a HEAD race", async ({ page }, info) => {
+          await page.route("**/api/work-items/*/gates/spec/approve", (route) =>
+            route.fulfill({
+              json: { stage: "tickets", approval: "stale", reason: "head-changed" },
+            }),
+          );
+          await page.goto("/");
+          await page
+            .getByRole("button", {
+              name: t.card.open(dialogItem.slug, dialogItem.title),
+              exact: true,
+            })
+            .click();
+          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const gate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.spec),
+          });
+          await gate
+            .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
+            .click();
+          await expect(
+            gate.getByText(
+              t.stints.localApprovalStaleAfterApprove(t.workflows.feature.stages.spec),
+            ),
+          ).toBeVisible();
+          await capture(page, drawer, info, "local-gate-stale");
+        });
+
+        test("local gate lists a projected stale approval", async ({ page }, info) => {
+          snapshot.workItems[0].stages = {
+            clarify: {
+              approved: {
+                by: "You",
+                at: "2026-10-13T10:00:00Z",
+                commit: "head",
+                state: "stale",
+                stateReason: "head-changed",
+              },
+            },
+          };
+          await page.goto("/");
+          await page
+            .getByRole("button", {
+              name: t.card.open(dialogItem.slug, dialogItem.title),
+              exact: true,
+            })
+            .click();
+          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const gate = drawer.getByRole("region", {
+            name: t.stints.gate(t.workflows.feature.stages.spec),
+          });
+          await expect(
+            gate.getByText(`${t.workflows.feature.stages.clarify}: ${t.stints.localApprovalStale}`),
+          ).toBeVisible();
+          await capture(page, drawer, info, "local-gate-stale-projected");
+        });
+
         test("gate, handoff and replay keep long code inside their own boxes", async ({
           page,
         }, info) => {

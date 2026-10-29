@@ -652,6 +652,9 @@ export const en = {
     returnToPipeline: " to return to Pipeline",
     changeGateFailed: "Could not change the gate.",
     gateApproved: (name: string) => `Gate approved. Stage advances to ${name}.`,
+    localApprovalStaleAfterApprove: (name: string) =>
+      `Gate approved, but HEAD changed while the approval was recorded. The approval is stale; reopen ${name} to review the newer commits.`,
+    localApprovalStale: "Approval is stale; HEAD changed while it was recorded.",
     gateReopened: (name: string) => `${name} reopened.`,
     gate: (name: string) => `${name} gate`,
     gateConditions: (name: string) => `${name} gate conditions`,
