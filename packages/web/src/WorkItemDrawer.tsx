@@ -68,9 +68,11 @@ export function WorkItemDrawer({
   workflows = builtInWorkflows,
   onCustomiseWorkflow,
   githubReadOnly = false,
+  githubRetryAt,
 }: {
   item: BoardWorkItem;
   githubReadOnly?: boolean;
+  githubRetryAt?: string;
   milestone?: Milestone;
   onClose: () => void;
   agents?: AgentProfile[];
@@ -90,9 +92,15 @@ export function WorkItemDrawer({
     const number = githubNumber;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    setRefreshing(true);
-    setRefreshError("");
     async function attempt(count: number) {
+      const delay = githubRetryAt ? Date.parse(githubRetryAt) - Date.now() : 0;
+      if (delay > 0) {
+        setRefreshing(false);
+        timer = setTimeout(() => void attempt(count), Math.min(delay, 2_147_483_647));
+        return;
+      }
+      setRefreshing(true);
+      setRefreshError("");
       try {
         await refreshGithubItem(number, t.stints.changeGateFailed);
         if (!cancelled) refreshed.current = number;
@@ -111,7 +119,7 @@ export function WorkItemDrawer({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [githubNumber, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
+  }, [githubNumber, githubRetryAt, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);

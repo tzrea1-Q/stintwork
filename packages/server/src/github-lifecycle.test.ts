@@ -1092,11 +1092,22 @@ test("viewer polling respects discovery rate limit until its retry deadline", as
     await gh.script(replies);
     server = createProjectServer(root, join(root, "web"), { githubViewerIntervalMs: 100 });
     const http = await server.start();
+    http.listen(0, "127.0.0.1");
+    await once(http, "listening");
+    const address = http.address();
+    if (!address || typeof address === "string") throw new Error("Missing server address");
+    socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
+    const messages: {
+      github?: { items: unknown[]; errorCode?: string; stale?: boolean };
+      workItems: unknown[];
+    }[] = [];
+    socket.on("message", (data) => messages.push(JSON.parse(data.toString())));
+    await once(socket, "open");
     await gh.script({
       ...replies,
       "api repos/example/project": {
         code: 1,
-        effect: "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 2\\n')",
+        effect: "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 3\\n')",
       },
     });
     const failed = await (
@@ -1104,16 +1115,22 @@ test("viewer polling respects discovery rate limit until its retry deadline", as
     ).json();
     expect(failed.github.errorCode).toBe("rate-limited");
     await gh.script(replies);
-    http.listen(0, "127.0.0.1");
-    await once(http, "listening");
-    const address = http.address();
-    if (!address || typeof address === "string") throw new Error("Missing server address");
-    socket = new WebSocket(`ws://127.0.0.1:${address.port}/api/live`);
-    await once(socket, "open");
     const count = async () =>
       (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length;
     const before = await count();
-    await server.app.request("/api/project");
+    messages.length = 0;
+    await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+    await expect
+      .poll(() =>
+        messages.some(
+          (message) =>
+            message.github?.errorCode === "rate-limited" &&
+            message.github.stale &&
+            message.github.items.length === 1 &&
+            message.workItems.length === 1,
+        ),
+      )
+      .toBe(true);
     await new Promise((resolve) => setTimeout(resolve, 500));
     expect(await count()).toBe(before);
     await expect.poll(count, { timeout: 5000 }).toBeGreaterThan(before);

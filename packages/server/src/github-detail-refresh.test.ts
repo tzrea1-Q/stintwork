@@ -36,6 +36,7 @@ const scenarios = [
   "detail-first",
   "discovery-first",
   "isolated-details",
+  "cooldown",
 ] as const;
 
 test.each(scenarios)(
@@ -149,6 +150,7 @@ test.each(scenarios)(
       const replies = {
         "auth status": {},
         "api user": { stdout: { id: 101, login: "101" } },
+        "config get": { stdout: "101" },
         "api repos/github/gh-aw": { stdout: repo },
         "api graphql":
           scenario === "load-more"
@@ -195,6 +197,41 @@ test.each(scenarios)(
         ]);
         expect(broadcast?.workItems[0]).toEqual(initial.workItems[0]);
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
+        if (scenario === "cooldown") {
+          live.messages.length = 0;
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw": {
+              code: 1,
+              effect:
+                "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 60\\n')",
+            },
+          });
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(() =>
+              live.messages.some((message) => {
+                const snapshot = JSON.parse(message);
+                return (
+                  snapshot.github?.errorCode === "rate-limited" &&
+                  snapshot.github.stale &&
+                  snapshot.workItems.length === 1
+                );
+              }),
+            )
+            .toBe(true);
+          const before = (await gh.calls()).length;
+          const response = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(response.status).toBe(429);
+          expect(await response.json()).toMatchObject({
+            reason: expect.stringContaining("GitHub rate limit reached"),
+            github: { errorCode: "rate-limited" },
+          });
+          expect(await gh.calls()).toHaveLength(before);
+          return;
+        }
         const fetchedAt = initial.github.items[0].detail.fetchedAt;
         if (scenario === "isolated-details") {
           type Snapshot = {

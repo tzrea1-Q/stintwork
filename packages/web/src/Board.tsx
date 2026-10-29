@@ -410,6 +410,7 @@ export function Board({
           warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}
+          githubRetryAt={snapshot.github?.retryAt}
           githubReadOnly={
             githubTracker &&
             (!!snapshot.github?.discoveryFailed ||

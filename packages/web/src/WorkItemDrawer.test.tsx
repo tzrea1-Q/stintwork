@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
@@ -222,6 +222,44 @@ test("opening a GitHub drawer refreshes once, including after reopening", async 
   await waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
   reopened.unmount();
   window.removeEventListener("stintwork:refresh-project", refresh);
+});
+
+test("opening a GitHub drawer waits for the rate limit deadline", async () => {
+  vi.useFakeTimers();
+  try {
+    const fetcher = vi.fn(async (_url: string) => new Response("{}"));
+    vi.stubGlobal("fetch", fetcher);
+    const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+      name: "Project",
+    }).workItems[0];
+    item.github = {
+      repository: "a/b",
+      repositoryId: "R",
+      issueId: "I",
+      number: 1,
+      url: "https://example.com/1",
+      complete: true,
+    };
+    const view = render(
+      <WorkItemDrawer
+        item={item}
+        onClose={() => {}}
+        githubRetryAt={new Date(Date.now() + 1000).toISOString()}
+      />,
+    );
+    expect(
+      fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh"),
+    ).toHaveLength(0);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1001);
+    });
+    expect(
+      fetcher.mock.calls.filter(([url]) => url === "/api/github/items/1/refresh"),
+    ).toHaveLength(1);
+    view.unmount();
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test("local drawers do not refresh and GitHub refresh failure is shown", async () => {

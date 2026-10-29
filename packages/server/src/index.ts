@@ -304,12 +304,13 @@ export function createProjectServer(
   let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
   const coolingDown = () => !!github?.retryAt && Date.parse(github.retryAt) > Date.now();
+  const localVerificationNeeded = () => offlineViewer || coolingDown();
   const viewerFresh = () =>
     !coolingDown() &&
     viewerVerifiedAt > 0 &&
     viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
   function publicSnapshot(offlineVerified = false) {
-    return githubSource && !viewerFresh() && !((offlineViewer || coolingDown()) && offlineVerified)
+    return githubSource && !viewerFresh() && !(localVerificationNeeded() && offlineVerified)
       ? readSnapshot(undefined, true)
       : snapshot;
   }
@@ -360,11 +361,10 @@ export function createProjectServer(
     return localViewerCheck;
   }
   async function verifyOfflineViewer(): Promise<boolean> {
-    if (lifetime.signal.aborted || (!offlineViewer && !coolingDown()) || !githubSource)
-      return false;
+    if (lifetime.signal.aborted || !localVerificationNeeded() || !githubSource) return false;
     const source = githubSource;
     const origin = await githubOrigin(root).catch(() => undefined);
-    if (lifetime.signal.aborted || githubSource !== source || (!offlineViewer && !coolingDown()))
+    if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
     if (!origin) return false;
     if (origin.toLowerCase() !== source.origin.toLowerCase()) {
@@ -374,7 +374,7 @@ export function createProjectServer(
       return false;
     }
     const local = await localViewer();
-    if (lifetime.signal.aborted || githubSource !== source || (!offlineViewer && !coolingDown()))
+    if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
     if (local && local === source.viewer.login) return true;
     if (coolingDown()) return false;
@@ -508,7 +508,7 @@ export function createProjectServer(
     for (const client of websocket.clients) {
       if (client.readyState === WebSocket.OPEN) client.send(message);
     }
-    if (offlineViewer && websocket.clients.size)
+    if (localVerificationNeeded() && websocket.clients.size)
       void verifyOfflineViewer().then((verified) => {
         if (!verified) return;
         const verifiedMessage = JSON.stringify(coreTextWire(publicSnapshot(true)));
@@ -846,6 +846,7 @@ export function createProjectServer(
       discoveryRunning
     )
       return 409;
+    if (githubDetailCoolingDown(github)) return 429;
     detailRunning = true;
     const source = githubSource;
     const generation = trackerGeneration;
@@ -960,6 +961,14 @@ export function createProjectServer(
       return context.text("Origin mismatch", 403);
     const status = await refreshGithubDetail(Number(context.req.param("number")));
     if (status === 409) return context.text("Work item unavailable", 409);
+    if (status === 429)
+      return context.json(
+        coreTextWire({
+          ...publicSnapshot(),
+          reason: new GithubReadError("rate-limited", github?.retryAt).message,
+        }),
+        429,
+      );
     return context.json(coreTextWire(publicSnapshot()), status as 200 | 429 | 503);
   });
   addAgentAvailabilityRoute(app, agentRegistry, () => refresh());
