@@ -231,22 +231,11 @@ export function NeedsYouQueue({
                   </p>
                   <h3>{title}</h3>
                   {item.kind === "approval-stale" && (
-                    <>
-                      <p>
-                        {t.needsYou.staleApprovalDetails(
-                          workflow && stage ? stageName(workflow, stage, t) : item.stage,
-                        )}
-                      </p>
-                      <Button
-                        variant="secondary"
-                        disabled={saving !== null}
-                        onClick={() => void reopen(item)}
-                      >
-                        {t.stints.reopen(
-                          workflow && stage ? stageName(workflow, stage, t) : item.stage,
-                        )}
-                      </Button>
-                    </>
+                    <p>
+                      {t.needsYou.staleApprovalDetails(
+                        workflow && stage ? stageName(workflow, stage, t) : item.stage,
+                      )}
+                    </p>
                   )}
                   {item.kind === "permission" && stint && <StintRecovery stint={stint} />}
                   {item.kind === "checkpoint-warning" && (
@@ -288,6 +277,17 @@ export function NeedsYouQueue({
                         : t.needsYou.waiting(minutes)}
                     </time>
                   </p>
+                  {item.kind === "approval-stale" && (
+                    <Button
+                      variant="secondary"
+                      disabled={saving !== null}
+                      onClick={() => void reopen(item)}
+                    >
+                      {t.stints.reopen(
+                        workflow && stage ? stageName(workflow, stage, t) : item.stage,
+                      )}
+                    </Button>
+                  )}
                   {item.kind === "permission" && (
                     <PermissionAnswer
                       stintId={item.stintId}
