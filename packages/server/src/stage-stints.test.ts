@@ -1,19 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
 import {
   type Brief,
+  coreText,
   coreTextWire,
   foldStintLog,
   type ProjectSnapshot,
   type Stint,
   type StintLogEntry,
 } from "@stintwork/core";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+import { ensureWorktree, worktreePath } from "@stintwork/git";
 import { createProjectServer } from "./index.js";
+import * as briefPreview from "./brief-preview.js";
 
 const fixtures: { parent: string; project: ReturnType<typeof createProjectServer> }[] = [];
 const folder = ".scratch/planning";
@@ -63,6 +66,7 @@ async function fixture(
 }
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const { parent, project } of fixtures.splice(0)) {
     await project.stop();
     await rm(parent, { recursive: true, force: true });
@@ -93,6 +97,197 @@ async function ended(project: ReturnType<typeof createProjectServer>, id: string
     .not.toBe("running");
   return stint as Stint;
 }
+
+test("first stint refuses a dirty workflow in an existing worktree without committing it", async () => {
+  const { root, project } = await fixture();
+  const worktree = await ensureWorktree(root, "planning");
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(join(worktree.path, path), "workflow: feature\nstage: spec\n# staged\n");
+  git(worktree.path, "add", path);
+  await writeFile(
+    join(worktree.path, path),
+    "workflow: feature\nstage: spec\n# staged\n# unstaged\n",
+  );
+  const bytes = await readFile(join(worktree.path, path));
+  const index = git(worktree.path, "ls-files", "--stage", "--", path);
+  const blob = git(worktree.path, "show", `:${path}`);
+  const head = git(worktree.path, "rev-parse", "HEAD");
+  const response = await start(project);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+  expect(await readFile(join(worktree.path, path))).toEqual(bytes);
+  expect(git(worktree.path, "ls-files", "--stage", "--", path)).toBe(index);
+  expect(git(worktree.path, "show", `:${path}`)).toBe(blob);
+  expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
+});
+
+test("first stint refuses a workflow edited while the brief is prepared", async () => {
+  const { root, project } = await fixture();
+  const worktree = await ensureWorktree(root, "planning");
+  const path = `${folder}/workflow.yaml`;
+  const file = join(worktree.path, path);
+  const edited = "workflow: feature\nstage: spec\n# edited during brief\n";
+  const head = git(worktree.path, "rev-parse", "HEAD");
+  const index = git(worktree.path, "ls-files", "--stage", "--", path);
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2) await writeFile(file, edited);
+    return result;
+  });
+  const response = await start(project);
+  expect(calls).toBe(2);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+  expect(await readFile(file, "utf8")).toBe(edited);
+  expect(git(worktree.path, "ls-files", "--stage", "--", path)).toBe(index);
+  expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
+});
+
+test.each(["file", "index"] as const)(
+  "first stint refuses a changed %s after inheriting stage agents",
+  async (change) => {
+    const { root, project } = await fixture();
+    const path = `${folder}/workflow.yaml`;
+    await writeFile(
+      join(root, path),
+      "workflow: feature\nstage: spec\nstages:\n  review:\n    agent: codex\n",
+    );
+    const worktree = await worktreePath(root, "planning");
+    const file = join(worktree, path);
+    const head = git(root, "rev-parse", "HEAD");
+    const prepare = briefPreview.prepareStintBrief;
+    let calls = 0;
+    let bytes = "";
+    let index = "";
+    vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+      const result = await prepare(...args);
+      if (++calls === 2) {
+        const inherited = await readFile(file, "utf8");
+        expect(inherited).toContain("agent: codex");
+        if (change === "file") await writeFile(file, `${inherited}# developer edit\n`);
+        else git(worktree, "add", path);
+        bytes = await readFile(file, "utf8");
+        index = git(worktree, "ls-files", "--stage", "--", path);
+      }
+      return result;
+    });
+    const response = await start(project);
+    expect(calls).toBe(2);
+    expect(response.status).toBe(503);
+    expect(await response.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+    expect(await readFile(file, "utf8")).toBe(bytes);
+    expect(git(worktree, "ls-files", "--stage", "--", path)).toBe(index);
+    expect(git(worktree, "rev-parse", "HEAD")).toBe(head);
+  },
+);
+
+test("a failed brief after inheriting stage agents leaves the workflow clean so a retry starts", async () => {
+  const { root, project } = await fixture();
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(
+    join(root, path),
+    "workflow: feature\nstage: spec\nstages:\n  review:\n    agent: codex\n",
+  );
+  const worktree = await worktreePath(root, "planning");
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2)
+      return { reason: coreText({ code: "server.stopping" }), status: 409 as const };
+    return result;
+  });
+  const refused = await start(project);
+  expect(refused.status).toBe(503);
+  expect(git(worktree, "status", "--porcelain", "--", path)).toBe("");
+  expect(git(worktree, "show", `HEAD:${path}`)).toContain("review:\n    agent: codex");
+  const retry = await start(project);
+  expect(retry.status, await retry.clone().text()).toBe(201);
+  const { stint } = await retry.json();
+  expect((await ended(project, stint.id)).status).toBe("finished");
+  expect(await readFile(join(worktree, path), "utf8")).toContain("review:\n    agent: codex");
+});
+
+test("a thrown brief failure preserves developer edits after inherited agents", async () => {
+  const { root, project } = await fixture();
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(
+    join(root, path),
+    "workflow: feature\nstage: spec\nstages:\n  review:\n    agent: codex\n",
+  );
+  const worktree = await worktreePath(root, "planning");
+  const file = join(worktree, path);
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  let edited = "";
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2) {
+      edited = `${await readFile(file, "utf8")}# developer edit\n`;
+      await writeFile(file, edited);
+      throw new Error("brief failed");
+    }
+    return result;
+  });
+  expect((await start(project)).status).toBe(503);
+  expect(await readFile(file, "utf8")).toBe(edited);
+});
+
+test("a failed inherited setup commit preserves the workflow and reports the brief failure", async () => {
+  const { root, project } = await fixture();
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(
+    join(root, path),
+    "workflow: feature\nstage: spec\nstages:\n  review:\n    agent: codex\n",
+  );
+  const worktree = await worktreePath(root, "planning");
+  const file = join(worktree, path);
+  const head = git(root, "rev-parse", "HEAD");
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  let bytes = "";
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2) {
+      bytes = await readFile(file, "utf8");
+      const hook = join(root, ".git/hooks/pre-commit");
+      await writeFile(hook, "#!/bin/sh\nexit 1\n");
+      await chmod(hook, 0o755);
+      return { reason: coreText({ code: "server.stopping" }), status: 409 as const };
+    }
+    return result;
+  });
+  const response = await start(project);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "server.stopping" } });
+  expect(await readFile(file, "utf8")).toBe(bytes);
+  expect(git(worktree, "rev-parse", "HEAD")).toBe(head);
+});
+
+test("a first stint refused mid-preparation keeps first-stint setup on retry", async () => {
+  const { root, project } = await fixture();
+  const worktree = await ensureWorktree(root, "planning");
+  const file = join(worktree.path, folder, "workflow.yaml");
+  const original = await readFile(file, "utf8");
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2) await writeFile(file, `${original}# developer edit\n`);
+    return result;
+  });
+  const refused = await start(project);
+  expect(refused.status).toBe(503);
+  expect(await refused.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+  await writeFile(file, original);
+  const retry = await start(project);
+  expect(retry.status, await retry.clone().text()).toBe(201);
+  const { stint } = await retry.json();
+  expect((await ended(project, stint.id)).status).toBe("finished");
+  expect(await readFile(file, "utf8")).toContain("agent: codex");
+});
 
 test.each([
   ["quick", "do", "/implement", "review"],
