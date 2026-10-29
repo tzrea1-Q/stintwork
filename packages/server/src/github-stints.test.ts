@@ -1012,7 +1012,7 @@ test.each([false, true])(
   },
 );
 
-test.each(["updated", "failed", "local"] as const)(
+test.each(["updated", "failed", "local", "cooldown"] as const)(
   "stint completion refreshes GitHub detail (%s)",
   async (scenario) => {
     const { root, git, gh, ghReplies } = await setup();
@@ -1056,7 +1056,11 @@ test.each(["updated", "failed", "local"] as const)(
     page.data.repository.nameWithOwner = "Example/Project";
     page.data.repository.issues.nodes = [item];
     page.data.repository.issues.pageInfo = { hasNextPage: false, endCursor: null };
-    const replies = { ...ghReplies, "api graphql": { stdout: page } };
+    const replies = {
+      ...ghReplies,
+      "config get": { stdout: "101" },
+      "api graphql": { stdout: page },
+    };
     await gh.script(replies);
     let finish = () => {};
     const { createProjectServer } = await import("./index.js");
@@ -1080,6 +1084,17 @@ test.each(["updated", "failed", "local"] as const)(
         }),
       });
       expect(start.status, await start.clone().text()).toBe(201);
+      if (scenario === "cooldown") {
+        await gh.script({
+          ...replies,
+          "api graphql": {
+            code: 1,
+            effect: "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 3\\n')",
+          },
+        });
+        await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+        await gh.script(replies);
+      }
       const before = (await gh.calls()).length;
       if (scenario === "updated")
         await gh.script({
@@ -1103,6 +1118,23 @@ test.each(["updated", "failed", "local"] as const)(
           { timeout: 10000 },
         )
         .toBe("finished");
+      if (scenario === "cooldown") {
+        expect(
+          (await gh.calls())
+            .slice(before)
+            .filter(({ args }) => args[0] === "api" || args[0] === "auth"),
+        ).toEqual([]);
+        await expect
+          .poll(
+            async () =>
+              (await gh.calls())
+                .slice(before)
+                .filter(({ args }) => args.slice(0, 2).join(" ") === issue).length,
+            { timeout: 10000 },
+          )
+          .toBe(1);
+        return;
+      }
       if (scenario === "local") {
         expect((await gh.calls()).length).toBe(before);
       } else {

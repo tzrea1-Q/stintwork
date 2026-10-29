@@ -115,6 +115,7 @@ export function addGithubGateRoutes(
   verifyIdentity: (github: GithubDiscovery) => Promise<boolean>,
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void,
   readReviewEvidence?: ReviewEvidenceReader,
+  discoveryFailed: () => boolean = () => false,
 ) {
   const readMemoryProposals = createMemoryProposalReader(root);
   for (const action of ["approve", "reopen"] as const)
@@ -197,12 +198,14 @@ export function addGithubGateRoutes(
           409,
         );
       try {
+        if (discoveryFailed()) return refuse("gate.detailUnavailable");
         let identityValid = false;
         try {
           identityValid = await verifyIdentity(github);
         } catch {
           // An unverified identity cannot authorize a write.
         }
+        if (discoveryFailed()) return refuse("gate.detailUnavailable");
         if (!identityValid)
           return context.json(
             coreTextWire({

@@ -245,7 +245,9 @@ test.each(scenarios)(
             reason: expect.stringContaining("GitHub rate limit reached"),
             github: { errorCode: "rate-limited" },
           });
-          expect(await gh.calls()).toHaveLength(before);
+          expect((await gh.calls()).slice(before).every(({ args }) => args[0] === "config")).toBe(
+            true,
+          );
           await new Promise((resolve) => setTimeout(resolve, 350));
           expect(
             (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
@@ -280,7 +282,9 @@ test.each(scenarios)(
           expect(await blocked.json()).toMatchObject({
             reason: expect.stringContaining("GitHub rate limit reached"),
           });
-          expect(await gh.calls()).toHaveLength(before);
+          expect((await gh.calls()).slice(before).every(({ args }) => args[0] === "config")).toBe(
+            true,
+          );
           await gh.script(replies);
           const clock = vi
             .spyOn(Date, "now")

@@ -244,6 +244,95 @@ async function setup(
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
 
+test("server refuses gate writes after discovery or viewer failure until discovery recovers", async () => {
+  const { root, git, reviewedDigest } = await setup({}, "spec");
+  const reviewedHead = git("rev-parse", "HEAD");
+  mkdirSync(join(root, "docs/agents"), { recursive: true });
+  writeFileSync(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const gh = await fakeGh(join(root, "server-bin"));
+  process.env.PATH = gh.path;
+  const connection = (nodes: unknown[]) => ({
+    nodes,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  });
+  const replies = {
+    "auth status": {},
+    "config get": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_1",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": {
+      stdout: {
+        data: {
+          repository: {
+            id: "R_1",
+            nameWithOwner: "Example/Project",
+            issues: connection([
+              {
+                id: "I_1",
+                number: 1,
+                title: "Parent",
+                url: parent.html_url,
+                parent: null,
+                labels: connection([{ name: "stintwork:work-item" }]),
+                subIssues: { ...connection([]), totalCount: 0 },
+              },
+            ]),
+          },
+          rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
+        },
+      },
+    },
+    [issue]: { stdout: parent },
+    [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [] },
+    [`${issue}/comments?per_page=100&page=1`]: { stdout: [] },
+  };
+  await gh.script(replies);
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  const request = (action: string) =>
+    server.app.request(`/api/github/items/1/gates/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stage: "clarify", reviewedDigest, reviewedHead }),
+    });
+  try {
+    await server.app.request("/api/project");
+    await gh.script({
+      ...replies,
+      "api graphql": { code: 1, effect: "process.stderr.write('network is unreachable')" },
+    });
+    await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+    for (const action of ["approve", "reopen"]) {
+      const response = await request(action);
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ code: "detail-unavailable" });
+    }
+    expect(git("rev-parse", "HEAD")).toBe(reviewedHead);
+    await gh.script({
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('network is unreachable')" },
+    });
+    await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+    expect((await request("reopen")).status).toBe(409);
+    expect(git("rev-parse", "HEAD")).toBe(reviewedHead);
+    await gh.script(replies);
+    await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+    const recovered = await request("reopen");
+    expect(recovered.status, await recovered.clone().text()).toBe(200);
+    expect(git("rev-parse", "HEAD")).not.toBe(reviewedHead);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("rejects cross-origin, non-JSON, malformed and non-object requests", async () => {
   const { app, git } = await setup();
   for (const [headers, body, status, code] of [

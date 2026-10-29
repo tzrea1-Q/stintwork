@@ -108,14 +108,29 @@ export function createProjectServer(
   let discoveryRunning = false;
   let detailRunning = false;
   const pendingStintDetails = new Set<number>();
+  const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
   function drainStintDetails() {
-    if (discoveryRunning || detailRunning) return;
+    if (lifetime.signal.aborted || discoveryRunning || detailRunning) return;
     const number = pendingStintDetails.values().next().value;
     if (number === undefined) return;
+    if (github?.retryAt && githubRateLimitCoolingDown(github)) {
+      if (!stintDetailTimers.has(number)) {
+        const delay = Math.min(2_147_483_647, Math.max(1, Date.parse(github.retryAt) - Date.now()));
+        stintDetailTimers.set(
+          number,
+          setTimeout(() => {
+            stintDetailTimers.delete(number);
+            drainStintDetails();
+          }, delay),
+        );
+      }
+      return;
+    }
     pendingStintDetails.delete(number);
     void refreshGithubDetail(number)
       .then((status) => {
         if (status === 429 && github) {
+          pendingStintDetails.add(number);
           failGithubDetail(github, number, new GithubReadError("rate-limited", github.retryAt));
           refresh();
         }
@@ -343,6 +358,8 @@ export function createProjectServer(
     knownRepository = undefined;
     knownIssues.clear();
     pendingStintDetails.clear();
+    for (const timer of stintDetailTimers.values()) clearTimeout(timer);
+    stintDetailTimers.clear();
     discoveryFailure = undefined;
     detailFailures.clear();
     viewerVerifiedAt = 0;
@@ -362,14 +379,38 @@ export function createProjectServer(
       });
     return localViewerCheck;
   }
+  function clearGithubIdentity() {
+    const retryAt = github?.retryAt;
+    trackerGeneration++;
+    clearGithub();
+    const failure = new GithubReadError("identity");
+    github = {
+      repository: "",
+      repositoryId: "",
+      items: [],
+      scanned: 0,
+      cursor: null,
+      complete: false,
+      pages: [],
+      warnings: [],
+      error: failure.message,
+      errorCode: failure.code,
+      ...(retryAt ? { retryAt } : {}),
+    };
+    refresh();
+  }
   async function verifyOfflineViewer(): Promise<boolean> {
     if (lifetime.signal.aborted || !localVerificationNeeded() || !githubSource) return false;
     const source = githubSource;
     const origin = await githubOrigin(root).catch(() => undefined);
     if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
-    if (!origin) return false;
-    if (origin.toLowerCase() !== source.origin.toLowerCase()) {
+    if (!origin && !githubRateLimitCoolingDown(github)) return false;
+    if (!origin || origin.toLowerCase() !== source.origin.toLowerCase()) {
+      if (githubRateLimitCoolingDown(github)) {
+        clearGithubIdentity();
+        return false;
+      }
       trackerGeneration++;
       clearGithub();
       refresh();
@@ -379,13 +420,15 @@ export function createProjectServer(
     if (lifetime.signal.aborted || githubSource !== source || !localVerificationNeeded())
       return false;
     if (local && local === source.viewer.login) return true;
-    if (githubRateLimitCoolingDown(github)) return false;
+    if (githubRateLimitCoolingDown(github)) {
+      clearGithubIdentity();
+      return false;
+    }
     trackerGeneration++;
     clearGithub();
     refresh();
     return false;
   }
-
   let viewerCheck: Promise<void> | undefined;
   function checkGithubViewer() {
     if (
@@ -824,6 +867,20 @@ export function createProjectServer(
     }
     await next();
   });
+  app.use("/api/*", async (context, next) => {
+    const path = new URL(context.req.url).pathname;
+    if (
+      githubRateLimitCoolingDown(github) &&
+      githubSource &&
+      (path.startsWith("/api/github/discovery/") ||
+        path === "/api/stints" ||
+        path.includes("/brief-preview") ||
+        path.includes("/gates/"))
+    ) {
+      if (!(await verifyOfflineViewer())) return context.json(coreTextWire(publicSnapshot()), 503);
+    }
+    await next();
+  });
   const health: Health = { ok: true, repo: name };
   app.get("/api/health", (context) => context.json(coreTextWire(health)));
   app.get("/api/project", async (context) => {
@@ -861,7 +918,9 @@ export function createProjectServer(
       discoveryRunning
     )
       return 409;
-    if (githubRateLimitCoolingDown(github)) return 429;
+    if (githubRateLimitCoolingDown(github)) {
+      return (await verifyOfflineViewer()) ? 429 : lifetime.signal.aborted ? 409 : 503;
+    }
     detailRunning = true;
     const source = githubSource;
     const generation = trackerGeneration;
@@ -873,7 +932,8 @@ export function createProjectServer(
       await viewerCheck;
       if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
         return 409;
-      if (githubRateLimitCoolingDown(github)) return 429;
+      if (githubRateLimitCoolingDown(github))
+        return (await verifyOfflineViewer()) ? 429 : lifetime.signal.aborted ? 409 : 503;
       const currentOrigin = await githubOrigin(root);
       if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
         return 409;
@@ -972,7 +1032,11 @@ export function createProjectServer(
     } finally {
       detailRunning = false;
       refresh(undefined, true);
-      if (generation !== trackerGeneration && snapshot.setup.tracker === "github-issues")
+      if (
+        generation !== trackerGeneration &&
+        github?.errorCode !== "identity" &&
+        snapshot.setup.tracker === "github-issues"
+      )
         void refreshGithub().then(() => refresh());
       drainStintDetails();
     }
@@ -1066,6 +1130,7 @@ export function createProjectServer(
     },
     failGithubDetail,
     readReviewEvidence,
+    () => githubBriefSource.discoveryFailed() || githubRateLimitCoolingDown(github),
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
   addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
@@ -1154,6 +1219,8 @@ export function createProjectServer(
       clearTimeout(settle);
       clearInterval(metadataPoll);
       clearInterval(viewerPoll);
+      for (const timer of stintDetailTimers.values()) clearTimeout(timer);
+      stintDetailTimers.clear();
       try {
         const results = await Promise.allSettled([stopStints(), checks.stop(), viewerCheck]);
         const failed = results.find((result) => result.status === "rejected");

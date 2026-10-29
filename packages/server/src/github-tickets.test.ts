@@ -667,11 +667,26 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       });
       expect(limited.status).toBe(503);
       expect((await limited.json()).github.errorCode).toBe("rate-limited");
-      await gh.script({ "auth status": {}, "api user": { stdout: { id: 101, login: "101" } } });
+      // Identity during cooldown is checked locally, without a network viewer request.
+      await gh.script({
+        "config get": { stdout: "101" },
+        "auth status": {},
+        "api user": { stdout: { id: 101, login: "101" } },
+      });
+      const beforeCooldown = (await gh.calls()).length;
       expect(
         (await server.app.request("/api/github/items/1433/refresh", { method: "POST" })).status,
       ).toBe(429);
-      await gh.script({ "auth status": {}, "api user": { stdout: { id: 102, login: "102" } } });
+      expect(
+        (await gh.calls())
+          .slice(beforeCooldown)
+          .filter(({ args }) => args[0] === "api" || args[0] === "auth"),
+      ).toEqual([]);
+      await gh.script({
+        "config get": { stdout: "102" },
+        "auth status": {},
+        "api user": { stdout: { id: 102, login: "102" } },
+      });
       const changed = await server.app.request("/api/github/items/1433/refresh", {
         method: "POST",
       });
@@ -683,6 +698,13 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
         errorCode: "identity",
         items: [],
       });
+      const afterChange = (await gh.calls()).length;
+      await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+      expect(
+        (await gh.calls())
+          .slice(afterChange)
+          .filter(({ args }) => args[0] === "api" || args[0] === "auth"),
+      ).toEqual([]);
     } finally {
       await server.stop();
     }
