@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
@@ -28,6 +28,98 @@ const page = {
     rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
   },
 };
+
+test("concurrent offline fallback never returns a fresh snapshot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-offline-race-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  const release = join(root, "release");
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const git = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+      "config get": { stdout: "101" },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    expect((await get()).github.items).toHaveLength(1);
+    const marker = join(root, "origin-started");
+    await writeFile(
+      join(root, "bin/git"),
+      `#!${process.execPath}
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+if (args.join(' ') === 'config --get-all remote.origin.url') {
+  try {
+    fs.writeFileSync(${JSON.stringify(marker)}, '', { flag: 'wx' });
+    while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  } catch (error) { if (error.code !== 'EEXIST') throw error; }
+}
+const result = spawnSync(${JSON.stringify(git)}, args, { stdio: 'inherit' });
+process.exit(result.status ?? 1);
+`,
+      { mode: 0o755 },
+    );
+    await gh.script({
+      ...replies,
+      "api user": {
+        code: 1,
+        effect:
+          "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100); process.stderr.write('network error')",
+      },
+    });
+    now += 60_001;
+    await get();
+    await expect
+      .poll(async () =>
+        access(marker).then(
+          () => true,
+          () => false,
+        ),
+      )
+      .toBe(true);
+    const concurrent = await get();
+    expect(concurrent.github).toMatchObject({
+      stale: true,
+      discoveryFailed: true,
+      errorCode: "offline",
+      items: [{ title: "Private" }],
+    });
+  } finally {
+    await writeFile(release, "");
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test.each(["changed", "logout", "offline"])(
   "expired viewer is redacted and handles %s",
@@ -127,6 +219,77 @@ test.each(["changed", "logout", "offline"])(
     }
   },
 );
+
+test("offline discovery cannot authorize an unavailable viewer", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-discovery-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+      "config get": { stdout: "101" },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    expect((await get()).github.items).toHaveLength(1);
+    await gh.script({
+      ...replies,
+      "api graphql": { code: 1, effect: "process.stderr.write('network error')" },
+    });
+    const failed = await (
+      await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+    ).json();
+    expect(failed.github.errorCode).toBe("offline");
+    now += 60_001;
+    await gh.script({
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('ambiguous authentication')" },
+    });
+    const before = (await gh.calls()).filter(
+      ({ args }) => args[0] === "api" && args[1] === "user",
+    ).length;
+    await get();
+    await expect
+      .poll(
+        async () =>
+          (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user").length,
+      )
+      .toBeGreaterThan(before);
+    await expect.poll(async () => (await get()).github.items).toEqual([]);
+    expect((await get()).github).toMatchObject({ errorCode: "offline", items: [] });
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test.each([
   ["same", { stdout: "101" }, true],
@@ -276,6 +439,87 @@ test("offline auth retains data only while the local account matches and coalesc
       "config get": { stdout: "101" },
     });
     expect(JSON.stringify(await get())).not.toContain("Private");
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("offline reads wait for an in-flight local account check", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-offline-wait-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    let now = 100_000;
+    const instance = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    server = instance;
+    const get = async () => (await instance.app.request("/api/project")).json();
+    expect((await get()).github.items).toHaveLength(1);
+    now += 60_001;
+    const offline = {
+      ...replies,
+      "api user": { code: 1, effect: "process.stderr.write('network error')" },
+      "config get": { stdout: "101" },
+    };
+    await gh.script(offline);
+    await get();
+    await expect.poll(async () => (await get()).github?.errorCode).toBe("offline");
+    await gh.script({
+      ...offline,
+      "api user": {
+        code: 1,
+        effect:
+          "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 300); process.stderr.write('network error')",
+      },
+      "config get": {
+        stdout: "101",
+        effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000)",
+      },
+    });
+    const count = async () =>
+      (await gh.calls()).filter(({ args }) => args[0] === "config" && args[1] === "get").length;
+    const before = await count();
+    const results = await Promise.all(Array.from({ length: 3 }, get));
+    expect(await count()).toBe(before + 1);
+    for (const result of results)
+      expect(result.github).toMatchObject({ errorCode: "offline", items: [{ title: "Private" }] });
+    // A new retry may clear the fallback flag while its local check is still running.
+    expect((await get()).github.items).toHaveLength(1);
+    const after = await count();
+    await expect.poll(count).toBeGreaterThan(after);
+    expect((await get()).github).toMatchObject({
+      errorCode: "offline",
+      items: [{ title: "Private" }],
+    });
   } finally {
     await server?.stop();
     process.env.PATH = oldPath;

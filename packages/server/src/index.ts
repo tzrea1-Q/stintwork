@@ -321,7 +321,11 @@ export function createProjectServer(
   let viewerVerifiedAt = 0;
   let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
-  const localVerificationNeeded = () => offlineViewer || githubRateLimitCoolingDown(github);
+  const localVerificationNeeded = () =>
+    offlineViewer ||
+    viewerFailure?.errorCode === "offline" ||
+    viewerFailure?.errorCode === "server-error" ||
+    githubRateLimitCoolingDown(github);
   const viewerFresh = () =>
     !githubRateLimitCoolingDown(github) &&
     viewerVerifiedAt > 0 &&
@@ -425,6 +429,7 @@ export function createProjectServer(
       clearGithubIdentity();
       return false;
     }
+    if (!offlineViewer) return false;
     trackerGeneration++;
     clearGithub();
     refresh();
@@ -486,6 +491,15 @@ export function createProjectServer(
       viewerVerifiedAt = 0;
       const wasOffline = offlineViewer;
       offlineViewer = false;
+      const currentViewerFailure = {
+        error: failure.message,
+        errorCode: failure.code,
+        retryAt: failure.retryAt,
+        retryable: true,
+      };
+      viewerFailure = currentViewerFailure;
+      updateGithubFreshness();
+      refresh();
       if (failure.code === "offline" || failure.code === "server-error") {
         const origin = await githubOrigin(root).catch(() => undefined);
         if (lifetime.signal.aborted || githubSource !== source) return;
@@ -520,13 +534,8 @@ export function createProjectServer(
           error: failure.message,
           errorCode: failure.code,
         };
+        viewerFailure = currentViewerFailure;
       }
-      viewerFailure = {
-        error: failure.message,
-        errorCode: failure.code,
-        retryAt: failure.retryAt,
-        retryable: true,
-      };
       updateGithubFreshness();
       refresh();
     } finally {
@@ -755,6 +764,9 @@ export function createProjectServer(
         viewerVerifiedAt = 0;
         const wasOffline = offlineViewer;
         offlineViewer = false;
+        viewerFailure = { ...discoveryFailure };
+        updateGithubFreshness();
+        refresh();
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
           if (lifetime.signal.aborted || generation !== trackerGeneration) return;
@@ -765,7 +777,6 @@ export function createProjectServer(
           }
           offlineViewer = !!local && local === githubSource.viewer.login;
         }
-        viewerFailure = { ...discoveryFailure };
         github = {
           ...cached.data,
           stale: true,
@@ -985,6 +996,14 @@ export function createProjectServer(
         viewerVerifiedAt = 0;
         const wasOffline = offlineViewer;
         offlineViewer = false;
+        viewerFailure = {
+          error: failure.message,
+          errorCode: failure.code,
+          retryAt: failure.retryAt,
+          retryable: true,
+        };
+        updateGithubFreshness();
+        refresh();
         if (failure.code === "offline" || failure.code === "server-error") {
           const local = await localViewer();
           if (
@@ -1000,12 +1019,6 @@ export function createProjectServer(
           }
           offlineViewer = !!local && local === source.viewer.login;
         }
-        viewerFailure = {
-          error: failure.message,
-          errorCode: failure.code,
-          retryAt: failure.retryAt,
-          retryable: true,
-        };
         updateGithubFreshness();
       } else if (!verified) clearGithub();
       if (github) {
