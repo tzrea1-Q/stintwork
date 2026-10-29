@@ -108,6 +108,19 @@ test("a fresh Quick item cannot approve Do before a finished stage stint", async
   ).toBe(false);
 });
 
+test("local gate approval refuses a dirty workflow with a localized reason", async () => {
+  const { root, project } = await fixture();
+  const file = join(root, workflowPath);
+  const bytes = `${workflow}# developer edit\n`;
+  await writeFile(file, bytes);
+  const head = git(root, "rev-parse", "HEAD");
+  const response = await action(project);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+  expect(await readFile(file, "utf8")).toBe(bytes);
+  expect(git(root, "rev-parse", "HEAD")).toBe(head);
+});
+
 test("approval in the main checkout records HEAD, preserves preferences, advances the snapshot, and reopen reverses it", async () => {
   const { root, project } = await fixture();
   const before = git(root, "rev-parse", "HEAD");
@@ -283,6 +296,8 @@ test.each([false, true])(
     git(directory, "add", workflowPath);
     const original = `${workflow}# Staged preference\n# Unstaged preference\n`;
     await writeFile(join(directory, workflowPath), original);
+    git(directory, "add", workflowPath);
+    git(directory, "commit", "-qm", "Workflow preferences");
     const gitDirectory = git(root, "rev-parse", "--absolute-git-dir");
     const hook = join(gitDirectory, "hooks", "pre-commit");
     await writeFile(hook, "#!/bin/sh\nexit 1\n");
