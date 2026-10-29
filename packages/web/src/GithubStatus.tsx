@@ -82,28 +82,44 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
       role="status"
       aria-live="polite"
       aria-label={copy.label}
-      className="flex min-w-0 flex-wrap items-center gap-3 px-4 py-3 text-sm text-muted sm:px-6"
+      className="min-w-0 space-y-3 px-4 py-3 text-sm text-muted sm:px-6"
     >
-      {unavailable && <strong>{copy.unavailable}</strong>}
-      {github?.discoveryFailed && github.fetchedAt && (
-        <p>{copy.stale.replace("{time}", time(github.fetchedAt))}</p>
-      )}
-      {github && !unavailable && !github.discoveryFailed && github.fetchedAt && (
-        <p>
-          {copy.fetched
-            .replace("{time}", time(github.fetchedAt))
-            .replace("{count}", String(github.scanned))}
-        </p>
-      )}
-      {github && !unavailable && (github.discoveryFailed || !github.fetchedAt) && (
-        <p>{copy.scanned.replace("{count}", String(github.scanned))}</p>
-      )}
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          {unavailable && <strong>{copy.unavailable}</strong>}
+          {github?.discoveryFailed && github.fetchedAt && (
+            <p>{copy.stale.replace("{time}", time(github.fetchedAt))}</p>
+          )}
+          {github && !unavailable && !github.discoveryFailed && github.fetchedAt && (
+            <p>
+              {copy.fetched
+                .replace("{time}", time(github.fetchedAt))
+                .replace("{count}", String(github.scanned))}
+            </p>
+          )}
+          {github && !unavailable && (github.discoveryFailed || !github.fetchedAt) && (
+            <p>{copy.scanned.replace("{count}", String(github.scanned))}</p>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button disabled={pending || retryAt > now} onClick={() => void act("refresh")}>
+            {pending ? copy.pending : github?.discoveryFailed ? copy.retry : copy.refresh}
+          </Button>
+          {github?.cursor && (
+            <Button disabled={pending || retryAt > now} onClick={() => void act("load-more")}>
+              {copy.loadMore}
+            </Button>
+          )}
+        </div>
+      </div>
       {github &&
         !unavailable &&
         (!github.complete || github.cursor || warnings.length > 0 || incompleteCount > 0) && (
           <div className="min-w-0 space-y-1">
-            <Badge variant="warning">{copy.errors.incomplete}</Badge>
-            <p>
+            <p className="min-w-0 [overflow-wrap:anywhere]">
+              <Badge variant="warning" className="mr-2">
+                {copy.errors.incomplete}
+              </Badge>
               {warnings.length || incompleteCount
                 ? copy.connectionsFailed
                 : github.cursor
@@ -131,14 +147,6 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
       {retryAction && <Button onClick={() => void act(retryAction)}>{copy.retry}</Button>}
       {retryAt > now && github?.retryAt && (
         <p>{copy.retryAt.replace("{time}", time(github.retryAt))}</p>
-      )}
-      <Button disabled={pending || retryAt > now} onClick={() => void act("refresh")}>
-        {pending ? copy.pending : github?.discoveryFailed ? copy.retry : copy.refresh}
-      </Button>
-      {github?.cursor && (
-        <Button disabled={pending || retryAt > now} onClick={() => void act("load-more")}>
-          {copy.loadMore}
-        </Button>
       )}
     </div>
   );

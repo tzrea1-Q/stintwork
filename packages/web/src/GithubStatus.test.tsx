@@ -237,3 +237,27 @@ test.each([
     localStorage.removeItem(languageStorageKey);
   },
 );
+
+test("refresh and load more stay together in order", () => {
+  render(
+    <GithubStatus
+      github={{
+        repository: "a/b",
+        repositoryId: "R",
+        items: [],
+        scanned: 500,
+        cursor: "next",
+        complete: false,
+        pages: [],
+        warnings: [],
+      }}
+    />,
+  );
+  const refresh = screen.getByRole("button", { name: "Refresh" });
+  const more = screen.getByRole("button", { name: "Load more" });
+  expect(refresh.parentElement).toBe(more.parentElement);
+  expect(Array.from(refresh.parentElement?.children ?? [])).toEqual([refresh, more]);
+  expect(screen.getByText("More pages are available to load.").parentElement).toContainElement(
+    screen.getByText("Results are incomplete; dependencies and approvals may be unknown."),
+  );
+});

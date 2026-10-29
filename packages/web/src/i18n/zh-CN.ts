@@ -150,6 +150,8 @@ export const zhCN: Catalog = {
     bugInference: " 工作项的标识选择了缺陷工作流。",
     resolved: "已解决的",
     tickets: "工单",
+    ticketsNotLoaded: "工单未加载",
+    ticketsOutdated: "工单可能已过时",
     progress: (slug) => joinChinese(slug, "已解决的工单"),
   },
   workflows: {

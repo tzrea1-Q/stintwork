@@ -105,6 +105,8 @@ export type ProjectSnapshot = {
       number: number;
       url: string;
       complete: boolean;
+      ticketsKnown?: boolean;
+      ticketsStale?: boolean;
       bound?: boolean;
       stale?: boolean;
       reviewDigest?: string;
@@ -276,6 +278,13 @@ export function indexProject(
                       url: remote.url,
                       complete: remote.complete && !remote.detail?.stale,
                       bound: remote.bound === true,
+                      ticketsKnown: !!remote.detail,
+                      ticketsStale: !!(
+                        remote.detail?.stale ||
+                        remote.detailFailed ||
+                        remote.detail?.complete === false ||
+                        meta.github.discoveryFailed
+                      ),
                       ...(remote.detail?.stale ? { stale: true } : {}),
                     },
                   }

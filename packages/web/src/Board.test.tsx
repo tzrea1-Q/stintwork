@@ -844,3 +844,71 @@ test.each([false, true])(
     else expect(start).toBeEnabled();
   },
 );
+
+test.each([
+  ["en", "Tickets not loaded", "Tickets may be outdated"],
+  ["zh-CN", "工单未加载", "工单可能已过时"],
+])(
+  "GitHub cards distinguish unloaded, stale and loaded tickets in %s",
+  (language, unloaded, outdated) => {
+    localStorage.setItem(languageStorageKey, language);
+    const github = {
+      repository: "example/project",
+      repositoryId: "R",
+      scanned: 1,
+      cursor: null,
+      complete: true,
+      pages: [],
+      warnings: [],
+      items: [
+        {
+          id: "I",
+          number: 1,
+          title: "Parent",
+          url: "https://github.com/example/project/issues/1",
+          complete: true,
+        },
+      ],
+    };
+    const files = createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub",
+    });
+    const snapshot = () => indexProject(files, { name: "Remote", github });
+    const { rerender } = render(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    const card = () => screen.getByRole("article", { name: /^github-1:/ });
+    expect(within(card()).getByText(unloaded)).toBeInTheDocument();
+    expect(within(card()).queryByText(/0\/0/)).not.toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
+    const detail = { spec: "", tickets: [], stale: true };
+    github.items[0] = { ...github.items[0], detail } as (typeof github.items)[0];
+    rerender(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    expect(within(card()).getByText(outdated)).toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
+    detail.stale = false;
+    github.items[0] = { ...github.items[0], detailFailed: true } as (typeof github.items)[0];
+    rerender(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    expect(within(card()).getByText(outdated)).toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
+    github.items[0] = { ...github.items[0], detailFailed: false } as (typeof github.items)[0];
+    rerender(
+      <LanguageProvider>
+        <Board snapshot={snapshot()} />
+      </LanguageProvider>,
+    );
+    expect(within(card()).getByText(/0\/0/)).toBeInTheDocument();
+    expect(within(card()).getByRole("progressbar")).toBeInTheDocument();
+    localStorage.removeItem(languageStorageKey);
+  },
+);

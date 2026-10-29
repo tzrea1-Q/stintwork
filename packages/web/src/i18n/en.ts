@@ -136,6 +136,8 @@ export const en = {
     bugInference: " The work item slug selects the Bug workflow.",
     resolved: "resolved ",
     tickets: "tickets",
+    ticketsNotLoaded: "Tickets not loaded",
+    ticketsOutdated: "Tickets may be outdated",
     progress: (slug: string) => `${slug} resolved tickets`,
   },
   workflows: {
