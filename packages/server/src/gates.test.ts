@@ -8,10 +8,12 @@ import { createFakeAgentLauncher, fakeAgentProfiles } from "@stintwork/agents/te
 import type { ProjectSnapshot } from "@stintwork/core";
 import { ensureWorktree } from "@stintwork/git";
 import { afterEach, expect, test, vi } from "vitest";
+import { parse } from "yaml";
 import { createProjectServer } from "./index.js";
 import * as workflowWrites from "./workflow-writes.js";
 import * as briefPreview from "./brief-preview.js";
 
+const oldPath = process.env.PATH;
 const fixtures: { parent: string; project: ReturnType<typeof createProjectServer> }[] = [];
 const workflowPath = ".scratch/first/workflow.yaml";
 const workflow =
@@ -72,6 +74,7 @@ async function snapshot(project: ReturnType<typeof createProjectServer>): Promis
   return (await project.app.request("/api/project")).json();
 }
 afterEach(async () => {
+  process.env.PATH = oldPath;
   vi.restoreAllMocks();
   for (const { parent, project } of fixtures.splice(0)) {
     await project.stop();
@@ -430,4 +433,108 @@ test("invalid actions, cross-origin writes, broken YAML and symlinks cannot chan
   await symlink(target, join(root, workflowPath));
   expect([409, 503]).toContain((await action(project)).status);
   expect(await readFile(target, "utf8")).toBe(workflow);
+});
+
+async function advanceHeadDuringCommit(root: string) {
+  const realGit = execFileSync("which", ["git"], { encoding: "utf8" }).trim();
+  const bin = join(root, "bin");
+  await mkdir(bin);
+  await writeFile(
+    join(bin, "git"),
+    `#!/bin/sh\ncase " $* " in\n  *" commit "*) old=$("${realGit}" rev-parse HEAD); new=$(printf 'external\\n' | "${realGit}" commit-tree HEAD^{tree} -p "$old"); "${realGit}" update-ref HEAD "$new" "$old" ;;\nesac\nexec "${realGit}" "$@"\n`,
+    { mode: 0o755 },
+  );
+  process.env.PATH = `${bin}:${oldPath}`;
+}
+
+async function expectRacedApproval(useWorktree: boolean) {
+  const { root, project } = await fixture();
+  const directory = useWorktree ? (await ensureWorktree(root, "first")).path : root;
+  const reviewed = git(directory, "rev-parse", "HEAD");
+  await advanceHeadDuringCommit(root);
+  const response = await action(project);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    approval: "stale",
+    reason: "head-changed",
+    record: { commit: reviewed },
+  });
+  expect(git(directory, "rev-parse", "HEAD^")).not.toBe(reviewed);
+  expect(
+    parse(git(directory, "show", `HEAD:${workflowPath}`)).stages.implement.approved.commit,
+  ).toBe(reviewed);
+  expect((await snapshot(project)).workItems[0].stages.implement.approved).toMatchObject({
+    commit: reviewed,
+    state: "stale",
+    stateReason: "head-changed",
+  });
+}
+
+test("a local approval whose commit races a HEAD advance is reported stale with head-changed", async () => {
+  await expectRacedApproval(false);
+});
+
+test("a local approval in a worktree whose commit races a HEAD advance is reported stale", async () => {
+  await expectRacedApproval(true);
+});
+
+test("a normal local approval response and snapshot are unchanged", async () => {
+  const { root, project } = await fixture();
+  const worktree = await ensureWorktree(root, "first");
+  const response = await action(project);
+  expect(response.status).toBe(200);
+  expect(Object.keys(await response.json()).sort()).toEqual(["commit", "record", "stage"]);
+  const approval = (await snapshot(project)).workItems[0].stages.implement.approved;
+  expect(Object.keys(approval as object).sort()).toEqual(["at", "by", "commit"]);
+  const head = git(worktree.path, "rev-parse", "HEAD");
+  await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+  await writeFile(
+    join(root, ".stintwork/local/stints/review.jsonl"),
+    [
+      {
+        type: "started",
+        at: "2099-01-01T10:00:00Z",
+        stint: {
+          id: "review",
+          workItem: "first",
+          stage: "review",
+          ticket: null,
+          agent: "codex",
+          worktree,
+          baseCommit: head,
+          brief: {
+            prompt: "Review",
+            skill: "/code-review",
+            pointers: [],
+            changedPaths: [],
+            lastHandoff: null,
+          },
+        },
+      },
+      {
+        type: "ended",
+        at: "2099-01-01T10:01:00Z",
+        status: "finished",
+        checkpointCommit: head,
+        findings: { commit: head, findings: [] },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n"),
+  );
+  const next = await action(project, "review");
+  expect(next.status, await next.text()).toBe(200);
+});
+
+test("an earlier approval stays current when later commits land", async () => {
+  const { root, project } = await fixture();
+  expect((await action(project)).status).toBe(200);
+  for (const name of ["one", "two"]) {
+    await writeFile(join(root, name), name);
+    git(root, "add", name);
+    git(root, "commit", "-qm", name);
+  }
+  expect((await snapshot(project)).workItems[0].stages.implement.approved).not.toHaveProperty(
+    "state",
+  );
 });

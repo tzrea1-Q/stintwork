@@ -134,9 +134,17 @@ export function addGateRoutes(
           (text) => workflowGate(text, item, stage.id, action, record, snapshot.workflows),
           `${action === "approve" ? "Approve" : "Reopen"} ${stage.id} gate for ${slug}`,
         );
+        const headChanged =
+          action === "approve" &&
+          workflowCommit !== null &&
+          execFileSync("git", ["rev-parse", `${workflowCommit}^`], {
+            cwd: directory,
+            encoding: "utf8",
+          }).trim() !== record.commit;
         refresh();
         return context.json(
           coreTextWire({
+            ...(headChanged ? { approval: "stale", reason: "head-changed" } : {}),
             stage: action === "approve" ? gate.nextStage : stage.id,
             record,
             commit: workflowCommit,

@@ -448,3 +448,65 @@ test.each([false, true])(
     expect(states()).toEqual(["current", "current", "current"]);
   },
 );
+
+test("a GitHub approval introduced in the root commit stays unknown", async () => {
+  const root = mkdtempSync(join(tmpdir(), "github-root-approval-"));
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    const digest = await githubEvidenceDigest(
+      { parentId: "I_1", body: "Spec", tickets: [] },
+      false,
+    );
+    const path = ".stintwork/github/example/project/1/workflow.yaml";
+    const workflow = `workflow: feature\nstage: spec\nstages:\n  clarify:\n    approved:\n      by: Test\n      at: '2026-01-01T00:00:00Z'\n      commit: reviewed\n      remote: { version: 1, parentId: I_1, digest: '${digest}' }\n`;
+    mkdirSync(join(root, ".stintwork/github/example/project/1"), { recursive: true });
+    writeFileSync(join(root, path), workflow);
+    execFileSync("git", ["-C", root, "add", path]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "commit",
+      "-qm",
+      "root approval",
+    ]);
+    const files = createMemoryRepoFiles({
+      "docs/agents/issue-tracker.md": "# Issue tracker: GitHub\n",
+      [path]: workflow,
+    });
+    const github = {
+      repository: "Example/Project",
+      repositoryId: "R_1",
+      scanned: 1,
+      cursor: null,
+      complete: true,
+      pages: [],
+      warnings: [],
+      items: [
+        {
+          id: "I_1",
+          number: 1,
+          title: "Parent",
+          url: "https://github.com/Example/Project/issues/1",
+          bound: true,
+          complete: true,
+          detail: { spec: "Spec", tickets: [], complete: true },
+        },
+      ],
+    };
+    const project = {
+      files,
+      worktreePaths: new Map(),
+      watchPaths: [],
+      warnings: [],
+    } as ReturnType<ProjectFilesReader>;
+    const snapshot = indexProject(files, { name: "Test", github });
+    projectGithubGates(snapshot, root, project);
+    expect(snapshot.workItems[0].stages.clarify.approved).toMatchObject({ remoteState: "unknown" });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
