@@ -16,5 +16,7 @@ Protect local work item workflow writes from overwriting staged, unstaged or unt
 - [ ] A clean workflow update is committed and leaves the path clean.
 - [ ] A missing workflow is created and committed.
 - [ ] Local gate approval returns 503 with localized reason code `workflow.dirtyFile` for a dirty workflow, leaving file and HEAD unchanged.
+- [ ] In a repository without commits, a missing workflow creates the first commit and a staged workflow is refused unchanged.
+- [ ] First-stint setup refuses a dirty workflow in an existing worktree without changing its file, index or HEAD.
 
 ## Comments

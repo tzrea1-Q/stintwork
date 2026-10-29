@@ -383,3 +383,38 @@ for (const [name, existing] of [
     expect(git("status", "--porcelain", "--", path)).toBe("");
   });
 }
+
+test("local write creates the first commit in a repository without commits", async () => {
+  const root = mkdtempSync(join(tmpdir(), "unborn-workflow-"));
+  roots.push(root);
+  execFileSync("git", ["init", "-q", root]);
+  mkdirSync(join(root, ".scratch/local"), { recursive: true });
+  const path = ".scratch/local/workflow.yaml";
+  const text = "workflow: feature\nstage: spec\n";
+  const commit = await saveWorkItemWorkflow(root, "local", () => text, "first workflow");
+  expect(commit).toMatch(/^[a-f0-9]{40,64}$/);
+  expect(execFileSync("git", ["-C", root, "show", `HEAD:${path}`], { encoding: "utf8" })).toBe(
+    text,
+  );
+});
+
+test("local write refuses a staged workflow in a repository without commits", async () => {
+  const root = mkdtempSync(join(tmpdir(), "unborn-workflow-"));
+  roots.push(root);
+  execFileSync("git", ["init", "-q", root]);
+  mkdirSync(join(root, ".scratch/local"), { recursive: true });
+  const path = ".scratch/local/workflow.yaml";
+  const file = join(root, path);
+  writeFileSync(file, "workflow: feature\nstage: spec\n");
+  execFileSync("git", ["-C", root, "add", path]);
+  const before = readFileSync(file);
+  const index = execFileSync("git", ["-C", root, "ls-files", "--stage", "--", path]);
+  await expect(
+    saveWorkItemWorkflow(root, "local", () => "changed\n", "update"),
+  ).rejects.toMatchObject({ coreText: { code: "workflow.dirtyFile" } });
+  expect(readFileSync(file)).toEqual(before);
+  expect(execFileSync("git", ["-C", root, "ls-files", "--stage", "--", path])).toEqual(index);
+  expect(() =>
+    execFileSync("git", ["-C", root, "rev-parse", "--verify", "HEAD"], { stdio: "ignore" }),
+  ).toThrow();
+});

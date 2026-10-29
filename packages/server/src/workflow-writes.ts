@@ -18,13 +18,22 @@ function checkWorkflowIndex(root: string, relative: string) {
   }).trim();
   if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
     throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
-  for (const args of [["--cached", "HEAD"], []])
+  for (const args of [["--cached"], []])
     if (
       execFileSync("git", ["diff", "--no-ext-diff", "--name-only", "-z", ...args, "--", relative], {
         cwd: root,
       }).length
     )
       throw new CoreTextError({ code: "workflow.dirtyFile" });
+  return indexEntry;
+}
+
+export function assertWorkflowUnchanged(root: string, relative: string) {
+  const indexEntry = checkWorkflowIndex(root, relative);
+  const stat = lstatSync(join(root, relative), { throwIfNoEntry: false });
+  if (stat && (!stat.isFile() || stat.isSymbolicLink()))
+    throw new CoreTextError({ code: "workflow.regularFile" });
+  if (stat && !indexEntry) throw new CoreTextError({ code: "workflow.dirtyFile" });
   return indexEntry;
 }
 
@@ -141,10 +150,9 @@ export async function saveWorkItemWorkflow(
   const path = join(root, relative);
   let existing: string | undefined;
   let written = "";
-  const indexEntry = checkWorkflowIndex(root, relative);
+  const indexEntry = assertWorkflowUnchanged(root, relative);
   const changed = writeWorkItemWorkflow(root, slug, (text) => {
     existing = text;
-    if (text !== undefined && !indexEntry) throw new CoreTextError({ code: "workflow.dirtyFile" });
     written = update(text);
     return written;
   });

@@ -13,6 +13,7 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
+import { ensureWorktree } from "@stintwork/git";
 import { createProjectServer } from "./index.js";
 
 const fixtures: { parent: string; project: ReturnType<typeof createProjectServer> }[] = [];
@@ -93,6 +94,29 @@ async function ended(project: ReturnType<typeof createProjectServer>, id: string
     .not.toBe("running");
   return stint as Stint;
 }
+
+test("first stint refuses a dirty workflow in an existing worktree without committing it", async () => {
+  const { root, project } = await fixture();
+  const worktree = await ensureWorktree(root, "planning");
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(join(worktree.path, path), "workflow: feature\nstage: spec\n# staged\n");
+  git(worktree.path, "add", path);
+  await writeFile(
+    join(worktree.path, path),
+    "workflow: feature\nstage: spec\n# staged\n# unstaged\n",
+  );
+  const bytes = await readFile(join(worktree.path, path));
+  const index = git(worktree.path, "ls-files", "--stage", "--", path);
+  const blob = git(worktree.path, "show", `:${path}`);
+  const head = git(worktree.path, "rev-parse", "HEAD");
+  const response = await start(project);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+  expect(await readFile(join(worktree.path, path))).toEqual(bytes);
+  expect(git(worktree.path, "ls-files", "--stage", "--", path)).toBe(index);
+  expect(git(worktree.path, "show", `:${path}`)).toBe(blob);
+  expect(git(worktree.path, "rev-parse", "HEAD")).toBe(head);
+});
 
 test.each([
   ["quick", "do", "/implement", "review"],

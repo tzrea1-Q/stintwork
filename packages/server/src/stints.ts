@@ -73,6 +73,7 @@ import {
 } from "./stint-history.js";
 import { ensureLocalIgnore, writeFirstStintWorkflow } from "./stint-repo-writes.js";
 import { addStageAgentRoute, writeStageAgentWorkflow } from "./stage-agent.js";
+import { assertWorkflowUnchanged } from "./workflow-writes.js";
 import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
@@ -1126,6 +1127,8 @@ export function addStintRoutes(
           const worktree = await ensureWorktree(root, workItem.slug);
           worktree.path = realpathSync(worktree.path);
           if (closing) throw new CoreTextError({ code: "server.stopping" });
+          if (!workItem.github && (firstWorktree || !workItem.stints.length))
+            assertWorkflowUnchanged(worktree.path, `.scratch/${workItem.slug}/workflow.yaml`);
           let inheritedAgents = false;
           if (firstWorktree && !workItem.github) {
             for (const stage of result.workflows[workItem.workflow].stages) {
