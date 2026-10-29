@@ -18,5 +18,7 @@ Protect local work item workflow writes from overwriting staged, unstaged or unt
 - [ ] Local gate approval returns 503 with localized reason code `workflow.dirtyFile` for a dirty workflow, leaving file and HEAD unchanged.
 - [ ] In a repository without commits, a missing workflow creates the first commit and a staged workflow is refused unchanged.
 - [ ] First-stint setup refuses a dirty workflow in an existing worktree without changing its file, index or HEAD.
+- [ ] Local and GitHub writes refuse workflow files with assume-unchanged or skip-worktree index flags.
+- [ ] First-stint setup refuses workflow edits or index changes made while its brief is prepared, preserving file and HEAD.
 
 ## Comments

@@ -29,7 +29,7 @@ import {
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type AgentLauncher,
@@ -368,18 +368,25 @@ export function addStintRoutes(
           ensureLocalIgnore(worktree.path);
         }
         verifiedWorktree = true;
-        checkpointCommit = await createCheckpoint(
-          worktree.path,
-          {
-            id,
-            workItem,
-            ticket,
-            status,
-          },
-          (warnings) => {
-            checkpointWarnings = warnings;
-          },
-        );
+        if (
+          !(
+            setupError instanceof CoreTextError &&
+            setupError.coreText.code === "workflow.dirtyFile" &&
+            !attempt
+          )
+        )
+          checkpointCommit = await createCheckpoint(
+            worktree.path,
+            {
+              id,
+              workItem,
+              ticket,
+              status,
+            },
+            (warnings) => {
+              checkpointWarnings = warnings;
+            },
+          );
       } catch (error) {
         if (!fallback) status = "failed";
         details.error = {
@@ -1127,8 +1134,11 @@ export function addStintRoutes(
           const worktree = await ensureWorktree(root, workItem.slug);
           worktree.path = realpathSync(worktree.path);
           if (closing) throw new CoreTextError({ code: "server.stopping" });
-          if (!workItem.github && (firstWorktree || !workItem.stints.length))
-            assertWorkflowUnchanged(worktree.path, `.scratch/${workItem.slug}/workflow.yaml`);
+          const workflowPath = `.scratch/${workItem.slug}/workflow.yaml`;
+          const workflowIndex =
+            !workItem.github && (firstWorktree || !workItem.stints.length)
+              ? assertWorkflowUnchanged(worktree.path, workflowPath)
+              : "";
           let inheritedAgents = false;
           if (firstWorktree && !workItem.github) {
             for (const stage of result.workflows[workItem.workflow].stages) {
@@ -1140,6 +1150,9 @@ export function addStintRoutes(
                 inheritedAgents = true;
             }
           }
+          const inheritedBytes = inheritedAgents
+            ? readFileSync(join(worktree.path, workflowPath))
+            : undefined;
           const prepared = await prepareStintBrief(
             readProjectFiles,
             workItem.slug,
@@ -1168,6 +1181,17 @@ export function addStintRoutes(
               if (!github || !item) throw new CoreTextError({ code: "gate.identityAmbiguous" });
               await saveGithubWorkflow(worktree.path, github, item, workItem.workflow, stage.id);
             }
+            if (
+              !workItem.github &&
+              (inheritedAgents ||
+                (!workItem.stints.length &&
+                  typeof prepared.workItem.stages[stage.id]?.agent !== "string"))
+            )
+              assertWorkflowUnchanged(
+                worktree.path,
+                workflowPath,
+                inheritedBytes ? { indexEntry: workflowIndex, bytes: inheritedBytes } : undefined,
+              );
             if (
               !workItem.github &&
               !workItem.stints.length &&

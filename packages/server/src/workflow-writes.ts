@@ -11,14 +11,20 @@ import {
   type GithubDiscovery,
 } from "./github-discovery.js";
 
-function checkWorkflowIndex(root: string, relative: string) {
+function checkWorkflowIndex(root: string, relative: string, allowWorkingTreeChanges = false) {
   const indexEntry = execFileSync("git", ["ls-files", "--stage", "--", relative], {
     cwd: root,
     encoding: "utf8",
   }).trim();
   if (indexEntry && !/^\d+ [a-f\d]+ 0\t[^\n]+$/.test(indexEntry))
     throw new CoreTextError({ code: "workflow.resolveIndexConflict" });
-  for (const args of [["--cached"], []])
+  const tag = execFileSync("git", ["ls-files", "-v", "--", relative], {
+    cwd: root,
+    encoding: "utf8",
+  })[0];
+  if (tag && (tag === "S" || (tag >= "a" && tag <= "z")))
+    throw new CoreTextError({ code: "workflow.dirtyFile" });
+  for (const args of allowWorkingTreeChanges ? [["--cached"]] : [["--cached"], []])
     if (
       execFileSync("git", ["diff", "--no-ext-diff", "--name-only", "-z", ...args, "--", relative], {
         cwd: root,
@@ -28,12 +34,23 @@ function checkWorkflowIndex(root: string, relative: string) {
   return indexEntry;
 }
 
-export function assertWorkflowUnchanged(root: string, relative: string) {
-  const indexEntry = checkWorkflowIndex(root, relative);
+export function assertWorkflowUnchanged(
+  root: string,
+  relative: string,
+  expected?: { indexEntry: string; bytes: Buffer },
+) {
+  const indexEntry = checkWorkflowIndex(root, relative, !!expected);
   const stat = lstatSync(join(root, relative), { throwIfNoEntry: false });
   if (stat && (!stat.isFile() || stat.isSymbolicLink()))
     throw new CoreTextError({ code: "workflow.regularFile" });
-  if (stat && !indexEntry) throw new CoreTextError({ code: "workflow.dirtyFile" });
+  if (stat && !indexEntry && !expected) throw new CoreTextError({ code: "workflow.dirtyFile" });
+  if (
+    expected &&
+    (indexEntry !== expected.indexEntry ||
+      !stat ||
+      !readFileSync(join(root, relative)).equals(expected.bytes))
+  )
+    throw new CoreTextError({ code: "workflow.dirtyFile" });
   return indexEntry;
 }
 

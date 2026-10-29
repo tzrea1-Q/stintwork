@@ -418,3 +418,60 @@ test("local write refuses a staged workflow in a repository without commits", as
     execFileSync("git", ["-C", root, "rev-parse", "--verify", "HEAD"], { stdio: "ignore" }),
   ).toThrow();
 });
+
+for (const [name, flag] of [
+  ["local write refuses an assume-unchanged workflow edit", "--assume-unchanged"],
+  ["local write refuses a skip-worktree workflow edit", "--skip-worktree"],
+] as const) {
+  test(name, async () => {
+    const root = repo();
+    const path = ".scratch/local/workflow.yaml";
+    const file = join(root, path);
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+    mkdirSync(join(root, ".scratch/local"), { recursive: true });
+    await saveWorkItemWorkflow(root, "local", () => "workflow: feature\nstage: spec\n", "initial");
+    git("update-index", flag, "--", path);
+    writeFileSync(file, "workflow: feature\nstage: spec\n# edited\n");
+    const bytes = readFileSync(file);
+    const index = git("ls-files", "--stage", "--", path);
+    const flags = git("ls-files", "-v", "--", path);
+    const head = git("rev-parse", "HEAD");
+    await expect(
+      saveWorkItemWorkflow(root, "local", () => "changed\n", "update"),
+    ).rejects.toMatchObject({ coreText: { code: "workflow.dirtyFile" } });
+    expect(readFileSync(file)).toEqual(bytes);
+    expect(git("ls-files", "--stage", "--", path)).toBe(index);
+    expect(git("ls-files", "-v", "--", path)).toBe(flags);
+    expect(git("rev-parse", "HEAD")).toBe(head);
+  });
+}
+
+test("GitHub write refuses a skip-worktree workflow edit", async () => {
+  const root = repo();
+  const path = ".stintwork/github/example/project/1/workflow.yaml";
+  const file = join(root, path);
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", root, ...args], { encoding: "utf8" });
+  await saveGithubWorkflow(root, discovery, item, "feature", "spec");
+  git("update-index", "--skip-worktree", "--", path);
+  writeFileSync(file, `${readFileSync(file, "utf8")}# edited\n`);
+  const bytes = readFileSync(file);
+  const index = git("ls-files", "--stage", "--", path);
+  const flags = git("ls-files", "-v", "--", path);
+  const head = git("rev-parse", "HEAD");
+  await expect(
+    saveGithubWorkflow(
+      root,
+      discovery,
+      item,
+      "feature",
+      "spec",
+      (text) => `${text}changed: true\n`,
+    ),
+  ).rejects.toMatchObject({ coreText: { code: "workflow.dirtyFile" } });
+  expect(readFileSync(file)).toEqual(bytes);
+  expect(git("ls-files", "--stage", "--", path)).toBe(index);
+  expect(git("ls-files", "-v", "--", path)).toBe(flags);
+  expect(git("rev-parse", "HEAD")).toBe(head);
+});
