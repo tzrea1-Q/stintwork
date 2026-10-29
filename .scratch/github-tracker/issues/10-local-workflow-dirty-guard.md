@@ -32,3 +32,5 @@ Full verify on `2b313e5` passed: format:check, lint, typecheck, build, 3,164 uni
 Five `codex review --base main` rounds. Fixed: unborn HEAD, the first-stint setup bypass, index flags, the post-brief recheck, inherited edits after a failed brief, and first-stint eligibility after a refusal. Rejected: rechecking when no setup write is needed (a running stint's worktree edits are checkpointed by design, ADR 0004); a workflow committed during the brief window (committed content is kept); and losing inherited choices when the developer discards the workflow (discarding is the developer's choice). Known limit: if a pre-commit hook rejects the inherited setup commit after a failed brief, the workflow stays staged, and the developer must commit or discard it as the refusal says. The existing setup-commit failure path behaves the same way.
 
 Numbered 10 because `codex/local-gate-head` uses 09 for the local gate HEAD race.
+
+Merged to main as `fa150c4`. CI run 40861811135 did not start any job: GitHub reported failed account payments or a spending limit that needs raising. CI evidence for this merge is pending until the maintainer resolves billing and re-runs it.
