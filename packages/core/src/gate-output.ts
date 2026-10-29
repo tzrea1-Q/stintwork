@@ -42,7 +42,14 @@ export function outputGateConditions(
       ready:
         item.tickets.length > 0 &&
         (item.github
-          ? item.tickets.every((ticket) => ticket.status !== "unknown" && !ticket.blocked)
+          ? item.tickets.every(
+              (ticket, index) =>
+                ticket.status !== "unknown" &&
+                ticket.blockedBy.every((number) => (positions.get(number) ?? -1) < index) &&
+                (!ticket.blocked ||
+                  (ticket.blockedBy.length > 0 &&
+                    ticket.blockedBy.every((number) => positions.has(number)))),
+            )
           : !warning &&
             item.tickets.every((ticket, index) =>
               ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),

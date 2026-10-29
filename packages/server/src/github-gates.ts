@@ -315,7 +315,16 @@ export function addGithubGateRoutes(
           if (
             action === "approve" &&
             stage.gate === "tickets" &&
-            (!detail.tickets.length || detail.tickets.some((ticket) => ticket.blocked))
+            (!detail.tickets.length ||
+              detail.tickets.some(
+                (ticket) =>
+                  ticket.blocked &&
+                  ticket.blockers.some(
+                    (blocker) =>
+                      blocker.state !== "closed" &&
+                      !detail.tickets.some((child) => child.number === blocker.number),
+                  ),
+              ))
           )
             throw new GithubReadError("incomplete");
           const input = { parentId: item.id, body: detail.spec, tickets: detail.tickets };
