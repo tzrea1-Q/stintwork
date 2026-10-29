@@ -29,7 +29,7 @@ import {
 
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   type AgentLauncher,
@@ -1139,6 +1139,11 @@ export function addStintRoutes(
             !workItem.github && (firstWorktree || !workItem.stints.length)
               ? assertWorkflowUnchanged(worktree.path, workflowPath)
               : "";
+          const workflowFile = join(worktree.path, workflowPath);
+          const beforeInheritance =
+            firstWorktree && !workItem.github && lstatSync(workflowFile, { throwIfNoEntry: false })
+              ? readFileSync(workflowFile)
+              : undefined;
           let inheritedAgents = false;
           if (firstWorktree && !workItem.github) {
             for (const stage of result.workflows[workItem.workflow].stages) {
@@ -1150,20 +1155,39 @@ export function addStintRoutes(
                 inheritedAgents = true;
             }
           }
-          const inheritedBytes = inheritedAgents
-            ? readFileSync(join(worktree.path, workflowPath))
-            : undefined;
-          const prepared = await prepareStintBrief(
-            readProjectFiles,
-            workItem.slug,
-            ticket?.number ?? null,
-            root,
-            registry,
-            agent.id,
-            result.brief.permissionLevel,
-            githubSource,
-          );
-          if (prepared.reason) throw new CoreTextError(prepared.reason);
+          const inheritedBytes = inheritedAgents ? readFileSync(workflowFile) : undefined;
+          let prepared: Awaited<ReturnType<typeof prepareStintBrief>>;
+          try {
+            prepared = await prepareStintBrief(
+              readProjectFiles,
+              workItem.slug,
+              ticket?.number ?? null,
+              root,
+              registry,
+              agent.id,
+              result.brief.permissionLevel,
+              githubSource,
+            );
+            if (prepared.reason) throw new CoreTextError(prepared.reason);
+          } catch (error) {
+            if (inheritedBytes) {
+              let unchanged = false;
+              try {
+                assertWorkflowUnchanged(worktree.path, workflowPath, {
+                  indexEntry: workflowIndex,
+                  bytes: inheritedBytes,
+                });
+                unchanged = true;
+              } catch {
+                // Preserve developer changes to the file or index.
+              }
+              if (unchanged) {
+                if (beforeInheritance) writeFileSync(workflowFile, beforeInheritance);
+                else rmSync(workflowFile);
+              }
+            }
+            throw error;
+          }
           const { stage } = prepared;
           let brief = { ...prepared.brief, agent: agent.id };
           const id = state.id as string;
@@ -1173,6 +1197,7 @@ export function addStintRoutes(
           if (inheritedAgents) setupFiles.push(`.scratch/${workItem.slug}/workflow.yaml`);
           let setupError: unknown;
           let setupFailed = false;
+          let recheckingWorkflow = false;
           try {
             ensureLocalIgnore(worktree.path);
             if (workItem.github && githubSource) {
@@ -1186,12 +1211,15 @@ export function addStintRoutes(
               (inheritedAgents ||
                 (!workItem.stints.length &&
                   typeof prepared.workItem.stages[stage.id]?.agent !== "string"))
-            )
+            ) {
+              recheckingWorkflow = true;
               assertWorkflowUnchanged(
                 worktree.path,
                 workflowPath,
                 inheritedBytes ? { indexEntry: workflowIndex, bytes: inheritedBytes } : undefined,
               );
+              recheckingWorkflow = false;
+            }
             if (
               !workItem.github &&
               !workItem.stints.length &&
@@ -1205,6 +1233,7 @@ export function addStintRoutes(
             }
             await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
           } catch (error) {
+            if (recheckingWorkflow) throw error;
             setupFailed = true;
             setupError = error;
           }

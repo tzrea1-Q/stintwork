@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
 import {
   type Brief,
+  coreText,
   coreTextWire,
   foldStintLog,
   type ProjectSnapshot,
@@ -181,6 +182,79 @@ test.each(["file", "index"] as const)(
     expect(git(worktree, "rev-parse", "HEAD")).toBe(head);
   },
 );
+
+test("a failed brief after inheriting stage agents leaves the workflow clean so a retry starts", async () => {
+  const { root, project } = await fixture();
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(
+    join(root, path),
+    "workflow: feature\nstage: spec\nstages:\n  review:\n    agent: codex\n",
+  );
+  const worktree = await worktreePath(root, "planning");
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2)
+      return { reason: coreText({ code: "server.stopping" }), status: 409 as const };
+    return result;
+  });
+  const refused = await start(project);
+  expect(refused.status).toBe(503);
+  expect(git(worktree, "status", "--porcelain", "--", path)).toBe("");
+  const retry = await start(project);
+  expect(retry.status, await retry.clone().text()).toBe(201);
+  const { stint } = await retry.json();
+  expect((await ended(project, stint.id)).status).toBe("finished");
+});
+
+test("a thrown brief failure preserves developer edits after inherited agents", async () => {
+  const { root, project } = await fixture();
+  const path = `${folder}/workflow.yaml`;
+  await writeFile(
+    join(root, path),
+    "workflow: feature\nstage: spec\nstages:\n  review:\n    agent: codex\n",
+  );
+  const worktree = await worktreePath(root, "planning");
+  const file = join(worktree, path);
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  let edited = "";
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2) {
+      edited = `${await readFile(file, "utf8")}# developer edit\n`;
+      await writeFile(file, edited);
+      throw new Error("brief failed");
+    }
+    return result;
+  });
+  expect((await start(project)).status).toBe(503);
+  expect(await readFile(file, "utf8")).toBe(edited);
+});
+
+test("a first stint refused mid-preparation keeps first-stint setup on retry", async () => {
+  const { root, project } = await fixture();
+  const worktree = await ensureWorktree(root, "planning");
+  const file = join(worktree.path, folder, "workflow.yaml");
+  const original = await readFile(file, "utf8");
+  const prepare = briefPreview.prepareStintBrief;
+  let calls = 0;
+  vi.spyOn(briefPreview, "prepareStintBrief").mockImplementation(async (...args) => {
+    const result = await prepare(...args);
+    if (++calls === 2) await writeFile(file, `${original}# developer edit\n`);
+    return result;
+  });
+  const refused = await start(project);
+  expect(refused.status).toBe(503);
+  expect(await refused.json()).toMatchObject({ reasonMessage: { code: "workflow.dirtyFile" } });
+  await writeFile(file, original);
+  const retry = await start(project);
+  expect(retry.status, await retry.clone().text()).toBe(201);
+  const { stint } = await retry.json();
+  expect((await ended(project, stint.id)).status).toBe("finished");
+  expect(await readFile(file, "utf8")).toContain("agent: codex");
+});
 
 test.each([
   ["quick", "do", "/implement", "review"],
