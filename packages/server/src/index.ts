@@ -46,6 +46,7 @@ import {
   githubRateLimitCoolingDown,
   readGithubTickets,
 } from "./github-tickets.js";
+import { projectLocalApprovals } from "./approval-head.js";
 import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
@@ -290,6 +291,7 @@ export function createProjectServer(
       },
     );
     projectGithubGates(snapshot, root, project);
+    projectLocalApprovals(snapshot, root, project);
     readReviewEvidence(project, snapshot);
     for (const item of snapshot.workItems)
       if (item.activeStint)
