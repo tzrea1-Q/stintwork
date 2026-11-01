@@ -549,7 +549,7 @@ test("ship refuses an invalid worktree workflow", async () => {
   expect(response.status).toBe(409);
 });
 
-test.each(["success", "retry", "offline", "stop"] as const)(
+test.each(["success", "retry", "offline", "stop", "incomplete"] as const)(
   "ticket-bound GitHub recovery waits for detail (%s)",
   async (mode) => {
     const fails = mode === "retry" || mode === "stop";
@@ -622,7 +622,7 @@ test.each(["success", "retry", "offline", "stop"] as const)(
       state_reason: null,
       labels: [],
       comments: 0,
-      sub_issues_summary: { total: 1 },
+      sub_issues_summary: { total: mode === "incomplete" ? 2 : 1 },
     };
     const child = {
       ...parent,
@@ -686,7 +686,7 @@ test.each(["success", "retry", "offline", "stop"] as const)(
     const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
     try {
       await server.app.request("/api/project");
-      if (fails || mode === "offline") {
+      if (fails || mode === "offline" || mode === "incomplete") {
         expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
         expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
         if (mode === "stop") {
@@ -701,6 +701,7 @@ test.each(["success", "retry", "offline", "stop"] as const)(
           replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
             stdout: [child],
           };
+        parent.sub_issues_summary.total = 1;
         await gh.script(replies);
       }
       await expect

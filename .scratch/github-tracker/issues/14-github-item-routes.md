@@ -48,3 +48,7 @@ Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (8 existing warnings), a
 **Codex, 2026-11-01:** Recovery retries now require a pending ticket-bound recovery, preserve the rate-limit-only cooldown, and retry discovery with bounded backoff when startup is offline and the item is not cached. Ship rechecks GitHub identity, freshness, and current approvals after acquiring the repository lock, including local merges. Added controlled lock-wait and startup-offline recovery regressions.
 
 Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (8 existing warnings), and `pnpm typecheck` passed. The requested combined Vitest run passed 73 tests, including the unchanged detail and ticket regressions and all Ship and GitHub item route tests. Four GitHub lifecycle WebSocket tests failed because the sandbox rejected `listen 127.0.0.1` with `EPERM`; they require a socket-enabled environment. No commit was made.
+
+**Codex, 2026-11-01:** Restored queued post-stint GitHub detail refreshes, including cooldown retries, and retained refreshes queued during another detail read. Incomplete recovery detail now schedules bounded retries and later successful detail or discovery refreshes can recover the stint. Added an incomplete-then-complete recovery regression.
+
+Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (8 existing warnings), and `pnpm typecheck` passed. The requested seven-file Vitest run passed 108 tests; four lifecycle WebSocket tests failed because the sandbox denied `listen 127.0.0.1` with `EPERM`. No commit was made.

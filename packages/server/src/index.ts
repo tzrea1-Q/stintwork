@@ -112,11 +112,12 @@ export function createProjectServer(
   const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
   const stintDetailAttempts = new Map<number, number>();
   function retryStintDetail(number: number, status: number) {
-    if (!pendingRecovery.has(number) || lifetime.signal.aborted) return;
-    if (status === 429) {
+    if (lifetime.signal.aborted) return;
+    if (status === 429 || (status === 503 && githubRateLimitCoolingDown(github))) {
       pendingStintDetails.add(number);
       return;
     }
+    if (!pendingRecovery.has(number)) return;
     const needsDiscovery = status === 409 && !github?.items.some((item) => item.number === number);
     if ((status !== 503 && !needsDiscovery) || stintDetailTimers.has(number)) return;
     const attempts = stintDetailAttempts.get(number) ?? 0;
@@ -1032,11 +1033,10 @@ export function createProjectServer(
         if (timer) clearTimeout(timer);
         stintDetailTimers.delete(number);
         stintDetailAttempts.delete(number);
-        pendingStintDetails.delete(number);
         const candidates = pendingRecovery.get(number);
         pendingRecovery.delete(number);
         for (const adopt of candidates ?? []) adopt();
-      }
+      } else retryStintDetail(number, 503);
       return 200;
     } catch (error) {
       if (generation !== trackerGeneration) return 409;
@@ -1182,7 +1182,6 @@ export function createProjectServer(
     (warning) => recoveryWarnings.push(warning),
     githubBriefSource,
     async (number) => {
-      if (!pendingRecovery.has(number)) return;
       pendingStintDetails.add(number);
       drainStintDetails();
     },
