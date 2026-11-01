@@ -127,6 +127,7 @@ export function createProjectServer(
     if (!pendingRecovery.has(number)) return;
     const needsDiscovery = status === 409 && !github?.items.some((item) => item.number === number);
     if ((status !== 503 && !needsDiscovery) || stintDetailTimers.has(number)) return;
+    if (needsDiscovery && (github?.complete || github?.errorCode === "identity")) return;
     const attempts = stintDetailAttempts.get(number) ?? 0;
     const delay = [5_000, 30_000, 120_000, 300_000][Math.min(attempts, 3)];
     stintDetailAttempts.set(number, attempts + 1);
@@ -135,7 +136,7 @@ export function createProjectServer(
       setTimeout(() => {
         stintDetailTimers.delete(number);
         if (needsDiscovery) {
-          void refreshGithub().then(() => {
+          void refreshGithub(!!github?.cursor).then(() => {
             if (!github?.items.some((item) => item.number === number))
               retryStintDetail(number, 409);
           });

@@ -1081,3 +1081,253 @@ test("repository replacement invalidates all cached items until discovery succee
     await server.stop();
   }
 });
+
+test.each(["page-two", "absent"] as const)(
+  "ticket-bound GitHub recovery advances discovery (%s)",
+  async (mode) => {
+    const fails = false;
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    const cleared = vi.spyOn(globalThis, "clearTimeout");
+    const { root, worktree, git, gh, registry } = await fixture();
+    git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
+    if (mode === "absent") rmSync(join(root, workflowPath));
+    mkdirSync(join(root, "web"));
+    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+    const base = git(worktree, "rev-parse", "HEAD");
+    const path = join(root, ".stintwork/local/stints/restart.jsonl");
+    mkdirSync(dirname(path), { recursive: true });
+    const selected = {
+      agent: "codex" as const,
+      source: "installed" as const,
+      reason: "compatible" as const,
+      executable: {
+        path: process.execPath,
+        version: "1",
+        identity: readExecutableIdentity(process.execPath)?.identity ?? "fixture",
+      },
+      adapterEntry: "/fake/adapter.js",
+      adapterVersion: "1",
+      cacheKey: "a".repeat(64),
+      lockDigest: "b".repeat(64),
+    };
+    const agent = registry.get("codex");
+    if (!agent) throw new Error("Missing Codex agent");
+    agent.verifyRecovery = async () => selected;
+    const launchAgent = vi.fn<typeof agent.launch>(() => {
+      let finish: () => void = () => {};
+      return {
+        ready: Promise.resolve(),
+        done: new Promise((resolve) => {
+          finish = () => resolve({ stopReason: "cancelled" });
+        }),
+        cancel: async () => finish(),
+      };
+    });
+    agent.launch = launchAgent;
+    const entry: StintLogEntry = {
+      type: "started",
+      at: "2026-01-01T00:00:00Z",
+      stint: {
+        id: "restart",
+        workItem: "github-1",
+        stage: "review",
+        ticket: 2,
+        agent: "codex",
+        worktree: { path: worktree, branch: "stintwork/github-1" },
+        baseCommit: base,
+        brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+      },
+    };
+    const phase: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: "2026-01-01T00:00:01Z",
+      kind: "phase",
+      attemptId: "attempt-1",
+      progress: { phase: "findings" },
+    };
+    const attempt: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: entry.at,
+      kind: "attempt",
+      attempt: {
+        id: "attempt-1",
+        owner: { pid: process.pid, startedAt: entry.at },
+        pid: process.pid,
+        marker: "stintwork-attempt-1",
+      },
+    };
+    const suspended: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: entry.at,
+      kind: "resume",
+      state: "suspended",
+    };
+    writeFileSync(
+      path,
+      [
+        entry,
+        {
+          type: "recovery",
+          version: 1,
+          at: entry.at,
+          kind: "launch",
+          launch: { ...selected, host: adapterHost(), permissionLevel: "ask" },
+        },
+        attempt,
+        {
+          type: "recovery",
+          version: 1,
+          at: entry.at,
+          kind: "session",
+          attemptId: "attempt-1",
+          sessionId: "fake-session",
+        },
+        phase,
+        suspended,
+      ]
+        .map((value) => JSON.stringify(value))
+        .join("\n") + "\n",
+    );
+    const connection = (nodes: unknown[]) => ({
+      nodes,
+      pageInfo: { hasNextPage: false, endCursor: null as string | null },
+    });
+    const parent = {
+      node_id: "I_1",
+      number: 1,
+      title: "Parent",
+      body: "Spec",
+      html_url: "https://github.com/Example/Project/issues/1",
+      repository_url: "https://api.github.com/repos/Example/Project",
+      state: "open",
+      state_reason: null,
+      labels: [],
+      comments: 0,
+      sub_issues_summary: { total: 1 },
+    };
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      title: "Ticket",
+      html_url: "https://github.com/Example/Project/issues/2",
+      sub_issues_summary: { total: 0 },
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/Example/Project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "Example/Project",
+          html_url: "https://github.com/Example/Project",
+        },
+      },
+      "api graphql": {
+        stdout: {
+          data: {
+            repository: {
+              id: "R_1",
+              nameWithOwner: "Example/Project",
+              issues: connection([
+                {
+                  id: "I_1",
+                  number: 1,
+                  title: "Parent",
+                  url: parent.html_url,
+                  parent: null,
+                  labels: connection([]),
+                  subIssues: {
+                    ...connection([{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }]),
+                    totalCount: 1,
+                  },
+                },
+              ]),
+            },
+            rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-10-28T00:00:00Z" },
+          },
+        },
+      },
+      "api repos/Example/Project/issues/1": { stdout: parent },
+      "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": fails
+        ? { code: 1, stdout: "network offline" }
+        : { stdout: [child] },
+      "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
+      "api repos/Example/Project/issues/2/labels?per_page=100&page=1": { stdout: [] },
+      "api repos/Example/Project/issues/2/comments?per_page=100&page=1": { stdout: [] },
+      "api repos/Example/Project/issues/2/dependencies/blocked_by?per_page=100&page=1": {
+        stdout: [],
+      },
+    };
+    const page = replies["api graphql"].stdout;
+    const pages = Array.from({ length: 5 }, (_, index) => {
+      const next = structuredClone(page);
+      next.data.repository.issues.nodes = [];
+      next.data.repository.issues.pageInfo = { hasNextPage: true, endCursor: `cursor-${index}` };
+      return { stdout: next };
+    });
+    const last = structuredClone(page);
+    if (mode === "absent") last.data.repository.issues.nodes = [];
+    await gh.script({ ...replies, "api graphql": [...pages, { stdout: last }] });
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
+    try {
+      await server.app.request("/api/project");
+      if (mode === "absent") {
+        await expect
+          .poll(
+            async () => {
+              const project = await (await server.app.request("/api/project")).json();
+              return project.github?.complete;
+            },
+            { timeout: 15000 },
+          )
+          .toBe(true);
+        const project = await (await server.app.request("/api/project")).json();
+        expect(
+          project.warnings.some(
+            (warning: { messageMessage?: { code: string } }) =>
+              warning.messageMessage?.code === "recovery.blocked",
+          ),
+        ).toBe(true);
+        expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+        expect(launchAgent).not.toHaveBeenCalled();
+        const reserved = await server.app.request("/api/stints", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workItem: "github-1", agent: "codex" }),
+        });
+        expect((await reserved.json()).reasonMessage?.code).toBe("stint.alreadyActive");
+        const stop = await server.app.request("/api/stints/restart/stop", { method: "POST" });
+        expect(stop.status).toBe(202);
+        await expect
+          .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
+          .toContain('"status":"stopped"');
+        await expect
+          .poll(async () => {
+            const afterStop = await server.app.request("/api/stints", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ workItem: "github-1", agent: "codex" }),
+            });
+            return (await afterStop.json()).reasonMessage?.code;
+          })
+          .not.toBe("stint.alreadyActive");
+      } else {
+        await expect
+          .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
+          .toContain('"state":"resuming"');
+        await expect.poll(() => launchAgent.mock.calls.length, { timeout: 15000 }).toBe(1);
+        expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+      }
+    } finally {
+      await server.stop();
+      timers.mockRestore();
+      cleared.mockRestore();
+    }
+  },
+);
