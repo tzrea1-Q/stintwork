@@ -1,7 +1,7 @@
 # 08 — M11 exit
 
 Status: ready-for-human
-Blocked by: 01, 02, 03, 04, 05, 06, 07
+Blocked by: 01, 02, 03, 04, 05, 06, 07, 13
 
 ## What to build
 
@@ -9,7 +9,7 @@ After all prerequisites and ADR approval, the coordinator asks the maintainer wh
 
 ## Acceptance criteria
 
-- [ ] Tickets 01–07 are resolved, the approved ADR and fixture, build and browser evidence are linked.
+- [ ] Tickets 01–07 and 13 are resolved, the approved ADR and fixture, build and browser evidence are linked.
 - [ ] The selected repo and permission are confirmed with the maintainer; record repository and issue/PR identities and tested revision.
 - [ ] Board discovery, ticket dependencies, brief and real stint are observed; issue changes are made by the agent through its own skill/gh.
 - [ ] A real PR for the ticket passes required checks on its current head and is merged; record URLs, commits and check outcomes.

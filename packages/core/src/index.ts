@@ -2,6 +2,8 @@
 export { githubWorkflowPath } from "./github-workflow-path.js";
 export {
   githubEvidenceJson,
+  githubEvidenceJsonV2,
+  githubEvidenceDigestV2,
   githubEvidenceDigest,
   type GithubEvidenceInput,
 } from "./github-evidence.js";

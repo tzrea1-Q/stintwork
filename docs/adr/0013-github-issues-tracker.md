@@ -1,5 +1,7 @@
 # Read GitHub Issues as project memory
 
+Status: partly superseded by [ADR 0014](0014-github-evidence-v2.md) (evidence content)
+
 Accepted by the maintainer on 2026-10-27.
 
 In a project configured for GitHub Issues, the parent issue body is the spec and its sub-issues are tickets. Agents use their own skills and `gh` to write them; Stintwork reads through `gh` and does not sync or write issues. Stintwork stores its workflow and gate records in a committed file keyed by repository and parent issue number, read from the work item's worktree once present. Approvals identify the observed issue content and code commit; an unavailable or changed revision cannot be represented as a current approval. See the [M11 spec](../../.scratch/github-tracker/spec.md) for discovery, evidence and failure rules.

@@ -60,3 +60,29 @@ export async function githubEvidenceDigest(
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return `sha256:${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
+
+/** Version 2 retains the v1 ordering but omits mutable ticket and blocker states. */
+export function githubEvidenceJsonV2(
+  input: GithubEvidenceInput,
+  includeTickets: boolean,
+  triageLabels: readonly string[] = [],
+): string {
+  const evidence = JSON.parse(githubEvidenceJson(input, includeTickets, triageLabels));
+  evidence.version = 2;
+  for (const ticket of evidence.tickets ?? []) {
+    delete ticket.state;
+    delete ticket.stateReason;
+    for (const blocker of ticket.blockers) delete blocker.state;
+  }
+  return JSON.stringify(evidence);
+}
+
+export async function githubEvidenceDigestV2(
+  input: GithubEvidenceInput,
+  includeTickets: boolean,
+  triageLabels: readonly string[] = [],
+): Promise<string> {
+  const bytes = new TextEncoder().encode(githubEvidenceJsonV2(input, includeTickets, triageLabels));
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return `sha256:${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}

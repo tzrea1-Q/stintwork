@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   githubEvidenceJson,
+  githubEvidenceJsonV2,
   evidenceStale,
   type GithubEvidenceInput,
   type ProjectSnapshot,
@@ -63,12 +64,12 @@ export function projectGithubGates(
           Array.isArray(ticket.commentRecords),
       );
     const stages = snapshot.workflows[item.workflow].stages;
-    const digest = (stage: string) => {
+    const digest = (stage: string, version: 1 | 2) => {
       if (!valid || !remote) return undefined;
       const includeTickets = githubGateIncludesTickets(stages, stage);
       return `sha256:${createHash("sha256")
         .update(
-          githubEvidenceJson(
+          (version === 1 ? githubEvidenceJson : githubEvidenceJsonV2)(
             {
               parentId: remote.id,
               body: detail.spec,
@@ -113,12 +114,15 @@ export function projectGithubGates(
         "remote" in approval && approval.remote && typeof approval.remote === "object"
           ? approval.remote
           : undefined;
-      const current = digest(stage);
+      const current =
+        evidence && "version" in evidence && (evidence.version === 1 || evidence.version === 2)
+          ? digest(stage, evidence.version)
+          : undefined;
       let state: "current" | "stale" | "unknown" =
         !current ||
         !evidence ||
         !("version" in evidence) ||
-        evidence.version !== 1 ||
+        (evidence.version !== 1 && evidence.version !== 2) ||
         !("digest" in evidence) ||
         !("parentId" in evidence) ||
         evidence.parentId !== remote?.id
@@ -190,6 +194,8 @@ export function projectGithubGates(
           state = "unknown";
         }
       }
+      if (evidence && "version" in evidence && evidence.version !== 1 && evidence.version !== 2)
+        state = "unknown";
       record.approved = {
         ...approval,
         remoteState: state,
@@ -197,7 +203,7 @@ export function projectGithubGates(
       };
       upstream = state;
     }
-    const reviewDigest = item.stage ? digest(item.stage) : undefined;
+    const reviewDigest = item.stage ? digest(item.stage, 2) : undefined;
     if (reviewDigest) {
       try {
         const candidate = project.worktreePaths.get(item.slug);

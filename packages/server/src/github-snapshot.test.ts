@@ -8,6 +8,7 @@ import {
   builtInWorkflows,
   deriveAttentionItems,
   githubEvidenceDigest,
+  githubEvidenceDigestV2,
   indexProject,
 } from "@stintwork/core";
 import { expect, test } from "vitest";
@@ -138,7 +139,7 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
         spec: { approved: { remoteState: "stale" } },
       },
       github: {
-        reviewDigest: await githubEvidenceDigest(
+        reviewDigest: await githubEvidenceDigestV2(
           { parentId: "I_1", body: "Spec", tickets: [] },
           true,
         ),
@@ -181,6 +182,18 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     reviewItem.stages.tickets.approved = { ...approval, at: "2026-01-04T00:00:00Z" };
     projectGithubGates(reviewSnapshot, root, project);
     expect(reviewItem.stages.tickets.approved).toMatchObject({ remoteState: "current" });
+    reviewItem.stages.tickets.approved = {
+      ...approval,
+      remote: { ...approval.remote, digest: "changed" },
+    };
+    projectGithubGates(reviewSnapshot, root, project);
+    expect(reviewItem.stages.tickets.approved).toMatchObject({ remoteState: "stale" });
+    reviewItem.stages.tickets.approved = {
+      ...approval,
+      remote: { ...approval.remote, version: 99 },
+    };
+    projectGithubGates(reviewSnapshot, root, project);
+    expect(reviewItem.stages.tickets.approved).toMatchObject({ remoteState: "unknown" });
     delete reviewItem.stages.spec.reopened;
     reviewItem.stages.spec.approved = { ...approval, remote: { ...approval.remote, digest } };
     reviewItem.stages.tickets = { approved: approval };

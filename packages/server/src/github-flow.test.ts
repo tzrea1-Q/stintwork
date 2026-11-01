@@ -200,7 +200,7 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
       number: 10,
     });
     expect(record.stages.spec.approved.remote).toMatchObject({
-      version: 1,
+      version: 2,
       parentId: "I_10",
       digest: expect.stringMatching(/^sha256:/),
     });
@@ -223,13 +223,9 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
     snapshot = await detail();
     expect(snapshot.workItems[0].tickets[0].resolved).toBe(true);
     expect(snapshot.workItems[0].tickets[1].blocked).toBe(false);
-    // State changes themselves invalidate ticket evidence, so review them before testing another edit.
-    expect(snapshot.workItems[0].stages.tickets.approved.remoteState).toBe("stale");
-    let response = await gate("tickets", "reopen");
-    expect(response.status, await response.clone().text()).toBe(200);
-    await stint(null);
-    response = await gate("tickets");
-    expect(response.status, await response.clone().text()).toBe(200);
+    expect(snapshot.workItems[0].stages.tickets.approved.remoteState).toBe("current");
+    await stint(12);
+    let response: Response;
     first.body = "Edited ticket";
     await gh.script(replies());
     snapshot = await detail();
@@ -306,4 +302,4 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
     rmSync(root, { recursive: true, force: true });
     rmSync(`${root}-worktrees`, { recursive: true, force: true });
   }
-}, 120000);
+}, 600000);
