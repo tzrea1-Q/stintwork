@@ -86,14 +86,14 @@ export async function mergeLocalWorkItem(
   repoRoot: string,
   slug: string,
   recordMerge: (commit: string) => Promise<void>,
-  beforeMerge: () => string | undefined = () => undefined,
+  beforeMerge: () => string | undefined | Promise<string | undefined> = () => undefined,
 ): Promise<string> {
   const root = await realpath(repoRoot);
   return withRepoLock(root, async () => {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
       throw new CoreTextError({ code: "git.invalidSlug" });
     await mainCheckoutBranch(root);
-    const recordedCommit = beforeMerge();
+    const recordedCommit = await beforeMerge();
     const git = gitAt(root);
     if (recordedCommit && !listWorkItemWorktrees(root).worktrees.has(slug)) {
       await git(["merge-base", "--is-ancestor", recordedCommit, "HEAD"]);

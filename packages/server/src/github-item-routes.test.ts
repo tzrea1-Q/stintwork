@@ -13,7 +13,7 @@ import {
   indexProject,
   type StintLogEntry,
 } from "@stintwork/core";
-import { ensureWorktree } from "@stintwork/git";
+import { ensureWorktree, withRepoLock } from "@stintwork/git";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { githubSnapshotFiles } from "./github-snapshot.js";
@@ -339,6 +339,33 @@ test("a GitHub item can ship and records its merge in the GitHub workflow", asyn
   expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
 });
 
+test("ship revalidates the workflow after waiting for the repository lock", async () => {
+  const { root, worktree, post, source } = await fixture(true);
+  let release!: () => void;
+  let locked!: () => void;
+  const acquired = new Promise<void>((resolve) => (locked = resolve));
+  const hold = withRepoLock(root, async () => {
+    locked();
+    await new Promise<void>((resolve) => (release = resolve));
+  });
+  await acquired;
+  let verified!: () => void;
+  const checked = new Promise<void>((resolve) => (verified = resolve));
+  vi.spyOn(source, "verifyIdentity").mockImplementation(async () => {
+    verified();
+    return true;
+  });
+  const request = post("/api/work-items/github-1/ship/merge-local", {});
+  await checked;
+  const path = join(worktree, workflowPath);
+  writeFileSync(path, readFileSync(path, "utf8").replace("stage: ship", "stage: review"));
+  release();
+  await hold;
+  const response = await request;
+  expect(response.status).toBe(409);
+  expect(readFileSync(join(root, workflowPath), "utf8")).not.toContain("merged:");
+});
+
 test("send-back reopens Implement despite stale GitHub approval; merge refuses it", async () => {
   const { root, worktree, git, post, gh } = await fixture();
   const digest = await githubEvidenceDigestV2(
@@ -522,10 +549,10 @@ test("ship refuses an invalid worktree workflow", async () => {
   expect(response.status).toBe(409);
 });
 
-test.each(["success", "retry", "stop"] as const)(
+test.each(["success", "retry", "offline", "stop"] as const)(
   "ticket-bound GitHub recovery waits for detail (%s)",
   async (mode) => {
-    const fails = mode !== "success";
+    const fails = mode === "retry" || mode === "stop";
     const timers = vi.spyOn(globalThis, "setTimeout");
     const cleared = vi.spyOn(globalThis, "clearTimeout");
     const { root, worktree, git, gh, registry } = await fixture();
@@ -653,11 +680,13 @@ test.each(["success", "retry", "stop"] as const)(
       },
     };
     await gh.script(replies);
+    if (mode === "offline")
+      await gh.script({ ...replies, "api graphql": { code: 1, stdout: "network offline" } });
     const { createProjectServer } = await import("./index.js");
     const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
     try {
       await server.app.request("/api/project");
-      if (fails) {
+      if (fails || mode === "offline") {
         expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
         expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
         if (mode === "stop") {
@@ -668,9 +697,10 @@ test.each(["success", "retry", "stop"] as const)(
           expect(cleared).toHaveBeenCalledWith(retry);
           return;
         }
-        replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
-          stdout: [child],
-        };
+        if (fails)
+          replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
+            stdout: [child],
+          };
         await gh.script(replies);
       }
       await expect

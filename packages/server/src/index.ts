@@ -117,7 +117,8 @@ export function createProjectServer(
       pendingStintDetails.add(number);
       return;
     }
-    if (status !== 503 || stintDetailTimers.has(number)) return;
+    const needsDiscovery = status === 409 && !github?.items.some((item) => item.number === number);
+    if ((status !== 503 && !needsDiscovery) || stintDetailTimers.has(number)) return;
     const attempts = stintDetailAttempts.get(number) ?? 0;
     const delay = [5_000, 30_000, 120_000, 300_000][Math.min(attempts, 3)];
     stintDetailAttempts.set(number, attempts + 1);
@@ -125,8 +126,15 @@ export function createProjectServer(
       number,
       setTimeout(() => {
         stintDetailTimers.delete(number);
-        pendingStintDetails.add(number);
-        drainStintDetails();
+        if (needsDiscovery) {
+          void refreshGithub().then(() => {
+            if (!github?.items.some((item) => item.number === number))
+              retryStintDetail(number, 409);
+          });
+        } else {
+          pendingStintDetails.add(number);
+          drainStintDetails();
+        }
       }, delay),
     );
   }
@@ -151,11 +159,6 @@ export function createProjectServer(
     void refreshGithubDetail(number)
       .then((status) => {
         retryStintDetail(number, status);
-        if (status === 429 && github) {
-          pendingStintDetails.add(number);
-          failGithubDetail(github, number, new GithubReadError("rate-limited", github.retryAt));
-          refresh();
-        }
         drainStintDetails();
       })
       .catch((error: unknown) => {
@@ -1098,11 +1101,7 @@ export function createProjectServer(
           ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
         };
       }
-      return ["offline", "server-error", "unavailable", "rate-limited"].includes(failure.code)
-        ? failure.code === "rate-limited"
-          ? 429
-          : 503
-        : 409;
+      return 503;
     } finally {
       detailRunning = false;
       refresh(undefined, true);
@@ -1183,6 +1182,7 @@ export function createProjectServer(
     (warning) => recoveryWarnings.push(warning),
     githubBriefSource,
     async (number) => {
+      if (!pendingRecovery.has(number)) return;
       pendingStintDetails.add(number);
       drainStintDetails();
     },

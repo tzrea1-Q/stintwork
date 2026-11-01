@@ -162,92 +162,97 @@ export function addShipRoutes(
         return { project, item, workflows: snapshot.workflows, workflowPath };
       }
       try {
-        const initial = locate();
-        const github = githubSource?.getGithub();
-        const remote = github?.items.find(
-          (entry) =>
-            entry.id === initial.item.github?.issueId &&
-            entry.number === initial.item.github.number,
-        );
-        if (initial.item.github) {
-          if (
-            !githubSource ||
-            !github ||
-            !remote ||
-            !initial.item.github.bound ||
-            (action !== "send-back" &&
-              (!initial.item.github.complete ||
-                initial.item.github.ticketsStale ||
-                remote.detail?.stale ||
-                remote.detailFailed ||
-                github.discoveryFailed ||
-                githubRateLimitCoolingDown(github) ||
-                githubSource?.discoveryFailed())) ||
-            githubSource?.getSnapshot().github?.errorCode === "identity"
-          )
-            throw new LocalMergeRefusal({ code: "gate.detailUnavailable" });
-          const workflowText = resolveGithubWorkflow(
-            initial.project,
-            initial.workflowPath,
-            initial.project.worktreePaths.get(slug),
+        let initial = locate();
+        async function validateGithub() {
+          initial = locate();
+          const github = githubSource?.getGithub();
+          const remote = github?.items.find(
+            (entry) =>
+              entry.id === initial.item.github?.issueId &&
+              entry.number === initial.item.github.number,
           );
-          if (!workflowText) throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
-          validateGithubIdentities(
-            createMemoryRepoFiles({ [initial.workflowPath]: workflowText }),
-            { ...github, complete: false, items: [remote] },
-          );
-          if (action === "merge-local" || action === "merge-pr")
-            assertWorkflowUnchanged(root, initial.workflowPath);
-          let valid = false;
-          try {
-            valid = await githubSource.verifyIdentity(github);
-          } catch {
-            /* Fail closed. */
-          }
-          if (
-            !valid ||
-            (action !== "send-back" &&
-              (githubSource.discoveryFailed() || githubRateLimitCoolingDown(github)))
-          )
-            throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
-          const stages = initial.workflows[initial.item.workflow].stages;
-          const labels = new Map(
-            ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(
-              (role) => [role, role],
-            ),
-          );
-          for (const line of (
-            initial.project.files.read("docs/agents/triage-labels.md") ?? ""
-          ).split(/\r?\n/)) {
-            const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
-            if (match && labels.has(match[1])) labels.set(match[1], match[2]);
-          }
-          for (const stage of action === "send-back"
-            ? []
-            : stages.slice(
-                0,
-                stages.findIndex((stage) => stage.id === initial.item.stage),
-              )) {
-            const approval = await requireCurrentGithubApproval(
-              initial.project.worktreePaths.get(slug) ?? root,
-              github.repository,
-              remote.id,
-              remote.number,
-              githubGateIncludesTickets(stages, stage.id),
-              [...labels.values()],
-              initial.item.stages[stage.id],
-            );
-            const projected = initial.item.stages[stage.id]?.approved;
+          if (initial.item.github) {
             if (
-              !approval.ok ||
-              !projected ||
-              typeof projected !== "object" ||
-              !("remoteState" in projected) ||
-              projected.remoteState !== "current"
+              !githubSource ||
+              !github ||
+              !remote ||
+              !initial.item.github.bound ||
+              (action !== "send-back" &&
+                (!initial.item.github.complete ||
+                  initial.item.github.ticketsStale ||
+                  remote.detail?.stale ||
+                  remote.detailFailed ||
+                  github.discoveryFailed ||
+                  githubRateLimitCoolingDown(github) ||
+                  githubSource?.discoveryFailed())) ||
+              githubSource?.getSnapshot().github?.errorCode === "identity"
             )
-              throw new LocalMergeRefusal({ code: "gate.evidenceChanged" });
+              throw new LocalMergeRefusal({ code: "gate.detailUnavailable" });
+            const workflowText = resolveGithubWorkflow(
+              initial.project,
+              initial.workflowPath,
+              initial.project.worktreePaths.get(slug),
+            );
+            if (!workflowText) throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+            validateGithubIdentities(
+              createMemoryRepoFiles({ [initial.workflowPath]: workflowText }),
+              { ...github, complete: false, items: [remote] },
+            );
+            if (action === "merge-local" || action === "merge-pr")
+              assertWorkflowUnchanged(root, initial.workflowPath);
+            let valid = false;
+            try {
+              valid = await githubSource.verifyIdentity(github);
+            } catch {
+              /* Fail closed. */
+            }
+            if (
+              !valid ||
+              (action !== "send-back" &&
+                (githubSource.discoveryFailed() || githubRateLimitCoolingDown(github)))
+            )
+              throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+            const stages = initial.workflows[initial.item.workflow].stages;
+            const labels = new Map(
+              ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(
+                (role) => [role, role],
+              ),
+            );
+            for (const line of (
+              initial.project.files.read("docs/agents/triage-labels.md") ?? ""
+            ).split(/\r?\n/)) {
+              const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
+              if (match && labels.has(match[1])) labels.set(match[1], match[2]);
+            }
+            for (const stage of action === "send-back"
+              ? []
+              : stages.slice(
+                  0,
+                  stages.findIndex((stage) => stage.id === initial.item.stage),
+                )) {
+              const approval = await requireCurrentGithubApproval(
+                initial.project.worktreePaths.get(slug) ?? root,
+                github.repository,
+                remote.id,
+                remote.number,
+                githubGateIncludesTickets(stages, stage.id),
+                [...labels.values()],
+                initial.item.stages[stage.id],
+              );
+              const projected = initial.item.stages[stage.id]?.approved;
+              if (
+                !approval.ok ||
+                !projected ||
+                typeof projected !== "object" ||
+                !("remoteState" in projected) ||
+                projected.remoteState !== "current"
+              )
+                throw new LocalMergeRefusal({ code: "gate.evidenceChanged" });
+            }
           }
+          return { github, remote };
         }
+        const { github, remote } = await validateGithub();
         const saveWorkflow = (
           directory: string,
           item: typeof initial.item,
@@ -270,6 +275,7 @@ export function addShipRoutes(
           ["preview-pr", "open-pr", "pr-checks", "preview-merge-pr", "merge-pr"].includes(action)
         ) {
           return await withRepoLock(root, async () => {
+            await validateGithub();
             const { project, item, workflows } = locate();
             const worktree = project.worktreePaths.get(slug);
             if (action === "pr-checks") {
@@ -520,8 +526,8 @@ export function addShipRoutes(
                 `Record merge of ${slug}`,
               );
             },
-            () => {
-              locate();
+            async () => {
+              await validateGithub();
               return merged?.commit;
             },
           );
