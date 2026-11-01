@@ -34,3 +34,5 @@ Five `codex review --base main` rounds. Fixed: unborn HEAD, the first-stint setu
 Numbered 10 because `codex/local-gate-head` uses 09 for the local gate HEAD race.
 
 Merged to main as `fa150c4`. CI run 40861811135 did not start any job: GitHub reported failed account payments or a spending limit that needs raising. CI evidence for this merge is pending until the maintainer resolves billing and re-runs it.
+
+**Coordinator, 2026-10-31:** Billing restored. Re-run CI run 40861811135 on `fa150c4` passed every job: checks, both browser shards, and package-smoke on ubuntu and macOS. Run 40892196500 on main head `8b130f1`, which includes this change alongside tickets 09, 11 and 12, also passed every job.
