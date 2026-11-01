@@ -177,6 +177,7 @@ export function addStintRoutes(
     refresh,
     (slug) => active.has(slug),
     workflowWrites,
+    githubSource?.getSnapshot,
   );
   const permissions = addStintPermissionRoute(app);
   addShipRoutes(

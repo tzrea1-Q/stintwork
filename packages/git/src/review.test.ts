@@ -45,6 +45,13 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
+test("creates a review directory for a GitHub work item", async () => {
+  const { root } = fixture();
+  git(root, "branch", "-m", "stintwork/github-1");
+  await commitWorkItemReview(root, "github-1", "decisions: []\n", "Record decision");
+  expect(git(root, "show", "HEAD:.scratch/github-1/review.yaml")).toBe("decisions: []");
+});
+
 test("checkpoint paths and diffs are pinned, including both sides of a rename and binary files", () => {
   const { root, base } = fixture();
   git(root, "mv", "GLOSSARY.md", "CLAUDE.md");

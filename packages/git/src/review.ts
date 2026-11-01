@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { CoreTextError } from "@stintwork/core";
 import { execFile, execFileSync } from "node:child_process";
-import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { commitWithIdentity } from "./checkpoints.js";
@@ -137,6 +137,7 @@ export async function commitWorkItemReview(
         ]);
       } else rmSync(join(worktree, rejection.path), { force: true });
     }
+    mkdirSync(join(worktree, ".scratch", slug), { recursive: true });
     writeFileSync(join(worktree, review), text, { flag: existing === undefined ? "wx" : "w" });
     if (workflow !== undefined)
       writeFileSync(join(worktree, `.scratch/${slug}/workflow.yaml`), workflow);

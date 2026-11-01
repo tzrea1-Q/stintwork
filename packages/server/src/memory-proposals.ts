@@ -70,6 +70,7 @@ export function addMemoryProposalRoutes(
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
   writing: Set<string>,
+  getSnapshot?: () => ProjectSnapshot,
 ) {
   const readProposals = createMemoryProposalReader(root);
   app.post("/api/work-items/:slug/memory-proposals/decision", async (context) => {
@@ -111,7 +112,11 @@ export function addMemoryProposalRoutes(
         coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
         503,
       );
-    const snapshot = indexProject(project.files, { name: "" });
+    const current = getSnapshot?.();
+    const snapshot =
+      current?.setup.tracker === "github-issues"
+        ? structuredClone(current)
+        : indexProject(project.files, { name: "" });
     const item = snapshot.workItems.find((entry) => entry.slug === slug);
     if (!item)
       return context.json(
