@@ -47,6 +47,7 @@ export function projectGithubGates(
       if (main !== undefined && branch !== undefined && main !== branch)
         snapshot.warnings.push({
           path,
+          code: "github-workflow-divergence",
           message: "Workflow records differ between the main checkout and worktree.",
         });
     }

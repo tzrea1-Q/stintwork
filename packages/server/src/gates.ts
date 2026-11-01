@@ -60,7 +60,10 @@ export function addGateRoutes(
       const snapshot = resolveProjectSnapshot(project, getSnapshot);
       if (snapshot.setup.tracker === "github-issues" && /^github-[1-9]\d*$/.test(slug))
         return context.json(
-          { reason: "Use the GitHub gate routes at /api/github/items/:number/gates/:action." },
+          {
+            reason: "Use the GitHub gate routes at /api/github/items/:number/gates/:action.",
+            reasonCode: "github-gate-route",
+          },
           409,
         );
       const item = snapshot.workItems.find((item) => item.slug === slug);

@@ -135,8 +135,9 @@ export function addShipRoutes(
           ? `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`
           : `.scratch/${slug}/workflow.yaml`;
         const failure = [...project.warnings, ...snapshot.warnings].find(
-          ({ path }) =>
-            path === ".git" || path === workflowPath || path === `.scratch/${slug}/review.yaml`,
+          ({ path, code }) =>
+            code !== "github-workflow-divergence" &&
+            (path === ".git" || path === workflowPath || path === `.scratch/${slug}/review.yaml`),
         );
         if (failure || item.reviewEvidenceError || !readReviewEvidence)
           throw new LocalMergeRefusal(

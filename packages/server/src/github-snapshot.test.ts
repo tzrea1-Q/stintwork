@@ -157,6 +157,7 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     });
     expect(divergent.warnings).toContainEqual({
       path: workflowPath,
+      code: "github-workflow-divergence",
       message: expect.stringContaining("differ"),
     });
     const reviewSnapshot = indexProject(files, { name: "Test", github });

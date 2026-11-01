@@ -440,3 +440,178 @@ test("GitHub pull request ship records the merged workflow", async () => {
   expect(response.status, await response.clone().text()).toBe(200);
   expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
 });
+
+test("ship accepts a later worktree workflow", async () => {
+  const { root, worktree, git, post } = await fixture(true);
+  const record = readFileSync(join(worktree, workflowPath), "utf8");
+  writeFileSync(
+    join(worktree, workflowPath),
+    `${record}stages:\n  review:\n    approved: { by: Developer, at: '2026-10-10T10:00:00Z' }\n`,
+  );
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "approve review");
+  writeFileSync(join(root, workflowPath), record.replace("stage: ship", "stage: review"));
+  const response = await post("/api/work-items/github-1/ship/pr-checks", {});
+  expect(response.status).toBe(409);
+  expect((await response.json()).reasonMessage.code).toBe("ship.prMissing");
+});
+
+test("ship refuses an invalid worktree workflow", async () => {
+  const { worktree, post } = await fixture(true);
+  writeFileSync(join(worktree, workflowPath), "workflow: [invalid\n");
+  const response = await post("/api/work-items/github-1/ship/merge-local", {});
+  expect(response.status).toBe(409);
+});
+
+test.each([false, true])(
+  "ticket-bound GitHub recovery waits for detail (initial failure: %s)",
+  async (fails) => {
+    const { root, worktree, git, gh, registry } = await fixture();
+    git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
+    mkdirSync(join(root, "web"));
+    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+    const base = git(worktree, "rev-parse", "HEAD");
+    const path = join(root, ".stintwork/local/stints/restart.jsonl");
+    mkdirSync(dirname(path), { recursive: true });
+    const entry: StintLogEntry = {
+      type: "started",
+      at: "2026-01-01T00:00:00Z",
+      stint: {
+        id: "restart",
+        workItem: "github-1",
+        stage: "review",
+        ticket: 2,
+        agent: "codex",
+        worktree: { path: worktree, branch: "stintwork/github-1" },
+        baseCommit: base,
+        brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+      },
+    };
+    const phase: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: "2026-01-01T00:00:01Z",
+      kind: "phase",
+      attemptId: "attempt-1",
+      progress: { phase: "finalization", status: "finished" },
+    };
+    const attempt: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: entry.at,
+      kind: "attempt",
+      attempt: {
+        id: "attempt-1",
+        owner: { pid: process.pid, startedAt: entry.at },
+        pid: process.pid,
+        marker: "stintwork-attempt-1",
+      },
+    };
+    const suspended: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: entry.at,
+      kind: "resume",
+      state: "suspended",
+    };
+    writeFileSync(
+      path,
+      [entry, attempt, phase, suspended].map((value) => JSON.stringify(value)).join("\n") + "\n",
+    );
+    const connection = (nodes: unknown[]) => ({
+      nodes,
+      pageInfo: { hasNextPage: false, endCursor: null },
+    });
+    const parent = {
+      node_id: "I_1",
+      number: 1,
+      title: "Parent",
+      body: "Spec",
+      html_url: "https://github.com/Example/Project/issues/1",
+      repository_url: "https://api.github.com/repos/Example/Project",
+      state: "open",
+      state_reason: null,
+      labels: [],
+      comments: 0,
+      sub_issues_summary: { total: 1 },
+    };
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      title: "Ticket",
+      html_url: "https://github.com/Example/Project/issues/2",
+      sub_issues_summary: { total: 0 },
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/Example/Project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "Example/Project",
+          html_url: "https://github.com/Example/Project",
+        },
+      },
+      "api graphql": {
+        stdout: {
+          data: {
+            repository: {
+              id: "R_1",
+              nameWithOwner: "Example/Project",
+              issues: connection([
+                {
+                  id: "I_1",
+                  number: 1,
+                  title: "Parent",
+                  url: parent.html_url,
+                  parent: null,
+                  labels: connection([]),
+                  subIssues: {
+                    ...connection([{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }]),
+                    totalCount: 1,
+                  },
+                },
+              ]),
+            },
+            rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-10-28T00:00:00Z" },
+          },
+        },
+      },
+      "api repos/Example/Project/issues/1": { stdout: parent },
+      "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": fails
+        ? { code: 1, stderr: "failed" }
+        : { stdout: [child] },
+      "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
+      "api repos/Example/Project/issues/2/labels?per_page=100&page=1": { stdout: [] },
+      "api repos/Example/Project/issues/2/comments?per_page=100&page=1": { stdout: [] },
+      "api repos/Example/Project/issues/2/dependencies/blocked_by?per_page=100&page=1": {
+        stdout: [],
+      },
+    };
+    await gh.script(replies);
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
+    try {
+      await server.app.request("/api/project");
+      if (fails) {
+        expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+        expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
+        replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
+          stdout: [child],
+        };
+        await gh.script(replies);
+        expect(
+          (await server.app.request("/api/github/items/1/refresh", { method: "POST" })).status,
+        ).toBe(200);
+      }
+      await expect
+        .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
+        .toContain('"state":"resuming"');
+      expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+    } finally {
+      await server.stop();
+    }
+  },
+);

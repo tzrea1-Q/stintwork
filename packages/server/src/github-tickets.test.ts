@@ -604,7 +604,9 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
         headers: jsonHeaders,
         body: "{}",
       });
-      expect(gate.status).toBe(404);
+      // Ticket 14 routes GitHub gates through the GitHub-specific endpoint.
+      expect(gate.status).toBe(409);
+      expect((await gate.json()).reasonCode).toBe("github-gate-route");
       for (const child of children) {
         child.body = "Recorded body";
         child.issue_dependencies_summary.total_blocked_by = 0;

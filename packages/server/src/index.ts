@@ -844,27 +844,42 @@ export function createProjectServer(
       refresh(undefined, true);
       if (generation !== trackerGeneration && snapshot.setup.tracker === "github-issues")
         void refreshGithub().then(() => refresh());
+      for (const number of pendingRecovery.keys()) pendingStintDetails.add(number);
       drainStintDetails();
     }
   }
+  const pendingRecovery = new Map<number, Array<() => void>>();
   let initialization: Promise<void> | undefined;
   function initialize() {
     initialization ??= Promise.all([
       Promise.resolve().then(() => checks.recover()),
-      refreshGithub().then(() =>
+      refreshGithub().then(async () => {
         recoverInterruptedStints(
           files,
-          (stint, entries, valid, path) =>
-            stopStints.recover(
-              stint,
-              entries,
-              (warning) => recoveryWarnings.push(warning),
-              valid,
-              path,
-            ),
+          (stint, entries, valid, path) => {
+            const adopt = () =>
+              stopStints.recover(
+                stint,
+                entries,
+                (warning) => recoveryWarnings.push(warning),
+                valid,
+                path,
+              );
+            const match = /^github-([1-9]\d*)$/.exec(stint.workItem);
+            if (snapshot.setup.tracker === "github-issues" && match && stint.ticket !== null) {
+              const number = Number(match[1]);
+              const candidates = pendingRecovery.get(number) ?? [];
+              candidates.push(adopt);
+              pendingRecovery.set(number, candidates);
+            } else adopt();
+          },
           (warning) => recoveryWarnings.push(warning),
-        ),
-      ),
+        );
+        for (const number of pendingRecovery.keys()) {
+          if ((await refreshGithubDetail(number)) === 429) pendingStintDetails.add(number);
+        }
+        drainStintDetails();
+      }),
       refreshAgentRegistry(agentRegistry),
     ]).then(() => refresh());
     return initialization;
@@ -986,6 +1001,12 @@ export function createProjectServer(
         detailFailures.delete(item.id);
         updateGithubFreshness();
       });
+      refresh(undefined, true);
+      if (detail.complete) {
+        const candidates = pendingRecovery.get(number);
+        pendingRecovery.delete(number);
+        for (const adopt of candidates ?? []) adopt();
+      }
       return 200;
     } catch (error) {
       if (generation !== trackerGeneration) return 409;
