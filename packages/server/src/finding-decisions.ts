@@ -3,7 +3,6 @@ import {
   coreTextWire,
   errorText,
   coreText,
-  indexProject,
   latestReviewStint,
   workflowGate,
   type ReviewDecision,
@@ -15,6 +14,11 @@ import { randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
+import { resolveGithubWorkflow } from "./github-snapshot.js";
+import { validateGithubIdentities, type GithubDiscovery } from "./github-discovery.js";
+import { createMemoryRepoFiles } from "@stintwork/core";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export function addFindingDecisionRoutes(
@@ -25,6 +29,8 @@ export function addFindingDecisionRoutes(
   writing: Set<string>,
   isChecking: (slug: string) => boolean,
   readReviewEvidence?: ReviewEvidenceReader,
+  getSnapshot?: () => ProjectSnapshot,
+  getGithub?: () => GithubDiscovery | undefined,
 ) {
   for (const action of ["decision", "send-back", "accept-risky-path"] as const) {
     const route = action === "accept-risky-path" ? "risky-paths/accept" : `findings/${action}`;
@@ -90,7 +96,7 @@ export function addFindingDecisionRoutes(
           coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
           503,
         );
-      const snapshot = indexProject(project.files, { name: "" });
+      const snapshot = resolveProjectSnapshot(project, getSnapshot);
       const item = snapshot.workItems.find((entry) => entry.slug === slug);
       if (!item)
         return context.json(
@@ -156,7 +162,9 @@ export function addFindingDecisionRoutes(
         }
       }
       const reviewPath = `.scratch/${slug}/review.yaml`;
-      const workflowPath = `.scratch/${slug}/workflow.yaml`;
+      const workflowPath = item.github
+        ? `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`
+        : `.scratch/${slug}/workflow.yaml`;
       if (
         snapshot.warnings.some(
           ({ path }) => path === reviewPath || (action === "send-back" && path === workflowPath),
@@ -213,6 +221,37 @@ export function addFindingDecisionRoutes(
           coreTextWire({ reason: coreText({ code: "server.worktreeUnavailable" }) }),
           409,
         );
+      let workflowText: string | undefined;
+      if (action === "send-back" && item.github) {
+        const github = getGithub?.();
+        const remote = github?.items.find(
+          (entry) => entry.id === item.github?.issueId && entry.number === item.github.number,
+        );
+        workflowText = resolveGithubWorkflow(project, workflowPath, worktree);
+        if (
+          !github ||
+          !remote ||
+          !item.github.bound ||
+          !workflowText ||
+          snapshot.github?.errorCode === "identity"
+        )
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }) }),
+            409,
+          );
+        try {
+          validateGithubIdentities(createMemoryRepoFiles({ [workflowPath]: workflowText }), {
+            ...github,
+            complete: false,
+            items: [remote],
+          });
+        } catch {
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }) }),
+            409,
+          );
+        }
+      }
       const reason = typeof request.reason === "string" ? request.reason.trim() : "";
       const status =
         action === "send-back" ? "sent-back" : (request.status as ReviewDecision["status"]);
@@ -255,13 +294,14 @@ export function addFindingDecisionRoutes(
           action === "send-back" && implementation
             ? {
                 workflow: workflowGate(
-                  project.files.read(workflowPath),
+                  item.github ? workflowText : project.files.read(workflowPath),
                   item,
                   implementation.id,
                   "reopen",
                   record,
                   snapshot.workflows,
                 ),
+                workflowPath,
                 note: {
                   id: `review:${randomUUID()}`,
                   at,

@@ -5,7 +5,6 @@ import {
   CoreTextError,
   coreText,
   defaultCheckCommands,
-  indexProject,
   isCheckExecution,
   latestCheckResults,
   readProjectConfig,
@@ -23,6 +22,8 @@ import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import type { Hono } from "hono";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
 import { readEvidenceChangedPaths } from "./review-evidence.js";
 
 const excerptLimit = 8192;
@@ -294,6 +295,7 @@ export function addCheckRoutes(
   checks: ReturnType<typeof createChecks>,
   readProjectFiles: ProjectFilesReader,
   isStintActive: (slug: string) => boolean,
+  getSnapshot?: () => ProjectSnapshot,
 ) {
   app.use("/api/work-items/:slug/checks*", async (context, next) => {
     context.header("Cache-Control", "no-store");
@@ -309,7 +311,7 @@ export function addCheckRoutes(
     const project = readProjectFiles();
     const failure = project.warnings.find(({ path }) => path === ".git");
     if (failure) return { reason: failure.message, status: 503 as const };
-    const item = indexProject(project.files, { name: "" }).workItems.find(
+    const item = resolveProjectSnapshot(project, getSnapshot).workItems.find(
       (item) => item.slug === slug,
     );
     if (!item)

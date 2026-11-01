@@ -5,7 +5,6 @@ import {
   coreText,
   deriveAttentionItems,
   deriveMemoryProposals,
-  indexProject,
   indexStints,
   isProjectMemoryPath,
   type ProjectSnapshot,
@@ -19,6 +18,7 @@ import { checkpointChangedPaths, checkpointFileDiff } from "@stintwork/git";
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
 
 export function createMemoryProposalReader(root: string) {
   const changes = new Map<string, { path: string; diff: string }[]>();
@@ -112,11 +112,7 @@ export function addMemoryProposalRoutes(
         coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
         503,
       );
-    const current = getSnapshot?.();
-    const snapshot =
-      current?.setup.tracker === "github-issues"
-        ? structuredClone(current)
-        : indexProject(project.files, { name: "" });
+    const snapshot = resolveProjectSnapshot(project, getSnapshot);
     const item = snapshot.workItems.find((entry) => entry.slug === slug);
     if (!item)
       return context.json(

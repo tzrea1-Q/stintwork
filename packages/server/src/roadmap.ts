@@ -5,19 +5,21 @@ import {
   coreText,
   CoreTextError,
   editRoadmap,
-  indexProject,
   type Milestone,
 } from "@stintwork/core";
 
 import { commitRoadmap, RoadmapWriteRefusal } from "@stintwork/git";
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
 
 export function addRoadmapRoute(
   app: Hono,
   root: string,
   readProjectFiles: ProjectFilesReader,
   refresh: () => void,
+  getSnapshot?: () => ProjectSnapshot,
 ) {
   app.post("/api/roadmap", async (context) => {
     const origin = context.req.header("origin");
@@ -45,7 +47,7 @@ export function addRoadmapRoute(
           const project = readProjectFiles();
           if (project.warnings.some(({ path }) => path === ".git"))
             throw new RoadmapWriteRefusal({ code: "roadmap.worktreesUnreadable" });
-          const item = indexProject(project.files, { name: "" }).workItems.find(
+          const item = resolveProjectSnapshot(project, getSnapshot).workItems.find(
             (item) => "workItem" in change && item.slug === change.workItem,
           );
           if (!item) throw new CoreTextError({ code: "server.workItemNotFound" });

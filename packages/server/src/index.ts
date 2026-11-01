@@ -1101,8 +1101,8 @@ export function createProjectServer(
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh, githubBriefSource);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
-  addWorkItemDiffRoute(app, root, readProjectFiles);
-  addRoadmapRoute(app, root, readProjectFiles, refresh);
+  addWorkItemDiffRoute(app, root, readProjectFiles, () => snapshot);
+  addRoadmapRoute(app, root, readProjectFiles, refresh, () => snapshot);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
   addWorkflowCustomisationRoutes(app, root, refresh);
   addSetupRoutes(app, root, files, agentRegistry, refresh, undefined, () => github);
@@ -1146,7 +1146,7 @@ export function createProjectServer(
     () => githubBriefSource.discoveryFailed() || githubRateLimitCoolingDown(github),
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
-  addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
+  addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive, () => snapshot);
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {
     const origin = context.req.header("origin");

@@ -4,7 +4,6 @@ import {
   errorText,
   coreText,
   gateReadiness,
-  indexProject,
   workflowGate,
   type GateRecord,
 } from "@stintwork/core";
@@ -13,6 +12,8 @@ import { execFileSync } from "node:child_process";
 
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
 import { saveWorkItemWorkflow } from "./workflow-writes.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 import { createMemoryProposalReader } from "./memory-proposals.js";
@@ -25,6 +26,7 @@ export function addGateRoutes(
   isStintActive: (slug: string) => boolean,
   writing: Set<string>,
   readReviewEvidence?: ReviewEvidenceReader,
+  getSnapshot?: () => ProjectSnapshot,
 ) {
   const readMemoryProposals = createMemoryProposalReader(root);
   for (const action of ["approve", "reopen"] as const) {
@@ -55,7 +57,12 @@ export function addGateRoutes(
       const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
       if (discoveryFailure)
         return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
-      const snapshot = indexProject(project.files, { name: "" });
+      const snapshot = resolveProjectSnapshot(project, getSnapshot);
+      if (snapshot.setup.tracker === "github-issues" && /^github-[1-9]\d*$/.test(slug))
+        return context.json(
+          { reason: "Use the GitHub gate routes at /api/github/items/:number/gates/:action." },
+          409,
+        );
       const item = snapshot.workItems.find((item) => item.slug === slug);
       if (!item)
         return context.json(

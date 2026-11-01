@@ -151,6 +151,8 @@ export function addStintRoutes(
     refresh,
     (slug) => active.has(slug),
     workflowWrites,
+    githubSource?.getSnapshot,
+    githubSource?.getGithub,
   );
   addGateRoutes(
     app,
@@ -160,6 +162,7 @@ export function addStintRoutes(
     (slug) => active.has(slug) || isChecking(slug),
     workflowWrites,
     readReviewEvidence,
+    githubSource?.getSnapshot,
   );
   addFindingDecisionRoutes(
     app,
@@ -169,6 +172,8 @@ export function addStintRoutes(
     workflowWrites,
     isChecking,
     readReviewEvidence,
+    githubSource?.getSnapshot,
+    githubSource?.getGithub,
   );
   addMemoryProposalRoutes(
     app,

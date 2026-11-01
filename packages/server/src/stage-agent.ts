@@ -4,7 +4,6 @@ import {
   errorText,
   coreText,
   agentUnavailable,
-  indexProject,
   workflowStageAgent,
   type StagedWorkItem,
   type StageId,
@@ -14,7 +13,15 @@ import type { AgentRegistry } from "@stintwork/agents";
 
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
-import { saveWorkItemWorkflow, writeWorkItemWorkflow } from "./workflow-writes.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
+import type { GithubDiscovery } from "./github-discovery.js";
+import { resolveGithubWorkflow } from "./github-snapshot.js";
+import {
+  saveGithubWorkflow,
+  saveWorkItemWorkflow,
+  writeWorkItemWorkflow,
+} from "./workflow-writes.js";
 
 export function writeStageAgentWorkflow(
   root: string,
@@ -35,6 +42,8 @@ export function addStageAgentRoute(
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
   writing = new Set<string>(),
+  getSnapshot?: () => ProjectSnapshot,
+  getGithub?: () => GithubDiscovery | undefined,
 ) {
   app.post("/api/work-items/:slug/stages/:stage/agent", async (context) => {
     const origin = context.req.header("origin");
@@ -73,7 +82,7 @@ export function addStageAgentRoute(
     const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
     if (discoveryFailure)
       return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
-    const snapshot = indexProject(project.files, { name: "" });
+    const snapshot = resolveProjectSnapshot(project, getSnapshot);
     const item = snapshot.workItems.find((item) => item.slug === slug);
     if (!item)
       return context.json(
@@ -90,10 +99,13 @@ export function addStageAgentRoute(
         coreTextWire({ reason: coreText({ code: "server.stageNotFound" }) }),
         400,
       );
+    const workflowPath = item.github
+      ? `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`
+      : `.scratch/${slug}/workflow.yaml`;
     if (
       snapshot.warnings.some(
         ({ path, message }) =>
-          path === `.scratch/${slug}/workflow.yaml` && message.startsWith("Invalid workflow.yaml:"),
+          path === workflowPath && message.startsWith("Invalid workflow.yaml:"),
       )
     )
       return context.json(
@@ -105,12 +117,45 @@ export function addStageAgentRoute(
     writing.add(slug);
     try {
       const worktree = project.worktreePaths.get(slug);
-      const commit = await saveWorkItemWorkflow(
-        worktree ?? root,
-        slug,
-        (text) => workflowStageAgent(text, item, stage.id, agent.id),
-        `Set ${stage.id} agent to ${agent.id} for ${slug}`,
-      );
+      const message = `Set ${stage.id} agent to ${agent.id} for ${slug}`;
+      let commit: string | null;
+      if (item.github) {
+        const github = getGithub?.();
+        const remote = github?.items.find(
+          (entry) => entry.id === item.github?.issueId && entry.number === item.github.number,
+        );
+        const text = resolveGithubWorkflow(project, workflowPath, worktree);
+        if (
+          !github ||
+          !remote ||
+          snapshot.github?.errorCode === "identity" ||
+          (worktree && text !== undefined && !item.github.bound)
+        )
+          return context.json(
+            coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }) }),
+            409,
+          );
+        commit = await saveGithubWorkflow(
+          worktree ?? root,
+          github,
+          remote,
+          item.workflow,
+          item.stage,
+          (initial) => {
+            if (resolveGithubWorkflow(project, workflowPath, worktree) !== text)
+              throw new Error("Workflow changed.");
+            return workflowStageAgent(text ?? initial, item, stage.id, agent.id);
+          },
+          message,
+        );
+      } else {
+        commit = await saveWorkItemWorkflow(
+          worktree ?? root,
+          slug,
+          (text) => workflowStageAgent(text, item, stage.id, agent.id),
+          message,
+        );
+      }
       refresh();
       return context.json(coreTextWire({ stage: stage.id, agent: agent.id, commit }));
     } catch (error) {
