@@ -10,6 +10,8 @@ import {
   pullRequestText,
   evidenceStale,
   riskyPathAccepted,
+  readWorkflow,
+  loadWorkflows,
   type PullRequestPreview,
   type MergeRecord,
 } from "@stintwork/core";
@@ -158,12 +160,25 @@ export function addShipRoutes(
           throw new LocalMergeRefusal({ code: "ship.riskyPaths" });
         if (action === "merge-local" && item.pullRequest)
           throw new LocalMergeRefusal({ code: "ship.usePr" });
+        const mainFiles = createNodeRepoFiles(root);
+        const mainText = mainFiles.read(workflowPath);
+        if (item.github && mainText !== undefined) {
+          const github = githubSource?.getGithub();
+          const remote = github?.items.find((entry) => entry.number === item.github?.number);
+          if (!github || !remote) throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+          try {
+            validateGithubIdentities(createMemoryRepoFiles({ [workflowPath]: mainText }), {
+              ...github,
+              complete: false,
+              items: [remote],
+            });
+          } catch {
+            throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+          }
+        }
         merged =
           item.merged ??
-          resolveProjectSnapshot(
-            { ...project, files: createNodeRepoFiles(root) },
-            githubSource?.getSnapshot,
-          ).workItems.find((item) => item.slug === slug)?.merged;
+          readWorkflow(mainFiles, workflowPath, [], loadWorkflows(mainFiles))?.merged;
         return { project, item, workflows: snapshot.workflows, workflowPath };
       }
       try {

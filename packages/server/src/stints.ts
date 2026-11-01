@@ -371,7 +371,12 @@ export function addStintRoutes(
       let verifiedWorktree = !recovery;
       try {
         if (recovery) {
-          verifyRecoveryWorktree(started.stint);
+          verifyRecoveryWorktree(
+            started.stint,
+            state.stopRequested ||
+              !!recovery.stopRequestedAt ||
+              recovery.progress?.phase === "finalization",
+          );
           ensureLocalIgnore(worktree.path);
         }
         verifiedWorktree = true;
@@ -595,7 +600,7 @@ export function addStintRoutes(
           );
           return;
         }
-        verifyRecoveryWorktree(started.stint);
+        verifyRecoveryWorktree(started.stint, recovery.progress?.phase === "finalization");
         if (recovery.stopRequestedAt || recovery.progress?.phase === "finalization") {
           const { status, ...details } = completionOutcome(savedProgress.stopReason);
           await end(status, {
@@ -1354,7 +1359,14 @@ export function addStintRoutes(
   });
   function verifyRecoveryWorktree(
     stint: Pick<Stint, "id" | "workItem" | "stage" | "ticket" | "worktree" | "baseCommit">,
+    finalizing = false,
   ) {
+    if (
+      finalizing &&
+      /^github-[1-9]\d*$/.test(stint.workItem) &&
+      githubSource?.getSnapshot().setup.tracker === "github-issues"
+    )
+      return verifyStintWorktree(root, stint);
     const project = resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot);
     const workItem = project.workItems.find((item) => item.slug === stint.workItem);
     if (
@@ -1515,7 +1527,10 @@ export function addStintRoutes(
     }
     const started = entries.find((entry) => entry.type === "started");
     if (!started) return;
-    const detailReady = waitForDetail?.(setupCancellation.signal);
+    const detailReady =
+      recovery.stopRequestedAt || recovery.progress?.phase === "finalization"
+        ? undefined
+        : waitForDetail?.(setupCancellation.signal);
     activeStintIds.add(stint.id);
     state.ownsRecoveryReservation = true;
     state.preparation = Promise.resolve()
@@ -1581,7 +1596,13 @@ export function addStintRoutes(
         }
         await detailReady;
         if (state.suspending) return;
-        if (!state.stopRequested && !reason && recovery.state !== "fallback") {
+        if (
+          !state.stopRequested &&
+          !recovery.stopRequestedAt &&
+          recovery.progress?.phase !== "finalization" &&
+          !reason &&
+          recovery.state !== "fallback"
+        ) {
           try {
             verifyRecoveryWorktree(stint);
           } catch (error) {

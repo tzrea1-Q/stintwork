@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { Hono } from "hono";
 import { afterEach, expect, test, vi } from "vitest";
-import { createAgentRegistry } from "@stintwork/agents";
+import { adapterHost, createAgentRegistry, readExecutableIdentity } from "@stintwork/agents";
 import { createFakeAgentLauncher, fakeAgentProfiles } from "@stintwork/agents/testing";
 import {
   foldStintLog,
@@ -527,6 +527,74 @@ test("GitHub pull request ship records the merged workflow", async () => {
   expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
 });
 
+test("GitHub pull request ship retries cleanup after recording the merge", async () => {
+  const { root, worktree, git, post, gh } = await fixture(true);
+  const bare = `${root}-remote.git`;
+  roots.push(bare);
+  git(root, "clone", "--quiet", "--bare", root, bare);
+  git(root, "remote", "add", "origin", bare);
+  writeFileSync(join(worktree, "change.txt"), "done\n");
+  git(worktree, "add", "change.txt");
+  git(worktree, "commit", "-qm", "work");
+  const reviewed = git(worktree, "rev-parse", "HEAD");
+  writeFileSync(
+    join(worktree, workflowPath),
+    `${readFileSync(join(worktree, workflowPath), "utf8")}stages:\n  review:\n    approved: { by: Developer, at: '2026-10-10T10:00:00Z', commit: ${reviewed} }\n`,
+  );
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "approve");
+  const head = git(worktree, "rev-parse", "HEAD");
+  const view = {
+    number: 12,
+    url: "https://github.com/Example/Project/pull/12",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "stintwork/github-1",
+    baseRefName: "main",
+    mergeCommit: null,
+    mergedAt: null,
+    isCrossRepository: false,
+  };
+  await gh.script({
+    "repo view": {
+      stdout: {
+        nameWithOwner: "Example/Project",
+        url: "https://github.com/Example/Project",
+        mergeCommitAllowed: true,
+      },
+    },
+    "api repos/Example/Project/branches/main/protection": {
+      stdout: { required_linear_history: { enabled: false } },
+    },
+    "pr view": [{ code: 1, stdout: "no pull requests found for branch" }, { stdout: view }],
+    "pr create": { stdout: view.url },
+    "pr checks": { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+    "pr merge": {
+      effect: `execFileSync('git', ['update-ref', 'refs/heads/main', ${JSON.stringify(head)}], {cwd: ${JSON.stringify(bare)}}); const replies = JSON.parse(fs.readFileSync(script, 'utf8')); const view = Array.isArray(replies['pr view']) ? replies['pr view'].at(-1) : replies['pr view']; view.stdout.state = 'MERGED'; view.stdout.mergeCommit = {oid: ${JSON.stringify(head)}}; view.stdout.mergedAt = '2026-10-10T10:10:00Z'; fs.writeFileSync(script, JSON.stringify(replies));`,
+    },
+  });
+  let response = await post("/api/work-items/github-1/ship/preview-pr", {});
+  expect(response.status, await response.clone().text()).toBe(200);
+  const confirmation = (await response.json()).preview.confirmation;
+  response = await post("/api/work-items/github-1/ship/open-pr", { confirmation });
+  expect(response.status, await response.clone().text()).toBe(200);
+  git(root, "worktree", "lock", worktree);
+  response = await post("/api/work-items/github-1/ship/merge-pr", {});
+  expect(response.status).toBe(409);
+  expect(await response.clone().text()).toContain("cleanup failed");
+  expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
+  const before = await gh.calls();
+  git(root, "worktree", "unlock", worktree);
+  response = await post("/api/work-items/github-1/ship/merge-pr", {});
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(
+    (await gh.calls())
+      .slice(before.length)
+      .filter(({ args }) => args[0] === "pr" && ["checks", "merge"].includes(args[1])),
+  ).toEqual([]);
+  expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
+});
+
 test("ship accepts a later worktree workflow", async () => {
   const { root, worktree, git, post } = await fixture(true);
   const record = readFileSync(join(worktree, workflowPath), "utf8");
@@ -549,6 +617,104 @@ test("ship refuses an invalid worktree workflow", async () => {
   expect(response.status).toBe(409);
 });
 
+test.each(["waiting", "stopped", "finalizing"] as const)(
+  "startup recovery remains available while discovery hangs (%s)",
+  async (mode) => {
+    const { root, worktree, git, gh, registry } = await fixture();
+    git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
+    mkdirSync(join(root, "web"));
+    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+    const path = join(root, ".stintwork/local/stints/hanging.jsonl");
+    mkdirSync(dirname(path), { recursive: true });
+    const started: StintLogEntry = {
+      type: "started",
+      at: "2026-01-01T00:00:00Z",
+      stint: {
+        id: "hanging",
+        workItem: "github-1",
+        stage: "review",
+        ticket: 2,
+        agent: "codex",
+        worktree: { path: worktree, branch: "stintwork/github-1" },
+        baseCommit: git(worktree, "rev-parse", "HEAD"),
+        brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+      },
+    };
+    const stop: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: started.at,
+      kind: "stop_requested",
+    };
+    const attempt: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: started.at,
+      kind: "attempt",
+      attempt: {
+        id: "a",
+        owner: { pid: process.pid, startedAt: started.at },
+        pid: process.pid,
+        marker: "test",
+      },
+    };
+    const phase: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: started.at,
+      kind: "phase",
+      attemptId: "a",
+      progress: { phase: "finalization", status: "finished" },
+    };
+    const suspended: StintLogEntry = {
+      type: "recovery",
+      version: 1,
+      at: started.at,
+      kind: "resume",
+      state: "suspended",
+    };
+    const entries =
+      mode === "stopped"
+        ? [started, stop]
+        : mode === "finalizing"
+          ? [started, attempt, phase, suspended]
+          : [started];
+    writeFileSync(path, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    await gh.script({
+      "auth status": {
+        effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 30000)",
+      },
+    });
+    const { createProjectServer } = await import("./index.js");
+    const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
+    try {
+      void server.app.request("/api/project");
+      if (mode === "waiting") {
+        const response = await Promise.race([
+          server.app.request("/api/stints/hanging/stop", { method: "POST" }),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("stop blocked")), 2000),
+          ),
+        ]);
+        expect(response.status).toBe(202);
+      }
+      await expect
+        .poll(() => readFileSync(path, "utf8"), { timeout: 5000 })
+        .toContain(mode === "finalizing" ? '"type":"ended"' : '"status":"stopped"');
+      if (mode === "waiting") {
+        await expect
+          .poll(
+            async () =>
+              (await server.app.request("/api/stints/hanging/stop", { method: "POST" })).status,
+          )
+          .toBe(409);
+      }
+    } finally {
+      await server.stop();
+    }
+  },
+);
+
 test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as const)(
   "ticket-bound GitHub recovery waits for detail (%s)",
   async (mode) => {
@@ -562,6 +728,33 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
     const base = git(worktree, "rev-parse", "HEAD");
     const path = join(root, ".stintwork/local/stints/restart.jsonl");
     mkdirSync(dirname(path), { recursive: true });
+    const selected = {
+      agent: "codex" as const,
+      source: "installed" as const,
+      reason: "compatible" as const,
+      executable: {
+        path: process.execPath,
+        version: "1",
+        identity: readExecutableIdentity(process.execPath)?.identity ?? "fixture",
+      },
+      adapterEntry: "/fake/adapter.js",
+      adapterVersion: "1",
+      cacheKey: "a".repeat(64),
+      lockDigest: "b".repeat(64),
+    };
+    const agent = registry.get("codex")!;
+    agent.verifyRecovery = async () => selected;
+    const launchAgent = vi.fn<typeof agent.launch>(() => {
+      let finish: () => void = () => {};
+      return {
+        ready: Promise.resolve(),
+        done: new Promise((resolve) => {
+          finish = () => resolve({ stopReason: "cancelled" });
+        }),
+        cancel: async () => finish(),
+      };
+    });
+    agent.launch = launchAgent;
     const entry: StintLogEntry = {
       type: "started",
       at: "2026-01-01T00:00:00Z",
@@ -582,7 +775,7 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
       at: "2026-01-01T00:00:01Z",
       kind: "phase",
       attemptId: "attempt-1",
-      progress: { phase: "finalization", status: "finished" },
+      progress: { phase: "findings" },
     };
     const attempt: StintLogEntry = {
       type: "recovery",
@@ -605,7 +798,29 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
     };
     writeFileSync(
       path,
-      [entry, attempt, phase, suspended].map((value) => JSON.stringify(value)).join("\n") + "\n",
+      [
+        entry,
+        {
+          type: "recovery",
+          version: 1,
+          at: entry.at,
+          kind: "launch",
+          launch: { ...selected, host: adapterHost(), permissionLevel: "ask" },
+        },
+        attempt,
+        {
+          type: "recovery",
+          version: 1,
+          at: entry.at,
+          kind: "session",
+          attemptId: "attempt-1",
+          sessionId: "fake-session",
+        },
+        phase,
+        suspended,
+      ]
+        .map((value) => JSON.stringify(value))
+        .join("\n") + "\n",
     );
     const connection = (nodes: unknown[]) => ({
       nodes,
@@ -736,15 +951,21 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
             expect(response.status).toBe(409);
             expect((await response.json()).reasonMessage.code).toBe(code);
           }
-          const retry =
+          const retryTimer = () =>
             timers.mock.results[timers.mock.calls.findIndex((call) => call[1] === 5000)]?.value;
+          await expect.poll(retryTimer).toBeDefined();
+          const retry = retryTimer();
           expect(retry).toBeDefined();
           expect((await post("/api/stints/restart/stop", {})).status).toBe(202);
           await expect
             .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
             .toContain('"status":"stopped"');
-          const afterStop = await post("/api/stints", { workItem: "github-1", agent: "codex" });
-          expect((await afterStop.json()).reasonMessage?.code).not.toBe("stint.alreadyActive");
+          await expect
+            .poll(async () => {
+              const afterStop = await post("/api/stints", { workItem: "github-1", agent: "codex" });
+              return (await afterStop.json()).reasonMessage?.code;
+            })
+            .not.toBe("stint.alreadyActive");
           expect(cleared).toHaveBeenCalledWith(retry);
           return;
         }
@@ -755,20 +976,25 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
         parent.sub_issues_summary.total = 1;
         await gh.script(replies);
         if (mode === "identity")
-          expect((await post("/api/github/discovery/refresh", {})).status).toBe(200);
+          await expect
+            .poll(async () => (await post("/api/github/discovery/refresh", {})).status)
+            .toBe(200);
       }
       await expect
         .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
         .toContain('"state":"resuming"');
+      await expect.poll(() => launchAgent.mock.calls.length, { timeout: 15000 }).toBe(1);
       expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
       if (mode === "identity") {
-        const project = await (await server.app.request("/api/project")).json();
-        expect(
-          project.warnings.some(
-            (warning: { messageMessage?: { code: string } }) =>
-              warning.messageMessage?.code === "recovery.blocked",
-          ),
-        ).toBe(false);
+        await expect
+          .poll(async () => {
+            const project = await (await server.app.request("/api/project")).json();
+            return project.warnings.some(
+              (warning: { messageMessage?: { code: string } }) =>
+                warning.messageMessage?.code === "recovery.blocked",
+            );
+          })
+          .toBe(false);
       }
     } finally {
       await server.stop();

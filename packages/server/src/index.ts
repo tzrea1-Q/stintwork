@@ -916,10 +916,10 @@ export function createProjectServer(
   const pendingRecovery = new Map<number, Array<() => void>>();
   const pendingRecoveryWarnings = new Map<number, Warning>();
   let initialization: Promise<void> | undefined;
+  let localRecovery: Promise<void> | undefined;
   function initialize() {
-    initialization ??= Promise.all([
-      Promise.resolve().then(() => checks.recover()),
-      refreshGithub().then(async () => {
+    if (!initialization) {
+      localRecovery = Promise.resolve().then(() => {
         recoverInterruptedStints(
           files,
           (stint, entries, valid, path) => {
@@ -987,18 +987,31 @@ export function createProjectServer(
           },
           (warning) => recoveryWarnings.push(warning),
         );
-        for (const number of pendingRecovery.keys()) {
-          retryStintDetail(number, await refreshGithubDetail(number));
-        }
-        drainStintDetails();
-      }),
-      refreshAgentRegistry(agentRegistry),
-    ]).then(() => refresh());
+      });
+      initialization = Promise.all([
+        Promise.resolve().then(() => checks.recover()),
+        localRecovery.then(async () => {
+          await refreshGithub();
+          for (const number of pendingRecovery.keys()) {
+            retryStintDetail(number, await refreshGithubDetail(number));
+          }
+          drainStintDetails();
+        }),
+        refreshAgentRegistry(agentRegistry),
+      ]).then(() => refresh());
+    }
     return initialization;
   }
   app.use("/api/*", async (context, next) => {
     try {
-      await initialize();
+      const ready = initialize();
+      if (
+        context.req.method === "POST" &&
+        /^\/api\/stints\/[^/]+\/stop$/.test(new URL(context.req.url).pathname)
+      ) {
+        void ready.catch(() => {});
+        await localRecovery;
+      } else await ready;
     } catch (error) {
       return context.json(
         coreTextWire({
