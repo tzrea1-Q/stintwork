@@ -83,6 +83,11 @@ export function addStageAgentRoute(
     if (discoveryFailure)
       return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
     const snapshot = resolveProjectSnapshot(project, getSnapshot);
+    if (/^github-\d+$/.test(slug) && snapshot.github?.errorCode === "identity")
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }) }),
+        409,
+      );
     const item = snapshot.workItems.find((item) => item.slug === slug);
     if (!item)
       return context.json(

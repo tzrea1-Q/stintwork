@@ -777,3 +777,81 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
     }
   },
 );
+
+test("repository replacement invalidates all cached items until discovery succeeds", async () => {
+  const { root, git, gh, registry } = await fixture();
+  git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const connection = (nodes: unknown[]) => ({
+    nodes,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  });
+  const replies = (id: string) => ({
+    "auth status": {},
+    "api user": { stdout: { id: 101, login: "101" } },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: id,
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": {
+      stdout: {
+        data: {
+          repository: {
+            id,
+            nameWithOwner: "Example/Project",
+            issues: connection(
+              [1, 3].map((number) => ({
+                id: `I_${number}`,
+                number,
+                title: `Item ${number}`,
+                url: `https://github.com/Example/Project/issues/${number}`,
+                parent: null,
+                labels: connection([{ name: "stintwork:work-item" }]),
+                subIssues: { ...connection([]), totalCount: 0 },
+              })),
+            ),
+          },
+          rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-10-28T00:00:00Z" },
+        },
+      },
+    },
+  });
+  await gh.script(replies("R_1"));
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
+  const post = (url: string, body: unknown) =>
+    server.app.request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  try {
+    expect((await (await server.app.request("/api/project")).json()).workItems).toHaveLength(2);
+    await gh.script(replies("R_new"));
+    const failed = await post("/api/github/items/1/refresh", {});
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).workItems).toEqual([]);
+    for (const [url, body] of [
+      [
+        "/api/github/items/3/gates/approve",
+        { stage: "spec", reviewedDigest: "x", reviewedHead: "x" },
+      ],
+      ["/api/stints", { workItem: "github-3", agent: "codex" }],
+      ["/api/work-items/github-3/stages/review/agent", { agent: "codex" }],
+      ["/api/work-items/github-3/ship/pr-checks", {}],
+    ] as const) {
+      const response = await post(url, body);
+      expect(response.status).toBe(409);
+      expect((await response.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+    }
+    const refreshed = await post("/api/github/discovery/refresh", {});
+    expect(refreshed.status).toBe(200);
+    expect((await refreshed.json()).workItems).toHaveLength(2);
+  } finally {
+    await server.stop();
+  }
+});

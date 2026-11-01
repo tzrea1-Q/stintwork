@@ -438,6 +438,31 @@ export function createProjectServer(
     };
     refresh();
   }
+  function invalidateGithubIdentity() {
+    const retained =
+      github?.items
+        .filter((item) => pendingRecovery.has(item.number))
+        .map((item) => {
+          const { detail: _detail, ...rest } = item;
+          return { ...rest, complete: false };
+        }) ?? [];
+    clearGithub();
+    const failure = new GithubReadError("identity");
+    discoveryFailure = { error: failure.message, errorCode: failure.code, retryable: false };
+    github = {
+      repository: "",
+      repositoryId: "",
+      items: retained,
+      scanned: 0,
+      cursor: null,
+      complete: false,
+      pages: [],
+      warnings: [],
+      error: failure.message,
+      errorCode: failure.code,
+    };
+    refresh();
+  }
   async function verifyOfflineViewer(): Promise<boolean> {
     if (lifetime.signal.aborted || !localVerificationNeeded() || !githubSource) return false;
     const source = githubSource;
@@ -628,6 +653,7 @@ export function createProjectServer(
     let viewer: Awaited<ReturnType<typeof githubViewer>> | undefined;
     let origin: string | undefined;
     const changedIssues = new Set<number>();
+    let repositoryMismatch = false;
     try {
       await viewerCheck;
       if (
@@ -664,8 +690,10 @@ export function createProjectServer(
         knownRepository &&
         (knownRepository.repositoryId !== next.repositoryId ||
           knownRepository.repository.toLowerCase() !== next.repository.toLowerCase())
-      )
+      ) {
+        repositoryMismatch = true;
         throw new GithubReadError("identity");
+      }
       for (const item of next.items) {
         const earlier = knownIssues.get(item.number);
         if (earlier && earlier !== item.id) changedIssues.add(item.number);
@@ -783,6 +811,10 @@ export function createProjectServer(
     } catch (error) {
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       const failure = classifyGithubError(error);
+      if (repositoryMismatch) {
+        invalidateGithubIdentity();
+        return;
+      }
       discoveryFailure = {
         error: failure.message,
         errorCode: failure.code,
@@ -1034,6 +1066,7 @@ export function createProjectServer(
     const current = github;
     item.discoveryComplete ??= item.complete;
     let verified = false;
+    let repositoryMismatch = false;
     let publish: ReturnType<typeof beginDetail> | undefined;
     try {
       await viewerCheck;
@@ -1068,6 +1101,7 @@ export function createProjectServer(
         repository.repositoryId !== current.repositoryId ||
         repository.repository.toLowerCase() !== current.repository.toLowerCase()
       ) {
+        repositoryMismatch = true;
         throw new GithubReadError("identity");
       }
       publish = beginDetail(number);
@@ -1110,6 +1144,10 @@ export function createProjectServer(
           };
           pendingRecoveryWarnings.set(number, warning);
           recoveryWarnings.push(warning);
+        }
+        if (repositoryMismatch && github === current) {
+          invalidateGithubIdentity();
+          return 503;
         }
         if (pendingRecovery.has(number) && verified && github === current) {
           current.error = failure.message;
@@ -1214,6 +1252,7 @@ export function createProjectServer(
       const source = githubSource;
       if (!source || github !== expected) return false;
       const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
+      if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
     },
     detailFailed: failGithubDetail,
@@ -1273,6 +1312,7 @@ export function createProjectServer(
       const source = githubSource;
       if (!source || github !== expected) return false;
       const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
+      if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
     },
     failGithubDetail,

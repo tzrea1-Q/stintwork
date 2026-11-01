@@ -99,6 +99,11 @@ export function addShipRoutes(
         );
       }
       const slug = context.req.param("slug");
+      if (/^github-\d+$/.test(slug) && githubSource?.getSnapshot().github?.errorCode === "identity")
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }) }),
+          409,
+        );
       if (
         !resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot).workItems.some(
           (item) => item.slug === slug,

@@ -115,6 +115,8 @@ export async function prepareStintBrief(
   let snapshot = indexProject(files, { name: "" });
   const github = githubSource?.getGithub();
   const remote = github?.items.find((item) => slug === `github-${item.number}`);
+  if (/^github-\d+$/.test(slug) && githubSource?.getSnapshot().github?.errorCode === "identity")
+    return { reason: coreText({ code: "gate.identityAmbiguous" }), status: 409 as const };
   let ownDetail:
     | (Awaited<ReturnType<typeof readGithubTickets>> & { fetchedAt: string })
     | undefined;
