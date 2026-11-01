@@ -549,7 +549,7 @@ test("ship refuses an invalid worktree workflow", async () => {
   expect(response.status).toBe(409);
 });
 
-test.each(["success", "retry", "offline", "stop", "incomplete"] as const)(
+test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as const)(
   "ticket-bound GitHub recovery waits for detail (%s)",
   async (mode) => {
     const fails = mode === "retry" || mode === "stop";
@@ -680,20 +680,71 @@ test.each(["success", "retry", "offline", "stop", "incomplete"] as const)(
       },
     };
     await gh.script(replies);
+    if (mode === "identity")
+      await gh.script({
+        ...replies,
+        "api repos/Example/Project": [
+          replies["api repos/Example/Project"],
+          {
+            stdout: {
+              node_id: "R_other",
+              full_name: "Example/Project",
+              html_url: "https://github.com/Example/Project",
+            },
+          },
+        ],
+      });
     if (mode === "offline")
       await gh.script({ ...replies, "api graphql": { code: 1, stdout: "network offline" } });
     const { createProjectServer } = await import("./index.js");
     const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
     try {
       await server.app.request("/api/project");
-      if (fails || mode === "offline" || mode === "incomplete") {
+      if (fails || mode === "offline" || mode === "incomplete" || mode === "identity") {
         expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
         expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
+        const post = (url: string, body: unknown) =>
+          server.app.request(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+          });
+        if (mode === "identity") {
+          const project = await (await server.app.request("/api/project")).json();
+          expect(
+            project.workItems.find((item: { slug: string }) => item.slug === "github-1")
+              ?.activeStint?.id,
+          ).toBe("restart");
+          expect(
+            project.warnings.some(
+              (warning: { messageMessage?: { code: string } }) =>
+                warning.messageMessage?.code === "recovery.blocked",
+            ),
+          ).toBe(true);
+        }
         if (mode === "stop") {
+          for (const [url, body, code] of [
+            ["/api/stints", { workItem: "github-1", agent: "codex" }, "stint.alreadyActive"],
+            [
+              "/api/work-items/github-1/stages/review/agent",
+              { agent: "codex" },
+              "agent.activeWrite",
+            ],
+            ["/api/work-items/github-1/ship/pr-checks", {}, "ship.running"],
+          ] as const) {
+            const response = await post(url, body);
+            expect(response.status).toBe(409);
+            expect((await response.json()).reasonMessage.code).toBe(code);
+          }
           const retry =
             timers.mock.results[timers.mock.calls.findIndex((call) => call[1] === 5000)]?.value;
           expect(retry).toBeDefined();
-          await server.stop();
+          expect((await post("/api/stints/restart/stop", {})).status).toBe(202);
+          await expect
+            .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
+            .toContain('"status":"stopped"');
+          const afterStop = await post("/api/stints", { workItem: "github-1", agent: "codex" });
+          expect((await afterStop.json()).reasonMessage?.code).not.toBe("stint.alreadyActive");
           expect(cleared).toHaveBeenCalledWith(retry);
           return;
         }
@@ -703,11 +754,22 @@ test.each(["success", "retry", "offline", "stop", "incomplete"] as const)(
           };
         parent.sub_issues_summary.total = 1;
         await gh.script(replies);
+        if (mode === "identity")
+          expect((await post("/api/github/discovery/refresh", {})).status).toBe(200);
       }
       await expect
         .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
         .toContain('"state":"resuming"');
       expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+      if (mode === "identity") {
+        const project = await (await server.app.request("/api/project")).json();
+        expect(
+          project.warnings.some(
+            (warning: { messageMessage?: { code: string } }) =>
+              warning.messageMessage?.code === "recovery.blocked",
+          ),
+        ).toBe(false);
+      }
     } finally {
       await server.stop();
       timers.mockRestore();

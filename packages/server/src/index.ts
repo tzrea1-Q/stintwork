@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { coreText, coreTextWire, type Health, indexProject, type Warning } from "@stintwork/core";
+import {
+  coreText,
+  coreTextFields,
+  coreTextWire,
+  type Health,
+  indexProject,
+  type Warning,
+} from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { accessSync } from "node:fs";
@@ -875,6 +882,7 @@ export function createProjectServer(
     }
   }
   const pendingRecovery = new Map<number, Array<() => void>>();
+  const pendingRecoveryWarnings = new Map<number, Warning>();
   let initialization: Promise<void> | undefined;
   function initialize() {
     initialization ??= Promise.all([
@@ -883,7 +891,60 @@ export function createProjectServer(
         recoverInterruptedStints(
           files,
           (stint, entries, valid, path) => {
-            const adopt = () =>
+            const match = /^github-([1-9]\d*)$/.exec(stint.workItem);
+            if (snapshot.setup.tracker === "github-issues" && match && stint.ticket !== null) {
+              const number = Number(match[1]);
+              stopStints.recover(
+                stint,
+                entries,
+                (warning) => recoveryWarnings.push(warning),
+                valid,
+                path,
+                (signal) =>
+                  new Promise<void>((resolve) => {
+                    const finish = () => {
+                      signal.removeEventListener("abort", finish);
+                      const candidates = pendingRecovery
+                        .get(number)
+                        ?.filter((candidate) => candidate !== finish);
+                      if (candidates?.length) pendingRecovery.set(number, candidates);
+                      else {
+                        pendingRecovery.delete(number);
+                        pendingStintDetails.delete(number);
+                        const timer = stintDetailTimers.get(number);
+                        if (timer) clearTimeout(timer);
+                        stintDetailTimers.delete(number);
+                        stintDetailAttempts.delete(number);
+                        const warning = pendingRecoveryWarnings.get(number);
+                        if (warning) recoveryWarnings.splice(recoveryWarnings.indexOf(warning), 1);
+                        pendingRecoveryWarnings.delete(number);
+                      }
+                      resolve();
+                    };
+                    const candidates = pendingRecovery.get(number) ?? [];
+                    candidates.push(finish);
+                    pendingRecovery.set(number, candidates);
+                    if (!pendingRecoveryWarnings.has(number)) {
+                      const warning = {
+                        path,
+                        ...coreTextFields(
+                          "message",
+                          coreText({
+                            code: "recovery.blocked",
+                            params: {
+                              detail: "Recovery is waiting for verified GitHub item details.",
+                            },
+                          }),
+                        ),
+                      };
+                      pendingRecoveryWarnings.set(number, warning);
+                      recoveryWarnings.push(warning);
+                    }
+                    if (signal.aborted) finish();
+                    else signal.addEventListener("abort", finish, { once: true });
+                  }),
+              );
+            } else
               stopStints.recover(
                 stint,
                 entries,
@@ -891,13 +952,6 @@ export function createProjectServer(
                 valid,
                 path,
               );
-            const match = /^github-([1-9]\d*)$/.exec(stint.workItem);
-            if (snapshot.setup.tracker === "github-issues" && match && stint.ticket !== null) {
-              const number = Number(match[1]);
-              const candidates = pendingRecovery.get(number) ?? [];
-              candidates.push(adopt);
-              pendingRecovery.set(number, candidates);
-            } else adopt();
           },
           (warning) => recoveryWarnings.push(warning),
         );
@@ -1014,7 +1068,6 @@ export function createProjectServer(
         repository.repositoryId !== current.repositoryId ||
         repository.repository.toLowerCase() !== current.repository.toLowerCase()
       ) {
-        verified = false;
         throw new GithubReadError("identity");
       }
       publish = beginDetail(number);
@@ -1035,6 +1088,9 @@ export function createProjectServer(
         stintDetailAttempts.delete(number);
         const candidates = pendingRecovery.get(number);
         pendingRecovery.delete(number);
+        const warning = pendingRecoveryWarnings.get(number);
+        if (warning) recoveryWarnings.splice(recoveryWarnings.indexOf(warning), 1);
+        pendingRecoveryWarnings.delete(number);
         for (const adopt of candidates ?? []) adopt();
       } else retryStintDetail(number, 503);
       return 200;
@@ -1042,7 +1098,25 @@ export function createProjectServer(
       if (generation !== trackerGeneration) return 409;
       const failure = classifyGithubError(error);
       if (failure.code === "identity") {
-        pendingRecovery.delete(number);
+        if (pendingRecovery.has(number)) {
+          const previous = pendingRecoveryWarnings.get(number);
+          if (previous) recoveryWarnings.splice(recoveryWarnings.indexOf(previous), 1);
+          const warning = {
+            path: `.stintwork/local/stints`,
+            ...coreTextFields(
+              "message",
+              coreText({ code: "recovery.blocked", params: { detail: failure.message } }),
+            ),
+          };
+          pendingRecoveryWarnings.set(number, warning);
+          recoveryWarnings.push(warning);
+        }
+        if (pendingRecovery.has(number) && verified && github === current) {
+          current.error = failure.message;
+          current.errorCode = "identity";
+          current.complete = false;
+          current.stale = true;
+        }
         pendingStintDetails.delete(number);
         const timer = stintDetailTimers.get(number);
         if (timer) clearTimeout(timer);

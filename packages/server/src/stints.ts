@@ -1374,6 +1374,7 @@ export function addStintRoutes(
     warn: (warning: Warning) => void,
     valid: boolean,
     path: string,
+    waitForDetail?: (signal: AbortSignal) => Promise<void>,
   ) {
     const warning = (message: string) =>
       warn({
@@ -1392,7 +1393,8 @@ export function addStintRoutes(
       return;
     }
     // Every candidate, including fallback/blocked logs, reserves before asynchronous work.
-    const state: ActiveStint = { id: stint.id, setupCancellation: new AbortController() };
+    const setupCancellation = new AbortController();
+    const state: ActiveStint = { id: stint.id, setupCancellation };
     state.suspend = () => {
       if (
         state.stopRequested ||
@@ -1513,6 +1515,7 @@ export function addStintRoutes(
     }
     const started = entries.find((entry) => entry.type === "started");
     if (!started) return;
+    const detailReady = waitForDetail?.(setupCancellation.signal);
     activeStintIds.add(stint.id);
     state.ownsRecoveryReservation = true;
     state.preparation = Promise.resolve()
@@ -1576,7 +1579,9 @@ export function addStintRoutes(
           refresh();
           return;
         }
-        if (!reason && recovery.state !== "fallback") {
+        await detailReady;
+        if (state.suspending) return;
+        if (!state.stopRequested && !reason && recovery.state !== "fallback") {
           try {
             verifyRecoveryWorktree(stint);
           } catch (error) {
