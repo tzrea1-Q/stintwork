@@ -20,3 +20,5 @@ Detect when a local gate approval commit has a different parent from the reviewe
 
 Not covered here (left as follow-ups): the web gate view still ignores a local `approval: "stale"` response and the projected local `state`, so a stale local approval does not show in the UI; a stale local approval does not block later gates (local readiness is unchanged); and a hand-written approval committed later outside the gate route does not trigger a snapshot refresh, because the watcher does not track checkout branch refs. GitHub gates share that watcher limitation.
 
+
+**Coordinator, 2026-10-31:** GitHub CI green on main `8b130f1`, which contains this ticket (run 40892196500, rerun after the account billing block was lifted): checks, browser (1) and (2), and package-smoke on ubuntu and macOS all passed.

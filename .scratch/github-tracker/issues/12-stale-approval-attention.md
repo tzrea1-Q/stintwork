@@ -21,3 +21,5 @@ Verified on the branch with main merged: format:check, lint, typecheck, build, f
 
 Not done, by decision: browser notifications carry only the title, like every other attention kind (no details or action). Reopen commits directly from the queue, as gate approve and reopen do everywhere, rather than through the Dialog that `docs/agents/frontend.md` asks for on committing actions; that applies to all gate actions and needs its own decision. The reopen request does not carry the displayed approval's identity, so a queue item that is out of date could reopen an approval made since; the drawer's reopen button behaves the same way.
 
+
+**Coordinator, 2026-10-31:** GitHub CI green on main `8b130f1`, which contains this ticket (run 40892196500, rerun after the account billing block was lifted): checks, browser (1) and (2), and package-smoke on ubuntu and macOS all passed.

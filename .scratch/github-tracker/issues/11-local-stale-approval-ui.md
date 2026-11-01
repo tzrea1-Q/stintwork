@@ -20,3 +20,5 @@ Show when a local gate approval became stale because HEAD changed while it was r
 
 Follow-up (not done): approving from the Needs-you queue removes the gate-ready item when the stage advances, so the one-off stale message is lost there and the projected line appears only in the work-item drawer. A durable signal outside the drawer, such as an attention item or a card badge for stale local approvals, is still needed.
 
+
+**Coordinator, 2026-10-31:** GitHub CI green on main `8b130f1`, which contains this ticket (run 40892196500, rerun after the account billing block was lifted): checks, browser (1) and (2), and package-smoke on ubuntu and macOS all passed.
