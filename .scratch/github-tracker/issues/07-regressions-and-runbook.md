@@ -16,6 +16,8 @@ Exercise the full fixture-backed flow and write a concise coordinator runbook in
 
 ## Comments
 
+**Coordinator, 2026-10-31:** The CI evidence that was pending is now in place. After billing was restored, main CI runs 41270288999 (`db7e61f`) and 41270497461 (`eb0e3e1`) passed. Both contain this ticket's merge `fc3b50d`.
+
 **Coordinator, 2026-10-28:** Resolved. Merged to main as `fc3b50d`.
 
 The full local verify passed on the merged tree: format:check, lint, typecheck, build, 3,144 unit tests across 171 files, smoke:package and test:e2e. There were 2 Codex review rounds; the last was clean. The round-1 fix: one shared Tickets dependency rule (ordered siblings; closed external blockers; cycles and unknown dependencies refuse).
