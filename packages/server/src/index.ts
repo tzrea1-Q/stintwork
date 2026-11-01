@@ -40,7 +40,6 @@ import { addSetupRoutes } from "./setup.js";
 import {
   classifyGithubError,
   GithubReadError,
-  validateGithubIdentities,
   discoverGithubWorkItems,
   githubOrigin,
   githubViewer,
@@ -54,7 +53,11 @@ import {
   readGithubTickets,
 } from "./github-tickets.js";
 import { projectLocalApprovals } from "./approval-head.js";
-import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
+import {
+  bindGithubIdentities,
+  githubSnapshotFiles,
+  projectGithubGates,
+} from "./github-snapshot.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
@@ -232,48 +235,6 @@ export function createProjectServer(
     if (item.detail) item.detail.stale = true;
     detailFailures.set(item.id, failure);
     updateGithubFreshness();
-  }
-  function bindGithubIdentities(
-    data: GithubDiscovery,
-    project: ReturnType<typeof readProjectFiles>,
-  ) {
-    const worktreeFiles = new Map<number, ReturnType<typeof createNodeRepoFiles>>();
-    const overridden = new Set<string>();
-    for (const item of data.items) {
-      const worktree = project.worktreePaths.get(`github-${item.number}`);
-      if (!worktree) continue;
-      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
-      const source = createNodeRepoFiles(worktree);
-      if (source.read(path) !== undefined) {
-        worktreeFiles.set(item.number, source);
-        overridden.add(path);
-      }
-    }
-    const mainFiles = {
-      read: (path: string) => files.read(path),
-      list: (prefix: string) => files.list(prefix).filter((path) => !overridden.has(path)),
-    };
-    data = validateGithubIdentities(mainFiles, data);
-    for (const item of data.items) {
-      const source = worktreeFiles.get(item.number);
-      if (!source) continue;
-      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
-      const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
-      try {
-        const validated = validateGithubIdentities(exactFiles, {
-          ...data,
-          complete: false,
-          items: [item],
-        });
-        item.bound = validated.items[0].bound;
-      } catch {
-        item.bound = false;
-        data.complete = false;
-        data.error = new GithubReadError("identity").message;
-        data.errorCode = "identity";
-      }
-    }
-    return data;
   }
   function readSnapshot(changedPaths?: readonly string[], redactGithub = false) {
     let branch: string | undefined;

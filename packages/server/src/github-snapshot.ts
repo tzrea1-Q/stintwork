@@ -12,6 +12,11 @@ import { checkpointChangedPaths } from "@stintwork/git";
 import { approvalHeadChanged } from "./approval-head.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import {
+  GithubReadError,
+  validateGithubIdentities,
+  type GithubDiscovery,
+} from "./github-discovery.js";
 import { githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export function projectGithubGates(
@@ -254,4 +259,47 @@ export function resolveGithubWorkflow(
   return (
     (worktree ? createNodeRepoFiles(worktree).read(path) : undefined) ?? project.files.read(path)
   );
+}
+
+export function bindGithubIdentities(
+  data: GithubDiscovery,
+  project: ReturnType<ProjectFilesReader>,
+) {
+  const worktreeFiles = new Map<number, ReturnType<typeof createNodeRepoFiles>>();
+  const overridden = new Set<string>();
+  for (const item of data.items) {
+    const worktree = project.worktreePaths.get(`github-${item.number}`);
+    if (!worktree) continue;
+    const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+    const source = createNodeRepoFiles(worktree);
+    if (source.read(path) !== undefined) {
+      worktreeFiles.set(item.number, source);
+      overridden.add(path);
+    }
+  }
+  const mainFiles = {
+    read: (path: string) => project.files.read(path),
+    list: (prefix: string) => project.files.list(prefix).filter((path) => !overridden.has(path)),
+  };
+  data = validateGithubIdentities(mainFiles, data);
+  for (const item of data.items) {
+    const source = worktreeFiles.get(item.number);
+    if (!source) continue;
+    const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
+    const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
+    try {
+      const validated = validateGithubIdentities(exactFiles, {
+        ...data,
+        complete: false,
+        items: [item],
+      });
+      item.bound = validated.items[0].bound;
+    } catch {
+      item.bound = false;
+      data.complete = false;
+      data.error = new GithubReadError("identity").message;
+      data.errorCode = "identity";
+    }
+  }
+  return data;
 }

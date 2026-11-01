@@ -55,6 +55,14 @@ async function fixture(shipOnly = false) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
   }
+  if (shipOnly) {
+    const path = join(root, ".stintwork/workflows/feature.yaml");
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(
+      path,
+      "id: feature\nname: Feature\ndefaultAgent: codex\nstages: [{id: ship, name: Ship, column: ship, skill: null, gate: merge}]\n",
+    );
+  }
   git(root, "add", ".");
   git(root, "commit", "-qm", "initial");
   const worktree = (await ensureWorktree(root, "github-1")).path;
@@ -215,6 +223,62 @@ test.each(["accepted", "rejected"] as const)("memory proposal can be %s", async 
   expect(readFileSync(join(worktree, "GLOSSARY.md"), "utf8")).toBe(
     status === "rejected" ? "Original\n" : "Proposed\n",
   );
+});
+
+test("write routes reproject committed workflow changes without a refresh", async () => {
+  const { root, worktree, git, project, getSnapshot, source, registry, github } = await fixture();
+  const path = join(worktree, workflowPath);
+  writeFileSync(path, readFileSync(path, "utf8").replace("stage: review", "stage: ship"));
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "reach ship");
+  const cached = getSnapshot();
+  expect(cached.workItems[0].stage).toBe("ship");
+  writeFileSync(path, readFileSync(path, "utf8").replace("stage: ship", "stage: review"));
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "reopen review");
+  const head = git(root, "rev-parse", "HEAD");
+  const app = new Hono();
+  const getCached = () => cached;
+  addShipRoutes(
+    app,
+    root,
+    project,
+    () => {},
+    () => false,
+    new Set(),
+    () => false,
+    (_project, snapshot) => {
+      for (const item of snapshot.workItems) item.riskyPaths = [];
+    },
+    { ...source, getSnapshot: getCached },
+  );
+  addStageAgentRoute(
+    app,
+    project,
+    root,
+    registry,
+    () => {},
+    () => false,
+    new Set(),
+    getCached,
+    () => github,
+  );
+  const post = (url: string, body: unknown) =>
+    app.request(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  let response = await post("/api/work-items/github-1/ship/merge-local", {});
+  expect(response.status).toBe(409);
+  expect((await response.json()).reasonMessage.code).toBe("ship.stageRequired");
+  expect(git(root, "rev-parse", "HEAD")).toBe(head);
+  writeFileSync(path, readFileSync(path, "utf8").replace("stage: review", "stage: invalid"));
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "invalid workflow");
+  response = await post("/api/work-items/github-1/stages/review/agent", { agent: "codex" });
+  expect(response.status).toBe(409);
+  expect((await response.json()).reasonMessage.code).toBe("agent.validWorkflowRequired");
 });
 
 test("GitHub item routes resolve the discovered item and persist its stage agent", async () => {
