@@ -11,10 +11,10 @@ Use the identity-bound GitHub workflow record for stage and workflow writes, and
 
 ## Acceptance criteria
 
-- [ ] Memory proposals, stage-agent choice, diff, checks, finding decisions, Ship, roadmap and stint finalisation and recovery resolve GitHub items.
-- [ ] GitHub workflow writes use the identity-bound record and remote-dependent actions fail closed on stale or unavailable evidence.
+- [x] Memory proposals, stage-agent choice, diff, checks, finding decisions, Ship, roadmap and stint finalisation and recovery resolve GitHub items.
+- [x] GitHub workflow writes use the identity-bound record and remote-dependent actions fail closed on stale or unavailable evidence.
 - [ ] Fake-gh route tests cover the GitHub paths and local route tests remain passing.
-- [ ] The indexProject and workflow-path call sites are audited and requested checks are recorded.
+- [x] The indexProject and workflow-path call sites are audited and requested checks are recorded.
 
 ## Comments
 
@@ -29,3 +29,10 @@ Checks run: `pnpm format`, `pnpm format:check`, `pnpm lint` (8 warnings), `pnpm 
 Call-site audit: `brief-preview.ts` retains its GitHub projection; `create-work-item.ts` refuses GitHub trackers; `index.ts` builds the live snapshot; the stage-changed check in `stints.ts` already uses it. `ship.ts` (three calls), stint recovery calls in `stints.ts`, and Ship workflow/evidence handling remain Stage C work. This comment does not mark the ticket complete.
 
 Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (8 existing warnings), and `pnpm typecheck` passed. The requested Vitest command passed 109 tests; its sole failure was `checks.test.ts` WebSocket streaming, where the sandbox rejected `listen 127.0.0.1` with `EPERM`. The new GitHub route test passed all 4 cases separately as well; `pnpm vitest run packages/git/src/review.test.ts` passed all 8 tests.
+
+
+**Codex, 2026-11-01:** Stage C uses the shared snapshot in Ship and stint recovery; startup waits for GitHub discovery before adopting interrupted stints. Ship checks remote identity, freshness and prior approvals, writes the identity-bound GitHub workflow, and preserves its exact workflow path during PR cleanup. Fake-gh route tests cover proposal decisions, stage agent, diff, checks, review findings, roadmap, local gate refusal, stale Ship refusal, local and PR Ship, and recovery finalisation.
+
+Final call-site audit: `project-snapshot.ts` indexes local files; `index.ts` constructs the live projection; `brief-preview.ts` indexes local files and separately builds its verified GitHub projection; `create-work-item.ts` refuses GitHub trackers before indexing. Remaining local workflow paths in `gates.ts`, `approval-head.ts`, `stage-agent.ts`, `finding-decisions.ts`, `ship.ts`, `stints.ts`, and `workflow-writes.ts` are limited to local items or their local-only branches. `review-evidence.ts` uses the local workflow path as a diagnostic warning label, while Ship also checks the item evidence error directly. The `.scratch/<slug>/review.yaml` paths in review and memory modules intentionally store review decisions for both trackers; `work-item-files.ts` paths are local worktree discovery warnings. GitHub workflow send-back uses the identity-bound path in its atomic review commit.
+
+Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (8 existing warnings), and `pnpm typecheck` passed. The requested combined Vitest run finished with 98 passed and 11 failed: all 47 GitHub stint, 14 local Ship, 9 GitHub route, and 1 GitHub flow tests passed. In the local stint suite, 3 socket tests failed; an isolated socket retry confirmed `listen EPERM` for 127.0.0.1. Eight adapter-launch cases also failed: the non-failure variants timed out waiting for a finished stint, and the injected-session-write-failure variants returned 201 instead of 503. One of the latter was reproduced with the same assertion against an untouched HEAD export. The complete combined command has not passed; the fake-gh/local-route test criterion remains unchecked.

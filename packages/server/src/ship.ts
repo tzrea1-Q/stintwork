@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   coreTextWire,
+  createMemoryRepoFiles,
   errorText,
   coreText,
-  indexProject,
   workflowGate,
   workflowMerge,
   workflowPullRequest,
@@ -28,9 +28,20 @@ import {
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { type ReviewEvidenceReader, readEvidenceChangedPaths } from "./review-evidence.js";
-import { saveWorkItemWorkflow } from "./workflow-writes.js";
+import {
+  assertWorkflowUnchanged,
+  saveGithubWorkflow,
+  saveWorkItemWorkflow,
+} from "./workflow-writes.js";
 import { saveWorkItemReview } from "./review-writes.js";
 import { createNodeRepoFiles } from "./repo-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import { resolveGithubWorkflow } from "./github-snapshot.js";
+import { validateGithubIdentities } from "./github-discovery.js";
+import { requireCurrentGithubApproval } from "./github-gates.js";
+import { githubRateLimitCoolingDown } from "./github-tickets.js";
+import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+import type { GithubBriefSource } from "./brief-preview.js";
 
 import {
   githubRepository,
@@ -52,6 +63,7 @@ export function addShipRoutes(
   writing: Set<string>,
   isChecking: (slug: string) => boolean,
   readReviewEvidence?: ReviewEvidenceReader,
+  githubSource?: GithubBriefSource,
 ) {
   const previews = new Map<string, { preview: PullRequestPreview; expires: number }>();
   for (const action of [
@@ -88,7 +100,7 @@ export function addShipRoutes(
       }
       const slug = context.req.param("slug");
       if (
-        !indexProject(readProjectFiles().files, { name: "" }).workItems.some(
+        !resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot).workItems.some(
           (item) => item.slug === slug,
         )
       )
@@ -102,7 +114,7 @@ export function addShipRoutes(
       let merged: MergeRecord | undefined;
       function locate() {
         const project = readProjectFiles();
-        const snapshot = indexProject(project.files, { name: "" });
+        const snapshot = resolveProjectSnapshot(project, githubSource?.getSnapshot);
         readReviewEvidence?.(project, snapshot);
         const item = snapshot.workItems.find((item) => item.slug === slug);
         if (!item) throw new LocalMergeRefusal({ code: "server.workItemNotFound" });
@@ -119,11 +131,12 @@ export function addShipRoutes(
         )
           throw new LocalMergeRefusal({ code: "ship.running" });
         if (isChecking(slug)) throw new LocalMergeRefusal({ code: "ship.checksActive" });
+        const workflowPath = item.github
+          ? `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`
+          : `.scratch/${slug}/workflow.yaml`;
         const failure = [...project.warnings, ...snapshot.warnings].find(
           ({ path }) =>
-            path === ".git" ||
-            path === `.scratch/${slug}/workflow.yaml` ||
-            path === `.scratch/${slug}/review.yaml`,
+            path === ".git" || path === workflowPath || path === `.scratch/${slug}/review.yaml`,
         );
         if (failure || item.reviewEvidenceError || !readReviewEvidence)
           throw new LocalMergeRefusal(
@@ -141,12 +154,110 @@ export function addShipRoutes(
           throw new LocalMergeRefusal({ code: "ship.usePr" });
         merged =
           item.merged ??
-          indexProject(createNodeRepoFiles(root), { name: "" }).workItems.find(
-            (item) => item.slug === slug,
-          )?.merged;
-        return { project, item, workflows: snapshot.workflows };
+          resolveProjectSnapshot(
+            { ...project, files: createNodeRepoFiles(root) },
+            githubSource?.getSnapshot,
+          ).workItems.find((item) => item.slug === slug)?.merged;
+        return { project, item, workflows: snapshot.workflows, workflowPath };
       }
       try {
+        const initial = locate();
+        const github = githubSource?.getGithub();
+        const remote = github?.items.find(
+          (entry) =>
+            entry.id === initial.item.github?.issueId &&
+            entry.number === initial.item.github.number,
+        );
+        if (initial.item.github) {
+          if (
+            !githubSource ||
+            !github ||
+            !remote ||
+            !initial.item.github.bound ||
+            !initial.item.github.complete ||
+            initial.item.github.ticketsStale ||
+            remote.detail?.stale ||
+            remote.detailFailed ||
+            github.discoveryFailed ||
+            githubRateLimitCoolingDown(github) ||
+            githubSource?.discoveryFailed() ||
+            githubSource?.getSnapshot().github?.errorCode === "identity"
+          )
+            throw new LocalMergeRefusal({ code: "gate.detailUnavailable" });
+          const workflowText = resolveGithubWorkflow(
+            initial.project,
+            initial.workflowPath,
+            initial.project.worktreePaths.get(slug),
+          );
+          if (!workflowText) throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+          validateGithubIdentities(
+            createMemoryRepoFiles({ [initial.workflowPath]: workflowText }),
+            { ...github, complete: false, items: [remote] },
+          );
+          if (action === "merge-local" || action === "merge-pr")
+            assertWorkflowUnchanged(root, initial.workflowPath);
+          let valid = false;
+          try {
+            valid = await githubSource.verifyIdentity(github);
+          } catch {
+            /* Fail closed. */
+          }
+          if (!valid || githubSource.discoveryFailed() || githubRateLimitCoolingDown(github))
+            throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+          const stages = initial.workflows[initial.item.workflow].stages;
+          const labels = new Map(
+            ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(
+              (role) => [role, role],
+            ),
+          );
+          for (const line of (
+            initial.project.files.read("docs/agents/triage-labels.md") ?? ""
+          ).split(/\r?\n/)) {
+            const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
+            if (match && labels.has(match[1])) labels.set(match[1], match[2]);
+          }
+          for (const stage of stages.slice(
+            0,
+            stages.findIndex((stage) => stage.id === initial.item.stage),
+          )) {
+            const approval = await requireCurrentGithubApproval(
+              initial.project.worktreePaths.get(slug) ?? root,
+              github.repository,
+              remote.id,
+              remote.number,
+              githubGateIncludesTickets(stages, stage.id),
+              [...labels.values()],
+              initial.item.stages[stage.id],
+            );
+            const projected = initial.item.stages[stage.id]?.approved;
+            if (
+              !approval.ok ||
+              !projected ||
+              typeof projected !== "object" ||
+              !("remoteState" in projected) ||
+              projected.remoteState !== "current"
+            )
+              throw new LocalMergeRefusal({ code: "gate.evidenceChanged" });
+          }
+        }
+        const saveWorkflow = (
+          directory: string,
+          item: typeof initial.item,
+          update: (text: string | undefined) => string,
+          message: string,
+        ) =>
+          item.github && github && remote
+            ? saveGithubWorkflow(
+                directory,
+                github,
+                remote,
+                item.workflow,
+                item.stage ?? "ship",
+                update,
+                message,
+                directory === root,
+              )
+            : saveWorkItemWorkflow(directory, slug, update, message);
         if (
           ["preview-pr", "open-pr", "pr-checks", "preview-merge-pr", "merge-pr"].includes(action)
         ) {
@@ -179,6 +290,7 @@ export function addShipRoutes(
               evidenceStale(
                 {
                   slug,
+                  github: item.github,
                   headCommit: head,
                   evidenceChangedPaths: readEvidenceChangedPaths(worktree ?? root, head, [
                     approvedCommit,
@@ -258,9 +370,9 @@ export function addShipRoutes(
                 throw new LocalMergeRefusal({ code: "ship.createdPrMismatch" });
               const { title: _title, body: _body, ...identity } = details;
               const pullRequest = { ...identity, number: opened.number, url: opened.url };
-              await saveWorkItemWorkflow(
+              await saveWorkflow(
                 checkout,
-                slug,
+                item,
                 (text) => workflowPullRequest(text, pullRequest, workflows, item.workflow),
                 `Record pull request #${opened.number} for ${slug}`,
               );
@@ -279,7 +391,13 @@ export function addShipRoutes(
               if (action === "preview-merge-pr")
                 throw new LocalMergeRefusal({ code: "workItem.shipped" });
               await shipGit(root, ["merge-base", "--is-ancestor", merged.commit, "HEAD"]);
-              await cleanupMergedWorkItem(root, slug, merged.commit, pr.headCommit);
+              await cleanupMergedWorkItem(
+                root,
+                slug,
+                merged.commit,
+                pr.headCommit,
+                initial.workflowPath,
+              );
               refresh();
               return context.json(coreTextWire({ merged }));
             }
@@ -291,6 +409,7 @@ export function addShipRoutes(
               evidenceStale(
                 {
                   slug,
+                  github: item.github,
                   headCommit: head,
                   evidenceChangedPaths: readEvidenceChangedPaths(checkout, head, [
                     checks.headCommit,
@@ -318,9 +437,9 @@ export function addShipRoutes(
                 throw new LocalMergeRefusal({ code: "ship.methodChanged" });
               const requested = { ...pr, mergeMethod: method };
               pr = requested;
-              await saveWorkItemWorkflow(
+              await saveWorkflow(
                 checkout,
-                slug,
+                item,
                 (text) => workflowPullRequest(text, requested, workflows, item.workflow),
                 `Record merge method for pull request #${pr.number} for ${slug}`,
               );
@@ -342,7 +461,7 @@ export function addShipRoutes(
               !Number.isFinite(Date.parse(remote.mergedAt))
             )
               throw new LocalMergeRefusal({ code: "ship.mergeQueued" });
-            const localWorkflow = `.scratch/${slug}/workflow.yaml`;
+            const localWorkflow = initial.workflowPath;
             for (const options of [[], ["--cached"]])
               if (await shipGit(root, ["diff", ...options, "--name-only", "--", localWorkflow]))
                 throw new LocalMergeRefusal({ code: "ship.workflowUncommitted" });
@@ -354,9 +473,9 @@ export function addShipRoutes(
               ...(pr.mergeMethod ? { method: pr.mergeMethod } : {}),
             };
             merged = record;
-            await saveWorkItemWorkflow(
+            await saveWorkflow(
               root,
-              slug,
+              item,
               (text) =>
                 workflowMerge(
                   workflowPullRequest(text, pr, workflows, item.workflow),
@@ -368,7 +487,13 @@ export function addShipRoutes(
             );
             if ((await shipGit(checkout, ["rev-parse", "HEAD"])) !== head)
               throw new LocalMergeRefusal({ code: "ship.workItemChanged" });
-            await cleanupMergedWorkItem(root, slug, merged.commit, pr.headCommit);
+            await cleanupMergedWorkItem(
+              root,
+              slug,
+              merged.commit,
+              pr.headCommit,
+              initial.workflowPath,
+            );
             refresh();
             return context.json(coreTextWire({ merged }));
           });
@@ -380,9 +505,9 @@ export function addShipRoutes(
             slug,
             async (commit) => {
               merged = { at: new Date().toISOString(), commit };
-              await saveWorkItemWorkflow(
+              await saveWorkflow(
                 root,
-                slug,
+                item,
                 (text) => workflowMerge(text, merged as MergeRecord, workflows, item.workflow),
                 `Record merge of ${slug}`,
               );
@@ -420,13 +545,16 @@ export function addShipRoutes(
           const record = { by, at, commit: report.headCommit };
           const commit = await saveWorkItemReview(worktree, slug, [], undefined, {
             workflow: workflowGate(
-              project.files.read(`.scratch/${slug}/workflow.yaml`),
+              item.github
+                ? resolveGithubWorkflow(project, initial.workflowPath, worktree)
+                : project.files.read(initial.workflowPath),
               item,
               implementation.id,
               "reopen",
               record,
               workflows,
             ),
+            workflowPath: initial.workflowPath,
             note: {
               id: `review:${randomUUID()}`,
               at,

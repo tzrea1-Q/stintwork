@@ -851,20 +851,21 @@ export function createProjectServer(
   function initialize() {
     initialization ??= Promise.all([
       Promise.resolve().then(() => checks.recover()),
-      recoverInterruptedStints(
-        files,
-        (stint, entries, valid, path) =>
-          stopStints.recover(
-            stint,
-            entries,
-            (warning) => recoveryWarnings.push(warning),
-            valid,
-            path,
-          ),
-        (warning) => recoveryWarnings.push(warning),
+      refreshGithub().then(() =>
+        recoverInterruptedStints(
+          files,
+          (stint, entries, valid, path) =>
+            stopStints.recover(
+              stint,
+              entries,
+              (warning) => recoveryWarnings.push(warning),
+              valid,
+              path,
+            ),
+          (warning) => recoveryWarnings.push(warning),
+        ),
       ),
       refreshAgentRegistry(agentRegistry),
-      refreshGithub(),
     ]).then(() => refresh());
     return initialization;
   }

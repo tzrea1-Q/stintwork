@@ -6,7 +6,6 @@ import {
   coreText,
   foldStintLog,
   pendingStintPermissions,
-  indexProject,
   agentUnavailable,
   type BriefHandoff,
   type ReviewFindings,
@@ -78,6 +77,7 @@ import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
 import { addShipRoutes } from "./ship.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export type StintServerOptions = {
@@ -194,6 +194,7 @@ export function addStintRoutes(
     workflowWrites,
     isChecking,
     readReviewEvidence,
+    githubSource,
   );
   let closing = false;
   async function runStint(
@@ -978,10 +979,9 @@ export function addStintRoutes(
           409,
         );
       if (
-        (workItem.github
-          ? githubSource?.getSnapshot()
-          : indexProject(readProjectFiles().files, { name: "" })
-        )?.workItems.find(({ slug }) => slug === workItem.slug)?.stage !== workItem.stage
+        resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot).workItems.find(
+          ({ slug }) => slug === workItem.slug,
+        )?.stage !== workItem.stage
       )
         return context.json(
           coreTextWire({ reason: coreText({ code: "stint.stageChanged" }) }),
@@ -1355,7 +1355,7 @@ export function addStintRoutes(
   function verifyRecoveryWorktree(
     stint: Pick<Stint, "id" | "workItem" | "stage" | "ticket" | "worktree" | "baseCommit">,
   ) {
-    const project = indexProject(readProjectFiles().files, { name: "" });
+    const project = resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot);
     const workItem = project.workItems.find((item) => item.slug === stint.workItem);
     if (
       !workItem ||
@@ -1594,7 +1594,7 @@ export function addStintRoutes(
         ensureLocalIgnore(root);
         appendRecovery(entry);
         refresh();
-        const project = indexProject(readProjectFiles().files, { name: "" });
+        const project = resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot);
         const workItem = project.workItems.find((item) => item.slug === stint.workItem);
         const evidence =
           !!workItem &&

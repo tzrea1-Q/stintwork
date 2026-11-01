@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CoreTextError } from "@stintwork/core";
+import { CoreTextError, githubWorkflowPath } from "@stintwork/core";
 import type { CoreText, CoreTextMessage } from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { lstat, realpath } from "node:fs/promises";
@@ -232,8 +232,15 @@ export async function cleanupMergedWorkItem(
   slug: string,
   commit: string,
   remoteHead?: string,
+  workflowPath = `.scratch/${slug}/workflow.yaml`,
 ) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
+    throw new CoreTextError({ code: "git.invalidSlug" });
+  const github = githubWorkflowPath(workflowPath);
+  if (
+    workflowPath !== `.scratch/${slug}/workflow.yaml` &&
+    (!github || slug !== `github-${github[3]}`)
+  )
     throw new CoreTextError({ code: "git.invalidSlug" });
   const git = gitAt(root);
   const worktree = listWorkItemWorktrees(root).worktrees.get(slug);
@@ -247,10 +254,7 @@ export async function cleanupMergedWorkItem(
       )
         .split("\0")
         .filter(Boolean)
-        .filter(
-          (path) =>
-            path !== `.scratch/${slug}/workflow.yaml` && path !== `.scratch/${slug}/review.yaml`,
-        );
+        .filter((path) => path !== workflowPath && path !== `.scratch/${slug}/review.yaml`);
       if (changed.length)
         throw new LocalMergeRefusal({ code: "ship.unpublishedChanges" }, [], changed);
     }

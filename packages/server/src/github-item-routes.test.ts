@@ -7,7 +7,7 @@ import { Hono } from "hono";
 import { afterEach, expect, test } from "vitest";
 import { createAgentRegistry } from "@stintwork/agents";
 import { createFakeAgentLauncher, fakeAgentProfiles } from "@stintwork/agents/testing";
-import { indexProject } from "@stintwork/core";
+import { foldStintLog, indexProject, type StintLogEntry } from "@stintwork/core";
 import { ensureWorktree } from "@stintwork/git";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectFiles } from "./work-item-files.js";
@@ -20,6 +20,9 @@ import { addCheckRoutes, createChecks } from "./checks.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
 import { addRoadmapRoute } from "./roadmap.js";
 import { addGateRoutes } from "./gates.js";
+import { addShipRoutes } from "./ship.js";
+import { addStintRoutes } from "./stints.js";
+import { createDetailPublisher } from "./github-tickets.js";
 
 const roots: string[] = [];
 const oldPath = process.env.PATH;
@@ -28,7 +31,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 const workflowPath = ".stintwork/github/example/project/1/workflow.yaml";
-async function fixture() {
+async function fixture(shipOnly = false) {
   const root = mkdtempSync(join(tmpdir(), "github-item-routes-"));
   roots.push(root, `${root}-worktrees`);
   const git = (dir: string, ...args: string[]) =>
@@ -41,8 +44,7 @@ async function fixture() {
     ".gitignore": ".stintwork/local/\nbin/\n",
     "GLOSSARY.md": "Original\n",
     ".stintwork/roadmap.md": "# Roadmap\n\n## First\nId: first\nStatus: active\n",
-    [workflowPath]:
-      "workflow: feature\nstage: review\ngithub:\n  host: github.com\n  repositoryId: R_1\n  repository: Example/Project\n  issueId: I_1\n  number: 1\n  url: https://github.com/Example/Project/issues/1\n",
+    [workflowPath]: `workflow: feature\nstage: ${shipOnly ? "ship" : "review"}\ngithub:\n  host: github.com\n  repositoryId: R_1\n  repository: Example/Project\n  issueId: I_1\n  number: 1\n  url: https://github.com/Example/Project/issues/1\n`,
   })) {
     mkdirSync(dirname(join(root, path)), { recursive: true });
     writeFileSync(join(root, path), text);
@@ -76,8 +78,15 @@ async function fixture() {
     Object.assign(github, validateGithubIdentities(project().files, github));
   };
   refresh();
-  const getSnapshot = () =>
-    indexProject(githubSnapshotFiles(project(), github), { name: "test", github });
+  const getSnapshot = () => {
+    const snapshot = indexProject(githubSnapshotFiles(project(), github), { name: "test", github });
+    if (shipOnly)
+      snapshot.workflows.feature = {
+        ...snapshot.workflows.feature,
+        stages: snapshot.workflows.feature.stages.filter((stage) => stage.id === "ship"),
+      };
+    return snapshot;
+  };
   const app = new Hono();
   const registry = createAgentRegistry([
     { ...fakeAgentProfiles.codex, launch: createFakeAgentLauncher([]) },
@@ -111,13 +120,49 @@ async function fixture() {
   );
   addRoadmapRoute(app, root, project, refresh, getSnapshot);
   addGateRoutes(app, project, root, refresh, () => false, writing, undefined, getSnapshot);
+  const source = {
+    getGithub: () => github,
+    getSnapshot,
+    refresh,
+    discoveryFailed: () => !!github.discoveryFailed,
+    verifyIdentity: async () => true,
+    beginDetail: createDetailPublisher(),
+    detailFailed: () => {},
+    registerDetailIdentities: () => {},
+  };
+  addShipRoutes(
+    app,
+    root,
+    project,
+    refresh,
+    () => false,
+    writing,
+    () => false,
+    (_project, snapshot) => {
+      for (const item of snapshot.workItems) item.riskyPaths = [];
+    },
+    source,
+  );
   const post = (url: string, body: unknown) =>
     app.request(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-  return { root, worktree, git, app, post, getSnapshot };
+  return {
+    root,
+    worktree,
+    git,
+    app,
+    post,
+    getSnapshot,
+    github,
+    project,
+    refresh,
+    source,
+    registry,
+    gh,
+  };
 }
 
 test.each(["accepted", "rejected"] as const)("memory proposal can be %s", async (status) => {
@@ -173,8 +218,8 @@ test("GitHub item routes resolve the discovered item and persist its stage agent
   expect(readFileSync(join(worktree, workflowPath), "utf8")).toContain("agent: codex");
   response = await app.request("/api/work-items/github-1/diff");
   expect(response.status, await response.text()).toBe(200);
-  response = await post("/api/work-items/github-1/checks", {});
-  expect(response.status).not.toBe(404);
+  response = await app.request("/api/work-items/github-1/checks");
+  expect(response.status, await response.text()).toBe(200);
   response = await post("/api/work-items/github-1/findings/decision", {
     id: "missing",
     status: "resolved",
@@ -255,4 +300,143 @@ test("a finding at Review can be decided and sent back using the GitHub workflow
     "finding-1",
   );
   expect(git(worktree, "show", "--format=", "--name-only", "HEAD")).toContain(workflowPath);
+});
+
+test.each(["read-only", "stale"] as const)(
+  "ship resolves a GitHub item and refuses %s data",
+  async (state) => {
+    const { post, github } = await fixture();
+    if (state === "read-only") github.discoveryFailed = true;
+    else
+      github.items[0].detail = {
+        fetchedAt: "2026-01-01T00:00:00Z",
+        stale: true,
+        spec: "",
+        comments: [],
+        tickets: [],
+        complete: true,
+        warnings: [],
+      };
+    const response = await post("/api/work-items/github-1/ship/pr-checks", {});
+    expect(response.status).toBe(409);
+    expect((await response.json()).reasonMessage.code).toBe("gate.detailUnavailable");
+  },
+);
+
+test("a GitHub item can ship and records its merge in the GitHub workflow", async () => {
+  const { root, worktree, git, post } = await fixture(true);
+  writeFileSync(join(worktree, "change.txt"), "done\n");
+  git(worktree, "add", "change.txt");
+  git(worktree, "commit", "-qm", "work");
+  const response = await post("/api/work-items/github-1/ship/merge-local", {});
+  expect(response.status, await response.text()).toBe(200);
+  expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
+});
+
+test("GitHub recovery finds the item and finalises its stint", async () => {
+  const { root, worktree, git, project, refresh, source, registry } = await fixture();
+  const base = git(worktree, "rev-parse", "HEAD");
+  const entry: StintLogEntry = {
+    type: "started",
+    at: "2026-01-01T00:00:00Z",
+    stint: {
+      id: "recover-github",
+      workItem: "github-1",
+      stage: "review",
+      ticket: null,
+      agent: "codex",
+      worktree: { path: worktree, branch: "stintwork/github-1" },
+      baseCommit: base,
+      brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+    },
+  };
+  const path = ".stintwork/local/stints/recover-github.jsonl";
+  mkdirSync(dirname(join(root, path)), { recursive: true });
+  writeFileSync(join(root, path), `${JSON.stringify(entry)}\n`);
+  const stint = foldStintLog([entry]);
+  if (!stint) throw new Error("Stint log did not fold");
+  stint.recovery = { version: 1, progress: { phase: "finalization", status: "finished" } };
+  const stop = addStintRoutes(
+    new Hono(),
+    root,
+    project,
+    { agentRegistry: registry },
+    () => {},
+    refresh,
+    undefined,
+    undefined,
+    undefined,
+    source,
+  );
+  const warnings: string[] = [];
+  stop.recover(stint, [entry], (warning) => warnings.push(warning.message), true, path);
+  try {
+    await expect
+      .poll(() => readFileSync(join(root, path), "utf8"), { timeout: 15000 })
+      .toContain('"type":"ended"');
+    const entries = readFileSync(join(root, path), "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(entries.find((event) => event.type === "ended")).toMatchObject({ status: "finished" });
+    expect(warnings).toEqual([]);
+  } finally {
+    await stop();
+  }
+});
+
+test("GitHub pull request ship records the merged workflow", async () => {
+  const { root, worktree, git, post, gh } = await fixture(true);
+  const bare = `${root}-remote.git`;
+  roots.push(bare);
+  git(root, "clone", "--quiet", "--bare", root, bare);
+  git(root, "remote", "add", "origin", bare);
+  writeFileSync(join(worktree, "change.txt"), "done\n");
+  git(worktree, "add", "change.txt");
+  git(worktree, "commit", "-qm", "work");
+  const reviewed = git(worktree, "rev-parse", "HEAD");
+  writeFileSync(
+    join(worktree, workflowPath),
+    `${readFileSync(join(worktree, workflowPath), "utf8")}stages:\n  review:\n    approved: { by: Developer, at: '2026-10-10T10:00:00Z', commit: ${reviewed} }\n`,
+  );
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "approve");
+  const head = git(worktree, "rev-parse", "HEAD");
+  const view = {
+    number: 12,
+    url: "https://github.com/Example/Project/pull/12",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "stintwork/github-1",
+    baseRefName: "main",
+    mergeCommit: null,
+    mergedAt: null,
+    isCrossRepository: false,
+  };
+  await gh.script({
+    "repo view": {
+      stdout: {
+        nameWithOwner: "Example/Project",
+        url: "https://github.com/Example/Project",
+        mergeCommitAllowed: true,
+      },
+    },
+    "api repos/Example/Project/branches/main/protection": {
+      stdout: { required_linear_history: { enabled: false } },
+    },
+    "pr view": [{ code: 1, stdout: "no pull requests found for branch" }, { stdout: view }],
+    "pr create": { stdout: view.url },
+    "pr checks": { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+    "pr merge": {
+      effect: `execFileSync('git', ['update-ref', 'refs/heads/main', ${JSON.stringify(head)}], {cwd: ${JSON.stringify(bare)}}); const replies = JSON.parse(fs.readFileSync(script, 'utf8')); const view = Array.isArray(replies['pr view']) ? replies['pr view'].at(-1) : replies['pr view']; view.stdout.state = 'MERGED'; view.stdout.mergeCommit = {oid: ${JSON.stringify(head)}}; view.stdout.mergedAt = '2026-10-10T10:10:00Z'; fs.writeFileSync(script, JSON.stringify(replies));`,
+    },
+  });
+  let response = await post("/api/work-items/github-1/ship/preview-pr", {});
+  expect(response.status, await response.clone().text()).toBe(200);
+  const confirmation = (await response.json()).preview.confirmation;
+  response = await post("/api/work-items/github-1/ship/open-pr", { confirmation });
+  expect(response.status, await response.clone().text()).toBe(200);
+  response = await post("/api/work-items/github-1/ship/merge-pr", {});
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
 });
