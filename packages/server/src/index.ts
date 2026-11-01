@@ -110,6 +110,26 @@ export function createProjectServer(
   let detailRunning = false;
   const pendingStintDetails = new Set<number>();
   const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const stintDetailAttempts = new Map<number, number>();
+  function retryStintDetail(number: number, status: number) {
+    if (!pendingRecovery.has(number) || lifetime.signal.aborted) return;
+    if (status === 429) {
+      pendingStintDetails.add(number);
+      return;
+    }
+    if (status !== 503 || stintDetailTimers.has(number)) return;
+    const attempts = stintDetailAttempts.get(number) ?? 0;
+    const delay = [5_000, 30_000, 120_000, 300_000][Math.min(attempts, 3)];
+    stintDetailAttempts.set(number, attempts + 1);
+    stintDetailTimers.set(
+      number,
+      setTimeout(() => {
+        stintDetailTimers.delete(number);
+        pendingStintDetails.add(number);
+        drainStintDetails();
+      }, delay),
+    );
+  }
   function drainStintDetails() {
     if (lifetime.signal.aborted || discoveryRunning || detailRunning) return;
     const number = pendingStintDetails.values().next().value;
@@ -130,6 +150,7 @@ export function createProjectServer(
     pendingStintDetails.delete(number);
     void refreshGithubDetail(number)
       .then((status) => {
+        retryStintDetail(number, status);
         if (status === 429 && github) {
           pendingStintDetails.add(number);
           failGithubDetail(github, number, new GithubReadError("rate-limited", github.retryAt));
@@ -366,6 +387,7 @@ export function createProjectServer(
     pendingStintDetails.clear();
     for (const timer of stintDetailTimers.values()) clearTimeout(timer);
     stintDetailTimers.clear();
+    stintDetailAttempts.clear();
     discoveryFailure = undefined;
     detailFailures.clear();
     viewerVerifiedAt = 0;
@@ -876,7 +898,7 @@ export function createProjectServer(
           (warning) => recoveryWarnings.push(warning),
         );
         for (const number of pendingRecovery.keys()) {
-          if ((await refreshGithubDetail(number)) === 429) pendingStintDetails.add(number);
+          retryStintDetail(number, await refreshGithubDetail(number));
         }
         drainStintDetails();
       }),
@@ -1003,6 +1025,11 @@ export function createProjectServer(
       });
       refresh(undefined, true);
       if (detail.complete) {
+        const timer = stintDetailTimers.get(number);
+        if (timer) clearTimeout(timer);
+        stintDetailTimers.delete(number);
+        stintDetailAttempts.delete(number);
+        pendingStintDetails.delete(number);
         const candidates = pendingRecovery.get(number);
         pendingRecovery.delete(number);
         for (const adopt of candidates ?? []) adopt();
@@ -1011,6 +1038,14 @@ export function createProjectServer(
     } catch (error) {
       if (generation !== trackerGeneration) return 409;
       const failure = classifyGithubError(error);
+      if (failure.code === "identity") {
+        pendingRecovery.delete(number);
+        pendingStintDetails.delete(number);
+        const timer = stintDetailTimers.get(number);
+        if (timer) clearTimeout(timer);
+        stintDetailTimers.delete(number);
+        stintDetailAttempts.delete(number);
+      }
       if (
         !verified &&
         failure.code !== "login" &&
@@ -1063,7 +1098,11 @@ export function createProjectServer(
           ...(failure.retryAt ? { retryAt: failure.retryAt } : {}),
         };
       }
-      return 503;
+      return ["offline", "server-error", "unavailable", "rate-limited"].includes(failure.code)
+        ? failure.code === "rate-limited"
+          ? 429
+          : 503
+        : 409;
     } finally {
       detailRunning = false;
       refresh(undefined, true);

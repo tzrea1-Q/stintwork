@@ -4,10 +4,15 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { Hono } from "hono";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { createAgentRegistry } from "@stintwork/agents";
 import { createFakeAgentLauncher, fakeAgentProfiles } from "@stintwork/agents/testing";
-import { foldStintLog, indexProject, type StintLogEntry } from "@stintwork/core";
+import {
+  foldStintLog,
+  githubEvidenceDigestV2,
+  indexProject,
+  type StintLogEntry,
+} from "@stintwork/core";
 import { ensureWorktree } from "@stintwork/git";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectFiles } from "./work-item-files.js";
@@ -23,6 +28,7 @@ import { addGateRoutes } from "./gates.js";
 import { addShipRoutes } from "./ship.js";
 import { addStintRoutes } from "./stints.js";
 import { createDetailPublisher } from "./github-tickets.js";
+import { requireCurrentGithubApproval } from "./github-gates.js";
 
 const roots: string[] = [];
 const oldPath = process.env.PATH;
@@ -333,6 +339,59 @@ test("a GitHub item can ship and records its merge in the GitHub workflow", asyn
   expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
 });
 
+test("send-back reopens Implement despite stale GitHub approval; merge refuses it", async () => {
+  const { root, worktree, git, post, gh } = await fixture();
+  const digest = await githubEvidenceDigestV2(
+    { parentId: "I_1", body: "Original spec", tickets: [] },
+    false,
+    [],
+  );
+  const record = readFileSync(join(worktree, workflowPath), "utf8").replace(
+    "stage: review",
+    "stage: ship",
+  );
+  writeFileSync(
+    join(worktree, workflowPath),
+    `${record}stages:\n  clarify:\n    approved: { by: Developer, at: '2026-10-10T10:00:00Z', remote: { version: 2, parentId: I_1, digest: '${digest}' } }\n`,
+  );
+  writeFileSync(join(worktree, "conflict.txt"), "worktree\n");
+  git(worktree, "add", ".");
+  git(worktree, "commit", "-qm", "work");
+  writeFileSync(join(root, "conflict.txt"), "main\n");
+  git(root, "add", "conflict.txt");
+  git(root, "commit", "-qm", "conflict");
+  await gh.script({
+    "api repos/Example/Project/issues/1": {
+      stdout: {
+        node_id: "I_1",
+        number: 1,
+        title: "Parent",
+        body: "Changed spec",
+        html_url: "https://github.com/Example/Project/issues/1",
+        repository_url: "https://api.github.com/repos/Example/Project",
+        state: "open",
+        state_reason: null,
+        labels: [],
+        comments: 0,
+        sub_issues_summary: { total: 0 },
+      },
+    },
+    "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": { stdout: [] },
+    "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
+  });
+  expect(
+    await requireCurrentGithubApproval(worktree, "Example/Project", "I_1", 1, false, [], {
+      approved: { remote: { version: 2, parentId: "I_1", digest } },
+    }),
+  ).toEqual({ ok: false, code: "approval-stale" });
+  const merge = await post("/api/work-items/github-1/ship/merge-local", {});
+  expect(merge.status).toBe(409);
+  expect((await merge.json()).reasonMessage.code).toBe("gate.evidenceChanged");
+  const sent = await post("/api/work-items/github-1/ship/send-back", {});
+  expect(sent.status, await sent.text()).toBe(200);
+  expect(readFileSync(join(worktree, workflowPath), "utf8")).toContain("stage: implement");
+});
+
 test("GitHub recovery finds the item and finalises its stint", async () => {
   const { root, worktree, git, project, refresh, source, registry } = await fixture();
   const base = git(worktree, "rev-parse", "HEAD");
@@ -463,9 +522,12 @@ test("ship refuses an invalid worktree workflow", async () => {
   expect(response.status).toBe(409);
 });
 
-test.each([false, true])(
-  "ticket-bound GitHub recovery waits for detail (initial failure: %s)",
-  async (fails) => {
+test.each(["success", "retry", "stop"] as const)(
+  "ticket-bound GitHub recovery waits for detail (%s)",
+  async (mode) => {
+    const fails = mode !== "success";
+    const timers = vi.spyOn(globalThis, "setTimeout");
+    const cleared = vi.spyOn(globalThis, "clearTimeout");
     const { root, worktree, git, gh, registry } = await fixture();
     git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
     mkdirSync(join(root, "web"));
@@ -581,7 +643,7 @@ test.each([false, true])(
       },
       "api repos/Example/Project/issues/1": { stdout: parent },
       "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": fails
-        ? { code: 1, stderr: "failed" }
+        ? { code: 1, stdout: "network offline" }
         : { stdout: [child] },
       "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
       "api repos/Example/Project/issues/2/labels?per_page=100&page=1": { stdout: [] },
@@ -598,13 +660,18 @@ test.each([false, true])(
       if (fails) {
         expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
         expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
+        if (mode === "stop") {
+          const retry =
+            timers.mock.results[timers.mock.calls.findIndex((call) => call[1] === 5000)]?.value;
+          expect(retry).toBeDefined();
+          await server.stop();
+          expect(cleared).toHaveBeenCalledWith(retry);
+          return;
+        }
         replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
           stdout: [child],
         };
         await gh.script(replies);
-        expect(
-          (await server.app.request("/api/github/items/1/refresh", { method: "POST" })).status,
-        ).toBe(200);
       }
       await expect
         .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
@@ -612,6 +679,8 @@ test.each([false, true])(
       expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
     } finally {
       await server.stop();
+      timers.mockRestore();
+      cleared.mockRestore();
     }
   },
 );

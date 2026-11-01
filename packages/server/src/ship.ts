@@ -175,13 +175,14 @@ export function addShipRoutes(
             !github ||
             !remote ||
             !initial.item.github.bound ||
-            !initial.item.github.complete ||
-            initial.item.github.ticketsStale ||
-            remote.detail?.stale ||
-            remote.detailFailed ||
-            github.discoveryFailed ||
-            githubRateLimitCoolingDown(github) ||
-            githubSource?.discoveryFailed() ||
+            (action !== "send-back" &&
+              (!initial.item.github.complete ||
+                initial.item.github.ticketsStale ||
+                remote.detail?.stale ||
+                remote.detailFailed ||
+                github.discoveryFailed ||
+                githubRateLimitCoolingDown(github) ||
+                githubSource?.discoveryFailed())) ||
             githubSource?.getSnapshot().github?.errorCode === "identity"
           )
             throw new LocalMergeRefusal({ code: "gate.detailUnavailable" });
@@ -203,7 +204,11 @@ export function addShipRoutes(
           } catch {
             /* Fail closed. */
           }
-          if (!valid || githubSource.discoveryFailed() || githubRateLimitCoolingDown(github))
+          if (
+            !valid ||
+            (action !== "send-back" &&
+              (githubSource.discoveryFailed() || githubRateLimitCoolingDown(github)))
+          )
             throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
           const stages = initial.workflows[initial.item.workflow].stages;
           const labels = new Map(
@@ -217,10 +222,12 @@ export function addShipRoutes(
             const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
             if (match && labels.has(match[1])) labels.set(match[1], match[2]);
           }
-          for (const stage of stages.slice(
-            0,
-            stages.findIndex((stage) => stage.id === initial.item.stage),
-          )) {
+          for (const stage of action === "send-back"
+            ? []
+            : stages.slice(
+                0,
+                stages.findIndex((stage) => stage.id === initial.item.stage),
+              )) {
             const approval = await requireCurrentGithubApproval(
               initial.project.worktreePaths.get(slug) ?? root,
               github.repository,
