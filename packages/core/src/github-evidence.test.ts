@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "vitest";
-import { githubEvidenceDigest, githubEvidenceJson } from "./github-evidence.js";
+import {
+  githubEvidenceDigest,
+  githubEvidenceJson,
+  githubEvidenceDigestV2,
+  githubEvidenceJsonV2,
+} from "./github-evidence.js";
 
 test("version 1 digest hashes UTF-8 canonical JSON", async () => {
   expect(await githubEvidenceDigest({ parentId: "I_1", body: "hello", tickets: [] }, false)).toBe(
@@ -144,5 +149,70 @@ test("digest covers each evidence field and is independent of collection order",
     const changed = structuredClone(input);
     change(changed);
     expect(await githubEvidenceDigest(changed, true, labels)).not.toBe(original);
+  }
+});
+
+test("version 2 ignores states but retains sorted content and identities", async () => {
+  const ticket = {
+    id: "I_2",
+    body: "body",
+    state: "open",
+    stateReason: null as string | null,
+    labels: ["ready"],
+    blockers: [
+      { id: "I_3", state: "open" },
+      { id: "I_4", state: "closed" },
+    ],
+    commentRecords: [
+      { id: "C_2", body: "two" },
+      { id: "C_1", body: "one" },
+    ],
+  };
+  const input = {
+    parentId: "I_1",
+    body: "spec",
+    tickets: [ticket, { ...structuredClone(ticket), id: "I_5" }],
+  };
+  const original = await githubEvidenceDigestV2(input, true, ["ready"]);
+  const reordered = structuredClone(input);
+  reordered.tickets.reverse();
+  for (const entry of reordered.tickets) {
+    entry.blockers.reverse();
+    entry.commentRecords.reverse();
+  }
+  expect(githubEvidenceJsonV2(reordered, true, ["ready"])).toBe(
+    githubEvidenceJsonV2(input, true, ["ready"]),
+  );
+  const closed = structuredClone(input);
+  closed.tickets[0].state = "closed";
+  closed.tickets[0].stateReason = "completed";
+  closed.tickets[1].blockers[0].state = "closed";
+  expect(await githubEvidenceDigestV2(closed, true, ["ready"])).toBe(original);
+  expect(await githubEvidenceDigest(closed, true, ["ready"])).not.toBe(
+    await githubEvidenceDigest(input, true, ["ready"]),
+  );
+  for (const change of [
+    (v: typeof input) => {
+      v.tickets[0].body = "edit";
+    },
+    (v: typeof input) => {
+      v.tickets[0].commentRecords[0].body = "edit";
+    },
+    (v: typeof input) => {
+      v.tickets[0].commentRecords[0].id = "edit";
+    },
+    (v: typeof input) => {
+      v.tickets[0].labels = [];
+    },
+    (v: typeof input) => {
+      v.tickets.pop();
+    },
+    (v: typeof input) => {
+      v.tickets[0].blockers[0].id = "edit";
+    },
+  ]) {
+    const changed = structuredClone(input);
+    change(changed);
+    expect(await githubEvidenceDigestV2(changed, true, ["ready"])).not.toBe(original);
   }
 });

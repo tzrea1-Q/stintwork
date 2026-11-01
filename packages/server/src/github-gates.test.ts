@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   githubEvidenceDigest,
+  githubEvidenceDigestV2,
   indexProject,
   createMemoryRepoFiles,
   gateReadiness,
@@ -211,7 +212,7 @@ async function setup(
   const reviewedHead = withWorktree
     ? execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
     : git("rev-parse", "HEAD");
-  const reviewedDigest = await githubEvidenceDigest(
+  const reviewedDigest = await githubEvidenceDigestV2(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,
   );
@@ -459,7 +460,7 @@ test.each([false, true])(
       );
     }
     const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
-    const reviewedDigest = await githubEvidenceDigest(
+    const reviewedDigest = await githubEvidenceDigestV2(
       { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
       true,
     );
@@ -666,7 +667,7 @@ test.each(["mixed", "open external", "cycle", "missing", "unknown state"] as con
     let reviewedDigest = "unavailable";
     try {
       const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
-      reviewedDigest = await githubEvidenceDigest(
+      reviewedDigest = await githubEvidenceDigestV2(
         { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
         true,
       );
@@ -701,7 +702,7 @@ test.each(["approve", "reopen"] as const)(
       "tickets",
       true,
     );
-    const reviewedDigest = await githubEvidenceDigest(
+    const reviewedDigest = await githubEvidenceDigestV2(
       {
         parentId: "I_1",
         body: "Spec",
@@ -775,7 +776,7 @@ test.each([
 
 test("reopens an earlier GitHub gate and retains its approval", async () => {
   const { git, request, reviewedHead } = await setup({}, "tickets");
-  const reviewedDigest = await githubEvidenceDigest(
+  const reviewedDigest = await githubEvidenceDigestV2(
     { parentId: "I_1", body: "Spec", tickets: [] },
     true,
   );
@@ -787,7 +788,7 @@ test("reopens an earlier GitHub gate and retains its approval", async () => {
       spec: { approved: { remote: { parentId: "I_1" } }, reopened: { commit: reviewedHead } },
     },
   });
-  const specDigest = await githubEvidenceDigest(
+  const specDigest = await githubEvidenceDigestV2(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,
   );
@@ -805,7 +806,7 @@ test("reopens an earlier GitHub gate and retains its approval", async () => {
 test("refuses a later approval when an earlier approval is stale or unknown", async () => {
   for (const reply of [{ stdout: { ...parent, body: "Changed" } }, { code: 1 }]) {
     const { git, request, reviewedHead } = await setup({ [issue]: reply }, "spec");
-    const reviewedDigest = await githubEvidenceDigest(
+    const reviewedDigest = await githubEvidenceDigestV2(
       { parentId: "I_1", body: "Changed", tickets: [] },
       false,
     );
@@ -837,7 +838,7 @@ test("creates and commits a current approval", async () => {
           by: "Test",
           at: expect.any(String),
           commit: reviewedHead,
-          remote: { version: 1, parentId: "I_1", digest: reviewedDigest },
+          remote: { version: 2, parentId: "I_1", digest: reviewedDigest },
         },
       },
     },
@@ -975,7 +976,7 @@ test("records a stale approval when HEAD advances during the commit", async () =
 
 test("concurrent reopen and approval have one winner and leave a valid workflow", async () => {
   const { request, git, reviewedHead, root } = await setup({}, "tickets");
-  const reviewedDigest = await githubEvidenceDigest(
+  const reviewedDigest = await githubEvidenceDigestV2(
     { parentId: "I_1", body: "Spec", tickets: [] },
     true,
   );
@@ -996,7 +997,7 @@ test("failed reopen commit restores workflow and index", async () => {
   mkdirSync(hooks);
   writeFileSync(join(hooks, "pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   git("config", "core.hooksPath", hooks);
-  const reviewedDigest = await githubEvidenceDigest(
+  const reviewedDigest = await githubEvidenceDigestV2(
     { parentId: "I_1", body: "Spec", tickets: [] },
     true,
   );
@@ -1046,7 +1047,7 @@ test.each([
         })),
       };
     }
-    const reviewedDigest = await githubEvidenceDigest(
+    const reviewedDigest = await githubEvidenceDigestV2(
       {
         parentId: "I_1",
         body: "Spec",
@@ -1067,6 +1068,7 @@ test.each([
     const response = await request({ stage, reviewedHead, reviewedDigest });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ approval: expected });
+    expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.version).toBe(2);
     expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.digest).toBe(
       reviewedDigest,
     );
@@ -1081,7 +1083,7 @@ test("fresh approval check distinguishes missing, unknown, stale, current and un
   expect(await check({ approved: {} })).toEqual({ ok: false, code: "approval-unknown" });
   const approval = {
     at: "2026-01-01",
-    remote: { version: 1, parentId: "I_1", digest: reviewedDigest },
+    remote: { version: 2, parentId: "I_1", digest: reviewedDigest },
   };
   expect(
     await check({ approved: { ...approval, remote: { ...approval.remote, digest: "old" } } }),
@@ -1091,6 +1093,20 @@ test("fresh approval check distinguishes missing, unknown, stale, current and un
     code: "approval-stale",
   });
   expect(await check({ approved: approval })).toEqual({ ok: true });
+  const v1Digest = await githubEvidenceDigest(
+    { parentId: "I_1", body: "Spec", tickets: [] },
+    false,
+  );
+  const v1 = { ...approval, remote: { ...approval.remote, version: 1, digest: v1Digest } };
+  expect(await check({ approved: v1 })).toEqual({ ok: true });
+  expect(await check({ approved: { ...v1, remote: { ...v1.remote, digest: "old" } } })).toEqual({
+    ok: false,
+    code: "approval-stale",
+  });
+  expect(await check({ approved: { ...v1, remote: { ...v1.remote, version: 99 } } })).toEqual({
+    ok: false,
+    code: "approval-unknown",
+  });
   const failed = await setup({ [issue]: { code: 1 } });
   expect(
     await requireCurrentGithubApproval(failed.root, "Example/Project", "I_1", 1, false, [], {

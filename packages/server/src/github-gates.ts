@@ -4,6 +4,7 @@ import {
   coreTextWire,
   errorText,
   githubEvidenceDigest,
+  githubEvidenceDigestV2,
   githubTicketsDependencyReady,
   orderTickets,
   gateReadiness,
@@ -79,7 +80,9 @@ export async function requireCurrentGithubApproval(
   try {
     const detail = await readGithubTickets(directory, repository, parentId, number);
     if (!detail.complete) throw new GithubReadError("incomplete");
-    digest = await githubEvidenceDigest(
+    digest = await (record?.approved?.remote?.version === 2
+      ? githubEvidenceDigestV2
+      : githubEvidenceDigest)(
       { parentId, body: detail.spec, tickets: detail.tickets },
       includeTickets,
       labels,
@@ -91,7 +94,7 @@ export async function requireCurrentGithubApproval(
   if (!record?.approved) return { ok: false, code: "approval-missing" };
   const approval = record.approved;
   if (
-    approval.remote?.version !== 1 ||
+    (approval.remote?.version !== 1 && approval.remote?.version !== 2) ||
     approval.remote.parentId !== parentId ||
     typeof approval.remote.digest !== "string" ||
     (record.reopened?.at && !approval.at)
@@ -339,8 +342,8 @@ export function addGithubGateRoutes(
             throw new GithubReadError("incomplete");
           const input = { parentId: item.id, body: detail.spec, tickets: detail.tickets };
           const [spec, tickets] = await Promise.all([
-            githubEvidenceDigest(input, false, [...labels.values()]),
-            githubEvidenceDigest(input, true, [...labels.values()]),
+            githubEvidenceDigestV2(input, false, [...labels.values()]),
+            githubEvidenceDigestV2(input, true, [...labels.values()]),
           ]);
           return (stageId: string) => (githubGateIncludesTickets(stages, stageId) ? tickets : spec);
         };
@@ -420,7 +423,7 @@ export function addGithubGateRoutes(
           by,
           at: new Date().toISOString(),
           commit,
-          remote: { version: 1 as const, parentId: item.id, digest: observed },
+          remote: { version: 2 as const, parentId: item.id, digest: observed },
         };
         const workflowCommit = await saveGithubWorkflow(
           directory,
