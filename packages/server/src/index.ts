@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { coreText, coreTextWire, type Health, indexProject, type Warning } from "@stintwork/core";
+import {
+  coreText,
+  coreTextFields,
+  coreTextWire,
+  type Health,
+  indexProject,
+  type Warning,
+} from "@stintwork/core";
 import { execFileSync } from "node:child_process";
 import { once } from "node:events";
 import { accessSync } from "node:fs";
@@ -33,7 +40,6 @@ import { addSetupRoutes } from "./setup.js";
 import {
   classifyGithubError,
   GithubReadError,
-  validateGithubIdentities,
   discoverGithubWorkItems,
   githubOrigin,
   githubViewer,
@@ -47,7 +53,11 @@ import {
   readGithubTickets,
 } from "./github-tickets.js";
 import { projectLocalApprovals } from "./approval-head.js";
-import { githubSnapshotFiles, projectGithubGates } from "./github-snapshot.js";
+import {
+  bindGithubIdentities,
+  githubSnapshotFiles,
+  projectGithubGates,
+} from "./github-snapshot.js";
 import { addGithubGateRoutes, verifyGithubGateIdentity } from "./github-gates.js";
 import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 
@@ -110,6 +120,36 @@ export function createProjectServer(
   let detailRunning = false;
   const pendingStintDetails = new Set<number>();
   const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
+  const stintDetailAttempts = new Map<number, number>();
+  function retryStintDetail(number: number, status: number) {
+    if (lifetime.signal.aborted) return;
+    if (status === 429 || (status === 503 && githubRateLimitCoolingDown(github))) {
+      pendingStintDetails.add(number);
+      return;
+    }
+    if (!pendingRecovery.has(number)) return;
+    const needsDiscovery = status === 409 && !github?.items.some((item) => item.number === number);
+    if ((status !== 503 && !needsDiscovery) || stintDetailTimers.has(number)) return;
+    if (needsDiscovery && (github?.complete || github?.errorCode === "identity")) return;
+    const attempts = stintDetailAttempts.get(number) ?? 0;
+    const delay = [5_000, 30_000, 120_000, 300_000][Math.min(attempts, 3)];
+    stintDetailAttempts.set(number, attempts + 1);
+    stintDetailTimers.set(
+      number,
+      setTimeout(() => {
+        stintDetailTimers.delete(number);
+        if (needsDiscovery) {
+          void refreshGithub(!!github?.cursor).then(() => {
+            if (!github?.items.some((item) => item.number === number))
+              retryStintDetail(number, 409);
+          });
+        } else {
+          pendingStintDetails.add(number);
+          drainStintDetails();
+        }
+      }, delay),
+    );
+  }
   function drainStintDetails() {
     if (lifetime.signal.aborted || discoveryRunning || detailRunning) return;
     const number = pendingStintDetails.values().next().value;
@@ -130,11 +170,7 @@ export function createProjectServer(
     pendingStintDetails.delete(number);
     void refreshGithubDetail(number)
       .then((status) => {
-        if (status === 429 && github) {
-          pendingStintDetails.add(number);
-          failGithubDetail(github, number, new GithubReadError("rate-limited", github.retryAt));
-          refresh();
-        }
+        retryStintDetail(number, status);
         drainStintDetails();
       })
       .catch((error: unknown) => {
@@ -199,48 +235,6 @@ export function createProjectServer(
     if (item.detail) item.detail.stale = true;
     detailFailures.set(item.id, failure);
     updateGithubFreshness();
-  }
-  function bindGithubIdentities(
-    data: GithubDiscovery,
-    project: ReturnType<typeof readProjectFiles>,
-  ) {
-    const worktreeFiles = new Map<number, ReturnType<typeof createNodeRepoFiles>>();
-    const overridden = new Set<string>();
-    for (const item of data.items) {
-      const worktree = project.worktreePaths.get(`github-${item.number}`);
-      if (!worktree) continue;
-      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
-      const source = createNodeRepoFiles(worktree);
-      if (source.read(path) !== undefined) {
-        worktreeFiles.set(item.number, source);
-        overridden.add(path);
-      }
-    }
-    const mainFiles = {
-      read: (path: string) => files.read(path),
-      list: (prefix: string) => files.list(prefix).filter((path) => !overridden.has(path)),
-    };
-    data = validateGithubIdentities(mainFiles, data);
-    for (const item of data.items) {
-      const source = worktreeFiles.get(item.number);
-      if (!source) continue;
-      const path = `.stintwork/github/${data.repository.toLowerCase()}/${item.number}/workflow.yaml`;
-      const exactFiles = { read: (name: string) => source.read(name), list: () => [path] };
-      try {
-        const validated = validateGithubIdentities(exactFiles, {
-          ...data,
-          complete: false,
-          items: [item],
-        });
-        item.bound = validated.items[0].bound;
-      } catch {
-        item.bound = false;
-        data.complete = false;
-        data.error = new GithubReadError("identity").message;
-        data.errorCode = "identity";
-      }
-    }
-    return data;
   }
   function readSnapshot(changedPaths?: readonly string[], redactGithub = false) {
     let branch: string | undefined;
@@ -366,6 +360,7 @@ export function createProjectServer(
     pendingStintDetails.clear();
     for (const timer of stintDetailTimers.values()) clearTimeout(timer);
     stintDetailTimers.clear();
+    stintDetailAttempts.clear();
     discoveryFailure = undefined;
     detailFailures.clear();
     viewerVerifiedAt = 0;
@@ -402,6 +397,31 @@ export function createProjectServer(
       error: failure.message,
       errorCode: failure.code,
       ...(retryAt ? { retryAt } : {}),
+    };
+    refresh();
+  }
+  function invalidateGithubIdentity() {
+    const retained =
+      github?.items
+        .filter((item) => pendingRecovery.has(item.number))
+        .map((item) => {
+          const { detail: _detail, ...rest } = item;
+          return { ...rest, complete: false };
+        }) ?? [];
+    clearGithub();
+    const failure = new GithubReadError("identity");
+    discoveryFailure = { error: failure.message, errorCode: failure.code, retryable: false };
+    github = {
+      repository: "",
+      repositoryId: "",
+      items: retained,
+      scanned: 0,
+      cursor: null,
+      complete: false,
+      pages: [],
+      warnings: [],
+      error: failure.message,
+      errorCode: failure.code,
     };
     refresh();
   }
@@ -595,6 +615,7 @@ export function createProjectServer(
     let viewer: Awaited<ReturnType<typeof githubViewer>> | undefined;
     let origin: string | undefined;
     const changedIssues = new Set<number>();
+    let repositoryMismatch = false;
     try {
       await viewerCheck;
       if (
@@ -631,8 +652,10 @@ export function createProjectServer(
         knownRepository &&
         (knownRepository.repositoryId !== next.repositoryId ||
           knownRepository.repository.toLowerCase() !== next.repository.toLowerCase())
-      )
+      ) {
+        repositoryMismatch = true;
         throw new GithubReadError("identity");
+      }
       for (const item of next.items) {
         const earlier = knownIssues.get(item.number);
         if (earlier && earlier !== item.id) changedIssues.add(item.number);
@@ -750,6 +773,10 @@ export function createProjectServer(
     } catch (error) {
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       const failure = classifyGithubError(error);
+      if (repositoryMismatch) {
+        invalidateGithubIdentity();
+        return;
+      }
       discoveryFailure = {
         error: failure.message,
         errorCode: failure.code,
@@ -844,33 +871,109 @@ export function createProjectServer(
       refresh(undefined, true);
       if (generation !== trackerGeneration && snapshot.setup.tracker === "github-issues")
         void refreshGithub().then(() => refresh());
+      for (const number of pendingRecovery.keys()) pendingStintDetails.add(number);
       drainStintDetails();
     }
   }
+  const pendingRecovery = new Map<number, Array<() => void>>();
+  const pendingRecoveryWarnings = new Map<number, Warning>();
   let initialization: Promise<void> | undefined;
+  let localRecovery: Promise<void> | undefined;
   function initialize() {
-    initialization ??= Promise.all([
-      Promise.resolve().then(() => checks.recover()),
-      recoverInterruptedStints(
-        files,
-        (stint, entries, valid, path) =>
-          stopStints.recover(
-            stint,
-            entries,
-            (warning) => recoveryWarnings.push(warning),
-            valid,
-            path,
-          ),
-        (warning) => recoveryWarnings.push(warning),
-      ),
-      refreshAgentRegistry(agentRegistry),
-      refreshGithub(),
-    ]).then(() => refresh());
+    if (!initialization) {
+      localRecovery = Promise.resolve().then(() => {
+        recoverInterruptedStints(
+          files,
+          (stint, entries, valid, path) => {
+            const match = /^github-([1-9]\d*)$/.exec(stint.workItem);
+            if (snapshot.setup.tracker === "github-issues" && match && stint.ticket !== null) {
+              const number = Number(match[1]);
+              stopStints.recover(
+                stint,
+                entries,
+                (warning) => recoveryWarnings.push(warning),
+                valid,
+                path,
+                (signal) =>
+                  new Promise<void>((resolve) => {
+                    const finish = () => {
+                      signal.removeEventListener("abort", finish);
+                      const candidates = pendingRecovery
+                        .get(number)
+                        ?.filter((candidate) => candidate !== finish);
+                      if (candidates?.length) pendingRecovery.set(number, candidates);
+                      else {
+                        pendingRecovery.delete(number);
+                        pendingStintDetails.delete(number);
+                        const timer = stintDetailTimers.get(number);
+                        if (timer) clearTimeout(timer);
+                        stintDetailTimers.delete(number);
+                        stintDetailAttempts.delete(number);
+                        const warning = pendingRecoveryWarnings.get(number);
+                        if (warning) recoveryWarnings.splice(recoveryWarnings.indexOf(warning), 1);
+                        pendingRecoveryWarnings.delete(number);
+                      }
+                      resolve();
+                    };
+                    const candidates = pendingRecovery.get(number) ?? [];
+                    candidates.push(finish);
+                    pendingRecovery.set(number, candidates);
+                    if (!pendingRecoveryWarnings.has(number)) {
+                      const warning = {
+                        path,
+                        ...coreTextFields(
+                          "message",
+                          coreText({
+                            code: "recovery.blocked",
+                            params: {
+                              detail: "Recovery is waiting for verified GitHub item details.",
+                            },
+                          }),
+                        ),
+                      };
+                      pendingRecoveryWarnings.set(number, warning);
+                      recoveryWarnings.push(warning);
+                    }
+                    if (signal.aborted) finish();
+                    else signal.addEventListener("abort", finish, { once: true });
+                  }),
+              );
+            } else
+              stopStints.recover(
+                stint,
+                entries,
+                (warning) => recoveryWarnings.push(warning),
+                valid,
+                path,
+              );
+          },
+          (warning) => recoveryWarnings.push(warning),
+        );
+      });
+      initialization = Promise.all([
+        Promise.resolve().then(() => checks.recover()),
+        localRecovery.then(async () => {
+          await refreshGithub();
+          for (const number of pendingRecovery.keys()) {
+            retryStintDetail(number, await refreshGithubDetail(number));
+          }
+          drainStintDetails();
+        }),
+        refreshAgentRegistry(agentRegistry),
+      ]).then(() => refresh());
+    }
     return initialization;
   }
   app.use("/api/*", async (context, next) => {
     try {
-      await initialize();
+      const ready = initialize();
+      if (
+        context.req.method === "POST" &&
+        /^\/api\/stints\/[^/]+\/stop$/.test(new URL(context.req.url).pathname)
+      ) {
+        void ready.catch(() => {});
+        await localRecovery;
+      } else await ready;
     } catch (error) {
       return context.json(
         coreTextWire({
@@ -938,6 +1041,7 @@ export function createProjectServer(
     const current = github;
     item.discoveryComplete ??= item.complete;
     let verified = false;
+    let repositoryMismatch = false;
     let publish: ReturnType<typeof beginDetail> | undefined;
     try {
       await viewerCheck;
@@ -972,7 +1076,7 @@ export function createProjectServer(
         repository.repositoryId !== current.repositoryId ||
         repository.repository.toLowerCase() !== current.repository.toLowerCase()
       ) {
-        verified = false;
+        repositoryMismatch = true;
         throw new GithubReadError("identity");
       }
       publish = beginDetail(number);
@@ -985,10 +1089,53 @@ export function createProjectServer(
         detailFailures.delete(item.id);
         updateGithubFreshness();
       });
+      refresh(undefined, true);
+      if (detail.complete) {
+        const timer = stintDetailTimers.get(number);
+        if (timer) clearTimeout(timer);
+        stintDetailTimers.delete(number);
+        stintDetailAttempts.delete(number);
+        const candidates = pendingRecovery.get(number);
+        pendingRecovery.delete(number);
+        const warning = pendingRecoveryWarnings.get(number);
+        if (warning) recoveryWarnings.splice(recoveryWarnings.indexOf(warning), 1);
+        pendingRecoveryWarnings.delete(number);
+        for (const adopt of candidates ?? []) adopt();
+      } else retryStintDetail(number, 503);
       return 200;
     } catch (error) {
       if (generation !== trackerGeneration) return 409;
       const failure = classifyGithubError(error);
+      if (failure.code === "identity") {
+        if (pendingRecovery.has(number)) {
+          const previous = pendingRecoveryWarnings.get(number);
+          if (previous) recoveryWarnings.splice(recoveryWarnings.indexOf(previous), 1);
+          const warning = {
+            path: `.stintwork/local/stints`,
+            ...coreTextFields(
+              "message",
+              coreText({ code: "recovery.blocked", params: { detail: failure.message } }),
+            ),
+          };
+          pendingRecoveryWarnings.set(number, warning);
+          recoveryWarnings.push(warning);
+        }
+        if (repositoryMismatch && github === current) {
+          invalidateGithubIdentity();
+          return 503;
+        }
+        if (pendingRecovery.has(number) && verified && github === current) {
+          current.error = failure.message;
+          current.errorCode = "identity";
+          current.complete = false;
+          current.stale = true;
+        }
+        pendingStintDetails.delete(number);
+        const timer = stintDetailTimers.get(number);
+        if (timer) clearTimeout(timer);
+        stintDetailTimers.delete(number);
+        stintDetailAttempts.delete(number);
+      }
       if (
         !verified &&
         failure.code !== "login" &&
@@ -1080,6 +1227,7 @@ export function createProjectServer(
       const source = githubSource;
       if (!source || github !== expected) return false;
       const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
+      if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
     },
     detailFailed: failGithubDetail,
@@ -1101,8 +1249,8 @@ export function createProjectServer(
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh, githubBriefSource);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
   addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
-  addWorkItemDiffRoute(app, root, readProjectFiles);
-  addRoadmapRoute(app, root, readProjectFiles, refresh);
+  addWorkItemDiffRoute(app, root, readProjectFiles, () => snapshot);
+  addRoadmapRoute(app, root, readProjectFiles, refresh, () => snapshot);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
   addWorkflowCustomisationRoutes(app, root, refresh);
   addSetupRoutes(app, root, files, agentRegistry, refresh, undefined, () => github);
@@ -1139,6 +1287,7 @@ export function createProjectServer(
       const source = githubSource;
       if (!source || github !== expected) return false;
       const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
+      if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
     },
     failGithubDetail,
@@ -1146,7 +1295,7 @@ export function createProjectServer(
     () => githubBriefSource.discoveryFailed() || githubRateLimitCoolingDown(github),
   );
   hasPermissionBinding = stopStints.hasPermissionBinding;
-  addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive);
+  addCheckRoutes(app, checks, readProjectFiles, stopStints.isActive, () => snapshot);
   const live = upgradeWebSocket(() => ({}));
   app.get("/api/live", async (context, next) => {
     const origin = context.req.header("origin");

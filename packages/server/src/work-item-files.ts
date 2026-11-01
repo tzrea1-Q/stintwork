@@ -117,7 +117,13 @@ export function createProjectFiles(root: string, main: RepoFiles = createNodeRep
         if (warning) warnings.push(warning);
       }
     }
-    return { files: composeWorkItemFiles(main, overlays), worktreePaths, watchPaths, warnings };
+    return {
+      ...(root ? { root } : {}),
+      files: composeWorkItemFiles(main, overlays),
+      worktreePaths,
+      watchPaths,
+      warnings,
+    };
   };
   return Object.assign(read, { metadataChanged });
 }

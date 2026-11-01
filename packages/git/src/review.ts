@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CoreTextError } from "@stintwork/core";
+import { CoreTextError, githubWorkflowPath } from "@stintwork/core";
 import { execFile, execFileSync } from "node:child_process";
-import { lstatSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { commitWithIdentity } from "./checkpoints.js";
@@ -78,6 +78,7 @@ export async function commitWorkItemReview(
   message: string,
   rejection?: { path: string; baseCommit: string },
   workflow?: string,
+  workflowPath = `.scratch/${slug}/workflow.yaml`,
 ): Promise<string> {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug))
     throw new CoreTextError({ code: "git.invalidSlug" });
@@ -85,7 +86,15 @@ export async function commitWorkItemReview(
     throw new CoreTextError({ code: "git.worktreeBranch" });
   const review = `.scratch/${slug}/review.yaml`;
   const paths = [review];
-  if (workflow !== undefined) paths.push(`.scratch/${slug}/workflow.yaml`);
+  if (workflow !== undefined) {
+    const github = githubWorkflowPath(workflowPath);
+    if (
+      workflowPath !== `.scratch/${slug}/workflow.yaml` &&
+      (!github || slug !== `github-${github[3]}`)
+    )
+      throw new CoreTextError({ code: "git.reviewFiles" });
+    paths.push(workflowPath);
+  }
   if (rejection) {
     if (
       !/^(?:GLOSSARY\.md|AGENTS\.md|CLAUDE\.md|docs\/(?:adr|agents)\/.+)$/.test(rejection.path) ||
@@ -137,9 +146,12 @@ export async function commitWorkItemReview(
         ]);
       } else rmSync(join(worktree, rejection.path), { force: true });
     }
+    mkdirSync(join(worktree, ".scratch", slug), { recursive: true });
     writeFileSync(join(worktree, review), text, { flag: existing === undefined ? "wx" : "w" });
-    if (workflow !== undefined)
-      writeFileSync(join(worktree, `.scratch/${slug}/workflow.yaml`), workflow);
+    if (workflow !== undefined) {
+      mkdirSync(join(worktree, workflowPath, ".."), { recursive: true });
+      writeFileSync(join(worktree, workflowPath), workflow);
+    }
     await git(["add", "--all", "--", ...paths]);
     await commitWithIdentity(git, ["--only", "-m", message, "--", ...paths]);
     return await git(["rev-parse", "HEAD"]);

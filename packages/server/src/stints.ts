@@ -6,7 +6,6 @@ import {
   coreText,
   foldStintLog,
   pendingStintPermissions,
-  indexProject,
   agentUnavailable,
   type BriefHandoff,
   type ReviewFindings,
@@ -78,6 +77,7 @@ import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
 import { addShipRoutes } from "./ship.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 
 export type StintServerOptions = {
@@ -151,6 +151,8 @@ export function addStintRoutes(
     refresh,
     (slug) => active.has(slug),
     workflowWrites,
+    githubSource?.getSnapshot,
+    githubSource?.getGithub,
   );
   addGateRoutes(
     app,
@@ -160,6 +162,7 @@ export function addStintRoutes(
     (slug) => active.has(slug) || isChecking(slug),
     workflowWrites,
     readReviewEvidence,
+    githubSource?.getSnapshot,
   );
   addFindingDecisionRoutes(
     app,
@@ -169,6 +172,8 @@ export function addStintRoutes(
     workflowWrites,
     isChecking,
     readReviewEvidence,
+    githubSource?.getSnapshot,
+    githubSource?.getGithub,
   );
   addMemoryProposalRoutes(
     app,
@@ -177,6 +182,7 @@ export function addStintRoutes(
     refresh,
     (slug) => active.has(slug),
     workflowWrites,
+    githubSource?.getSnapshot,
   );
   const permissions = addStintPermissionRoute(app);
   addShipRoutes(
@@ -188,6 +194,7 @@ export function addStintRoutes(
     workflowWrites,
     isChecking,
     readReviewEvidence,
+    githubSource,
   );
   let closing = false;
   async function runStint(
@@ -364,7 +371,12 @@ export function addStintRoutes(
       let verifiedWorktree = !recovery;
       try {
         if (recovery) {
-          verifyRecoveryWorktree(started.stint);
+          verifyRecoveryWorktree(
+            started.stint,
+            state.stopRequested ||
+              !!recovery.stopRequestedAt ||
+              recovery.progress?.phase === "finalization",
+          );
           ensureLocalIgnore(worktree.path);
         }
         verifiedWorktree = true;
@@ -588,7 +600,7 @@ export function addStintRoutes(
           );
           return;
         }
-        verifyRecoveryWorktree(started.stint);
+        verifyRecoveryWorktree(started.stint, recovery.progress?.phase === "finalization");
         if (recovery.stopRequestedAt || recovery.progress?.phase === "finalization") {
           const { status, ...details } = completionOutcome(savedProgress.stopReason);
           await end(status, {
@@ -972,10 +984,9 @@ export function addStintRoutes(
           409,
         );
       if (
-        (workItem.github
-          ? githubSource?.getSnapshot()
-          : indexProject(readProjectFiles().files, { name: "" })
-        )?.workItems.find(({ slug }) => slug === workItem.slug)?.stage !== workItem.stage
+        resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot).workItems.find(
+          ({ slug }) => slug === workItem.slug,
+        )?.stage !== workItem.stage
       )
         return context.json(
           coreTextWire({ reason: coreText({ code: "stint.stageChanged" }) }),
@@ -1348,8 +1359,15 @@ export function addStintRoutes(
   });
   function verifyRecoveryWorktree(
     stint: Pick<Stint, "id" | "workItem" | "stage" | "ticket" | "worktree" | "baseCommit">,
+    finalizing = false,
   ) {
-    const project = indexProject(readProjectFiles().files, { name: "" });
+    if (
+      finalizing &&
+      /^github-[1-9]\d*$/.test(stint.workItem) &&
+      githubSource?.getSnapshot().setup.tracker === "github-issues"
+    )
+      return verifyStintWorktree(root, stint);
+    const project = resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot);
     const workItem = project.workItems.find((item) => item.slug === stint.workItem);
     if (
       !workItem ||
@@ -1368,6 +1386,7 @@ export function addStintRoutes(
     warn: (warning: Warning) => void,
     valid: boolean,
     path: string,
+    waitForDetail?: (signal: AbortSignal) => Promise<void>,
   ) {
     const warning = (message: string) =>
       warn({
@@ -1386,7 +1405,8 @@ export function addStintRoutes(
       return;
     }
     // Every candidate, including fallback/blocked logs, reserves before asynchronous work.
-    const state: ActiveStint = { id: stint.id, setupCancellation: new AbortController() };
+    const setupCancellation = new AbortController();
+    const state: ActiveStint = { id: stint.id, setupCancellation };
     state.suspend = () => {
       if (
         state.stopRequested ||
@@ -1507,6 +1527,10 @@ export function addStintRoutes(
     }
     const started = entries.find((entry) => entry.type === "started");
     if (!started) return;
+    const detailReady =
+      recovery.stopRequestedAt || recovery.progress?.phase === "finalization"
+        ? undefined
+        : waitForDetail?.(setupCancellation.signal);
     activeStintIds.add(stint.id);
     state.ownsRecoveryReservation = true;
     state.preparation = Promise.resolve()
@@ -1570,7 +1594,15 @@ export function addStintRoutes(
           refresh();
           return;
         }
-        if (!reason && recovery.state !== "fallback") {
+        await detailReady;
+        if (state.suspending) return;
+        if (
+          !state.stopRequested &&
+          !recovery.stopRequestedAt &&
+          recovery.progress?.phase !== "finalization" &&
+          !reason &&
+          recovery.state !== "fallback"
+        ) {
           try {
             verifyRecoveryWorktree(stint);
           } catch (error) {
@@ -1588,7 +1620,7 @@ export function addStintRoutes(
         ensureLocalIgnore(root);
         appendRecovery(entry);
         refresh();
-        const project = indexProject(readProjectFiles().files, { name: "" });
+        const project = resolveProjectSnapshot(readProjectFiles(), githubSource?.getSnapshot);
         const workItem = project.workItems.find((item) => item.slug === stint.workItem);
         const evidence =
           !!workItem &&

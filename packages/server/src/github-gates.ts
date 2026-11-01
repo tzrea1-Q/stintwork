@@ -160,12 +160,6 @@ export function addGithubGateRoutes(
       const github = getGithub();
       const number = Number(context.req.param("number"));
       const item = github?.items.find((entry) => entry.number === number);
-      if (!github || !item || getSnapshot().setup.tracker !== "github-issues")
-        return context.json(
-          coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
-          404,
-        );
-      const slug = `github-${number}`;
       if (getSnapshot().github?.errorCode === "identity")
         return context.json(
           coreTextWire({
@@ -174,6 +168,12 @@ export function addGithubGateRoutes(
           }),
           409,
         );
+      if (!github || !item || getSnapshot().setup.tracker !== "github-issues")
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
+          404,
+        );
+      const slug = `github-${number}`;
       if (
         writing.has(slug) ||
         isStintActive(slug) ||

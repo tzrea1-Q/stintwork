@@ -62,6 +62,7 @@ export async function saveGithubWorkflow(
   stage: string,
   update?: (text: string) => string,
   message?: string,
+  alreadyLocked = false,
 ) {
   const relative = `.stintwork/github/${discovery.repository.toLowerCase()}/${item.number}/workflow.yaml`;
   if (
@@ -71,7 +72,7 @@ export async function saveGithubWorkflow(
     item.url !== `https://github.com/${discovery.repository}/issues/${item.number}`
   )
     throw new GithubReadError("identity");
-  return withRepoLock(root, async () => {
+  const write = async () => {
     const indexEntry = checkWorkflowIndex(root, relative);
     let directory = root;
     for (const part of relative.split("/").slice(0, -1)) {
@@ -131,7 +132,8 @@ export async function saveGithubWorkflow(
       } else execFileSync("git", ["update-index", "--force-remove", "--", relative], { cwd: root });
       throw error;
     }
-  });
+  };
+  return alreadyLocked ? write() : withRepoLock(root, write);
 }
 
 export function writeWorkItemWorkflow(

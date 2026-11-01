@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import { coreTextWire, coreText, indexProject } from "@stintwork/core";
+import { coreTextWire, coreText } from "@stintwork/core";
 
 import { workItemDiff } from "@stintwork/git";
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
 
 export function addWorkItemDiffRoute(
   app: Hono,
   root: string,
   readProjectFiles: ProjectFilesReader,
+  getSnapshot?: () => ProjectSnapshot,
 ) {
   app.get("/api/work-items/:slug/diff", async (context) => {
     context.header("Cache-Control", "no-store");
@@ -17,7 +20,7 @@ export function addWorkItemDiffRoute(
     const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
     if (discoveryFailure)
       return context.json(coreTextWire({ reason: discoveryFailure.message }), 503);
-    if (!indexProject(project.files, { name: "" }).workItems.some((item) => item.slug === slug))
+    if (!resolveProjectSnapshot(project, getSnapshot).workItems.some((item) => item.slug === slug))
       return context.json(
         coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
         404,

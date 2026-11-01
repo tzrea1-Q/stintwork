@@ -5,7 +5,6 @@ import {
   coreText,
   deriveAttentionItems,
   deriveMemoryProposals,
-  indexProject,
   indexStints,
   isProjectMemoryPath,
   type ProjectSnapshot,
@@ -19,6 +18,7 @@ import { checkpointChangedPaths, checkpointFileDiff } from "@stintwork/git";
 import type { Hono } from "hono";
 import { saveWorkItemReview } from "./review-writes.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
 
 export function createMemoryProposalReader(root: string) {
   const changes = new Map<string, { path: string; diff: string }[]>();
@@ -70,6 +70,7 @@ export function addMemoryProposalRoutes(
   refresh: () => void,
   isStintActive: (slug: string) => boolean,
   writing: Set<string>,
+  getSnapshot?: () => ProjectSnapshot,
 ) {
   const readProposals = createMemoryProposalReader(root);
   app.post("/api/work-items/:slug/memory-proposals/decision", async (context) => {
@@ -111,7 +112,7 @@ export function addMemoryProposalRoutes(
         coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
         503,
       );
-    const snapshot = indexProject(project.files, { name: "" });
+    const snapshot = resolveProjectSnapshot(project, getSnapshot);
     const item = snapshot.workItems.find((entry) => entry.slug === slug);
     if (!item)
       return context.json(

@@ -34,7 +34,7 @@ export type WorkItem = {
   tickets: Ticket[];
 };
 
-export type Warning = { path: string; message: string };
+export type Warning = { path: string; message: string; code?: string };
 export type WorkItemIndex = { workItems: WorkItem[]; warnings: Warning[] };
 
 /** Copies the supplied contents so later caller mutations do not change the snapshot. */

@@ -15,7 +15,7 @@ export async function saveWorkItemReview(
   slug: string,
   decision: ReviewDecision | readonly ReviewDecision[],
   rejection?: { path: string; baseCommit: string },
-  sendBack?: { workflow: string; note: DeveloperNote },
+  sendBack?: { workflow: string; note: DeveloperNote; workflowPath?: string },
 ) {
   const existing = createNodeRepoFiles(worktree).read(`.scratch/${slug}/review.yaml`);
   const decisions = "kind" in decision ? [decision] : decision;
@@ -34,5 +34,6 @@ export async function saveWorkItemReview(
       : `Send back ${slug} from Ship`,
     rejection,
     sendBack?.workflow,
+    sendBack?.workflowPath,
   );
 }
