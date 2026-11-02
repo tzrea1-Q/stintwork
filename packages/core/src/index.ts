@@ -101,7 +101,13 @@ export {
   pendingDeveloperNotes,
   type DeveloperNote,
 } from "./developer-notes.js";
-export { gateReadiness, workflowGate, type GateRecord, type GateWorkItem } from "./gates.js";
+export {
+  gateReadiness,
+  githubGateIncludesTickets,
+  workflowGate,
+  type GateRecord,
+  type GateWorkItem,
+} from "./gates.js";
 export { githubTicketsDependencyReady, type GateCondition } from "./gate-output.js";
 export {
   evidenceStale,

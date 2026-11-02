@@ -59,6 +59,15 @@ export function projectGithubGates(
     }
     const remote = snapshot.github?.items.find((entry) => entry.id === item.github?.issueId);
     const detail = remote?.detail;
+    item.github.dependenciesUnknown = !!(
+      remote?.discoveryComplete &&
+      !remote.detailFailed &&
+      !snapshot.github?.discoveryFailed &&
+      !snapshot.github?.stale &&
+      detail &&
+      !detail.stale &&
+      dependencyOnlyIncomplete(detail)
+    );
     const valid =
       triageReadable &&
       detail &&

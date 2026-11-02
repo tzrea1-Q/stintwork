@@ -28,6 +28,7 @@ export type GithubDiscovery = {
     title: string;
     url: string;
     complete: boolean;
+    discoveryComplete?: boolean;
     bound?: boolean;
     provisional?: boolean;
     detailFailed?: boolean;
@@ -105,6 +106,7 @@ export type ProjectSnapshot = {
       number: number;
       url: string;
       complete: boolean;
+      dependenciesUnknown?: boolean;
       ticketsKnown?: boolean;
       ticketsStale?: boolean;
       bound?: boolean;

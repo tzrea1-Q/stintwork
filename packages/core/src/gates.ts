@@ -4,7 +4,12 @@ import { parseDocument } from "yaml";
 import type { GateAttentionItem, StaleApprovalAttentionItem } from "./attention.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { StagedWorkItem } from "./stages.js";
-import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
+import {
+  builtInWorkflows,
+  type StageId,
+  type WorkflowDefinitions,
+  type WorkflowStage,
+} from "./workflows.js";
 import { reviewGateConditions } from "./review-evidence.js";
 import { outputGateConditions, type GateCondition } from "./gate-output.js";
 
@@ -15,6 +20,14 @@ export type GateRecord = {
   remote?: { version: 1 | 2; parentId: string; digest: string };
 };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
+
+export function githubGateIncludesTickets(
+  stages: readonly WorkflowStage[],
+  stage: string,
+): boolean {
+  const tickets = stages.findIndex((entry) => entry.gate === "tickets");
+  return tickets === -1 || stages.findIndex((entry) => entry.id === stage) >= tickets;
+}
 
 export function gateReadiness(
   item: GateWorkItem,
@@ -28,7 +41,14 @@ export function gateReadiness(
   if (item.merged) reason = coreText({ code: "workItem.shipped" });
   else if (position < 0 || !nextStage || stages[position].gate === "merge")
     reason = coreText({ code: "gate.noApproval" });
-  else if (item.github && (!item.github.complete || item.github.stale || !item.github.reviewDigest))
+  else if (
+    item.github &&
+    (item.github.stale || (!item.github.complete && !item.github.dependenciesUnknown))
+  )
+    reason = coreText({ code: "gate.detailUnavailable" });
+  else if (item.github?.dependenciesUnknown && githubGateIncludesTickets(stages, item.stage ?? ""))
+    reason = { text: (item.outputWarnings ?? []).map(({ message }) => message).join(" ") };
+  else if (item.github && !item.github.reviewDigest)
     reason = coreText({ code: "gate.detailUnavailable" });
   else if (
     item.github &&

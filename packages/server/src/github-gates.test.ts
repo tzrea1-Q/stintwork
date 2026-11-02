@@ -958,6 +958,144 @@ test.each(["spec", "clarify", "tickets"] as const)(
   },
 );
 
+test("detail refresh exposes Spec readiness to the approval route", async () => {
+  const { root, git } = await setup({}, "spec");
+  mkdirSync(join(root, "docs/agents"), { recursive: true });
+  writeFileSync(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const head = git("rev-parse", "HEAD");
+  const log = join(root, ".stintwork/local/stints/spec.jsonl");
+  mkdirSync(join(root, ".stintwork/local/stints"), { recursive: true });
+  writeFileSync(
+    log,
+    [
+      {
+        type: "started",
+        at: "2099-01-01T00:00:00Z",
+        stint: {
+          id: "spec",
+          workItem: "github-1",
+          stage: "spec",
+          ticket: null,
+          agent: "codex",
+          worktree: { path: root, branch: "main" },
+          baseCommit: head,
+          brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+        },
+      },
+      {
+        type: "ended",
+        at: "2099-01-01T00:01:00Z",
+        status: "finished",
+        checkpointCommit: head,
+        handoff: {
+          stint: "spec",
+          agent: "codex",
+          stoppedAt: "Done",
+          unresolved: "None",
+          nextStep: "Approve",
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    html_url: "https://github.com/Example/Project/issues/2",
+    body: "Blocked by: unclear",
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const connection = (nodes: unknown[]) => ({
+    nodes,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  });
+  const gh = await fakeGh(join(root, "server-bin"));
+  process.env.PATH = gh.path;
+  await gh.script({
+    "auth status": {},
+    "config get": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_1",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": {
+      stdout: {
+        data: {
+          repository: {
+            id: "R_1",
+            nameWithOwner: "Example/Project",
+            issues: connection([
+              {
+                id: "I_1",
+                number: 1,
+                title: "Parent",
+                url: parent.html_url,
+                parent: null,
+                labels: connection([{ name: "stintwork:work-item" }]),
+                subIssues: { ...connection([]), totalCount: 0 },
+              },
+            ]),
+          },
+          rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
+        },
+      },
+    },
+    [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+    [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+    [`${issue}/comments?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+  });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  try {
+    const response = await server.app.request("/api/github/items/1/refresh", { method: "POST" });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const snapshot = await response.json();
+    const item = snapshot.workItems[0];
+    expect(item.github).toMatchObject({ complete: false, dependenciesUnknown: true });
+    expect(gateReadiness(item, snapshot.workflows).ready).toBe(true);
+    const approve = await server.app.request("/api/github/items/1/gates/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stage: "spec",
+        reviewedDigest: item.github.reviewDigest,
+        reviewedHead: item.github.reviewHead,
+      }),
+    });
+    expect(approve.status, await approve.clone().text()).toBe(200);
+    const next = await (await server.app.request("/api/project")).json();
+    expect(gateReadiness(next.workItems[0], next.workflows)).toMatchObject({
+      ready: false,
+      reason: { text: expect.stringContaining("Issue #2: text blockers unknown.") },
+    });
+    const tickets = await server.app.request("/api/github/items/1/gates/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stage: "tickets",
+        reviewedDigest: "unavailable",
+        reviewedHead: git("rev-parse", "HEAD"),
+      }),
+    });
+    expect(tickets.status).toBe(409);
+    expect(JSON.stringify(await tickets.json())).toContain("Issue #2: text blockers unknown.");
+  } finally {
+    await server.stop();
+  }
+});
+
 test("reopens Spec with unknown dependencies", async () => {
   // Covered separately because Spec approval and reopening start at different stages.
   const child = {
