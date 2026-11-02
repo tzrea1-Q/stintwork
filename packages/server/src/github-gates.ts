@@ -31,7 +31,7 @@ import { readGithubTickets } from "./github-tickets.js";
 import type { ProjectFilesReader } from "./work-item-files.js";
 import { saveGithubWorkflow } from "./workflow-writes.js";
 import { resolveGithubWorkflow } from "./github-snapshot.js";
-import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+import { githubGateIgnoresBody, githubGateIncludesTickets } from "./github-evidence-scope.js";
 import { createMemoryProposalReader } from "./memory-proposals.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 
@@ -69,6 +69,7 @@ export async function requireCurrentGithubApproval(
       }
     | undefined,
   onFailure?: (error: unknown) => void,
+  ignoreBody = false,
 ): Promise<
   | { ok: true }
   | {
@@ -101,7 +102,7 @@ export async function requireCurrentGithubApproval(
   )
     return { ok: false, code: "approval-unknown" };
   if (
-    approval.remote.digest !== digest ||
+    (!ignoreBody && approval.remote.digest !== digest) ||
     (record.reopened?.at && approval.at && record.reopened.at >= approval.at)
   )
     return { ok: false, code: "approval-stale" };
@@ -366,6 +367,7 @@ export function addGithubGateRoutes(
                   detailFailed(github, number, error);
                   refresh();
                 },
+                githubGateIgnoresBody(stages, prior.id),
               );
               if (!currentApproval.ok)
                 return refuse(

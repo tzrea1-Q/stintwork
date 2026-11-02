@@ -186,9 +186,26 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
       ).comments,
     ).toEqual(["Ticket comment"]);
     for (const stage of ["clarify", "spec", "tickets"]) {
+      if (stage === "spec") {
+        parent.body = "Published spec";
+        await gh.script(replies());
+        snapshot = await detail();
+        expect(snapshot.workItems[0].stages.clarify.approved.remoteState).toBe("current");
+      }
       await stint(null);
       const response = await gate(stage);
       expect(response.status, await response.clone().text()).toBe(200);
+      if (stage === "spec") {
+        parent.body = "Changed after approval";
+        await gh.script(replies());
+        snapshot = await detail();
+        expect(snapshot.workItems[0].stages.clarify.approved.remoteState).toBe("current");
+        expect(snapshot.workItems[0].stages.spec.approved.remoteState).toBe("stale");
+        expect((await gate("tickets")).status).toBe(409);
+        parent.body = "Published spec";
+        await gh.script(replies());
+        await detail();
+      }
     }
     const recordPath = ".stintwork/github/example/project/10/workflow.yaml";
     const worktree = `${root}-worktrees/github-10`;
@@ -248,7 +265,7 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
     snapshot = await detail();
     expect(snapshot.github.items[0]).toMatchObject({
       complete: false,
-      detail: { spec: "Spec body", stale: true },
+      detail: { spec: "Published spec", stale: true },
     });
     expect(snapshot.workItems[0].tickets[1]).toMatchObject({ blocked: true, status: "unknown" });
     expect((await start(12)).status).toBe(409);
@@ -274,7 +291,7 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
     snapshot = await detail();
     expect(snapshot.github.items[0]).toMatchObject({
       complete: true,
-      detail: { spec: "Spec body" },
+      detail: { spec: "Published spec" },
     });
     expect(snapshot.github.items[0].detail.stale).not.toBe(true);
     for (const { args } of await gh.calls()) {

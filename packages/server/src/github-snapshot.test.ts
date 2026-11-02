@@ -435,7 +435,7 @@ test.each([false, true])(
       watchPaths: [],
       warnings: [],
     } as ReturnType<ProjectFilesReader>;
-    const states = () => {
+    const states = (noSpec = false, parentId = "I_1", version = 1) => {
       const snapshot = indexProject(files, { name: "Test", github });
       if (custom) {
         snapshot.workflows.feature = {
@@ -446,6 +446,18 @@ test.each([false, true])(
           })),
         };
       }
+      if (noSpec)
+        snapshot.workflows.feature = {
+          ...snapshot.workflows.feature,
+          stages: snapshot.workflows.feature.stages.map((stage) =>
+            stage.column === "spec" ? { ...stage, column: "clarify" } : stage,
+          ),
+        };
+      const approval = snapshot.workItems[0].stages.clarify.approved as {
+        remote: { parentId: string; version: number };
+      };
+      approval.remote.parentId = parentId;
+      approval.remote.version = version;
       projectGithubGates(snapshot, process.cwd(), project);
       return ["clarify", "spec", "tickets"].map(
         (stage) =>
@@ -454,7 +466,10 @@ test.each([false, true])(
     };
     expect(states()).toEqual(["current", "current", "current"]);
     github.items[0].detail.spec = "Changed";
-    expect(states()).toEqual(["stale", "stale", "stale"]);
+    expect(states()).toEqual(["current", "stale", "stale"]);
+    expect(states(false, "I_1", 2)).toEqual(["current", "stale", "stale"]);
+    expect(states(false, "I_other")[0]).toBe("unknown");
+    expect(states(true)[0]).toBe("stale");
     github.items[0].detail.spec = "Spec";
     ticket.body = "Changed";
     expect(states()).toEqual(["current", custom ? "stale" : "current", "stale"]);

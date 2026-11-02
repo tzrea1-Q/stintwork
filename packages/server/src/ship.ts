@@ -42,7 +42,7 @@ import { resolveGithubWorkflow } from "./github-snapshot.js";
 import { validateGithubIdentities } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
 import { githubRateLimitCoolingDown } from "./github-tickets.js";
-import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+import { githubGateIgnoresBody, githubGateIncludesTickets } from "./github-evidence-scope.js";
 import type { GithubBriefSource } from "./brief-preview.js";
 
 import {
@@ -258,6 +258,8 @@ export function addShipRoutes(
                 githubGateIncludesTickets(stages, stage.id),
                 [...labels.values()],
                 initial.item.stages[stage.id],
+                undefined,
+                githubGateIgnoresBody(stages, stage.id),
               );
               const projected = initial.item.stages[stage.id]?.approved;
               if (

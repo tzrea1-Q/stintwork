@@ -1,6 +1,6 @@
 # Read GitHub Issues as project memory
 
-Status: partly superseded by [ADR 0014](0014-github-evidence-v2.md) (evidence content)
+Status: partly superseded by [ADR 0014](0014-github-evidence-v2.md) (evidence content) and [ADR 0015](0015-pre-spec-approvals-ignore-body.md) (pre-spec approvals)
 
 Accepted by the maintainer on 2026-10-27.
 
