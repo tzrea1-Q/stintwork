@@ -73,7 +73,9 @@ export function outputGateConditions(
               ticket.blockedBy.every((number) => (positions.get(number) ?? Infinity) < index),
             )),
       action: item.github
-        ? coreText({ code: "gate.githubTicketsRequired" })
+        ? warnings.length
+          ? { text: warnings.map(({ message }) => message).join(" ") }
+          : coreText({ code: "gate.githubTicketsRequired" })
         : coreText({
             code: "gate.writeTickets",
             params: { path: `${prefix}issues/NN-<slug>.md`, warning: warning?.message ?? "" },

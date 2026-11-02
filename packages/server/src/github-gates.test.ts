@@ -587,7 +587,7 @@ test.each(["closed", "open", "inaccessible"] as const)(
       issue_dependencies_summary: { total_blocked_by: 0 },
     };
     const childPath = "api repos/Example/Project/issues/2";
-    const { root, snapshot } = await setup(
+    const { root, snapshot, request, reviewedDigest, reviewedHead } = await setup(
       {
         [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
         [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
@@ -619,9 +619,18 @@ test.each(["closed", "open", "inaccessible"] as const)(
     }).workItems[0];
     const item = snapshot.workItems[0];
     item.tickets = projected.tickets;
+    item.outputWarnings = projected.outputWarnings;
     if (!item.github) throw new Error("Missing GitHub metadata");
     item.github.complete = detail.complete;
     expect(gateReadiness(item).ready).toBe(state === "closed");
+    if (state === "inaccessible") {
+      expect(JSON.stringify(gateReadiness(item).conditions)).toContain(
+        "Issue #2: text blockers unknown.",
+      );
+      const response = await request({ stage: "tickets", reviewedDigest, reviewedHead });
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("Issue #2: text blockers unknown.");
+    }
   },
 );
 

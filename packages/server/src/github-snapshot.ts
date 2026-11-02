@@ -18,6 +18,7 @@ import {
   type GithubDiscovery,
 } from "./github-discovery.js";
 import { githubGateIgnoresBody, githubGateIncludesTickets } from "./github-evidence-scope.js";
+import { dependencyOnlyIncomplete } from "./github-tickets.js";
 
 export function projectGithubGates(
   snapshot: ProjectSnapshot,
@@ -61,7 +62,6 @@ export function projectGithubGates(
     const valid =
       triageReadable &&
       detail &&
-      detail.complete === true &&
       !detail.stale &&
       detail.tickets.every(
         (ticket) =>
@@ -73,6 +73,8 @@ export function projectGithubGates(
     const digest = (stage: string, version: 1 | 2) => {
       if (!valid || !remote) return undefined;
       const includeTickets = githubGateIncludesTickets(stages, stage);
+      if (!detail.complete && (includeTickets || !dependencyOnlyIncomplete(detail)))
+        return undefined;
       return `sha256:${createHash("sha256")
         .update(
           (version === 1 ? githubEvidenceJson : githubEvidenceJsonV2)(

@@ -25,6 +25,7 @@ import type { Hono } from "hono";
 import { changedSince, workItemDiff, worktreePath } from "@stintwork/git";
 import {
   githubRateLimitCoolingDown,
+  dependencyOnlyIncomplete,
   readGithubTickets,
   type createDetailPublisher,
 } from "./github-tickets.js";
@@ -131,6 +132,7 @@ export async function prepareStintBrief(
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
     if (githubRateLimitCoolingDown(github))
       return { reason: coreText({ code: "gate.detailUnavailable" }), status: 409 as const };
+    remote.discoveryComplete ??= remote.complete;
     const publish = githubSource.beginDetail(remote.number);
     try {
       const detail = await (githubSource.readDetail ?? readGithubTickets)(
@@ -139,12 +141,13 @@ export async function prepareStintBrief(
         remote.id,
         remote.number,
       );
-      if (!detail.complete) throw new GithubReadError("incomplete");
+      if (!detail.complete && !dependencyOnlyIncomplete(detail))
+        throw new GithubReadError("incomplete");
       githubSource.registerDetailIdentities(github, detail);
       ownDetail = { ...detail, fetchedAt: new Date().toISOString() };
       const published = publish(() => {
         remote.detail = ownDetail;
-        remote.complete = remote.discoveryComplete ?? remote.complete;
+        remote.complete = (remote.discoveryComplete ?? remote.complete) && detail.complete;
         githubSource.detailSucceeded?.(github, remote.number);
       });
       if (!published)
@@ -227,10 +230,14 @@ export async function prepareStintBrief(
       ["implement", "fix", "do"].includes(workItem.stage));
   if (remote && ticket?.blocked)
     return {
-      reason: coreText({
-        code: "brief.blockedBy",
-        params: { tickets: ticket.blockedBy.map((n) => String(n).padStart(2, "0")).join(", ") },
-      }),
+      reason: ownDetail?.warnings.some(
+        (warning) => warning === `Issue #${ticket.number}: text blockers unknown.`,
+      )
+        ? { text: ownDetail.warnings.join(" ") }
+        : coreText({
+            code: "brief.blockedBy",
+            params: { tickets: ticket.blockedBy.map((n) => String(n).padStart(2, "0")).join(", ") },
+          }),
       status: 409 as const,
     };
   if (remote && ticket && implementation && ["cancelled", "unknown"].includes(ticket.status))

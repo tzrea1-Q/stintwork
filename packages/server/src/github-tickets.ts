@@ -337,3 +337,15 @@ export async function readGithubTickets(
     warnings: results.flatMap((result) => result.warnings),
   };
 }
+
+export function dependencyOnlyIncomplete(detail: { complete?: boolean; warnings?: string[] }) {
+  return (
+    detail.complete === false &&
+    !!detail.warnings?.some((warning) => /text blockers unknown\.$/.test(warning)) &&
+    detail.warnings.every((warning) =>
+      /(?:text blockers unknown|native and text blockers disagree|blocker #\d+ unavailable|labelled child is only a ticket)\.$/.test(
+        warning,
+      ),
+    )
+  );
+}
