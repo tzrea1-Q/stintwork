@@ -170,7 +170,10 @@ export function compileBrief({
             ]
           : []),
         ...(stage.gate === "tickets"
-          ? ["- Publish tickets as direct sub-issues through the configured tracker skill and gh."]
+          ? [
+              "- Publish tickets as direct sub-issues through the configured tracker skill and gh.",
+              "- Native blocked-by relationships are authoritative. Any text must be `Blocked by: #N, #N`, a `## Blocked by` section containing only `#N` lines (or a bare `- #N` list), or exactly `None`, with nothing else in the section.",
+            ]
           : []),
         ...(stage.gate === "manual" && stage.column === "clarify"
           ? [

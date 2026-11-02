@@ -250,6 +250,12 @@ async function setup(
     git,
     preview,
     start,
+    startStage: () =>
+      app.request("/api/stints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workItem: "github-1", ticket: null, agent: "codex" }),
+      }),
     stints,
     github,
     gate,
@@ -606,10 +612,25 @@ test("unknown dependencies refuse review preview and start", async () => {
   );
   for (const response of [await preview(), await start()]) {
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({
-      reasonMessage: { code: "gate.detailUnavailable" },
-    });
+    expect(JSON.stringify(await response.json())).toContain("Issue #2: text blockers unknown.");
   }
+});
+
+test("a Tickets stage stint can repair unknown blockers without marking detail failed", async () => {
+  const fixture = await setup(
+    {
+      [`${issue}/sub_issues?per_page=100&page=1`]: {
+        stdout: [{ ...child, body: "Blocked by: unclear" }],
+      },
+    },
+    "tickets",
+    true,
+  );
+  const response = await fixture.startStage();
+  expect(response.status, await response.clone().text()).toBe(201);
+  expect(fixture.github.items[0].detail).toMatchObject({ complete: false });
+  expect(fixture.github.items[0].detail?.stale).not.toBe(true);
+  expect(fixture.failures()).toBe(0);
 });
 
 test.each(["open", "closed"] as const)(

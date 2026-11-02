@@ -587,7 +587,7 @@ test.each(["closed", "open", "inaccessible"] as const)(
       issue_dependencies_summary: { total_blocked_by: 0 },
     };
     const childPath = "api repos/Example/Project/issues/2";
-    const { root, snapshot } = await setup(
+    const { root, snapshot, request, reviewedDigest, reviewedHead } = await setup(
       {
         [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
         [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
@@ -619,9 +619,18 @@ test.each(["closed", "open", "inaccessible"] as const)(
     }).workItems[0];
     const item = snapshot.workItems[0];
     item.tickets = projected.tickets;
+    item.outputWarnings = projected.outputWarnings;
     if (!item.github) throw new Error("Missing GitHub metadata");
     item.github.complete = detail.complete;
     expect(gateReadiness(item).ready).toBe(state === "closed");
+    if (state === "inaccessible") {
+      expect(JSON.stringify(gateReadiness(item).conditions)).toContain(
+        "Issue #2: text blockers unknown.",
+      );
+      const response = await request({ stage: "tickets", reviewedDigest, reviewedHead });
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("Issue #2: text blockers unknown.");
+    }
   },
 );
 
@@ -893,6 +902,250 @@ test("refuses incomplete detail without a commit", async () => {
   expect(response.status).toBe(409);
   expect((await response.json()).code).toBe("detail-unavailable");
   expect(git("rev-list", "--count", "HEAD")).toBe("1");
+});
+
+test.each(["spec", "clarify", "tickets"] as const)(
+  "handles unknown dependencies when operating on %s",
+  async (stage) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      html_url: "https://github.com/Example/Project/issues/2",
+      body: "Blocked by: unclear",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const initialStage = stage === "spec" ? "spec" : "tickets";
+    const { root, request, git, reviewedHead, reviewedDigest, github } = await setup(
+      {
+        [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+        [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+        [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+      },
+      initialStage,
+    );
+    const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+    expect(detail.complete).toBe(false);
+    const digest =
+      initialStage === "tickets"
+        ? await githubEvidenceDigestV2(
+            { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
+            true,
+          )
+        : reviewedDigest;
+    const response = await request(
+      { stage, reviewedDigest: digest, reviewedHead },
+      stage === "clarify" ? "reopen" : "approve",
+    );
+    if (stage === "tickets") {
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("Issue #2: text blockers unknown.");
+      expect(git("rev-list", "--count", "HEAD")).toBe("2");
+    } else {
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(await response.json()).toEqual({ approval: "current" });
+      const record = parse(git("show", `HEAD:${path}`)).stages[stage];
+      expect(record[stage === "clarify" ? "reopened" : "approved"].remote).toMatchObject({
+        version: 2,
+        parentId: "I_1",
+        digest,
+      });
+      expect(github.items[0].detail?.stale).not.toBe(true);
+    }
+  },
+);
+
+test("detail refresh exposes Spec readiness to the approval route", async () => {
+  const { root, git } = await setup({}, "spec");
+  mkdirSync(join(root, "docs/agents"), { recursive: true });
+  writeFileSync(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const head = git("rev-parse", "HEAD");
+  const log = join(root, ".stintwork/local/stints/spec.jsonl");
+  mkdirSync(join(root, ".stintwork/local/stints"), { recursive: true });
+  writeFileSync(
+    log,
+    [
+      {
+        type: "started",
+        at: "2099-01-01T00:00:00Z",
+        stint: {
+          id: "spec",
+          workItem: "github-1",
+          stage: "spec",
+          ticket: null,
+          agent: "codex",
+          worktree: { path: root, branch: "main" },
+          baseCommit: head,
+          brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+        },
+      },
+      {
+        type: "ended",
+        at: "2099-01-01T00:01:00Z",
+        status: "finished",
+        checkpointCommit: head,
+        handoff: {
+          stint: "spec",
+          agent: "codex",
+          stoppedAt: "Done",
+          unresolved: "None",
+          nextStep: "Approve",
+        },
+      },
+    ]
+      .map((entry) => JSON.stringify(entry))
+      .join("\n") + "\n",
+  );
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    html_url: "https://github.com/Example/Project/issues/2",
+    body: "Blocked by: unclear",
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const connection = (nodes: unknown[]) => ({
+    nodes,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  });
+  const gh = await fakeGh(join(root, "server-bin"));
+  process.env.PATH = gh.path;
+  await gh.script({
+    "auth status": {},
+    "config get": { stdout: "101" },
+    "api user": { stdout: { id: 101, login: "101" } },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_1",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": {
+      stdout: {
+        data: {
+          repository: {
+            id: "R_1",
+            nameWithOwner: "Example/Project",
+            issues: connection([
+              {
+                id: "I_1",
+                number: 1,
+                title: "Parent",
+                url: parent.html_url,
+                parent: null,
+                labels: connection([{ name: "stintwork:work-item" }]),
+                subIssues: { ...connection([]), totalCount: 0 },
+              },
+            ]),
+          },
+          rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
+        },
+      },
+    },
+    [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+    [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+    [`${issue}/comments?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+  });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"));
+  try {
+    const response = await server.app.request("/api/github/items/1/refresh", { method: "POST" });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const snapshot = await response.json();
+    const item = snapshot.workItems[0];
+    expect(item.github).toMatchObject({ complete: false, dependenciesUnknown: true });
+    expect(gateReadiness(item, snapshot.workflows).ready).toBe(true);
+    const approve = await server.app.request("/api/github/items/1/gates/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stage: "spec",
+        reviewedDigest: item.github.reviewDigest,
+        reviewedHead: item.github.reviewHead,
+      }),
+    });
+    expect(approve.status, await approve.clone().text()).toBe(200);
+    const next = await (await server.app.request("/api/project")).json();
+    expect(gateReadiness(next.workItems[0], next.workflows)).toMatchObject({
+      ready: false,
+      reason: { text: expect.stringContaining("Issue #2: text blockers unknown.") },
+    });
+    const tickets = await server.app.request("/api/github/items/1/gates/approve", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stage: "tickets",
+        reviewedDigest: "unavailable",
+        reviewedHead: git("rev-parse", "HEAD"),
+      }),
+    });
+    expect(tickets.status).toBe(409);
+    expect(JSON.stringify(await tickets.json())).toContain("Issue #2: text blockers unknown.");
+  } finally {
+    await server.stop();
+  }
+});
+
+test("reopens Spec with unknown dependencies", async () => {
+  // Covered separately because Spec approval and reopening start at different stages.
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    html_url: "https://github.com/Example/Project/issues/2",
+    body: "Blocked by: unclear",
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const { root, request, reviewedHead } = await setup(
+    {
+      [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+      [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+      [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+      [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+      [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+    },
+    "tickets",
+  );
+  const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+  const reviewedDigest = await githubEvidenceDigestV2(
+    { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
+    true,
+  );
+  const response = await request({ stage: "spec", reviewedDigest, reviewedHead }, "reopen");
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(await response.json()).toEqual({ approval: "current" });
+});
+
+test("marks a failed post-check after dependency-only incomplete detail as failed", async () => {
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    html_url: "https://github.com/Example/Project/issues/2",
+    body: "Blocked by: unclear",
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const { request, github } = await setup({
+    [issue]: [{ stdout: { ...parent, sub_issues_summary: { total: 1 } } }, { code: 1 }],
+    [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+    [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+  });
+  expect(await (await request()).json()).toEqual({ approval: "unknown" });
+  expect(github.items[0].complete).toBe(false);
 });
 test("refuses changed evidence without a commit", async () => {
   const { request, git, reviewedHead } = await setup();

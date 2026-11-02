@@ -845,6 +845,48 @@ test.each([false, true])(
   },
 );
 
+test("incomplete but freshly read GitHub detail does not make the drawer read-only", async () => {
+  const snapshot = githubProject();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item || !snapshot.github) throw new Error("Missing GitHub fixture");
+  item.github = {
+    repository: "example/project",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: false,
+    bound: true,
+  };
+  snapshot.github = {
+    ...snapshot.github,
+    items: [
+      {
+        id: "I",
+        number: 1,
+        title: "Parent",
+        url: "https://example.com/1",
+        complete: false,
+        detailFailed: false,
+        detail: {
+          spec: "",
+          tickets: [],
+          complete: false,
+          stale: false,
+          warnings: ["Issue #2: text blockers unknown."],
+        },
+      },
+    ],
+  };
+  render(<Board snapshot={snapshot} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: /^Open board:/ }));
+  expect(
+    screen.queryByText(
+      "GitHub data is stale. Refresh before starting a stint or approving a gate.",
+    ),
+  ).not.toBeInTheDocument();
+});
+
 test.each([
   ["en", "Tickets not loaded", "Tickets may be outdated"],
   ["zh-CN", "工单未加载", "工单可能已过时"],

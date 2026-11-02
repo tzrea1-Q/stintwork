@@ -223,6 +223,10 @@ test("GitHub review and planning briefs respect stage ownership", () => {
   expect(spec).toContain("Publish the spec to the parent issue body");
   expect(spec).not.toContain("Publish tickets");
   expect(tickets).toContain("Publish tickets as direct sub-issues");
+  expect(tickets).toContain("Native blocked-by relationships are authoritative.");
+  expect(
+    compileBrief({ ...input(), stage: builtInWorkflows.feature.stages[2], ticket: null }).prompt,
+  ).not.toContain("Native blocked-by relationships are authoritative.");
   expect(tickets).not.toContain("Publish the spec");
 });
 

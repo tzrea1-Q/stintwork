@@ -46,7 +46,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
     const eventsPath = join(root, "concurrency.jsonl");
     const delay = (number: number) =>
       `fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "start", pid: process.pid, child: ${number} }) + "\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${number === 1472 ? 350 : 200}); fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "end", pid: process.pid, child: ${number} }) + "\\n");`;
-    await gh.script({
+    const replies = {
       "auth status": {},
       "api user": { stdout: { id: 101, login: "101" } },
       "api repos/github/gh-aw": {
@@ -100,7 +100,8 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
           ],
         ]),
       ),
-    });
+    };
+    await gh.script(replies);
     const { createProjectServer } = await import("./index.js");
     const server = createProjectServer(root, join(root, "web"));
     try {
@@ -170,6 +171,27 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
         [1474, "cancelled"],
         [1475, "cancelled"],
       ]);
+      await gh.script({
+        ...replies,
+        "api repos/github/gh-aw/issues/1433/sub_issues?per_page=100&page=1": {
+          stdout: children.map((child: { number: number }) =>
+            child.number === 1472 ? { ...child, body: "Blocked by: unclear" } : child,
+          ),
+        },
+      });
+      const incomplete = await server.app.request("/api/github/items/1433/refresh", {
+        method: "POST",
+      });
+      expect(incomplete.status).toBe(200);
+      const incompleteSnapshot = await incomplete.json();
+      expect(incompleteSnapshot.github.items[0]).toMatchObject({
+        detailFailed: false,
+        detail: {
+          complete: false,
+          warnings: expect.arrayContaining(["Issue #1472: text blockers unknown."]),
+        },
+      });
+      expect(incompleteSnapshot.github.items[0].detail.stale).not.toBe(true);
       await writeFile(eventsPath, "");
       const slow = `fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "start", pid: process.pid }) + "\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 800); fs.appendFileSync(${JSON.stringify(eventsPath)}, JSON.stringify({ event: "end", pid: process.pid }) + "\\n");`;
       await gh.script({
@@ -212,6 +234,11 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
         method: "POST",
       });
       expect(failedChild.status).toBe(503);
+      const failedSnapshot = await (await server.app.request("/api/project")).json();
+      expect(failedSnapshot.github.items[0]).toMatchObject({
+        detailFailed: true,
+        detail: { stale: true },
+      });
       const childEvents = (await readFile(eventsPath, "utf8"))
         .trim()
         .split("\n")

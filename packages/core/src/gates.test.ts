@@ -71,6 +71,35 @@ test("GitHub readiness requires fresh complete detail and current preceding appr
   expect(gateReadiness(workItem).ready).toBe(false);
 });
 
+test("dependency-only incomplete detail allows Spec but blocks ticket-dependent gates", () => {
+  const workItem = item("spec");
+  workItem.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/a/b/issues/1",
+    complete: false,
+    dependenciesUnknown: true,
+    reviewDigest: "digest",
+  };
+  workItem.outputWarnings = [{ path: "issue", message: "Issue #2: text blockers unknown." }];
+  workItem.stages.clarify = { approved: { remoteState: "current" } };
+  workItem.stints = [stint("spec")];
+  expect(gateReadiness(workItem).ready).toBe(true);
+  workItem.stage = "tickets";
+  expect(gateReadiness(workItem)).toMatchObject({
+    ready: false,
+    reason: { text: "Issue #2: text blockers unknown." },
+  });
+  workItem.stage = "spec";
+  delete workItem.github.dependenciesUnknown;
+  expect(gateReadiness(workItem).reason).toMatchObject({ code: "gate.detailUnavailable" });
+  workItem.github.dependenciesUnknown = true;
+  workItem.github.stale = true;
+  expect(gateReadiness(workItem).reason).toMatchObject({ code: "gate.detailUnavailable" });
+});
+
 test("GitHub reopen and re-approval preserve the reopened record", () => {
   const remote = { version: 1 as const, parentId: "I", digest: "sha256:test" };
   const original = { by: "Developer", at: "2026-01-01T00:00:00Z", commit: "a", remote };
