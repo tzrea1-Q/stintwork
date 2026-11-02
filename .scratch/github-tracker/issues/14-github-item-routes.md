@@ -1,6 +1,6 @@
 # 14 — Resolve GitHub work items in server routes
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 13
 
 ## What to build
@@ -72,3 +72,13 @@ Checks passed: `pnpm format`, `pnpm format:check`, `pnpm lint` (9 warnings), `pn
 **Codex, 2026-11-01:** Rebuilt GitHub route snapshots from current project and worktree files over cached GitHub discovery and detail, including fresh identity binding and GitHub gate projection. Ship's existing repository-lock revalidation now uses this projection. Added a frozen-cache regression for a committed stage reopening and a stage-agent refusal for a newly invalid workflow; existing test changes are additions only.
 
 Checks: `pnpm format`, `pnpm format:check`, `pnpm lint` (9 warnings), and `pnpm typecheck` passed. Separate Vitest runs passed for `github-item-routes` (27), `github-stints` (47), `github-tickets` (2), `github-gates` (49), `ship` (14), and `github-snapshot` (7). `github-lifecycle` passed 25 tests; four failed because the sandbox rejected `listen 127.0.0.1` with `EPERM`: `new offline WebSocket connection redacts data after account changes`, `new offline WebSocket connection redacts data after origin changes`, `viewer polling is client-scoped, preserves data on failure, and stops with the server`, and `viewer polling respects discovery rate limit until its retry deadline`. No commit was made.
+
+**Coordinator, 2026-11-01:** Resolved. Merged to main as `969c1b0`.
+
+Verify on the coordinator machine at `2fca4a4`: format:check, lint, typecheck, build, test (3,220/3,220), smoke:package and test:e2e passed. The branch took 11 Codex review rounds; each round's findings were fixed and verified with the full suite.
+
+The final review raised one P2, deferred to the exit follow-up ticket: startup initialization awaits each pending recovery's GitHub detail fetch in turn, so with several interrupted GitHub stints and slow GitHub, ordinary API requests can wait minutes. The affected work items are already reserved, so this delays availability but permits no unsafe write.
+
+CI run 41322714926 passed: checks, both browser shards, and package-smoke on ubuntu and macOS.
+
+Real-repository exit: with the merged build, both memory proposals for `github-1` were accepted (`3a78e56`, `958ec1b`), the action that returned "Work item not found" before this ticket.
