@@ -1,6 +1,6 @@
 # 16 — Incomplete GitHub detail deadlock
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 15
 
 ## What to build
@@ -29,3 +29,13 @@ Checks passed: `pnpm format`, `pnpm format:check`, `pnpm lint` (9 existing warni
 **Codex, 2026-11-01:** Projected dependency-only incompleteness separately from failed, stale, and discovery-incomplete detail. Shared core gate readiness now permits gates whose evidence excludes tickets and gives the detail warnings for ticket-dependent gates. The evidence-scope rule is shared with the server. Added core readiness regressions and a fake-gh server test covering detail refresh, Spec approval, and Tickets refusal. No existing tests were changed to encode the former behavior.
 
 Checks passed: `pnpm format`, `pnpm format:check`, `pnpm lint` (9 existing warnings), `pnpm typecheck`, and separate Vitest runs for `gates.test.ts` (27), `github-gates.test.ts` (56), `github-stints.test.ts` (48), `github-tickets.test.ts` (2), `github-item-routes.test.ts` (27), `github-flow.test.ts` (1), and `Board.test.tsx` (48). No socket failures occurred. No commit made.
+
+**Coordinator, 2026-11-01:** Resolved. Merged to main as `a4fe448`.
+
+Verify on the coordinator machine at `0fd4d90`: format:check, lint, typecheck, build, test (3,230/3,230), smoke:package and test:e2e (432) passed. An earlier run at `5c7fed1` had one e2e failure at load average 24 (`Needs you shows a stale local approval with a reopen action`, 1440px zh-CN light); all 14 variants passed when rerun alone. The branch took three Codex review rounds.
+
+The final review raised one P2, deferred to the exit follow-up ticket: with dependency-only incomplete detail at a stage whose evidence includes tickets, the projection suppresses `reviewDigest`, so the UI disables every Reopen button although the reopen route permits it. Rerunning the Tickets stint, the primary recovery path, works.
+
+CI run 41379745335 passed: checks, both browser shards, and package-smoke on ubuntu and macOS.
+
+Real-repository exit: with the merged build, the Tickets gate showed "Issue #2: text blockers unknown. Issue #3: native and text blockers disagree.", Start stint was enabled, and the brief carried the blocker-format instruction. A rerun Tickets stint corrected only the two `## Blocked by` sections, and the Tickets gate was approved as `aef02b1`.
