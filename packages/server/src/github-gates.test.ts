@@ -903,6 +903,112 @@ test("refuses incomplete detail without a commit", async () => {
   expect((await response.json()).code).toBe("detail-unavailable");
   expect(git("rev-list", "--count", "HEAD")).toBe("1");
 });
+
+test.each(["spec", "clarify", "tickets"] as const)(
+  "handles unknown dependencies when operating on %s",
+  async (stage) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      html_url: "https://github.com/Example/Project/issues/2",
+      body: "Blocked by: unclear",
+      issue_dependencies_summary: { total_blocked_by: 0 },
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const initialStage = stage === "spec" ? "spec" : "tickets";
+    const { root, request, git, reviewedHead, reviewedDigest, github } = await setup(
+      {
+        [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+        [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+        [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+        [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+      },
+      initialStage,
+    );
+    const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+    expect(detail.complete).toBe(false);
+    const digest =
+      initialStage === "tickets"
+        ? await githubEvidenceDigestV2(
+            { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
+            true,
+          )
+        : reviewedDigest;
+    const response = await request(
+      { stage, reviewedDigest: digest, reviewedHead },
+      stage === "clarify" ? "reopen" : "approve",
+    );
+    if (stage === "tickets") {
+      expect(response.status).toBe(409);
+      expect(JSON.stringify(await response.json())).toContain("Issue #2: text blockers unknown.");
+      expect(git("rev-list", "--count", "HEAD")).toBe("2");
+    } else {
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(await response.json()).toEqual({ approval: "current" });
+      const record = parse(git("show", `HEAD:${path}`)).stages[stage];
+      expect(record[stage === "clarify" ? "reopened" : "approved"].remote).toMatchObject({
+        version: 2,
+        parentId: "I_1",
+        digest,
+      });
+      expect(github.items[0].detail?.stale).not.toBe(true);
+    }
+  },
+);
+
+test("reopens Spec with unknown dependencies", async () => {
+  // Covered separately because Spec approval and reopening start at different stages.
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    html_url: "https://github.com/Example/Project/issues/2",
+    body: "Blocked by: unclear",
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const { root, request, reviewedHead } = await setup(
+    {
+      [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+      [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+      [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+      [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+      [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+    },
+    "tickets",
+  );
+  const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+  const reviewedDigest = await githubEvidenceDigestV2(
+    { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
+    true,
+  );
+  const response = await request({ stage: "spec", reviewedDigest, reviewedHead }, "reopen");
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect(await response.json()).toEqual({ approval: "current" });
+});
+
+test("marks a failed post-check after dependency-only incomplete detail as failed", async () => {
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    html_url: "https://github.com/Example/Project/issues/2",
+    body: "Blocked by: unclear",
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const { request, github } = await setup({
+    [issue]: [{ stdout: { ...parent, sub_issues_summary: { total: 1 } } }, { code: 1 }],
+    [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+    [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+  });
+  expect(await (await request()).json()).toEqual({ approval: "unknown" });
+  expect(github.items[0].complete).toBe(false);
+});
 test("refuses changed evidence without a commit", async () => {
   const { request, git, reviewedHead } = await setup();
   const response = await request({ stage: "clarify", reviewedDigest: "wrong", reviewedHead });

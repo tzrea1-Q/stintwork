@@ -319,11 +319,20 @@ export function addGithubGateRoutes(
           if (match && labels.has(match[1])) labels.set(match[1], match[2]);
         }
         let incompleteDetail = false;
+        let detailWarnings: string[] = [];
         const readDigests = async () => {
+          incompleteDetail = false;
+          detailWarnings = [];
           const detail = await readGithubTickets(directory, github.repository, item.id, number);
           if (!detail.complete) {
             incompleteDetail = dependencyOnlyIncomplete(detail);
-            throw new GithubReadError("incomplete");
+            if (
+              !incompleteDetail ||
+              (action === "approve" && githubGateIncludesTickets(stages, stage.id))
+            ) {
+              detailWarnings = incompleteDetail ? detail.warnings : [];
+              throw new GithubReadError("incomplete");
+            }
           }
           if (
             action === "approve" &&
@@ -411,6 +420,14 @@ export function addGithubGateRoutes(
         } catch (error) {
           if (!incompleteDetail) detailFailed(github, number, error);
           refresh();
+          if (detailWarnings.length)
+            return context.json(
+              coreTextWire({
+                reason: { text: detailWarnings.join(" ") },
+                code: "detail-unavailable",
+              }),
+              409,
+            );
           return refuse("gate.detailUnavailable");
         }
         if (observed !== body.reviewedDigest) return refuse("gate.evidenceChanged");
@@ -468,9 +485,10 @@ export function addGithubGateRoutes(
         try {
           approval = (await readDigests())(current as string) === observed ? "current" : "stale";
         } catch (error) {
-          detailFailed(github, number, error);
+          if (!incompleteDetail) detailFailed(github, number, error);
         }
-        if (approval !== "current" && item.detail) item.detail.stale = true;
+        if ((approval === "stale" || (approval === "unknown" && !incompleteDetail)) && item.detail)
+          item.detail.stale = true;
         if (parent !== commit) approval = "stale";
         refresh();
         return context.json({ approval, ...(parent !== commit ? { reason: "head-changed" } : {}) });
