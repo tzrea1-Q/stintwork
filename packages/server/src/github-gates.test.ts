@@ -803,8 +803,8 @@ test("reopens an earlier GitHub gate and retains its approval", async () => {
   ).toBe(409);
 });
 
-test("refuses a later approval when an earlier approval is stale or unknown", async () => {
-  for (const reply of [{ stdout: { ...parent, body: "Changed" } }, { code: 1 }]) {
+test("refuses a later approval when earlier evidence is unavailable", async () => {
+  for (const reply of [{ code: 1 }]) {
     const { git, request, reviewedHead } = await setup({ [issue]: reply }, "spec");
     const reviewedDigest = await githubEvidenceDigestV2(
       { parentId: "I_1", body: "Changed", tickets: [] },
@@ -1075,6 +1075,19 @@ test.each([
   },
 );
 
+test("Spec approval accepts an earlier v1 approval after the parent body changes", async () => {
+  const { request, reviewedHead } = await setup(
+    { [issue]: { stdout: { ...parent, body: "Published spec" } } },
+    "spec",
+  );
+  const reviewedDigest = await githubEvidenceDigestV2(
+    { parentId: "I_1", body: "Published spec", tickets: [] },
+    false,
+  );
+  const response = await request({ stage: "spec", reviewedHead, reviewedDigest });
+  expect(response.status, await response.clone().text()).toBe(200);
+});
+
 test("fresh approval check distinguishes missing, unknown, stale, current and unavailable", async () => {
   const { root, reviewedDigest } = await setup();
   const check = (record: Parameters<typeof requireCurrentGithubApproval>[6]) =>
@@ -1093,6 +1106,35 @@ test("fresh approval check distinguishes missing, unknown, stale, current and un
     code: "approval-stale",
   });
   expect(await check({ approved: approval })).toEqual({ ok: true });
+  for (const version of [1, 2]) {
+    const old = { ...approval, remote: { ...approval.remote, version, digest: "old" } };
+    expect(
+      await requireCurrentGithubApproval(
+        root,
+        "Example/Project",
+        "I_1",
+        1,
+        false,
+        [],
+        { approved: old },
+        undefined,
+        true,
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      await requireCurrentGithubApproval(
+        root,
+        "Example/Project",
+        "I_1",
+        1,
+        false,
+        [],
+        { approved: { ...old, remote: { ...old.remote, parentId: "I_other" } } },
+        undefined,
+        true,
+      ),
+    ).toEqual({ ok: false, code: "approval-unknown" });
+  }
   const v1Digest = await githubEvidenceDigest(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,

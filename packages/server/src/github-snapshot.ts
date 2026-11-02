@@ -17,7 +17,7 @@ import {
   validateGithubIdentities,
   type GithubDiscovery,
 } from "./github-discovery.js";
-import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+import { githubGateIgnoresBody, githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export function projectGithubGates(
   snapshot: ProjectSnapshot,
@@ -133,7 +133,7 @@ export function projectGithubGates(
         !("parentId" in evidence) ||
         evidence.parentId !== remote?.id
           ? "unknown"
-          : evidence.digest === current
+          : githubGateIgnoresBody(stages, stage) || evidence.digest === current
             ? "current"
             : "stale";
       let headChanged = false;

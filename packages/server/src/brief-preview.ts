@@ -35,7 +35,7 @@ import {
   projectGithubGates,
   resolveGithubWorkflow,
 } from "./github-snapshot.js";
-import { githubGateIncludesTickets } from "./github-evidence-scope.js";
+import { githubGateIgnoresBody, githubGateIncludesTickets } from "./github-evidence-scope.js";
 
 export type GithubBriefSource = {
   getGithub: () => GithubDiscovery | undefined;
@@ -271,6 +271,7 @@ export async function prepareStintBrief(
         [...labels.values()],
         workItem.stages[prior.id],
         (error) => githubSource.detailFailed(github, remote.number, error),
+        githubGateIgnoresBody(stages, prior.id),
       );
       if (!approval.ok)
         return {
