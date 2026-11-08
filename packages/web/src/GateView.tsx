@@ -30,9 +30,11 @@ export function GateView({
   warnings = [],
   workflows = builtInWorkflows,
   githubReadOnly = false,
+  showHandoffAnswer = true,
 }: {
   item: BoardWorkItem;
   githubReadOnly?: boolean;
+  showHandoffAnswer?: boolean;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
@@ -159,7 +161,7 @@ export function GateView({
       </p>
       <h4>{t.stints.lastHandoff}</h4>
       {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
-      {unresolved?.kind === "handoff-unresolved" && (
+      {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
         <HandoffAnswer item={unresolved} onError={setError} showDetails={false} />
       )}
       <h4>{t.stints.openWarnings}</h4>

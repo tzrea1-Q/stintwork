@@ -56,7 +56,7 @@ export function HandoffAnswer({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (note.trim() && !sending && !submitted) void answer(note.trim());
+          if (note.trim() && !sending && !submitted) void answer(note);
         }}
       >
         <label htmlFor={noteId}>{t.needsYou.developerNote}</label>

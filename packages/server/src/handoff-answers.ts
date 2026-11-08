@@ -121,7 +121,7 @@ export function addHandoffAnswerRoute(
       (body.note !== null && (typeof body.note !== "string" || !body.note.trim()))
     )
       return context.json(coreTextWire({ reason: coreText({ code: "handoff.writeNote" }) }), 400);
-    const note = typeof body.note === "string" ? body.note.trim() : null;
+    const note = typeof body.note === "string" ? body.note : null;
     try {
       const files = readProjectFiles().files;
       for (const path of files

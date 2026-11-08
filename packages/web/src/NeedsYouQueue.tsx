@@ -322,6 +322,7 @@ export function NeedsYouQueue({
                   {item.kind === "gate-ready" && workItem && (
                     <GateView
                       item={workItem}
+                      showHandoffAnswer={false}
                       warnings={snapshot.warnings}
                       workflows={snapshot.workflows}
                     />

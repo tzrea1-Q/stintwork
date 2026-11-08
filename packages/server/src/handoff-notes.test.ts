@@ -164,6 +164,7 @@ test.each([
 ])(
   "a $stage handoff's note survives restart, reaches the next brief and fake agent, and is consumed on start (ticket $nextTicket)",
   async ({ stage, ticket, nextTicket }) => {
+    const note = "  Use CSV.\nKeep the header and use UTC.  ";
     const state = await fixture(stage);
     const remainingAttention =
       stage === "clarify" ? [{ kind: "gate-ready", id: 'gate-ready:["first","clarify"]' }] : [];
@@ -180,7 +181,7 @@ test.each([
         ticket,
       },
     ]);
-    const response = await answer(state.project, first.id, `  ${note}  `);
+    const response = await answer(state.project, first.id, note);
     expect(response.status).toBe(200);
     const receipt = await response.json();
     expect(receipt.answer).toEqual({ at: expect.any(String), note });

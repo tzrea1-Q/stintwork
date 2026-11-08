@@ -646,12 +646,12 @@ describe("Chinese Needs-you queue", () => {
     render(chineseBoard(mixedAttentionSnapshot()));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "待你处理 3" }));
-    await user.type(screen.getByRole("textbox", { name: "开发者备注" }), "Keep /path 原文");
+    await user.type(screen.getByRole("textbox", { name: "开发者备注" }), "  Keep /path 原文  ");
     await user.click(screen.getByRole("button", { name: "保存开发者备注" }));
     expect(await screen.findByText("已答复交接。")).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
       "/api/stints/finished-stint/handoff-answer",
-      expect.objectContaining({ body: JSON.stringify({ note: "Keep /path 原文" }) }),
+      expect.objectContaining({ body: JSON.stringify({ note: "  Keep /path 原文  " }) }),
     );
   });
 
