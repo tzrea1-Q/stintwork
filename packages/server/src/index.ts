@@ -221,7 +221,12 @@ export function createProjectServer(
     } else delete github.retryAt;
   }
   function failGithubDetail(current: GithubDiscovery, number: number, error: unknown) {
-    if (github !== current) return;
+    if (
+      github !== current ||
+      lifetime.signal.aborted ||
+      (error instanceof Error && error.name === "AbortError")
+    )
+      return;
     const item = current.items.find((entry) => entry.number === number);
     if (!item) return;
     const failure = classifyGithubError(error);
@@ -760,7 +765,10 @@ export function createProjectServer(
             ? {
                 ...item,
                 discoveryComplete: item.discoveryComplete ?? item.complete,
-                complete: false,
+                complete:
+                  item.complete &&
+                  earlier.detail.complete !== false &&
+                  !detailFailures.has(earlier.id),
                 detail: { ...earlier.detail, stale: true },
               }
             : item;
@@ -1114,7 +1122,13 @@ export function createProjectServer(
       updateGithubFreshness();
       verified = true;
       if (githubRateLimitCoolingDown(github)) return 429;
-      const repository = await githubTrackerRepository(root, true);
+      publish = beginDetail(number);
+      const [repositoryResult, detailResult] = await Promise.allSettled([
+        githubTrackerRepository(root, true),
+        readGithubTickets(root, current.repository, item.id, number),
+      ]);
+      if (repositoryResult.status === "rejected") throw repositoryResult.reason;
+      const repository = repositoryResult.value;
       if (
         repository.repositoryId !== current.repositoryId ||
         repository.repository.toLowerCase() !== current.repository.toLowerCase()
@@ -1122,8 +1136,8 @@ export function createProjectServer(
         repositoryMismatch = true;
         throw new GithubReadError("identity");
       }
-      publish = beginDetail(number);
-      const detail = await readGithubTickets(root, github.repository, item.id, number);
+      if (detailResult.status === "rejected") throw detailResult.reason;
+      const detail = detailResult.value;
       if (github !== current || githubSource !== source) throw new GithubReadError("identity");
       registerDetailIdentities(detail);
       publish(() => {
@@ -1147,7 +1161,12 @@ export function createProjectServer(
       } else retryStintDetail(number, 503);
       return 200;
     } catch (error) {
-      if (generation !== trackerGeneration) return 409;
+      if (
+        lifetime.signal.aborted ||
+        generation !== trackerGeneration ||
+        (error instanceof Error && error.name === "AbortError")
+      )
+        return 409;
       const failure = classifyGithubError(error);
       if (failure.code === "identity") {
         if (pendingRecovery.has(number)) {

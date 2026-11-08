@@ -82,6 +82,10 @@ export async function readGithubTickets(
         next: /^link:.*rel="next"/im.test(headers),
       };
     } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        failure ??= error;
+        throw error;
+      }
       const readError = classifyGithubError(error);
       if (!failure && (!optional || readError.code !== "unavailable")) {
         const connection =
@@ -135,6 +139,7 @@ export async function readGithubTickets(
         if (nodes.length >= 1000) throw new GithubReadError("cap");
         if (!result.next) return nodes;
       } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") throw error;
         const readError = classifyGithubError(error);
         if (!readError.message.includes(" Connection "))
           readError.message += ` Connection ${path.split("/").slice(-1)[0]} page ${page}.`;
@@ -276,7 +281,9 @@ export async function readGithubTickets(
       effective = [];
       for (const reference of textNumbers) {
         try {
-          const blocker = (await get(`${issuePath}${reference}`, true)).value as Issue;
+          const blocker =
+            children.find((candidate) => candidate.number === reference) ??
+            ((await get(`${issuePath}${reference}`, true)).value as Issue);
           if (!valid(blocker) || blocker.number !== reference)
             throw new GithubReadError("identity");
           effective.push(blocker);

@@ -1373,7 +1373,7 @@ test.each([
   ["tickets", "stale", false, 0],
   ["spec", "stale", true, 0],
   ["spec", "stale", true, 1],
-  ["tickets", "stale", false, 4],
+  ["tickets", "stale", false, 2],
 ] as const)(
   "%s approval is %s after a ticket edit (custom: %s, delayed read: %s)",
   async (stage, expected, custom, delayAt) => {
@@ -1400,13 +1400,14 @@ test.each([
       stage,
       false,
       delayAt
-        ? `const countFile = script + '.count';
+        ? `if (args[1] === ${JSON.stringify(`${issue.slice(4)}/sub_issues?per_page=100&page=1`)}) {
+           const countFile = script + '.count';
            const count = (fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0) + 1;
            fs.writeFileSync(countFile, String(count));
            if (count === ${delayAt}) {
              fs.writeFileSync(script + '.paused', '');
              while (!fs.existsSync(script + '.release')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-           }`
+           } }`
         : "",
       delayAt
         ? `if (args[1] === ${JSON.stringify(`${issue.slice(4)}/comments?per_page=100&page=1`)}) {

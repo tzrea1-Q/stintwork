@@ -211,6 +211,7 @@ export {
   type BriefInput,
   type BriefPointer,
   briefAvailability,
+  formatBlockers,
   compileBrief,
 } from "./brief.js";
 export * from "./pull-requests.js";

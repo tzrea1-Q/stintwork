@@ -67,7 +67,10 @@ export const en = {
       retry: "Retry",
       morePages: "More pages are available to load.",
       connectionsFailed: "Some connections failed or are incomplete.",
-      incompleteItems: "{count} items have incomplete membership.",
+      incompleteItems: (count: number) =>
+        `${count} ${count === 1 ? "item has" : "items have"} incomplete membership.`,
+      busy: "Discovery is busy. Retrying…",
+      detailUnavailable: "GitHub details are not available yet.",
       loadMore: "Load more",
       pending: "Refreshing…",
       unavailable: "GitHub issues unavailable",
@@ -759,7 +762,8 @@ export const en = {
     startFailed: "Could not start the stint.",
     briefPreview: "Brief preview",
     closeBrief: "Close brief preview",
-    briefTicket: (number: number) => `Ticket ${String(number).padStart(2, "0")}`,
+    briefTicket: (number: number, github = false) =>
+      `Ticket ${github ? `#${number}` : String(number).padStart(2, "0")}`,
     agent: "Agent",
     chooseAgent: "Choose an agent for this stint.",
     noAgents: "No agents are registered.",
