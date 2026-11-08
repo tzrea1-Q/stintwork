@@ -368,6 +368,12 @@ export function addStintRoutes(
         };
         console.error("Could not record stint finalization; checkpointing changes:", id, error);
       }
+      const preparationFailed =
+        status !== "finished" &&
+        !recovery &&
+        !closing &&
+        !workStarted &&
+        (!state.startReady || !!attempt);
       permissions.clear(id);
       let checkpointCommit: string | undefined;
       let checkpointWarnings: CheckpointWarning[] = [];
@@ -384,6 +390,7 @@ export function addStintRoutes(
         }
         verifiedWorktree = true;
         if (
+          !preparationFailed &&
           !(
             setupError instanceof CoreTextError &&
             setupError.coreText.code === "workflow.dirtyFile" &&
@@ -414,7 +421,7 @@ export function addStintRoutes(
         };
       }
       try {
-        if (verifiedWorktree)
+        if (verifiedWorktree && !preparationFailed)
           checkpointWarnings.push(...committedRiskyPaths(worktree.path, baseCommit));
       } catch (error) {
         if (!fallback) status = "failed";
@@ -431,12 +438,6 @@ export function addStintRoutes(
           findings: null,
           error: coreText({ code: "stint.reviewEndedEarly" }).text,
         };
-      const preparationFailed =
-        status !== "finished" &&
-        !recovery &&
-        !closing &&
-        !workStarted &&
-        (!state.startReady || !!attempt);
       const { error, handoffError, ...rest } = details;
       try {
         append({
@@ -1389,13 +1390,14 @@ export function addStintRoutes(
                   });
                 for (const text of setupMessages) progress(text);
                 if (setupFailed) throw setupError;
-                const previous = workItem.stints.find(
-                  (entry) => entry.status !== "preparation-failed",
-                );
+                const previous = workItem.stints[0];
                 await installWorktreeDependencies(
                   worktree.path,
                   progress,
-                  !!previous && ["failed", "interrupted", "stopped"].includes(previous.status),
+                  !!previous &&
+                    ["failed", "interrupted", "stopped", "preparation-failed"].includes(
+                      previous.status,
+                    ),
                   state.setupCancellation?.signal,
                 );
                 if (closing) throw new CoreTextError({ code: "server.stopping" });

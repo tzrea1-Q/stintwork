@@ -210,9 +210,8 @@ test.each([true, false])(
       },
     ]);
     expect(projectSnapshot.workItems[0].stints[0]).toMatchObject({
-      status: "failed",
+      status: "preparation-failed",
       error: refusal.reason,
-      checkpointCommit: expect.any(String),
     });
     const again = await start(project);
     expect(again.status).toBe(503);

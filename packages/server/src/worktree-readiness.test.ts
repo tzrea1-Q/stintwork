@@ -255,7 +255,7 @@ test.each(["authentication", "missing adapter", "missing Codex"])(
     expect((await response.json()).reason).toContain("codex login");
     const logs = await readdir(join(root, ".stintwork/local/stints"));
     const stint = await ended(root, logs[0].replace(".jsonl", ""));
-    expect(stint.status).toBe("failed");
+    expect(stint.status).toBe("preparation-failed");
     expect(stint.error).toContain("codex login");
     await expect(readFile(join(stint.worktree.path, "must-not-exist"))).rejects.toMatchObject({
       code: "ENOENT",
@@ -395,7 +395,7 @@ test("Stop during dependency setup refuses the pending start and never launches 
   await mkdir(bin);
   await writeFile(
     join(bin, "pnpm"),
-    `#!/bin/sh\nprintf 'installer waiting\\n'\nexec '${process.execPath}' -e 'setInterval(() => {}, 1000)'\n`,
+    `#!/bin/sh\nmkdir -p node_modules\nprintf 'installer waiting\\n'\nexec '${process.execPath}' -e 'setInterval(() => {}, 1000)'\n`,
     { mode: 0o755 },
   );
   vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
@@ -413,6 +413,12 @@ test("Stop during dependency setup refuses the pending start and never launches 
       { timeout: 10_000 },
     ) // waits for the fake installer to start; not a product deadline
     .toBe(true);
+  const started = JSON.parse(
+    (await readFile(join(directory, `${id}.jsonl`), "utf8")).split("\n")[0],
+  );
+  const worktreePath = started.stint.worktree.path;
+  await writeFile(join(worktreePath, "unrelated.txt"), "keep uncommitted");
+  const head = git(worktreePath, "rev-parse", "HEAD");
   expect((await project.app.request(`/api/stints/${id}/stop`, { method: "POST" })).status).toBe(
     202,
   );
@@ -423,11 +429,18 @@ test("Stop during dependency setup refuses the pending start and never launches 
   });
   const stint = await ended(root, id);
   expect(stint).toMatchObject({
-    status: "stopped",
+    status: "preparation-failed",
     handoff: null,
-    checkpointCommit: expect.any(String),
   });
+  expect(stint.checkpointCommit).toBeNull();
+  expect(git(worktreePath, "rev-parse", "HEAD")).toBe(head);
+  expect(await readFile(join(worktreePath, "unrelated.txt"), "utf8")).toBe("keep uncommitted");
+  expect(git(worktreePath, "status", "--porcelain")).toContain("?? unrelated.txt");
   await expect(readFile(join(stint.worktree.path, "must-not-exist"))).rejects.toMatchObject({
     code: "ENOENT",
   });
+  await writeFile(join(bin, "pnpm"), "#!/bin/sh\nprintf retried > retry-marker\n", { mode: 0o755 });
+  const retry = await start(project);
+  expect(retry.status).toBe(201);
+  expect(await readFile(join(worktreePath, "retry-marker"), "utf8")).toBe("retried");
 });

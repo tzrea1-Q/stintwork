@@ -229,7 +229,7 @@ test("Authentication required from an actual Grok stint is logged and rebuilds a
   const before = await snapshot(project);
   expect(before.workItems[0].stints[0]).toMatchObject({
     agent: "grok",
-    status: "failed",
+    status: "preparation-failed",
     error: expect.stringContaining("grok login"),
   });
   expect(before.attentionItems).toEqual([
