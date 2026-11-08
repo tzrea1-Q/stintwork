@@ -170,6 +170,7 @@ function BriefPreviewSheet({
   const [preparation, setPreparation] = useState<AgentPreparationProgress | null>(null);
   const [cancelled, setCancelled] = useState(false);
   const startRequest = useRef<AbortController>();
+  useEffect(() => () => startRequest.current?.abort(), []);
   const [stintId, setStintId] = useState<string>();
   const cancelRequested = useRef(false);
   const [startError, setStartError] = useErrorText();
@@ -232,13 +233,6 @@ function BriefPreviewSheet({
       setCopyStatus(t.stints.copyPromptFailed);
     }
   }
-
-  useEffect(
-    () => () => {
-      startRequest.current?.abort();
-    },
-    [],
-  );
 
   async function preparationAction(action: "stop" | "confirm-agent") {
     if (!stintId) return;

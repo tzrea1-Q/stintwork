@@ -405,6 +405,7 @@ export const en = {
       "Browser notifications were not enabled. Check this site's browser permissions to try again.",
     notificationsFailed: "Could not enable browser notifications.",
     preferenceFailed: "Your notification preference could not be saved in this browser.",
+    pendingPermissions: "Permission requests need your attention",
     tabTitle: (count: number, project: string) =>
       `${count ? `(${count}) ` : ""}${project} · Stintwork`,
     notificationTitle: (project: string) => `${project} · Needs you`,
@@ -900,6 +901,7 @@ export const en = {
       finished: "finished",
       stopped: "stopped",
       failed: "failed",
+      "preparation-failed": "preparation failed",
       interrupted: "interrupted",
     },
     progress: {

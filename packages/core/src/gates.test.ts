@@ -433,3 +433,13 @@ test("stale approval identity changes with the recorded approval and invalid dat
   approved.at = "not a date";
   expect(stale()?.raisedAt).toBe("1970-01-01T00:00:00.000Z");
 });
+
+test("failed preparation preserves the finished stage evidence", () => {
+  const workItem = item("spec");
+  const finished = stint("spec");
+  workItem.stints = [
+    stint("spec", { id: "preparation", status: "preparation-failed", handoff: null }),
+    finished,
+  ];
+  expect(gateReadiness(workItem)).toMatchObject({ ready: true, stageStint: finished });
+});

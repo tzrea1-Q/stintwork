@@ -9,7 +9,13 @@ import {
   fakeAgentProfiles,
   type FakeAgentStep,
 } from "@stintwork/agents/testing";
-import type { Brief, ProjectSnapshot, Stint, StintLogEntry } from "@stintwork/core";
+import {
+  gateReadiness,
+  type Brief,
+  type ProjectSnapshot,
+  type Stint,
+  type StintLogEntry,
+} from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
 import { createProjectServer } from "./index.js";
 
@@ -46,14 +52,31 @@ async function fixture(stage = "implement") {
   }
   git(root, "add", "--all");
   git(root, "commit", "--quiet", "-m", "Fixture");
-  const script = { work: [] as FakeAgentStep[], unresolved: "Which export format should be used?" };
+  const script = {
+    work: [] as FakeAgentStep[],
+    unresolved: "Which export format should be used?",
+    blockReady: false,
+  };
   const launchAgent = (input: Parameters<ReturnType<typeof createFakeAgentLauncher>>[0]) =>
-    createFakeAgentLauncher(script.work, [
-      {
-        type: "message",
-        text: `## Where I stopped\nExport written.\n## Unresolved\n${script.unresolved}\n## Suggested next\nChoose the format.`,
-      },
-    ])(input);
+    script.blockReady
+      ? (() => {
+          let finish!: (result: { stopReason: string }) => void;
+          return {
+            ready: new Promise<void>(() => {}),
+            done: new Promise<{ stopReason: string }>((resolve) => {
+              finish = resolve;
+            }),
+            cancel: async () => {
+              finish({ stopReason: "cancelled" });
+            },
+          };
+        })()
+      : createFakeAgentLauncher(script.work, [
+          {
+            type: "message",
+            text: `## Where I stopped\nExport written.\n## Unresolved\n${script.unresolved}\n## Suggested next\nChoose the format.`,
+          },
+        ])(input);
   const options = {
     agentRegistry: createAgentRegistry([{ ...fakeAgentProfiles.codex, launch: launchAgent }]),
     launchAgent,
@@ -209,6 +232,37 @@ test.each([
     expect((await ended(state.project, first.id)).handoffAnswer).toEqual(receipt.answer);
   },
 );
+
+test("a pre-ready disconnect preserves gate evidence and developer notes", async () => {
+  const state = await fixture("clarify");
+  const first = await start(state.project, null);
+  await ended(state.project, first.id);
+  await answer(state.project, first.id, note);
+  const before = await preview(state.project, null);
+  expect(before.developerNotes).toHaveLength(1);
+  expect(gateReadiness((await snapshot(state.project)).workItems[0]).ready).toBe(true);
+  state.script.blockReady = true;
+  const controller = new AbortController();
+  const request = state.project.app.request("/api/stints", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ workItem: "first", ticket: null, agent: "codex" }),
+    signal: controller.signal,
+  });
+  await expect
+    .poll(async () =>
+      (await snapshot(state.project)).workItems[0].stints.some(
+        (stint) => stint.status === "running",
+      ),
+    )
+    .toBe(true);
+  controller.abort();
+  expect((await request).status).toBe(503);
+  const item = (await snapshot(state.project)).workItems[0];
+  expect(item.stints[0].status).toBe("preparation-failed");
+  expect(gateReadiness(item).ready).toBe(true);
+  expect((await preview(state.project, null)).developerNotes).toEqual(before.developerNotes);
+});
 
 test("dismissing a handoff removes it across restarts without creating a developer note", async () => {
   const state = await fixture();

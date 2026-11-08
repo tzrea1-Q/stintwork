@@ -17,7 +17,11 @@ export function pendingDeveloperNotes(
   reviewNotes: readonly DeveloperNote[] = [],
 ): DeveloperNote[] {
   const consumed = new Set(
-    stints.flatMap((stint) => stint.brief.developerNotes?.map((note) => note.id) ?? []),
+    stints.flatMap((stint) =>
+      stint.status === "preparation-failed"
+        ? []
+        : (stint.brief.developerNotes?.map((note) => note.id) ?? []),
+    ),
   );
   return [
     ...reviewNotes.filter((note) => !consumed.has(note.id)),

@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { createFakeAgentLauncher, sourceNodeArgs } from "@stintwork/agents/testing";
 import {
   createAgentRegistry,
@@ -27,11 +27,13 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
+import * as git from "@stintwork/git";
 import { WebSocket } from "ws";
 import { codexProfile } from "../../agents/src/profiles.js";
 import type { StintServerOptions } from "./stints.js";
 import { createProjectServer } from "./index.js";
 import * as stintHistory from "./stint-history.js";
+import * as briefPreview from "./brief-preview.js";
 
 const fixtures: {
   parent: string;
@@ -92,6 +94,7 @@ afterEach(async () => {
     await project.stop();
     await rm(parent, { recursive: true, force: true });
   }
+  vi.unstubAllEnvs();
 });
 function start(
   project: ReturnType<typeof createProjectServer>,
@@ -924,7 +927,7 @@ test("preparation cancellation launches nothing and permits retry with unchanged
     done: Promise.resolve({ stopReason: "end_turn" }),
     cancel: async () => {},
   }));
-  const { project } = await fixture(launch, { prepareAgent });
+  const { project, root } = await fixture(launch, { prepareAgent });
   const stream = await streamedStart(project);
   const confirmation = await stream.until("preparation", "confirm");
   expect(
@@ -932,6 +935,19 @@ test("preparation cancellation launches nothing and permits retry with unchanged
       .status,
   ).toBe(202);
   expect((await stream.until("result")).status).toBe(503);
+  const cancellation = (
+    await readFile(join(root, `.stintwork/local/stints/${confirmation.stintId}.jsonl`), "utf8")
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .at(-1);
+  expect(cancellation.errorMessage.code).toBe("agent.preparationCancelled");
+  expect(
+    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
+      /^worktree /gm,
+    ),
+  ).toHaveLength(1);
   expect(download).not.toHaveBeenCalled();
   expect(launch).not.toHaveBeenCalled();
   const retry = await streamedStart(project);
@@ -941,7 +957,7 @@ test("preparation cancellation launches nothing and permits retry with unchanged
   expect(prepareAgent).toHaveBeenCalledTimes(2);
 });
 
-test("preparation authentication-required points to the developer's login without launching or writing a worktree", async () => {
+test("preparation authentication-required records a failure and points to the developer's login", async () => {
   const launch = vi.fn<AgentLauncher>();
   const error = Object.assign(new Error("Authentication required"), { code: -32000 });
   const registry = createAgentRegistry([{ ...codexProfile, launch }]);
@@ -962,87 +978,80 @@ test("preparation authentication-required points to the developer's login withou
     checkedAt: expect.any(String),
   });
   expect(launch).not.toHaveBeenCalled();
-  expect(
-    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
-      /^worktree /gm,
-    ),
-  ).toHaveLength(1);
+  const files = await readdir(join(root, ".stintwork/local/stints"));
+  const log = await readFile(join(root, ".stintwork/local/stints", files[0]), "utf8");
+  expect(log).toContain("codex login");
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "preparation-failed",
+    error: expect.stringContaining("codex login"),
+  });
 });
 
-test.each(["already aborted", "during preflight"])(
-  "a request disconnected %s never prepares or locks the work item",
-  async (when) => {
-    const launch = vi.fn<AgentLauncher>(() => ({
-      ready: Promise.resolve(),
-      done: Promise.resolve({ stopReason: "end_turn" }),
-      cancel: async () => {},
-    }));
-    const prepareAgent = fakePreparation();
-    let release: () => void = () => {};
-    let entered: () => void = () => {};
-    const pending = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const inspecting = new Promise<void>((resolve) => {
-      entered = resolve;
-    });
-    let hold = false;
-    const registry = createAgentRegistry([
-      {
-        ...codexProfile,
-        launch,
-        detectAvailability: async () => {
-          if (hold) {
-            entered();
-            await pending;
-          }
-          return { available: false, canStart: true, kind: "not-prepared" };
-        },
-      },
-    ]);
-    const { project, root } = await fixture(launch, { prepareAgent, agentRegistry: registry });
-    await project.app.request("/api/health");
-    const request = new AbortController();
-    if (when === "already aborted") request.abort();
-    else hold = true;
-    const starting = streamedStart(project, request.signal);
-    if (hold) {
-      await inspecting;
-      request.abort();
-      release();
-      hold = false;
-    }
-    const stream = await starting;
-    expect((await stream.until("result")).status).toBe(503);
-    expect(prepareAgent).not.toHaveBeenCalled();
-    expect(launch).not.toHaveBeenCalled();
-    expect(
-      execFileSync("git", ["worktree", "list", "--porcelain"], {
-        cwd: root,
-        encoding: "utf8",
-      }).match(/^worktree /gm),
-    ).toHaveLength(1);
-    expect((await start(project)).status).toBe(201);
-    expect(prepareAgent).toHaveBeenCalledTimes(1);
-  },
-);
-
-test("raw request cancellation aborts pending preparation and releases the work item", async () => {
+test("a disconnected start during preparation records a failure with its reason", async () => {
   const prepareAgent = fakePreparation();
   const launch = vi.fn<AgentLauncher>(() => ({
     ready: Promise.resolve(),
     done: Promise.resolve({ stopReason: "end_turn" }),
     cancel: async () => {},
   }));
-  const { project } = await fixture(launch, { prepareAgent });
+  const { project, root } = await fixture(launch, { prepareAgent });
   const request = new AbortController();
   const stream = await streamedStart(project, request.signal);
-  await stream.until("preparation", "confirm");
+  const confirmation = await stream.until("preparation", "confirm");
   request.abort();
   expect((await stream.until("result")).status).toBe(503);
-  expect(prepareAgent.mock.calls[0][0].signal?.aborted).toBe(true);
+  const log = await readFile(
+    join(root, `.stintwork/local/stints/${confirmation.stintId}.jsonl`),
+    "utf8",
+  );
+  expect(log).not.toContain("stop_requested");
+  expect(JSON.parse(log.trim().split("\n").at(-1) as string)).toMatchObject({
+    error: expect.stringContaining("Start connection closed"),
+  });
   expect(launch).not.toHaveBeenCalled();
-  expect((await start(project)).status).toBe(201);
+});
+
+test("worktree creation failure remains in history after the start response", async () => {
+  const { project } = await fixture();
+  const worktree = vi
+    .spyOn(git, "ensureWorktree")
+    .mockRejectedValueOnce(new Error("Worktree failed"));
+  try {
+    const response = await start(project);
+    expect(response.status).toBe(503);
+    expect((await response.json()).reason).toContain("Worktree failed");
+    const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+    expect(snapshot.workItems[0].stints[0]).toMatchObject({
+      status: "preparation-failed",
+      error: expect.stringContaining("Worktree failed"),
+    });
+  } finally {
+    worktree.mockRestore();
+  }
+});
+
+test("disconnect after launch cancels the agent before ready and records the reason", async () => {
+  let finish!: (result: { stopReason: string }) => void;
+  const done = new Promise<{ stopReason: string }>((resolve) => {
+    finish = resolve;
+  });
+  const cancel = vi.fn(async () => {
+    finish({ stopReason: "cancelled" });
+  });
+  const launch = vi.fn<AgentLauncher>(() => ({ ready: new Promise(() => {}), done, cancel }));
+  const { project } = await fixture(launch);
+  const request = new AbortController();
+  const stream = await streamedStart(project, request.signal);
+  await expect.poll(() => launch.mock.calls.length).toBe(1);
+  request.abort();
+  expect((await stream.until("result")).status).toBe(503);
+  expect(cancel).toHaveBeenCalledOnce();
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "preparation-failed",
+    error: expect.stringContaining("Start connection closed"),
+  });
 });
 
 test.each([
@@ -1051,50 +1060,115 @@ test.each([
   "Disk full",
   "Permission denied",
   "Provider unavailable",
-])(
-  "%s during preparation stays unavailable, writes no worktree/log and permits explicit retry",
-  async (message) => {
-    const launch = vi.fn<AgentLauncher>(() => ({
-      ready: Promise.resolve(),
-      done: Promise.resolve({ stopReason: "end_turn" }),
-      cancel: async () => {},
-    }));
-    const prepareAgent = fakePreparation();
-    prepareAgent.mockImplementationOnce(async (options) => {
-      options.onProgress?.({ ...selectedPreparation, phase: "installing" });
-      throw new Error(message);
-    });
-    const registry = createAgentRegistry([{ ...codexProfile, launch }]);
-    const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
-    const ticket = await readFile(join(root, ticketPath));
-    const response = await start(project);
-    expect(response.status).toBe(503);
-    expect((await response.json()).reason).toContain(message);
-    expect(prepareAgent).toHaveBeenCalledTimes(1);
-    expect(launch).not.toHaveBeenCalled();
-    const agents = await (await project.app.request("/api/agents?refresh=true")).json();
-    expect(agents.agents[0].availability).toMatchObject({
-      available: false,
-      canStart: true,
-      kind: "preparation-failed",
-    });
-    expect(
-      execFileSync("git", ["worktree", "list", "--porcelain"], {
-        cwd: root,
-        encoding: "utf8",
-      }).match(/^worktree /gm),
-    ).toHaveLength(1);
-    expect(await readFile(join(root, ticketPath))).toEqual(ticket);
-    await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-    expect((await start(project)).status).toBe(201);
-    expect(prepareAgent).toHaveBeenCalledTimes(2);
-    expect(launch).toHaveBeenCalledWith(
-      expect.objectContaining({ preparedAgent: selectedPreparation }),
-    );
-  },
-);
+])("%s during preparation records a failure and permits explicit retry", async (message) => {
+  const launch = vi.fn<AgentLauncher>(() => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  }));
+  const prepareAgent = fakePreparation();
+  prepareAgent.mockImplementationOnce(async (options) => {
+    options.onProgress?.({ ...selectedPreparation, phase: "installing" });
+    throw new Error(message);
+  });
+  const registry = createAgentRegistry([{ ...codexProfile, launch }]);
+  const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+  const ticket = await readFile(join(root, ticketPath));
+  const response = await start(project);
+  expect(response.status).toBe(503);
+  expect((await response.json()).reason).toContain(message);
+  expect(prepareAgent).toHaveBeenCalledTimes(1);
+  expect(launch).not.toHaveBeenCalled();
+  const agents = await (await project.app.request("/api/agents?refresh=true")).json();
+  expect(agents.agents[0].availability).toMatchObject({
+    available: false,
+    canStart: true,
+    kind: "preparation-failed",
+  });
+  expect(await readFile(join(root, ticketPath))).toEqual(ticket);
+  const logs = await readdir(join(root, ".stintwork/local/stints"));
+  const record = JSON.parse(
+    (await readFile(join(root, ".stintwork/local/stints", logs[0]), "utf8"))
+      .trim()
+      .split("\n")
+      .at(-1) as string,
+  );
+  expect(record).toMatchObject({ error: expect.stringContaining(message) });
+  expect(
+    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
+      /^worktree /gm,
+    ),
+  ).toHaveLength(1);
+  expect((await start(project)).status).toBe(201);
+  expect(prepareAgent).toHaveBeenCalledTimes(2);
+  expect(launch).toHaveBeenCalledWith(
+    expect.objectContaining({ preparedAgent: selectedPreparation }),
+  );
+});
+
+test("adapter preparation failure preserves existing dependencies on retry", async () => {
+  const launch: AgentLauncher = () => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  });
+  const prepareAgent = fakePreparation();
+  prepareAgent.mockRejectedValueOnce(new Error("Adapter unavailable"));
+  const registry = createAgentRegistry([{ ...codexProfile, launch }]);
+  const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+  const worktree = await git.ensureWorktree(root, "first");
+  await writeFile(join(worktree.path, "package-lock.json"), "{}");
+  await mkdir(join(worktree.path, "node_modules"));
+  await writeFile(join(worktree.path, "node_modules", "keep"), "usable");
+  const bin = join(root, "fake-bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nrm -rf node_modules\nexit 1\n", { mode: 0o755 });
+  vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
+
+  expect((await start(project)).status).toBe(503);
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "preparation-failed",
+    dependencySetupStarted: false,
+  });
+  const retry = await start(project);
+  expect(retry.status).toBe(201);
+  await finished(project, (await retry.json()).stint.id);
+  expect(await readFile(join(worktree.path, "node_modules", "keep"), "utf8")).toBe("usable");
+});
+
+test("an install failure survives an intervening adapter preparation failure", async () => {
+  const launch: AgentLauncher = () => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  });
+  const prepareAgent = fakePreparation();
+  prepareAgent
+    .mockResolvedValueOnce(selectedPreparation)
+    .mockRejectedValueOnce(new Error("Adapter unavailable"));
+  const registry = createAgentRegistry([{ ...codexProfile, launch }]);
+  const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+  const worktree = await git.ensureWorktree(root, "first");
+  await writeFile(join(worktree.path, "package-lock.json"), "{}");
+  const bin = join(root, "fake-bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nmkdir -p node_modules\nexit 1\n", { mode: 0o755 });
+  vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
+
+  expect((await start(project)).status).toBe(503);
+  expect((await start(project)).status).toBe(503);
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints.slice(0, 2)).toMatchObject([
+    { status: "preparation-failed", dependencySetupStarted: false },
+    { status: "preparation-failed", dependencySetupStarted: true },
+  ]);
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nprintf retried > retry-marker\n", { mode: 0o755 });
+  const retry = await start(project);
+  expect(retry.status).toBe(201);
+  await finished(project, (await retry.json()).stint.id);
+  expect(await readFile(join(worktree.path, "retry-marker"), "utf8")).toBe("retried");
+});
 
 test("package completion is not login readiness; Ready waits for the current launch", async () => {
   let ready!: () => void;
@@ -1183,9 +1257,18 @@ test("HTTP preparation disconnect cancels before download and a new request retr
   await cancellation;
   expect(download).not.toHaveBeenCalled();
   expect(launch).not.toHaveBeenCalled();
-  await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
-    code: "ENOENT",
-  });
+  await expect
+    .poll(async () => {
+      try {
+        const files = await readdir(join(root, ".stintwork/local/stints"));
+        return (await readFile(join(root, ".stintwork/local/stints", files[0]), "utf8")).includes(
+          '"status":"preparation-failed"',
+        );
+      } catch {
+        return false;
+      }
+    })
+    .toBe(true);
   // A conflict while cancellation finishes is safe; the first accepted retry must launch once.
   await expect
     .poll(async () => {
@@ -1292,7 +1375,7 @@ test.each(
     if (failSession) {
       expect(response.status).toBe(503);
       expect(entries().some((entry) => entry.kind === "session")).toBe(false);
-      expect(entries().at(-1)).toMatchObject({ type: "ended", status: "failed" });
+      expect(entries().at(-1)).toMatchObject({ type: "ended", status: "preparation-failed" });
       const worktree = entries()[0].stint.worktree.path;
       await expect(readFile(join(worktree, "work.txt"))).rejects.toMatchObject({ code: "ENOENT" });
       return;
@@ -1409,7 +1492,7 @@ test.each([false, true])(
   },
 );
 
-test("disconnecting a pending start with an unwritable log leaves the server and stint running", async () => {
+test("disconnecting a pending start cancels even while its log is unwritable", async () => {
   const { root } = await fixture();
   const output = execFileSync(
     process.execPath,
@@ -1433,7 +1516,7 @@ test("disconnecting a pending start with an unwritable log leaves the server and
           const handle = {
             ready: new Promise(resolve => { ready = resolve; }),
             done: new Promise(resolve => { complete = resolve; }),
-            async cancel() { cancellations++; complete({ stopReason: 'cancelled' }); },
+            async cancel() { cancellations++; },
           };
           launched();
           return handle;
@@ -1454,29 +1537,23 @@ test("disconnecting a pending start with an unwritable log leaves the server and
       try {
         request.abort();
         await setImmediate(); // Node rethrows AbortSignal listener errors on the next tick.
-        assert.equal(cancellations, 0, 'No cancellation without durable Stop intent');
-        assert.ok(reports.some(args => String(args[0]).includes('Stop intent')));
+        assert.equal(cancellations, 1);
+        assert.equal(reports.length, 0);
         assert.equal((await project.app.request('/api/health')).status, 200);
       } finally {
         rmdirSync(path);
         renameSync(path + '.saved', path);
       }
       assert.equal(readFileSync(path, 'utf8'), original);
-      ready();
+      complete({ stopReason: 'cancelled' });
       const response = await starting;
-      assert.equal(response.status, 201);
-      const { stint } = await response.json();
-      assert.equal((await project.app.request('/api/stints/' + stint.id + '/stop', { method: 'POST' })).status, 202);
-      const deadline = Date.now() + 2000;
-      while ((await (await project.app.request('/api/stints/' + stint.id)).json()).stint.status === 'running') {
-        assert.ok(Date.now() < deadline, 'Stop must finish');
-        await setImmediate();
-      }
+      assert.equal(response.status, 503);
       await project.stop();
       const entries = readFileSync(path, 'utf8').trim().split('\\n').map(line => JSON.parse(line));
-      assert.equal(entries.filter(entry => entry.kind === 'stop_requested').length, 1);
+      assert.equal(entries.filter(entry => entry.kind === 'stop_requested').length, 0);
       assert.equal(entries.filter(entry => entry.type === 'ended').length, 1);
-      assert.equal(entries.at(-1).status, 'stopped');
+      assert.equal(entries.at(-1).status, 'preparation-failed');
+      assert.match(entries.at(-1).error, /Start connection closed/);
       assert.equal(cancellations, 1);
       process.stdout.write('survived');
     `,
@@ -1581,6 +1658,88 @@ test.each(["metadata", "entire log"])(
       }
       writes.mockRestore();
       report.mockRestore();
+    }
+  },
+);
+
+test.each(["worktree", "worktree-created", "brief", "brief-failure"] as const)(
+  "cancellation during %s setup commits inherited agents and permits retry",
+  async (boundary) => {
+    const launch = vi.fn<AgentLauncher>(() => ({
+      ready: Promise.resolve(),
+      done: Promise.resolve({ stopReason: "end_turn" }),
+      cancel: async () => {},
+    }));
+    const { root, project } = await fixture(launch);
+    const path = ".scratch/first/workflow.yaml";
+    await writeFile(
+      join(root, path),
+      "workflow: feature\nstage: implement\nstages:\n  implement:\n    agent: codex\n  review:\n    agent: claude\n",
+    );
+    let entered!: () => void;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalWorktree = git.ensureWorktree;
+    const originalBrief = briefPreview.prepareStintBrief;
+    let calls = 0;
+    const worktreeSpy = vi.spyOn(git, "ensureWorktree").mockImplementation(async (...args) => {
+      if (boundary === "worktree") {
+        entered();
+        await blocked;
+      }
+      const worktree = await originalWorktree(...args);
+      if (boundary === "worktree-created") {
+        entered();
+        await blocked;
+      }
+      return worktree;
+    });
+    const briefSpy = vi
+      .spyOn(briefPreview, "prepareStintBrief")
+      .mockImplementation(async (...args) => {
+        const result = await originalBrief(...args);
+        if (++calls === 2 && (boundary === "brief" || boundary === "brief-failure")) {
+          entered();
+          await blocked;
+          if (boundary === "brief-failure") throw new Error("Brief failed");
+        }
+        return result;
+      });
+    const controller = new AbortController();
+    try {
+      const request = project.app.request("/api/stints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+        signal: controller.signal,
+      });
+      await pending;
+      controller.abort();
+      release();
+      expect((await request).status).toBe(503);
+      expect(launch).not.toHaveBeenCalled();
+      const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+      expect(snapshot.workItems[0].stints[0]).toMatchObject({ status: "preparation-failed" });
+      const worktree = await git.worktreePath(root, "first");
+      const command = (...args: string[]) =>
+        execFileSync("git", args, { cwd: worktree, encoding: "utf8" }).trim();
+      expect(command("status", "--porcelain", "--", path)).toBe("");
+      expect(command("show", `HEAD:${path}`)).toContain("review:\n    agent: claude");
+      const retry = await start(project);
+      expect(retry.status, await retry.clone().text()).toBe(201);
+      const { stint } = await retry.json();
+      await finished(project, stint.id);
+      expect(launch).toHaveBeenCalledOnce();
+      expect(command("show", `HEAD:${path}`)).toContain("review:\n    agent: claude");
+    } finally {
+      release();
+      worktreeSpy.mockRestore();
+      briefSpy.mockRestore();
     }
   },
 );

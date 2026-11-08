@@ -170,6 +170,15 @@ export function Board({
         onOpenNeedsYou={() => setNeedsYouOpen(true)}
         onOpenPalette={() => setPaletteOpen(true)}
       />
+      {snapshot.attentionItems.some((item) => item.kind === "permission") && (
+        <button
+          type="button"
+          className="border-b border-warning bg-surface px-4 py-2 text-left text-sm text-warning"
+          onClick={() => setNeedsYouOpen(true)}
+        >
+          {t.needsYou.pendingPermissions}
+        </button>
+      )}
       <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="pipeline-heading flex flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6">
           <div>
@@ -417,6 +426,7 @@ export function Board({
         <NeedsYouQueue
           snapshot={snapshot}
           alerts={alerts}
+          openSlug={openSlug}
           onClose={() => setNeedsYouOpen(false)}
           onOpenItem={openWorkItem}
         />
@@ -424,6 +434,8 @@ export function Board({
       {openItem && (
         <WorkItemDrawer
           workflows={snapshot.workflows}
+          pendingPermissions={snapshot.attentionItems.some((item) => item.kind === "permission")}
+          onOpenNeedsYou={() => setNeedsYouOpen(true)}
           warnings={snapshot.warnings}
           key={openItem.slug}
           item={openItem}

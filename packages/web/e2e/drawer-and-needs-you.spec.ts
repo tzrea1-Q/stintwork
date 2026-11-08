@@ -331,6 +331,10 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.goto("/");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         const trigger = page.locator("#needs-you-trigger");
+        await expect(
+          page.getByRole("button", { name: t.needsYou.pendingPermissions }),
+        ).toBeVisible();
+        await expect(page).toHaveTitle(new RegExp(t.needsYou.pendingPermissions));
         await expect(trigger).toHaveAccessibleName(
           `${t.topBar.needsYou} 8 · ${t.warningCallout.title(1)}`,
         );
@@ -420,6 +424,9 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(sheet).not.toBeVisible();
         const drawer = page.locator(".work-item-drawer");
         const drawerClose = drawer.getByRole("button", { name: t.stints.closeWorkItem });
+        await expect(
+          drawer.getByRole("button", { name: t.needsYou.pendingPermissions }),
+        ).toBeVisible();
         await expect(drawerClose).toBeFocused();
         await captureSheet(page, testInfo, ".work-item-drawer", "needs-you-navigation-drawer");
         await drawerClose.click();
