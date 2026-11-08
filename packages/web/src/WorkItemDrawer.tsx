@@ -90,6 +90,9 @@ export function WorkItemDrawer({
   const [refreshError, setRefreshError] = useErrorText();
   const refreshed = useRef<number>();
   const githubNumber = item.github?.number;
+  const missingShippedDetail = !!item.merged && !!item.github && !item.github.ticketsKnown;
+  const ticketNumber = (number: number) =>
+    item.github ? `#${number}` : String(number).padStart(2, "0");
   // biome-ignore lint/correctness/useExhaustiveDependencies: Retry intentionally restarts this effect.
   useEffect(() => {
     if (githubNumber === undefined || refreshed.current === githubNumber) return;
@@ -333,6 +336,8 @@ export function WorkItemDrawer({
                   <FilePath path={item.spec.path} />
                   <Markdown>{item.spec.text}</Markdown>
                 </>
+              ) : missingShippedDetail ? (
+                <p className="muted text-muted">{t.board.githubStatus.detailUnavailable}</p>
               ) : (
                 <p className="muted text-muted">{t.stints.noSpec}</p>
               )}
@@ -371,7 +376,7 @@ export function WorkItemDrawer({
                             />
                             <span className="ticket-title grid min-w-0 gap-1 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
                               <strong>
-                                {String(ticket.number).padStart(2, "0")} · {ticket.title}
+                                {ticketNumber(ticket.number)} · {ticket.title}
                               </strong>
                               <small
                                 className={
@@ -393,9 +398,7 @@ export function WorkItemDrawer({
                                   <>
                                     {" "}
                                     {t.stints.blockedBy}{" "}
-                                    {ticket.blockedBy
-                                      .map((number) => String(number).padStart(2, "0"))
-                                      .join(", ")}
+                                    {ticket.blockedBy.map(ticketNumber).join(", ")}
                                   </>
                                 )}
                               </small>
@@ -416,6 +419,8 @@ export function WorkItemDrawer({
                     );
                   })}
                 </ol>
+              ) : missingShippedDetail ? (
+                <p className="muted text-muted">{t.board.githubStatus.detailUnavailable}</p>
               ) : (
                 <p className="muted text-muted">{t.stints.noTickets}</p>
               )}

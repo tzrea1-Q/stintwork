@@ -106,11 +106,21 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
     const server = createProjectServer(root, join(root, "web"));
     try {
       await server.app.request("/api/project");
+      const overlapPath = join(root, "overlap.jsonl");
+      const overlap = (name: string) =>
+        `fs.appendFileSync(${JSON.stringify(overlapPath)}, "start ${name}\\n"); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500); fs.appendFileSync(${JSON.stringify(overlapPath)}, "end ${name}\\n");`;
+      await gh.script({
+        ...replies,
+        "api repos/github/gh-aw": { ...replies["api repos/github/gh-aw"], effect: overlap("repo") },
+        "api repos/github/gh-aw/issues/1433": { stdout: parent, effect: overlap("parent") },
+      });
       const callsBefore = (await gh.calls()).length;
       const response = await server.app.request("/api/github/items/1433/refresh", {
         method: "POST",
       });
       expect(response.status).toBe(200);
+      const overlapEvents = (await readFile(overlapPath, "utf8")).trim().split("\n");
+      expect(overlapEvents.slice(0, 2).sort()).toEqual(["start parent", "start repo"]);
       const snapshot = await response.json();
       const calls = (await gh.calls()).slice(callsBefore);
       expect(calls.filter(({ args }) => args[0] === "api" && args[1] === "user")).toHaveLength(0);

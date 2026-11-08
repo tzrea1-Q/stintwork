@@ -19,6 +19,10 @@ test("brief availability keeps English and typed blockers in one message", () =>
     params: { tickets: "01, 12" },
   });
   expect(briefAvailability(workItem, ticket)?.text ?? null).toBe("Blocked by ticket 01, 12.");
+  expect(briefAvailability({ ...workItem, github: { number: 9 } }, ticket)).toMatchObject({
+    text: "Blocked by ticket #1, #12.",
+    params: { tickets: "#1, #12" },
+  });
   expect(briefAvailability(workItem, { ...ticket, resolved: true })).toEqual({
     text: "This ticket is resolved.",
     code: "brief.ticketResolved",

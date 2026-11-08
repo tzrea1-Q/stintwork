@@ -47,9 +47,15 @@ export type BriefInput = {
   };
 };
 
+export function formatBlockers(blockers: readonly number[], github: boolean) {
+  return blockers
+    .map((number) => (github ? `#${number}` : String(number).padStart(2, "0")))
+    .join(", ");
+}
+
 export function briefAvailability(
   workItem: Pick<StagedWorkItem, "type" | "stage"> &
-    Partial<Pick<StagedWorkItem, "workflow" | "merged">>,
+    Partial<Pick<StagedWorkItem, "workflow" | "merged">> & { github?: { number: number } },
   ticket?: Pick<Ticket, "resolved" | "blocked" | "blockedBy"> | null,
   workflows: WorkflowDefinitions = builtInWorkflows,
 ) {
@@ -66,7 +72,7 @@ export function briefAvailability(
   }
   if (ticket.resolved) return coreText({ code: "brief.ticketResolved" });
   if (ticket.blocked) {
-    const tickets = ticket.blockedBy.map((number) => String(number).padStart(2, "0")).join(", ");
+    const tickets = formatBlockers(ticket.blockedBy, !!workItem.github);
     return coreText({ code: "brief.blockedBy", params: { tickets } });
   }
   return null;

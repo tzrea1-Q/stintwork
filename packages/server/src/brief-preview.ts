@@ -4,6 +4,7 @@ import {
   coreTextWire,
   coreText,
   briefAvailability,
+  formatBlockers,
   compileBrief,
   indexProject,
   readWorkflow,
@@ -236,7 +237,7 @@ export async function prepareStintBrief(
         ? { text: ownDetail.warnings.join(" ") }
         : coreText({
             code: "brief.blockedBy",
-            params: { tickets: ticket.blockedBy.map((n) => String(n).padStart(2, "0")).join(", ") },
+            params: { tickets: formatBlockers(ticket.blockedBy, true) },
           }),
       status: 409 as const,
     };
@@ -279,6 +280,7 @@ export async function prepareStintBrief(
         workItem.stages[prior.id],
         (error) => githubSource.detailFailed(github, remote.number, error),
         githubGateIgnoresBody(stages, prior.id),
+        ownDetail ? Promise.resolve(ownDetail) : undefined,
       );
       if (!approval.ok)
         return {
