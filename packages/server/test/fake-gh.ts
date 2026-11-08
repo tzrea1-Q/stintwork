@@ -4,7 +4,7 @@ import { delimiter, join } from "node:path";
 
 export type GhReply = { stdout?: unknown; code?: number; effect?: string };
 
-export async function fakeGh(directory: string) {
+export async function fakeGh(directory: string, beforePublish = "", beforeRead = "") {
   await mkdir(directory, { recursive: true });
   const script = join(directory, "script.json");
   const log = join(directory, "calls.jsonl");
@@ -17,12 +17,29 @@ const { execFileSync } = require('node:child_process');
 const args = process.argv.slice(2);
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, cwd: process.cwd() }) + '\\n');
 const script = ${JSON.stringify(script)};
+${beforeRead}
+const lock = script + '.lock';
+while (true) {
+  try { fs.mkdirSync(lock); break; }
+  catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+  }
+}
+let next;
+try {
 const replies = JSON.parse(fs.readFileSync(script, 'utf8'));
 const key = args.slice(0, 2).join(' ');
 const reply = replies[key];
-if (!reply) { console.error('Unscripted gh invocation: ' + args.join(' ')); process.exit(99); }
-const next = Array.isArray(reply) ? (reply.length > 1 ? reply.shift() : reply[0]) : reply;
-if (Array.isArray(reply)) fs.writeFileSync(script, JSON.stringify(replies));
+if (!reply) throw new Error('Unscripted gh invocation: ' + args.join(' '));
+next = Array.isArray(reply) ? (reply.length > 1 ? reply.shift() : reply[0]) : reply;
+if (Array.isArray(reply)) {
+  const temporary = script + '.' + process.pid;
+  fs.writeFileSync(temporary, JSON.stringify(replies));
+  ${beforePublish}
+  fs.renameSync(temporary, script);
+}
+} finally { fs.rmdirSync(lock); }
 if (next.effect) new Function('execFileSync', 'args', 'fs', 'script', next.effect)(execFileSync, args, fs, script);
 process.stdout.write(typeof next.stdout === 'string' ? next.stdout : JSON.stringify(next.stdout ?? {}));
 process.exit(next.code ?? 0);

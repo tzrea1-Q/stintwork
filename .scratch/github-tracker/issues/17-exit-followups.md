@@ -96,3 +96,9 @@ The requested commit could not be staged: the sandbox denied creation of the wor
 - PR-identity and head-change handling.
 
 The final review is clean. Two criteria are ticked.
+
+**Codex, 2026-11-08:** The intermittent gate failures come from the test fake, not a background viewer or detail refresh: these cases mount `addGithubGateRoutes` directly, with no server background work. Batch D makes the parent sub-issues and comments requests overlap. When the sub-issues fake consumes its reply array, it rewrites `script.json` in place; a concurrent comments process can read the file after truncation and before the JSON is written. A failed pre-commit evidence read returns 409 `detail-unavailable`; the same failure in the post-commit read returns `approval: unknown` instead of `stale`. The fake now serializes reply selection and publishes updates by atomic rename, preventing partial reads and lost concurrent updates. Regression cases hold the sub-issues update open while the sibling comments read starts, both before approval and after the commit, and retain the existing 200 and stale assertions. Actual write contention remains rejected; viewer verification and detail reads are not treated as writes by this route.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/server/src/github-gates.test.ts` passed (63 tests).
+
+The optional combined gates, tickets and pull-requests test run was interrupted after the gates and tickets files passed while the pull-requests file was still running. The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted.
