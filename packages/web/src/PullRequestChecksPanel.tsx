@@ -52,8 +52,7 @@ export function PullRequestChecksPanel({
       if (
         !signal.aborted &&
         currentIdentity.current === identity &&
-        body.checks?.number === number &&
-        body.checks?.headCommit === head
+        body.checks?.number === number
       ) {
         setChecks((current) =>
           current &&
@@ -75,7 +74,7 @@ export function PullRequestChecksPanel({
         setBusy(false);
       }
     }
-  }, [endpoint, t.review.pr.refreshError, setError, paused, identity, number, head]);
+  }, [endpoint, t.review.pr.refreshError, setError, paused, identity, number]);
   // The cleanup must also run when the recorded PR identity changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: identity scopes the request lifetime.
   useEffect(() => {

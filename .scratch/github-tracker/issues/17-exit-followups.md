@@ -78,3 +78,7 @@ The requested commit could not be staged because the sandbox denied creation of 
 **Codex, 2026-11-08:** Fixed the CI evidence ordering review finding: publication follows the order in which `gh pr checks` returns, including when an earlier request is delayed before the checks call. Merge and merge preview still decide using their own fresh fetch. Added regression coverage for both delayed observation and delayed publication. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and the pull-requests and Ship Vitest files passed (67 tests). No web files were changed. Criteria remain unchecked.
 
 The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `f001bf7`.
+
+**Codex, 2026-11-08:** Fixed the PR CI panel to display checks for a newer remote head of the current PR, including the stale-evidence warning, while retaining protection against superseded requests and other PRs. Web regression tests cover both cases. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (20 tests). Criteria remain unchecked.
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `35c6e3b`.

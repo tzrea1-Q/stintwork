@@ -415,12 +415,10 @@ test.each([
   },
 );
 
-test.each([
-  { ...checks, number: 13 },
-  { ...checks, headCommit: "b".repeat(40) },
-])("PR CI ignores a response for a different PR or head", async (wrongChecks) => {
+test("PR CI ignores a response for a different PR", async () => {
   const responseChecks = {
-    ...wrongChecks,
+    ...checks,
+    number: 13,
     checks: [{ name: "Wrong CI", bucket: "pass", link: "" }],
   };
   vi.stubGlobal(
@@ -435,6 +433,34 @@ test.each([
     expect(screen.getByRole("button", { name: "Refresh PR checks" })).toBeEnabled(),
   );
   expect(screen.getByRole("list", { name: "PR CI results" })).not.toHaveTextContent("Wrong CI");
+});
+
+test("PR CI displays a refreshed remote head and marks it stale", async () => {
+  const remoteHead = "b".repeat(40);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          checks: {
+            ...checks,
+            headCommit: remoteHead,
+            checks: [{ name: "New CI", bucket: "fail", link: "" }],
+          },
+        }),
+      ),
+    ),
+  );
+  render(
+    <PullRequestChecksPanel
+      item={{ ...item(), headCommit: pr.headCommit, pullRequest: pr, pullRequestChecks: checks }}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  const panel = screen.getByRole("region", { name: "Pull request CI checks" });
+  await waitFor(() => expect(panel).toHaveTextContent("New CI · fail"));
+  expect(panel).toHaveTextContent(remoteHead);
+  expect(panel).toHaveTextContent("Stale");
 });
 
 test("PR CI refreshes slowly, stops after unmount, and marks stale head evidence", async () => {
