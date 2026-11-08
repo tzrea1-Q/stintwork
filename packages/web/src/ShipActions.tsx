@@ -3,7 +3,7 @@ import { CodeBlock } from "./ui/CodeBlock";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
 import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   builtInWorkflows,
@@ -17,12 +17,15 @@ import type { BoardWorkItem } from "./WorkItemCard";
 export function ShipActions({
   item,
   workflows = builtInWorkflows,
+  onPausePolling,
 }: {
   item: BoardWorkItem;
   workflows?: WorkflowDefinitions;
+  onPausePolling?: (paused: boolean) => void;
 }) {
   const { t } = useLanguage();
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState("");
   const [error, setError] = useErrorText();
   const [paths, setPaths] = useState<string[]>([]);
   const [conflicts, setConflicts] = useState<string[]>([]);
@@ -32,6 +35,10 @@ export function ShipActions({
   const [opened, setOpened] = useState(item.pullRequest);
   const publishingTrigger = useRef<HTMLButtonElement>(null);
   const mergeTrigger = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    onPausePolling?.(busy || !!preview || !!mergeMethod);
+    return () => onPausePolling?.(false);
+  }, [busy, preview, mergeMethod, onPausePolling]);
   const pullRequest = item.pullRequest ?? opened;
   const ci = item.pullRequestChecks;
   const stages = workflows[item.workflow].stages;
@@ -55,6 +62,13 @@ export function ShipActions({
     name: "merge-local" | "send-back" | "preview-pr" | "open-pr" | "preview-merge-pr" | "merge-pr",
   ) {
     setBusy(true);
+    setProgress(
+      name === "open-pr"
+        ? t.review.ship.publishing
+        : name === "merge-pr"
+          ? t.review.ship.merging
+          : t.review.ship.verifying,
+    );
     setError("");
     setPaths([]);
     setConflicts([]);
@@ -176,6 +190,7 @@ export function ShipActions({
                       if (busy) event.preventDefault();
                     }}
                   >
+                    {busy && <p role="status">{progress}</p>}
                     <DialogTitle className="text-lg font-medium">
                       {t.review.ship.confirmMerge}
                     </DialogTitle>
@@ -239,6 +254,7 @@ export function ShipActions({
                   if (busy) event.preventDefault();
                 }}
               >
+                {busy && <p role="status">{progress}</p>}
                 <DialogTitle className="text-lg font-medium">
                   {t.review.ship.confirmPublishing}
                 </DialogTitle>
@@ -307,6 +323,7 @@ export function ShipActions({
           {error}
         </p>
       )}
+      {busy && <p role="status">{progress}</p>}
       {message && <p role="status">{message}</p>}
     </section>
   );

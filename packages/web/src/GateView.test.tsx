@@ -270,7 +270,7 @@ test("approving sends the action once and waits for acknowledgement", async () =
     "/api/work-items/first/gates/implement/approve",
     expect.objectContaining({ method: "POST", body: "{}" }),
   );
-  expect(screen.getByRole("button", { name: "Approve Implement" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Approving…" })).toBeDisabled();
   expect(screen.queryByText(/Gate approved/)).not.toBeInTheDocument();
   complete(new Response('{"stage":"review"}'));
   expect(await screen.findByText("Gate approved. Stage advances to Review.")).toBeInTheDocument();

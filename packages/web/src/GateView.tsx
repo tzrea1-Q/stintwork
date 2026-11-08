@@ -216,7 +216,9 @@ export function GateView({
           }
           onClick={() => void act(current.id, "approve")}
         >
-          {t.stints.approve(stageName(workflows[item.workflow], current, t))}
+          {saving
+            ? t.stints.approving
+            : t.stints.approve(stageName(workflows[item.workflow], current, t))}
         </Button>
       )}
       {earlier.map((stage) => (

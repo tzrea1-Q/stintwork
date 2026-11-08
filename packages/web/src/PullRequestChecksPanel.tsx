@@ -8,11 +8,13 @@ import {
   evidenceStale,
   type EvidenceContext,
 } from "@stintwork/core";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function PullRequestChecksPanel({
   item,
+  paused = false,
 }: {
+  paused?: boolean;
   item: EvidenceContext & {
     pullRequest?: PullRequest;
     pullRequestChecks?: PullRequestChecks;
@@ -23,10 +25,13 @@ export function PullRequestChecksPanel({
   const [checks, setChecks] = useState(item.pullRequestChecks);
   const [error, setError] = useErrorText();
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const number = item.pullRequest?.number;
   const endpoint = `/api/work-items/${encodeURIComponent(item.slug)}/ship/pr-checks`;
   const refresh = useCallback(
     async (signal?: AbortSignal) => {
+      if (inFlight.current || paused) return;
+      inFlight.current = true;
       setBusy(true);
       try {
         const response = await fetch(endpoint, {
@@ -44,30 +49,29 @@ export function PullRequestChecksPanel({
       } catch (cause) {
         if (!signal?.aborted) setError(cause instanceof Error ? cause : t.review.pr.refreshError);
       } finally {
+        inFlight.current = false;
         if (!signal?.aborted) setBusy(false);
       }
     },
-    [endpoint, t.review.pr.refreshError, setError],
+    [endpoint, t.review.pr.refreshError, setError, paused],
   );
   useEffect(() => {
     setChecks(item.pullRequestChecks);
   }, [item.pullRequestChecks]);
   useEffect(() => {
-    if (!number || item.merged) return;
-    const controller = new AbortController();
-    const timer = setInterval(() => void refresh(controller.signal), 60_000);
+    if (!number || item.merged || paused || busy) return;
+    const timer = setTimeout(() => void refresh(), 60_000);
     return () => {
-      controller.abort();
-      clearInterval(timer);
+      clearTimeout(timer);
     };
-  }, [refresh, number, item.merged]);
+  }, [refresh, number, item.merged, paused, busy]);
   if (!item.pullRequest) return null;
   return (
     <section aria-label={t.review.pr.label}>
       <h4>{t.review.pr.heading(number)}</h4>
       {!item.merged && (
-        <Button type="button" disabled={busy} onClick={() => void refresh()}>
-          {t.review.pr.refresh}
+        <Button type="button" disabled={busy || paused} onClick={() => void refresh()}>
+          {busy ? t.review.pr.checking : t.review.pr.refresh}
         </Button>
       )}
       {error && (

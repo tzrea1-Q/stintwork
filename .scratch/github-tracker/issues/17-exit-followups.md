@@ -54,3 +54,7 @@ Staging for the requested commit failed because the sandbox could not create the
 - P2: the adapter key included `elapsedMs`.
 
 All five are fixed, and the final review is clean. Four criteria are ticked; the rest remain open.
+
+**Codex, 2026-11-08:** Ship PR checks now refresh without taking the exclusive Ship write, polls wait for completion and pause during Ship actions and confirmations, and merge retains its current-head Review and CI rechecks. GitHub evidence is read once per action with bounded concurrent connections; parent comments and sub-issues are fetched concurrently. Added English and Chinese Ship/CI progress and gate approval pending labels, with regression coverage for overlapping reads, write contention and polling. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed. The Ship, GitHub gates, GitHub tickets, GitHub item routes, PullRequests, GateView and ShipActions Vitest files passed. GitHub tickets initially failed because its capped-pagination fake did not provide the newly concurrent comments request; after completing that fake, the file passed. Criteria remain unchecked.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). The changes remain uncommitted.

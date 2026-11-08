@@ -380,3 +380,59 @@ test("shipped PR history keeps CI evidence and merge method without refresh or m
   expect(screen.queryByRole("button", { name: "Refresh PR checks" })).not.toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test("PR polling waits for a pending refresh and pauses during Ship", async () => {
+  vi.useFakeTimers();
+  let finish!: (response: Response) => void;
+  const fetch = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+  const view = render(<PullRequestChecksPanel item={props} />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(180_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Checking CI…" })).toBeDisabled();
+  view.rerender(<PullRequestChecksPanel item={props} paused />);
+  await act(async () => {
+    finish(new Response(JSON.stringify({ checks })));
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(180_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  view.rerender(<PullRequestChecksPanel item={props} />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  view.unmount();
+});
+
+test("Ship preview shows progress while GitHub evidence is checked", async () => {
+  const user = userEvent.setup();
+  let finish!: (response: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  render(<ShipActions item={item()} />);
+  await user.click(screen.getByRole("button", { name: "Open pull request" }));
+  expect(screen.getByRole("status")).toHaveTextContent("Verifying GitHub evidence");
+  await act(async () => {
+    finish(new Response(JSON.stringify({ preview })));
+  });
+  expect(
+    await screen.findByRole("dialog", { name: "Confirm publishing pull request" }),
+  ).toBeVisible();
+});

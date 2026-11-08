@@ -607,6 +607,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
           },
         },
         "api repos/github/gh-aw/issues/1433": { stdout: parent },
+        "api repos/github/gh-aw/issues/1433/comments?per_page=100&page=1": { stdout: comments },
         ...Object.fromEntries(
           Array.from({ length: 10 }, (_, i) => [
             `api repos/github/gh-aw/issues/1433/sub_issues?per_page=100&page=${i + 1}`,

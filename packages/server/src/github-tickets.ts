@@ -147,7 +147,10 @@ export async function readGithubTickets(
   const parent = (await get(`${issuePath}${number}`)).value as Issue;
   if (!valid(parent) || parent.number !== number || parent.node_id !== parentId)
     throw new GithubReadError("identity");
-  const children = await pages<Issue>(`${issuePath}${number}/sub_issues`);
+  const [children, parentComments] = await Promise.all([
+    pages<Issue>(`${issuePath}${number}/sub_issues`),
+    pages<Comment>(`${issuePath}${number}/comments`),
+  ]);
   if (
     !parent.sub_issues_summary ||
     !Number.isSafeInteger(parent.sub_issues_summary.total) ||
@@ -160,7 +163,6 @@ export async function readGithubTickets(
       children.length
   )
     throw incomplete("sub_issues");
-  const parentComments = await pages<Comment>(`${issuePath}${number}/comments`);
   if (
     new Set(parentComments.map((comment) => comment.node_id)).size !== parentComments.length ||
     parentComments.length !== parent.comments
