@@ -41,7 +41,7 @@ import { resolveProjectSnapshot } from "./project-snapshot.js";
 import { resolveGithubWorkflow } from "./github-snapshot.js";
 import { validateGithubIdentities } from "./github-discovery.js";
 import { requireCurrentGithubApproval } from "./github-gates.js";
-import { githubRateLimitCoolingDown } from "./github-tickets.js";
+import { githubRateLimitCoolingDown, readGithubTickets } from "./github-tickets.js";
 import { githubGateIgnoresBody, githubGateIncludesTickets } from "./github-evidence-scope.js";
 import type { GithubBriefSource } from "./brief-preview.js";
 
@@ -51,6 +51,7 @@ import {
   createPullRequest,
   findPullRequest,
   fetchPullRequestChecks,
+  readPullRequestChecks,
   viewPullRequest,
   mergePullRequest,
   pullRequestMergeMethod,
@@ -115,9 +116,9 @@ export function addShipRoutes(
           coreTextWire({ reason: coreText({ code: "server.workItemNotFound" }) }),
           404,
         );
-      if (writing.has(slug))
+      if (action !== "pr-checks" && writing.has(slug))
         return context.json(coreTextWire({ reason: coreText({ code: "ship.activeWrite" }) }), 409);
-      writing.add(slug);
+      if (action !== "pr-checks") writing.add(slug);
       let merged: MergeRecord | undefined;
       function locate() {
         const project = readProjectFiles();
@@ -244,12 +245,22 @@ export function addShipRoutes(
               const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
               if (match && labels.has(match[1])) labels.set(match[1], match[2]);
             }
-            for (const stage of action === "send-back"
-              ? []
-              : stages.slice(
-                  0,
-                  stages.findIndex((stage) => stage.id === initial.item.stage),
-                )) {
+            const priorStages =
+              action === "send-back"
+                ? []
+                : stages.slice(
+                    0,
+                    stages.findIndex((stage) => stage.id === initial.item.stage),
+                  );
+            const detail = priorStages.length
+              ? readGithubTickets(
+                  initial.project.worktreePaths.get(slug) ?? root,
+                  github.repository,
+                  remote.id,
+                  remote.number,
+                )
+              : undefined;
+            for (const stage of priorStages) {
               const approval = await requireCurrentGithubApproval(
                 initial.project.worktreePaths.get(slug) ?? root,
                 github.repository,
@@ -260,6 +271,7 @@ export function addShipRoutes(
                 initial.item.stages[stage.id],
                 undefined,
                 githubGateIgnoresBody(stages, stage.id),
+                detail,
               );
               const projected = initial.item.stages[stage.id]?.approved;
               if (
@@ -274,18 +286,26 @@ export function addShipRoutes(
           }
           return { github, remote };
         }
-        const { github, remote } = await validateGithub();
+        let { github, remote: githubRemote } =
+          action === "pr-checks"
+            ? await validateGithub()
+            : {
+                github: githubSource?.getGithub(),
+                remote: githubSource
+                  ?.getGithub()
+                  ?.items.find((entry) => entry.id === initial.item.github?.issueId),
+              };
         const saveWorkflow = (
           directory: string,
           item: typeof initial.item,
           update: (text: string | undefined) => string,
           message: string,
         ) =>
-          item.github && github && remote
+          item.github && github && githubRemote
             ? saveGithubWorkflow(
                 directory,
                 github,
-                remote,
+                githubRemote,
                 item.workflow,
                 item.stage ?? "ship",
                 update,
@@ -293,19 +313,19 @@ export function addShipRoutes(
                 directory === root,
               )
             : saveWorkItemWorkflow(directory, slug, update, message);
-        if (
-          ["preview-pr", "open-pr", "pr-checks", "preview-merge-pr", "merge-pr"].includes(action)
-        ) {
+        if (action === "pr-checks") {
+          const { item } = locate();
+          if (!item.pullRequest) throw new LocalMergeRefusal({ code: "ship.prMissing" });
+          await fetchPullRequestChecks(root, item.pullRequest);
+          const checks = readPullRequestChecks(root, item.pullRequest);
+          refresh();
+          return context.json(coreTextWire({ checks }));
+        }
+        if (["preview-pr", "open-pr", "preview-merge-pr", "merge-pr"].includes(action)) {
           return await withRepoLock(root, async () => {
-            await validateGithub();
+            ({ github, remote: githubRemote } = await validateGithub());
             const { project, item, workflows } = locate();
             const worktree = project.worktreePaths.get(slug);
-            if (action === "pr-checks") {
-              if (!item.pullRequest) throw new LocalMergeRefusal({ code: "ship.prMissing" });
-              const checks = await fetchPullRequestChecks(root, item.pullRequest);
-              refresh();
-              return context.json(coreTextWire({ checks }));
-            }
             if (!worktree && !merged)
               throw new LocalMergeRefusal({ code: "server.worktreeUnavailable" });
             const checkout = worktree ?? root;
@@ -534,6 +554,9 @@ export function addShipRoutes(
             return context.json(coreTextWire({ merged }));
           });
         }
+        if (action !== "merge-local") ({ github, remote: githubRemote } = await validateGithub());
+        else if (initial.item.github && github && !(await githubSource?.verifyIdentity(github)))
+          throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
         if (action === "merge-local") {
           const { workflows, item } = locate();
           const commit = await mergeLocalWorkItem(
@@ -615,7 +638,7 @@ export function addShipRoutes(
           409,
         );
       } finally {
-        writing.delete(slug);
+        if (action !== "pr-checks") writing.delete(slug);
       }
     });
   }

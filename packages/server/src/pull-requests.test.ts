@@ -8,7 +8,11 @@ import { ensureWorktree, listWorkItemWorktrees } from "@stintwork/git";
 import type { PullRequestPreview, ProjectSnapshot } from "@stintwork/core";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
-import { githubRepository, pullRequestMergeMethod } from "./pull-requests.js";
+import {
+  fetchPullRequestChecks,
+  githubRepository,
+  pullRequestMergeMethod,
+} from "./pull-requests.js";
 
 const fixtures: { directory: string; project: ReturnType<typeof createProjectServer> }[] = [];
 const endpoint = "/api/work-items/first/ship";
@@ -144,6 +148,143 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+test("an older concurrent CI refresh cannot overwrite newer evidence", async () => {
+  const { root, fake, script, open } = await fixture();
+  const pr = await open();
+  const started = join(root, "started");
+  const release = join(root, "release");
+  await fake.script({
+    ...script,
+    "pr view": [
+      script["pr view"],
+      {
+        ...script["pr view"],
+        effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+      },
+      script["pr view"],
+    ],
+    "pr checks": [
+      { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+      { stdout: [{ name: "CI", bucket: "fail", link: "" }] },
+    ],
+  });
+  const older = fetchPullRequestChecks(root, pr);
+  let newer: Awaited<typeof older>;
+  try {
+    await expect
+      .poll(async () =>
+        readFile(started).then(
+          () => true,
+          () => false,
+        ),
+      )
+      .toBe(true);
+    newer = await fetchPullRequestChecks(root, pr);
+    expect(newer.checks[0].bucket).toBe("fail");
+  } finally {
+    await writeFile(release, "");
+  }
+  expect((await older).checks[0].bucket).toBe("pass");
+  const saved = JSON.parse(
+    await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
+  );
+  expect(saved.checks[0].bucket).toBe("fail");
+});
+
+test("an earlier request that observes CI later publishes its newer observation", async () => {
+  const { root, fake, script, open } = await fixture();
+  const pr = await open();
+  const started = join(root, "started");
+  const release = join(root, "release");
+  await fake.script({
+    ...script,
+    "pr view": [
+      {
+        ...script["pr view"],
+        effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+      },
+      script["pr view"],
+    ],
+    "pr checks": [
+      { stdout: [{ name: "CI", bucket: "pending", link: "" }] },
+      { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+    ],
+  });
+  const earlier = fetchPullRequestChecks(root, pr);
+  try {
+    await expect
+      .poll(async () =>
+        readFile(started).then(
+          () => true,
+          () => false,
+        ),
+      )
+      .toBe(true);
+    expect((await fetchPullRequestChecks(root, pr)).checks[0].bucket).toBe("pending");
+  } finally {
+    await writeFile(release, "");
+  }
+  expect((await earlier).checks[0].bucket).toBe("pass");
+  const saved = JSON.parse(
+    await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
+  );
+  expect(saved.checks[0].bucket).toBe("pass");
+});
+
+test.each(["preview-merge-pr", "merge-pr"])(
+  "%s refuses its own failing CI even when a later poll persists passing CI",
+  async (action) => {
+    const { root, fake, script, open, post } = await fixture();
+    await open();
+    const started = join(root, "started");
+    const release = join(root, "release");
+    await fake.script({
+      ...script,
+      "pr checks": [
+        {
+          stdout: [{ name: "CI", bucket: "fail", link: "" }],
+          effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+        },
+        { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+      ],
+    });
+    const merge = post(action);
+    try {
+      await expect
+        .poll(async () =>
+          readFile(started).then(
+            () => true,
+            () => false,
+          ),
+        )
+        .toBe(true);
+      const poll = await post("pr-checks");
+      expect(poll.status).toBe(200);
+      expect((await poll.json()).checks.checks[0].bucket).toBe("pass");
+    } finally {
+      await writeFile(release, "");
+    }
+    const response = await merge;
+    expect(response.status).toBe(409);
+    expect((await response.json()).reason).toContain("Every pull request CI check");
+    expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+    const saved = JSON.parse(
+      await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
+    );
+    expect(saved.checks[0].bucket).toBe("fail");
+  },
+);
+
+test("CI evidence timestamps advance even when the clock does not", async () => {
+  const { root, open } = await fixture();
+  const pr = await open();
+  const previous = await fetchPullRequestChecks(root, pr);
+  previous.fetchedAt = "2099-01-01T00:00:00.000Z";
+  await writeFile(join(root, ".stintwork/local/pr-checks/12.json"), JSON.stringify(previous));
+  const current = await fetchPullRequestChecks(root, pr);
+  expect(Date.parse(current.fetchedAt)).toBe(Date.parse(previous.fetchedAt) + 1);
 });
 
 test("preview and missing, forged or expired confirmation never push or create a PR", async () => {

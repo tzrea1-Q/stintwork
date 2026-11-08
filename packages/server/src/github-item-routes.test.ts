@@ -467,17 +467,29 @@ test("send-back reopens Implement despite stale GitHub approval; merge refuses i
         sub_issues_summary: { total: 0 },
       },
     },
-    "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": { stdout: [] },
-    "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
+    "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": {
+      stdout: [],
+      effect: `fs.writeFileSync(${JSON.stringify(join(root, "children-started"))}, ""); const until = Date.now() + 3000; while (!fs.existsSync(${JSON.stringify(join(root, "comments-started"))}) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); if (!fs.existsSync(${JSON.stringify(join(root, "comments-started"))})) throw Error("reads did not overlap");`,
+    },
+    "api repos/Example/Project/issues/1/comments?per_page=100&page=1": {
+      stdout: [],
+      effect: `fs.writeFileSync(${JSON.stringify(join(root, "comments-started"))}, "");`,
+    },
   });
   expect(
     await requireCurrentGithubApproval(worktree, "Example/Project", "I_1", 1, false, [], {
       approved: { remote: { version: 2, parentId: "I_1", digest } },
     }),
   ).toEqual({ ok: false, code: "approval-stale" });
+  rmSync(join(root, "children-started"));
+  rmSync(join(root, "comments-started"));
+  const beforeMerge = (await gh.calls()).length;
   const merge = await post("/api/work-items/github-1/ship/merge-local", {});
   expect(merge.status).toBe(409);
   expect((await merge.json()).reasonMessage.code).toBe("gate.evidenceChanged");
+  const reads = (await gh.calls()).slice(beforeMerge).filter(({ args }) => args[0] === "api");
+  expect(reads.filter(({ args }) => args[1] === "repos/Example/Project/issues/1")).toHaveLength(1);
+  expect(existsSync(join(root, "comments-started"))).toBe(true);
   const sent = await post("/api/work-items/github-1/ship/send-back", {});
   expect(sent.status, await sent.text()).toBe(200);
   expect(readFileSync(join(worktree, workflowPath), "utf8")).toContain("stage: implement");
@@ -1408,3 +1420,24 @@ test.each(["page-two", "absent"] as const)(
     }
   },
 );
+
+test("a pending PR checks refresh does not hold the Ship write", async () => {
+  const { post, source } = await fixture(true);
+  let release!: (value: boolean) => void;
+  let started!: () => void;
+  const checking = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  vi.spyOn(source, "verifyIdentity").mockImplementationOnce(() => {
+    started();
+    return new Promise<boolean>((resolve) => {
+      release = resolve;
+    });
+  });
+  const checks = post("/api/work-items/github-1/ship/pr-checks", {});
+  await checking;
+  const merge = await post("/api/work-items/github-1/ship/merge-local", {});
+  expect((await merge.json()).reasonMessage?.code).not.toBe("ship.activeWrite");
+  release(true);
+  await checks;
+});

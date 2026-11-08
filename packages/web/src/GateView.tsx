@@ -206,6 +206,7 @@ export function GateView({
         <Button
           type="button"
           variant="primary"
+          aria-busy={saving}
           disabled={
             githubReadOnly ||
             !gate.ready ||
@@ -217,6 +218,7 @@ export function GateView({
           onClick={() => void act(current.id, "approve")}
         >
           {t.stints.approve(stageName(workflows[item.workflow], current, t))}
+          {saving && <span aria-hidden="true"> · {t.stints.approving}</span>}
         </Button>
       )}
       {earlier.map((stage) => (
