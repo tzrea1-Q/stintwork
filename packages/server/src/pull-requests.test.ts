@@ -157,11 +157,16 @@ test("an older concurrent CI refresh cannot overwrite newer evidence", async () 
   const release = join(root, "release");
   await fake.script({
     ...script,
-    "pr checks": [
+    "pr view": [
+      script["pr view"],
       {
-        stdout: [{ name: "CI", bucket: "pass", link: "" }],
+        ...script["pr view"],
         effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
       },
+      script["pr view"],
+    ],
+    "pr checks": [
+      { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
       { stdout: [{ name: "CI", bucket: "fail", link: "" }] },
     ],
   });
@@ -186,6 +191,46 @@ test("an older concurrent CI refresh cannot overwrite newer evidence", async () 
     await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
   );
   expect(saved.checks[0].bucket).toBe("fail");
+});
+
+test("an earlier request that observes CI later publishes its newer observation", async () => {
+  const { root, fake, script, open } = await fixture();
+  const pr = await open();
+  const started = join(root, "started");
+  const release = join(root, "release");
+  await fake.script({
+    ...script,
+    "pr view": [
+      {
+        ...script["pr view"],
+        effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+      },
+      script["pr view"],
+    ],
+    "pr checks": [
+      { stdout: [{ name: "CI", bucket: "pending", link: "" }] },
+      { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+    ],
+  });
+  const earlier = fetchPullRequestChecks(root, pr);
+  try {
+    await expect
+      .poll(async () =>
+        readFile(started).then(
+          () => true,
+          () => false,
+        ),
+      )
+      .toBe(true);
+    expect((await fetchPullRequestChecks(root, pr)).checks[0].bucket).toBe("pending");
+  } finally {
+    await writeFile(release, "");
+  }
+  expect((await earlier).checks[0].bucket).toBe("pass");
+  const saved = JSON.parse(
+    await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
+  );
+  expect(saved.checks[0].bucket).toBe("pass");
 });
 
 test.each(["preview-merge-pr", "merge-pr"])(
@@ -228,7 +273,7 @@ test.each(["preview-merge-pr", "merge-pr"])(
     const saved = JSON.parse(
       await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
     );
-    expect(saved.checks[0].bucket).toBe("pass");
+    expect(saved.checks[0].bucket).toBe("fail");
   },
 );
 

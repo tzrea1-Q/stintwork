@@ -202,20 +202,22 @@ export async function fetchPullRequestChecks(
     tail: Promise.resolve(),
   };
   checksWrites.set(key, state);
-  const sequence = ++state.next;
   state.active++;
   try {
-    return await fetchChecks(root, pr, async (write) => {
-      const pending = state.tail.then(async () => {
-        if (sequence <= state.written) return;
-        await write();
-        state.written = sequence;
-      });
-      state.tail = pending.then(
-        () => {},
-        () => {},
-      );
-      return await pending;
+    return await fetchChecks(root, pr, () => {
+      const sequence = ++state.next;
+      return async (write) => {
+        const pending = state.tail.then(async () => {
+          if (sequence <= state.written) return;
+          await write();
+          state.written = sequence;
+        });
+        state.tail = pending.then(
+          () => {},
+          () => {},
+        );
+        return await pending;
+      };
     });
   } finally {
     if (--state.active === 0) checksWrites.delete(key);
@@ -225,24 +227,24 @@ export async function fetchPullRequestChecks(
 async function fetchChecks(
   root: string,
   pr: PullRequest,
-  persist: (write: () => Promise<void>) => Promise<void>,
+  observe: () => (write: () => Promise<void>) => Promise<void>,
 ): Promise<PullRequestChecks> {
   const before = await viewPullRequest(root, pr, String(pr.number));
-  const checks: unknown = JSON.parse(
-    await gh(
-      root,
-      ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket,link"],
-      true,
-    ).catch((error: { code?: number; stderr?: string; stdout?: string }) => {
-      // Real gh exits 1 with plain text when no CI has reported; record no checks, which never pass.
-      if (
-        error.code === 1 &&
-        /no checks reported/i.test(`${error.stderr ?? ""}\n${error.stdout ?? ""}`)
-      )
-        return "[]";
-      throw error;
-    }),
-  );
+  const output = await gh(
+    root,
+    ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket,link"],
+    true,
+  ).catch((error: { code?: number; stderr?: string; stdout?: string }) => {
+    // Real gh exits 1 with plain text when no CI has reported; record no checks, which never pass.
+    if (
+      error.code === 1 &&
+      /no checks reported/i.test(`${error.stderr ?? ""}\n${error.stdout ?? ""}`)
+    )
+      return "[]";
+    throw error;
+  });
+  const persist = observe();
+  const checks: unknown = JSON.parse(output);
   if (
     !Array.isArray(checks) ||
     !checks.every(
