@@ -1137,6 +1137,39 @@ test("adapter preparation failure preserves existing dependencies on retry", asy
   expect(await readFile(join(worktree.path, "node_modules", "keep"), "utf8")).toBe("usable");
 });
 
+test("an install failure survives an intervening adapter preparation failure", async () => {
+  const launch: AgentLauncher = () => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  });
+  const prepareAgent = fakePreparation();
+  prepareAgent
+    .mockResolvedValueOnce(selectedPreparation)
+    .mockRejectedValueOnce(new Error("Adapter unavailable"));
+  const registry = createAgentRegistry([{ ...codexProfile, launch }]);
+  const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+  const worktree = await git.ensureWorktree(root, "first");
+  await writeFile(join(worktree.path, "package-lock.json"), "{}");
+  const bin = join(root, "fake-bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nmkdir -p node_modules\nexit 1\n", { mode: 0o755 });
+  vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
+
+  expect((await start(project)).status).toBe(503);
+  expect((await start(project)).status).toBe(503);
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints.slice(0, 2)).toMatchObject([
+    { status: "preparation-failed", dependencySetupStarted: false },
+    { status: "preparation-failed", dependencySetupStarted: true },
+  ]);
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nprintf retried > retry-marker\n", { mode: 0o755 });
+  const retry = await start(project);
+  expect(retry.status).toBe(201);
+  await finished(project, (await retry.json()).stint.id);
+  expect(await readFile(join(worktree.path, "retry-marker"), "utf8")).toBe("retried");
+});
+
 test("package completion is not login readiness; Ready waits for the current launch", async () => {
   let ready!: () => void;
   const readiness = new Promise<void>((resolve) => {

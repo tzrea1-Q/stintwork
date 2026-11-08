@@ -1395,7 +1395,10 @@ export function addStintRoutes(
                   });
                 for (const text of setupMessages) progress(text);
                 if (setupFailed) throw setupError;
-                const previous = workItem.stints[0];
+                const previous = workItem.stints.find(
+                  (entry) =>
+                    entry.status !== "preparation-failed" || entry.dependencySetupStarted !== false,
+                );
                 state.setupCancellation?.signal.throwIfAborted();
                 state.dependencySetupStarted = true;
                 await installWorktreeDependencies(
