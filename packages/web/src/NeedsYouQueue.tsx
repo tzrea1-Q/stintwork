@@ -27,11 +27,13 @@ import { WarningCallout } from "./ui/WarningCallout";
 export function NeedsYouQueue({
   snapshot,
   alerts,
+  openSlug,
   onClose,
   onOpenItem,
 }: {
   snapshot: ProjectSnapshot;
   alerts: ReturnType<typeof useAttentionAlerts>;
+  openSlug: string | null;
   onClose: () => void;
   onOpenItem: (slug: string) => void;
 }) {
@@ -254,7 +256,7 @@ export function NeedsYouQueue({
                     variant="ghost"
                     className="attention-work-item h-auto min-h-8 max-w-full justify-start whitespace-normal py-1 text-left wrap-anywhere"
                     onClick={() => {
-                      navigating.current = true;
+                      navigating.current = item.workItem !== openSlug;
                       onClose();
                       onOpenItem(item.workItem);
                     }}

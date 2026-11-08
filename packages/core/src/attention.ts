@@ -90,6 +90,7 @@ export function deriveAttentionItems(
       item.stints.flatMap((later) => {
         const earlier = later.lastHandoffStintId && stintsById.get(later.lastHandoffStintId);
         return earlier &&
+          later.status !== "preparation-failed" &&
           later.id !== earlier.id &&
           later.workItem === earlier.workItem &&
           later.ticket === earlier.ticket &&
@@ -120,7 +121,9 @@ export function deriveAttentionItems(
         raisedAt: stint.endedAt ?? stint.startedAt,
       }));
     const stint = item.activeStint;
-    const latestEnded = item.stints.find((entry) => entry.status !== "running");
+    const latestEnded = item.stints.find(
+      (entry) => entry.status !== "running" && entry.status !== "preparation-failed",
+    );
     const warnings: CheckpointWarning[] = [
       ...(latestEnded?.checkpointWarnings?.filter((warning) => warning.excluded) ?? []),
       ...(item.riskyPaths === undefined

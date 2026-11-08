@@ -196,9 +196,7 @@ test("a missing Grok login refuses a start before creating a worktree and clears
   ]);
   await project.app.request("/api/agents");
   expect((await snapshot(project)).attentionItems).toEqual(attention);
-  await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
-    code: "ENOENT",
-  });
+  expect(await readdir(join(root, ".stintwork/local/stints"))).toHaveLength(1);
   expect(
     execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
       /^worktree /gm,
@@ -231,7 +229,7 @@ test("Authentication required from an actual Grok stint is logged and rebuilds a
   const before = await snapshot(project);
   expect(before.workItems[0].stints[0]).toMatchObject({
     agent: "grok",
-    status: "failed",
+    status: "preparation-failed",
     error: expect.stringContaining("grok login"),
   });
   expect(before.attentionItems).toEqual([

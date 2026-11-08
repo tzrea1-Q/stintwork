@@ -92,6 +92,17 @@ test("a displayed project failure follows language changes without reconnecting"
   localStorage.removeItem(languageStorageKey);
 });
 
+test("accepts preparation failures in HTTP and live snapshots", async () => {
+  const next = attentionSnapshot([]);
+  next.workItems[0].stints[0].status = "preparation-failed";
+  next.workItems[0].activeStint = null;
+  vi.mocked(fetch).mockResolvedValue(response(next));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot).toEqual(next));
+  act(() => TestSocket.instances[0].sendSnapshot({ ...next, branch: "updated" }));
+  expect(result.current.snapshot?.branch).toBe("updated");
+});
+
 test.each([false, true])(
   "checkpoint warnings (%s committed) survive snapshots and live ended entries and immediately raise attention",
   async (committed) => {

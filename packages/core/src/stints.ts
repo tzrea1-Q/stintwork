@@ -10,7 +10,13 @@ import {
   type StintToolUpdate,
 } from "./rich-stint-events.js";
 
-export type StintStatus = "running" | "finished" | "stopped" | "failed" | "interrupted";
+export type StintStatus =
+  | "running"
+  | "finished"
+  | "stopped"
+  | "failed"
+  | "interrupted"
+  | "preparation-failed";
 export type StintLaunch = {
   agent: "claude" | "codex";
   source: "installed" | "bundled";
@@ -42,7 +48,7 @@ export type StintProcessAttempt = {
 export type StintPhase = "work" | "handoff" | "findings" | "finalization";
 export type StintProgress = {
   phase: StintPhase;
-  status?: Exclude<StintStatus, "running">;
+  status?: Exclude<StintStatus, "running" | "preparation-failed">;
   error?: string;
   errorMessage?: CoreTextMessage;
   stopReason?: string;
@@ -177,6 +183,7 @@ export type Stint = {
   baseCommit: string;
   checkpointCommit: string | null;
   checkpointWarnings?: CheckpointWarning[];
+  dependencySetupStarted?: boolean;
   brief: Brief;
   events: StintEvent[];
   handoff: BriefHandoff | null;
@@ -202,6 +209,7 @@ export type StintSummary = Pick<
   | "errorMessage"
   | "checkpointCommit"
   | "checkpointWarnings"
+  | "dependencySetupStarted"
   | "handoff"
   | "handoffError"
   | "handoffErrorMessage"
@@ -230,6 +238,7 @@ export type StintLogEntry =
       errorMessage?: CoreTextMessage;
       checkpointCommit?: string;
       checkpointWarnings?: CheckpointWarning[];
+      dependencySetupStarted?: boolean;
       handoff?: BriefHandoff | null;
       handoffError?: string;
       handoffErrorMessage?: CoreTextMessage;
@@ -374,6 +383,9 @@ export function applyStintLogEntry(stint: Stint | null, entry: StintLogEntry): S
     endedAt: entry.at,
     checkpointCommit: entry.checkpointCommit ?? null,
     ...(entry.checkpointWarnings ? { checkpointWarnings: entry.checkpointWarnings } : {}),
+    ...(entry.dependencySetupStarted === undefined
+      ? {}
+      : { dependencySetupStarted: entry.dependencySetupStarted }),
     handoff: entry.handoff ?? null,
     ...(entry.findings ? { findings: entry.findings } : {}),
     ...(entry.handoffError ? { handoffError: entry.handoffError } : {}),
@@ -400,6 +412,9 @@ export function summarizeStint(stint: Stint): StintSummary {
     endedAt,
     checkpointCommit: stint.checkpointCommit,
     ...(stint.checkpointWarnings ? { checkpointWarnings: stint.checkpointWarnings } : {}),
+    ...(stint.dependencySetupStarted === undefined
+      ? {}
+      : { dependencySetupStarted: stint.dependencySetupStarted }),
     handoff: stint.handoff,
     ...(stint.findings ? { findings: stint.findings } : {}),
     ...(stint.recovery ? { recovery: stint.recovery, worktree: stint.worktree } : {}),
@@ -472,8 +487,12 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   }
   if (entry.type === "ended")
     return (
-      ["finished", "stopped", "failed", "interrupted"].includes(String(entry.status)) &&
+      ["finished", "stopped", "failed", "interrupted", "preparation-failed"].includes(
+        String(entry.status),
+      ) &&
       (entry.checkpointWarnings === undefined || isCheckpointWarnings(entry.checkpointWarnings)) &&
+      (entry.dependencySetupStarted === undefined ||
+        typeof entry.dependencySetupStarted === "boolean") &&
       (entry.findings === undefined || isReviewFindings(entry.findings)) &&
       ["error", "stopReason", "checkpointCommit", "handoffError"].every(
         (key) => entry[key] === undefined || typeof entry[key] === "string",

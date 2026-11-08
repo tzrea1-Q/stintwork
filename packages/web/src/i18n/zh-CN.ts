@@ -417,6 +417,7 @@ export const zhCN: Catalog = {
     notificationsDenied: "未启用浏览器通知。请检查此网站的浏览器权限后重试。",
     notificationsFailed: "无法启用浏览器通知。",
     preferenceFailed: "无法在此浏览器中保存你的通知偏好。",
+    pendingPermissions: "权限请求需要你处理",
     tabTitle: (count, project) =>
       `${count ? `（${count} 个待处理事项）` : ""}${project} · Stintwork`,
     notificationTitle: (project) => `${project} · 待你处理`,
@@ -915,6 +916,7 @@ export const zhCN: Catalog = {
       finished: "已结束",
       stopped: "已停止",
       failed: "失败",
+      "preparation-failed": "准备失败",
       interrupted: "已中断",
     },
     progress: { pending: "待处理", in_progress: "进行中", completed: "已完成", failed: "失败" },

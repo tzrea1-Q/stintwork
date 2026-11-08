@@ -12,12 +12,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Hono } from "hono";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { createAgentRegistry } from "@stintwork/agents";
-import { githubEvidenceDigest, indexProject } from "@stintwork/core";
+import { githubEvidenceDigest, indexProject, indexStints } from "@stintwork/core";
 import { ensureWorktree } from "@stintwork/git";
 import { fakeGh, type GhReply } from "../test/fake-gh.js";
 import { addBriefPreviewRoute, type GithubBriefSource } from "./brief-preview.js";
+import * as briefPreview from "./brief-preview.js";
 import { addStintRoutes } from "./stints.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 import { createProjectFiles } from "./work-item-files.js";
@@ -885,6 +886,26 @@ test("gate writes and starts exclude each other", async () => {
   const response = await gate();
   expect(response.status).toBe(409);
   expect(await response.json()).toMatchObject({ reasonMessage: { code: "gate.activeWrite" } });
+});
+
+test("GitHub revalidation failure remains in history after the start response", async () => {
+  const { start, root } = await setup();
+  const original = briefPreview.prepareStintBrief;
+  const revalidate = vi.spyOn(briefPreview, "prepareStintBrief");
+  revalidate
+    .mockImplementationOnce(original)
+    .mockRejectedValueOnce(new Error("GitHub revalidation failed"));
+  try {
+    const response = await start();
+    expect(response.status).toBe(503);
+    expect((await response.json()).reason).toContain("GitHub revalidation failed");
+    expect(indexStints(createNodeRepoFiles(root)).stints[0]).toMatchObject({
+      status: "preparation-failed",
+      error: expect.stringContaining("GitHub revalidation failed"),
+    });
+  } finally {
+    revalidate.mockRestore();
+  }
 });
 
 test("a mismatched record refuses before worktree creation", async () => {

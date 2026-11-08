@@ -32,7 +32,9 @@ function isStintSummary(value: unknown) {
       (key) => typeof value[key] === "string",
     ) &&
     (value.ticket === null || Number.isSafeInteger(value.ticket)) &&
-    ["running", "finished", "stopped", "failed", "interrupted"].includes(String(value.status)) &&
+    ["running", "finished", "stopped", "failed", "interrupted", "preparation-failed"].includes(
+      String(value.status),
+    ) &&
     (value.endedAt === null || typeof value.endedAt === "string") &&
     (value.error === undefined || typeof value.error === "string") &&
     (value.checkpointCommit == null || typeof value.checkpointCommit === "string") &&

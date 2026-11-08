@@ -318,7 +318,9 @@ export async function prepareStintBrief(
   }
   // Stints are newest first. Resume from this ticket's last stint; a ticket's first stint
   // starts from the work item's last stint instead (spec: "for that ticket, or the work item").
-  const ended = workItem.stints.filter((stint) => stint.status !== "running");
+  const ended = workItem.stints.filter(
+    (stint) => stint.status !== "running" && stint.status !== "preparation-failed",
+  );
   const previous =
     number === null ? ended[0] : (ended.find((stint) => stint.ticket === number) ?? ended[0]);
   const checkpointCommit = previous?.checkpointCommit ?? null;

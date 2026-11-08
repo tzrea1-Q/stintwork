@@ -26,7 +26,9 @@ export type EvidenceContext = {
 
 /** Only the latest Review stint supplies current evidence; older stints remain history. */
 export function latestReviewStint(stints: readonly StintSummary[], stageId = "review") {
-  return stints.find(({ stage }) => stage === stageId) ?? null;
+  return (
+    stints.find(({ stage, status }) => stage === stageId && status !== "preparation-failed") ?? null
+  );
 }
 
 /** Unknown comparisons fail closed. Only this work item's bookkeeping is exempt. */

@@ -302,7 +302,7 @@ export function StintStream({
               variant={
                 stint.status === "finished"
                   ? "success"
-                  : stint.status === "failed"
+                  : stint.status === "failed" || stint.status === "preparation-failed"
                     ? "danger"
                     : "secondary"
               }
