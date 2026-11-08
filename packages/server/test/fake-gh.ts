@@ -19,46 +19,41 @@ fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify({ args, cwd: process.cw
 const script = ${JSON.stringify(script)};
 ${beforeRead}
 const lock = script + '.lock';
-const deadline = Date.now() + 10000;
+const temporaryLock = lock + '.' + process.pid;
+fs.writeFileSync(temporaryLock, JSON.stringify({ pid: process.pid, time: Date.now() }));
+const deadline = Date.now() + 15000;
 while (true) {
   try {
-    fs.mkdirSync(lock);
-    fs.writeFileSync(lock + '/owner', String(process.pid));
+    fs.linkSync(temporaryLock, lock);
+    fs.unlinkSync(temporaryLock);
     break;
   }
   catch (error) {
     if (error.code !== 'EEXIST') throw error;
     try {
-      const owner = Number(fs.readFileSync(lock + '/owner', 'utf8'));
-      if (Number.isSafeInteger(owner) && owner > 0) {
-        try { process.kill(owner, 0); }
-        catch (error) {
-          if (error.code !== 'ESRCH') throw error;
-          // Only one waiter may move a dead owner's lock out of the way.
-          const claim = lock + '/reaping';
-          let claimed = false;
-          try {
-            fs.mkdirSync(claim);
-            claimed = true;
-            if (fs.readFileSync(lock + '/owner', 'utf8') === String(owner)) {
-              const stale = lock + '.' + process.pid;
-              fs.renameSync(lock, stale);
-              fs.rmSync(stale, { recursive: true, force: true });
-            } else {
-              fs.rmdirSync(claim);
-            }
-          } catch (error) {
-            if (claimed) {
-              try { fs.rmdirSync(claim); } catch (cleanup) { if (cleanup.code !== 'ENOENT') throw cleanup; }
-            }
-            if (error.code !== 'EEXIST' && error.code !== 'ENOENT') throw error;
-          }
+      const stat = fs.statSync(lock);
+      let owner;
+      try { owner = JSON.parse(fs.readFileSync(lock, 'utf8')); } catch {}
+      const valid = Number.isSafeInteger(owner?.pid) && owner.pid > 0 && Number.isFinite(owner.time);
+      // ponytail: assumes fake gh critical sections finish within 10 seconds; use a renewable lease if they grow longer.
+      let stale = Date.now() - stat.mtimeMs > (valid ? 10000 : 1000);
+      if (valid && !stale) {
+        try { process.kill(owner.pid, 0); }
+        catch (error) { if (error.code === 'ESRCH') stale = true; else if (error.code !== 'EPERM') throw error; }
+      }
+      if (stale) {
+        const retired = lock + '.stale.' + process.pid;
+        fs.renameSync(lock, retired);
+        const moved = fs.statSync(retired);
+        if (moved.ino !== stat.ino || moved.dev !== stat.dev) {
+          try { fs.linkSync(retired, lock); } catch (error) { if (error.code !== 'EEXIST') throw error; }
         }
+        fs.unlinkSync(retired);
       }
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for fake gh lock');
+    if (Date.now() >= deadline) { fs.unlinkSync(temporaryLock); throw new Error('Timed out waiting for fake gh lock'); }
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
   }
 }
@@ -76,15 +71,7 @@ if (Array.isArray(reply)) {
   fs.renameSync(temporary, script);
 }
 } finally {
-  fs.unlinkSync(lock + '/owner');
-  while (true) {
-    try { fs.rmdirSync(lock); break; }
-    catch (error) {
-      if (error.code !== 'ENOTEMPTY' && error.code !== 'EEXIST') throw error;
-      if (Date.now() >= deadline) throw new Error('Timed out releasing fake gh lock');
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
-    }
-  }
+  fs.unlinkSync(lock);
 }
 if (next.effect) new Function('execFileSync', 'args', 'fs', 'script', next.effect)(execFileSync, args, fs, script);
 process.stdout.write(typeof next.stdout === 'string' ? next.stdout : JSON.stringify(next.stdout ?? {}));

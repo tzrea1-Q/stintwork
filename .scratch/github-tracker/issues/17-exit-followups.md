@@ -158,3 +158,7 @@ Ten review rounds settled the design:
 - Login hints and attention items are unchanged.
 
 Remaining limitation: an unintended preview unmount still fails a start, but visibly. Two criteria are ticked.
+
+**Codex, 2026-11-08:** Replaced the fake `gh` directory lock with an atomically linked, prewritten PID/timestamp file. Waiters recover dead owners, old locks and aged malformed locks using rename and unlink; waiting remains bounded. Added regressions for a SIGKILLed holder, an empty lock and an old lock. The age limit assumes critical sections finish within 10 seconds.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. The requested fake `gh` and GitHub gates Vitest run passed all 66 tests.

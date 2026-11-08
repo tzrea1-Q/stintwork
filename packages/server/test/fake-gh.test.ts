@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFile, spawn } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -35,6 +35,27 @@ test("a killed lock holder does not block the next invocation", async () => {
   } finally {
     holder.kill("SIGKILL");
     await exited;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  ["empty", "", 2000],
+  ["old", JSON.stringify({ pid: process.pid, time: Date.now() - 11000 }), 11000],
+])("a stale %s lock does not block the next invocation", async (_name, contents, age) => {
+  const root = mkdtempSync(join(tmpdir(), "fake-gh-"));
+  try {
+    const gh = await fakeGh(root);
+    await gh.script({ "api test": { stdout: "recovered" } });
+    const lock = join(root, "script.json.lock");
+    writeFileSync(lock, contents);
+    const old = new Date(Date.now() - age);
+    utimesSync(lock, old, old);
+    const result = await promisify(execFile)(join(root, "gh"), ["api", "test"], {
+      timeout: 5000,
+    });
+    expect(result.stdout).toBe("recovered");
+  } finally {
     rmSync(root, { recursive: true, force: true });
   }
 });
