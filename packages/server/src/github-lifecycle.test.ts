@@ -122,7 +122,7 @@ process.exit(result.status ?? 1);
 });
 
 test.each(["changed", "logout", "offline"])(
-  "expired viewer remains visible while checking and handles %s",
+  "expired viewer remains redacted while checking and handles %s",
   async (scenario) => {
     const root = await mkdtemp(join(tmpdir(), "github-expiry-"));
     const oldPath = process.env.PATH;
@@ -190,7 +190,7 @@ test.each(["changed", "logout", "offline"])(
         "api graphql": { stdout: newer },
       });
       const checking = await get();
-      expect(checking.github.items[0].title).toBe("Private");
+      expect(checking.github.items).toEqual([]);
       if (scenario === "changed") {
         await expect.poll(async () => (await get()).github?.items?.[0]?.title).toBe("New");
       } else {
@@ -809,6 +809,8 @@ test("discovery returns conflict while a detail read is in flight", async () => 
     server = createProjectServer(root, join(root, "web"));
     await server.app.request("/api/project");
     await gh.script({
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
       "api repos/example/project": {
         stdout: {
           node_id: "R_1",
@@ -1135,7 +1137,7 @@ test.each(["origin", "account id"])(
         "api repos/other/project": { code: 1 },
       });
       now += 60_001;
-      expect((await get()).github.items[0].title).toBe("Private");
+      expect((await get()).github.items).toEqual([]);
       await expect.poll(async () => (await get()).github?.errorCode).toBeTruthy();
       const result = await get();
       expect(result.github.items).toEqual([]);
@@ -1393,7 +1395,7 @@ test("viewer polling respects discovery rate limit until its retry deadline", as
   }
 });
 
-test("concurrent requests share one viewer check at TTL rollover", async () => {
+test("concurrent requests refresh before expiry and redact at expiry", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-viewer-ttl-"));
   const oldPath = process.env.PATH;
   let server: ReturnType<typeof createProjectServer> | undefined;
@@ -1431,9 +1433,11 @@ test("concurrent requests share one viewer check at TTL rollover", async () => {
     server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
     const get = async () => (await server!.app.request("/api/project")).json();
     expect((await get()).github.items[0].title).toBe("Private");
-    now += 60_000;
+    now += 45_000;
     const results = await Promise.all(Array.from({ length: 20 }, get));
     expect(results.every((result) => result.github.items[0]?.title === "Private")).toBe(true);
+    now += 15_000;
+    expect((await get()).github.items).toEqual([]);
     await expect
       .poll(
         async () =>
@@ -1441,6 +1445,7 @@ test("concurrent requests share one viewer check at TTL rollover", async () => {
             .length,
       )
       .toBe(2);
+    await expect.poll(async () => (await get()).github.items[0]?.title).toBe("Private");
     await Promise.all(Array.from({ length: 20 }, get));
     const calls = await gh.calls();
     expect(calls.filter((call) => call.args[0] === "auth")).toHaveLength(2);
