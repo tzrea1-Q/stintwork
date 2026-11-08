@@ -181,12 +181,56 @@ test("an older concurrent CI refresh cannot overwrite newer evidence", async () 
   } finally {
     await writeFile(release, "");
   }
-  expect(await older).toEqual(newer!);
+  expect((await older).checks[0].bucket).toBe("pass");
   const saved = JSON.parse(
     await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
   );
   expect(saved.checks[0].bucket).toBe("fail");
 });
+
+test.each(["preview-merge-pr", "merge-pr"])(
+  "%s refuses its own failing CI even when a later poll persists passing CI",
+  async (action) => {
+    const { root, fake, script, open, post } = await fixture();
+    await open();
+    const started = join(root, "started");
+    const release = join(root, "release");
+    await fake.script({
+      ...script,
+      "pr checks": [
+        {
+          stdout: [{ name: "CI", bucket: "fail", link: "" }],
+          effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+        },
+        { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+      ],
+    });
+    const merge = post(action);
+    try {
+      await expect
+        .poll(async () =>
+          readFile(started).then(
+            () => true,
+            () => false,
+          ),
+        )
+        .toBe(true);
+      const poll = await post("pr-checks");
+      expect(poll.status).toBe(200);
+      expect((await poll.json()).checks.checks[0].bucket).toBe("pass");
+    } finally {
+      await writeFile(release, "");
+    }
+    const response = await merge;
+    expect(response.status).toBe(409);
+    expect((await response.json()).reason).toContain("Every pull request CI check");
+    expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+    const saved = JSON.parse(
+      await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
+    );
+    expect(saved.checks[0].bucket).toBe("pass");
+  },
+);
 
 test("CI evidence timestamps advance even when the clock does not", async () => {
   const { root, open } = await fixture();

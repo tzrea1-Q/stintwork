@@ -51,6 +51,7 @@ import {
   createPullRequest,
   findPullRequest,
   fetchPullRequestChecks,
+  readPullRequestChecks,
   viewPullRequest,
   mergePullRequest,
   pullRequestMergeMethod,
@@ -315,7 +316,8 @@ export function addShipRoutes(
         if (action === "pr-checks") {
           const { item } = locate();
           if (!item.pullRequest) throw new LocalMergeRefusal({ code: "ship.prMissing" });
-          const checks = await fetchPullRequestChecks(root, item.pullRequest);
+          await fetchPullRequestChecks(root, item.pullRequest);
+          const checks = readPullRequestChecks(root, item.pullRequest);
           refresh();
           return context.json(coreTextWire({ checks }));
         }

@@ -207,14 +207,9 @@ export async function fetchPullRequestChecks(
   try {
     return await fetchChecks(root, pr, async (write) => {
       const pending = state.tail.then(async () => {
-        if (sequence <= state.written) {
-          const current = readPullRequestChecks(root, pr);
-          if (!current) throw new CoreTextError({ code: "ship.recordedCiInvalid" });
-          return current;
-        }
-        const result = await write();
+        if (sequence <= state.written) return;
+        await write();
         state.written = sequence;
-        return result;
       });
       state.tail = pending.then(
         () => {},
@@ -230,7 +225,7 @@ export async function fetchPullRequestChecks(
 async function fetchChecks(
   root: string,
   pr: PullRequest,
-  persist: (write: () => Promise<PullRequestChecks>) => Promise<PullRequestChecks>,
+  persist: (write: () => Promise<void>) => Promise<void>,
 ): Promise<PullRequestChecks> {
   const before = await viewPullRequest(root, pr, String(pr.number));
   const checks: unknown = JSON.parse(
@@ -276,7 +271,7 @@ async function fetchChecks(
     state: after.state,
     checks,
   } as PullRequestChecks;
-  return await persist(async () => {
+  await persist(async () => {
     ensureLocalIgnore(root);
     let directory = root;
     for (const part of [".stintwork", "local", "pr-checks"]) {
@@ -293,8 +288,8 @@ async function fetchChecks(
     const temporary = `${path}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
     await rename(temporary, path);
-    return result;
   });
+  return result;
 }
 
 export function readPullRequestChecks(root: string, pr: PullRequest) {
