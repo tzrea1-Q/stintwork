@@ -325,6 +325,7 @@ export function addStintRoutes(
           : {}),
       };
     }
+    let workStarted = false;
     async function end(
       status: "finished" | "stopped" | "failed" | "interrupted",
       details: {
@@ -430,14 +431,20 @@ export function addStintRoutes(
           findings: null,
           error: coreText({ code: "stint.reviewEndedEarly" }).text,
         };
+      const preparationFailed =
+        status !== "finished" &&
+        !recovery &&
+        !closing &&
+        !workStarted &&
+        (!state.startReady || !!attempt);
       const { error, handoffError, ...rest } = details;
       try {
         append({
           type: "ended",
           at: new Date().toISOString(),
-          status,
+          status: preparationFailed ? "preparation-failed" : status,
           handoff: null,
-          ...rest,
+          ...(preparationFailed ? {} : rest),
           ...(error ? coreTextFields("error", error) : {}),
           ...(handoffError ? coreTextFields("handoffError", handoffError) : {}),
           ...(checkpointCommit ? { checkpointCommit } : {}),
@@ -723,6 +730,7 @@ export function addStintRoutes(
               : {}),
           };
           recordRecovery({ kind: "phase", attemptId: attempt.id, progress });
+          if (phase === "work") workStarted = true;
           savedProgress = { ...savedProgress, ...progress };
         },
         ...(evidence ? { afterTurnRequests: [handoffRequest, findingsRequest] } : {}),
@@ -748,6 +756,7 @@ export function addStintRoutes(
             ? Promise.resolve({ outcome: { outcome: "cancelled" as const } })
             : waitForPermission(request),
       });
+      if (!state.handle.ready) workStarted = true;
       state.completion = state.handle.done
         .then(
           ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) => {

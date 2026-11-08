@@ -1029,7 +1029,7 @@ test("disconnect after launch cancels the agent before ready and records the rea
   expect(cancel).toHaveBeenCalledOnce();
   const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
   expect(snapshot.workItems[0].stints[0]).toMatchObject({
-    status: "failed",
+    status: "preparation-failed",
     error: expect.stringContaining("Start connection closed"),
   });
 });
@@ -1178,7 +1178,7 @@ test("HTTP preparation disconnect cancels before download and a new request retr
       try {
         const files = await readdir(join(root, ".stintwork/local/stints"));
         return (await readFile(join(root, ".stintwork/local/stints", files[0]), "utf8")).includes(
-          '"status":"failed"',
+          '"status":"preparation-failed"',
         );
       } catch {
         return false;
@@ -1291,7 +1291,7 @@ test.each(
     if (failSession) {
       expect(response.status).toBe(503);
       expect(entries().some((entry) => entry.kind === "session")).toBe(false);
-      expect(entries().at(-1)).toMatchObject({ type: "ended", status: "failed" });
+      expect(entries().at(-1)).toMatchObject({ type: "ended", status: "preparation-failed" });
       const worktree = entries()[0].stint.worktree.path;
       await expect(readFile(join(worktree, "work.txt"))).rejects.toMatchObject({ code: "ENOENT" });
       return;
@@ -1468,7 +1468,7 @@ test("disconnecting a pending start cancels even while its log is unwritable", a
       const entries = readFileSync(path, 'utf8').trim().split('\\n').map(line => JSON.parse(line));
       assert.equal(entries.filter(entry => entry.kind === 'stop_requested').length, 0);
       assert.equal(entries.filter(entry => entry.type === 'ended').length, 1);
-      assert.equal(entries.at(-1).status, 'failed');
+      assert.equal(entries.at(-1).status, 'preparation-failed');
       assert.match(entries.at(-1).error, /Start connection closed/);
       assert.equal(cancellations, 1);
       process.stdout.write('survived');
