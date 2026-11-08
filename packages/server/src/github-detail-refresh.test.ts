@@ -38,6 +38,7 @@ const scenarios = [
   "isolated-details",
   "cooldown",
   "detail-cooldown",
+  "in-flight",
 ] as const;
 
 test.each(scenarios)(
@@ -302,6 +303,32 @@ test.each(scenarios)(
           } finally {
             clock.mockRestore();
           }
+          return;
+        }
+        if (scenario === "in-flight") {
+          const discovered = await (
+            await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+          ).json();
+          expect(discovered.github.items[0].complete).toBe(true);
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: parent,
+              effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 600)",
+            },
+          });
+          const controller = new AbortController();
+          const pending = server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+            signal: controller.signal,
+          });
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          const during = await (await server.app.request("/api/project")).json();
+          expect(during.github.items[0].complete).toBe(true);
+          controller.abort();
+          await pending;
+          const after = await (await server.app.request("/api/project")).json();
+          expect(after.github.items[0].complete).toBe(true);
           return;
         }
         const fetchedAt = initial.github.items[0].detail.fetchedAt;

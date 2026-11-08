@@ -126,9 +126,7 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
                   ? copy.morePages
                   : copy.errors.incomplete}
             </p>
-            {incompleteCount > 0 && (
-              <p>{copy.incompleteItems.replace("{count}", String(incompleteCount))}</p>
-            )}
+            {incompleteCount > 0 && <p>{copy.incompleteItems(incompleteCount)}</p>}
             {warnings.length > 0 && (
               <ul className="list-disc pl-4 [overflow-wrap:anywhere]">
                 {warnings.map((warning) => {
@@ -143,6 +141,7 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
           </div>
         )}
       {error && !(error === copy.errors.incomplete && !unavailable) && <p>{error}</p>}
+      {waiting && <p>{copy.busy}</p>}
       {failed && <p>{copy.requestFailed}</p>}
       {retryAction && <Button onClick={() => void act(retryAction)}>{copy.retry}</Button>}
       {retryAt > now && github?.retryAt && (

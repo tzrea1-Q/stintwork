@@ -279,6 +279,7 @@ export async function prepareStintBrief(
         workItem.stages[prior.id],
         (error) => githubSource.detailFailed(github, remote.number, error),
         githubGateIgnoresBody(stages, prior.id),
+        ownDetail ? Promise.resolve(ownDetail) : undefined,
       );
       if (!approval.ok)
         return {

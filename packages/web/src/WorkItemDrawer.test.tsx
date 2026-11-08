@@ -343,3 +343,60 @@ test.each(["success", "closed", "exhausted"])(
     }
   },
 );
+
+test("GitHub ticket numbers use issue format while local tickets keep Markdown format", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>(() => {})),
+  );
+  const item = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/spec.md": "# First",
+      ".scratch/first/issues/02-model.md": "# Model\nStatus: open\nBlocked by: 01",
+    }),
+    { name: "Project" },
+  ).workItems[0];
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.getByText("02 · Model")).toBeInTheDocument();
+  expect(screen.getByText(/Blocked by 01/)).toBeInTheDocument();
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: true,
+    ticketsKnown: true,
+  };
+  view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.getByText("#2 · Model")).toBeInTheDocument();
+  expect(screen.getByText(/Blocked by #1/)).toBeInTheDocument();
+});
+
+test("shipped GitHub drawer does not show empty details until known", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>(() => {})),
+  );
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  item.merged = { at: "2026-10-10T10:00:00Z", commit: "b".repeat(40) };
+  item.spec = null;
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://example.com/1",
+    complete: true,
+  };
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.queryByText("No spec yet.")).not.toBeInTheDocument();
+  expect(screen.queryByText("No tickets yet.")).not.toBeInTheDocument();
+  expect(screen.getAllByText("GitHub details are not available yet.")).toHaveLength(2);
+  item.github.ticketsKnown = true;
+  view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.getByText("No spec yet.")).toBeInTheDocument();
+  expect(screen.getByText("No tickets yet.")).toBeInTheDocument();
+});

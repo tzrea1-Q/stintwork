@@ -148,3 +148,5 @@ Ten review rounds settled the design:
 - Login hints and attention items are unchanged.
 
 Remaining limitation: an unintended preview unmount still fails a start, but visibly. Two criteria are ticked.
+
+**Codex, 2026-11-08:** Batch E formats GitHub ticket and blocker numbers with `#`, overlaps bounded GitHub detail reads and reuses detail within a refresh, reports discovery contention in English and Chinese, preserves completeness during stale or aborted refreshes, pluralises the membership warning, and avoids premature empty states for shipped GitHub details. Added focused server and web regressions, including fake-gh overlap and in-flight refresh coverage. No existing test expectations were changed. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed. The touched GitHub tickets, detail refresh, GithubStatus and WorkItemDrawer Vitest files passed (42 tests); the related GitHub gates and stints files also passed (110 tests). Playwright and real-browser review remain for the coordinator outside the sandbox. Criteria remain unchecked.

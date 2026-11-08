@@ -127,6 +127,7 @@ function StintBriefAction({
           onStartingChange={setStarting}
           slug={item.slug}
           ticketNumber={ticket?.number ?? null}
+          github={!!item.github}
           stageName={stage ? translatedStageName(workflow, stage, t) : ""}
           onClose={() => {
             setOpen(false);
@@ -140,6 +141,7 @@ function StintBriefAction({
 function BriefPreviewSheet({
   slug,
   ticketNumber,
+  github,
   stageName,
   onClose,
   onStartingChange,
@@ -147,6 +149,7 @@ function BriefPreviewSheet({
   onStartingChange: (starting: boolean) => void;
   slug: string;
   ticketNumber: number | null;
+  github: boolean;
   stageName: string;
   onClose: () => void;
 }) {
@@ -374,7 +377,8 @@ function BriefPreviewSheet({
             </Button>
           </div>
           <DialogDescription className="mt-3 break-words text-muted">
-            {slug} · {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber)}
+            {slug} ·{" "}
+            {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber, github)}
           </DialogDescription>
         </header>
         <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 [&_h3]:mb-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2">

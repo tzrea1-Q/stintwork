@@ -329,10 +329,12 @@ export function addGithubGateRoutes(
         }
         let incompleteDetail = false;
         let detailWarnings: string[] = [];
+        let currentDetail: ReturnType<typeof readGithubTickets> | undefined;
         const readDigests = async () => {
           incompleteDetail = false;
           detailWarnings = [];
-          const detail = await readGithubTickets(directory, github.repository, item.id, number);
+          currentDetail = readGithubTickets(directory, github.repository, item.id, number);
+          const detail = await currentDetail;
           if (!detail.complete) {
             incompleteDetail = dependencyOnlyIncomplete(detail);
             if (
@@ -393,6 +395,7 @@ export function addGithubGateRoutes(
                   refresh();
                 },
                 githubGateIgnoresBody(stages, prior.id),
+                currentDetail,
               );
               if (!currentApproval.ok)
                 return refuse(

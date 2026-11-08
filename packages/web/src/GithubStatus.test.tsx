@@ -15,6 +15,7 @@ test("conflicts retry on timers and eventually release controls", async () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
   });
   expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(screen.getByText("Discovery is busy. Retrying…")).toBeInTheDocument();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2000);
   });
@@ -260,4 +261,40 @@ test("refresh and load more stay together in order", () => {
   expect(screen.getByText("More pages are available to load.").parentElement).toContainElement(
     screen.getByText("Results are incomplete; dependencies and approvals may be unknown."),
   );
+});
+
+test("singular incomplete membership is grammatical", () => {
+  render(
+    <GithubStatus
+      github={{
+        repository: "a/b",
+        repositoryId: "R",
+        items: [{ id: "I", number: 1, title: "A", url: "https://example.com", complete: false }],
+        scanned: 1,
+        cursor: null,
+        complete: true,
+        pages: [],
+        warnings: [],
+      }}
+    />,
+  );
+  expect(screen.getByText("1 item has incomplete membership.")).toBeInTheDocument();
+});
+
+test("discovery busy is announced in Chinese", async () => {
+  const { LanguageProvider, languageStorageKey } = await import("./i18n/language");
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  const fetcher = vi
+    .spyOn(window, "fetch")
+    .mockResolvedValue({ ok: false, status: 409 } as Response);
+  const view = render(
+    <LanguageProvider>
+      <GithubStatus />
+    </LanguageProvider>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "刷新" }));
+  expect(await screen.findByText("发现任务正忙，正在重试…")).toBeInTheDocument();
+  view.unmount();
+  fetcher.mockRestore();
+  localStorage.removeItem(languageStorageKey);
 });
