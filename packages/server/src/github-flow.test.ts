@@ -77,6 +77,7 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
         rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
       },
     };
+    let firstComments = [{ id: 11, node_id: "C_11", body: "Ticket comment" }];
     const replies = () => ({
       "auth status": {},
       "config get": { stdout: "101" },
@@ -97,10 +98,7 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
       ...Object.fromEntries(
         [11, 12].flatMap((n) => [
           [`${path(n)}/labels?per_page=100&page=1`, { stdout: [] }],
-          [
-            `${path(n)}/comments?per_page=100&page=1`,
-            { stdout: n === 11 ? [{ id: 11, node_id: "C_11", body: "Ticket comment" }] : [] },
-          ],
+          [`${path(n)}/comments?per_page=100&page=1`, { stdout: n === 11 ? firstComments : [] }],
           [
             `${path(n)}/dependencies/blocked_by?per_page=100&page=1`,
             { stdout: n === 12 ? [first] : [] },
@@ -217,7 +215,7 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
       number: 10,
     });
     expect(record.stages.spec.approved.remote).toMatchObject({
-      version: 2,
+      version: 3,
       parentId: "I_10",
       digest: expect.stringMatching(/^sha256:/),
     });
@@ -228,6 +226,8 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
     const { stint: started } = await startFirst.json();
     first.state = "closed";
     first.state_reason = "completed";
+    first.comments = 2;
+    firstComments = [...firstComments, { id: 12, node_id: "C_12", body: "Checks passed" }];
     await gh.script(replies());
     await waitFinished(started.id);
     await expect
@@ -241,6 +241,11 @@ test("GitHub discovery, gates, ticket stints, freshness and recovery use read-on
     expect(snapshot.workItems[0].tickets[0].resolved).toBe(true);
     expect(snapshot.workItems[0].tickets[1].blocked).toBe(false);
     expect(snapshot.workItems[0].stages.tickets.approved.remoteState).toBe("current");
+    expect(
+      snapshot.github.items[0].detail.tickets.find(
+        (ticket: { number: number }) => ticket.number === 11,
+      ).comments,
+    ).toContain("Checks passed");
     await stint(12);
     let response: Response;
     first.body = "Edited ticket";

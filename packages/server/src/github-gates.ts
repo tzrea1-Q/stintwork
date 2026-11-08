@@ -5,6 +5,7 @@ import {
   errorText,
   githubEvidenceDigest,
   githubEvidenceDigestV2,
+  githubEvidenceDigestV3,
   githubTicketsDependencyReady,
   orderTickets,
   gateReadiness,
@@ -84,9 +85,11 @@ export async function requireCurrentGithubApproval(
       if (!dependencyOnlyIncomplete(detail)) throw new GithubReadError("incomplete");
       if (includeTickets) return { ok: false, code: "detail-unavailable" };
     }
-    digest = await (record?.approved?.remote?.version === 2
-      ? githubEvidenceDigestV2
-      : githubEvidenceDigest)(
+    digest = await (record?.approved?.remote?.version === 3
+      ? githubEvidenceDigestV3
+      : record?.approved?.remote?.version === 2
+        ? githubEvidenceDigestV2
+        : githubEvidenceDigest)(
       { parentId, body: detail.spec, tickets: detail.tickets },
       includeTickets,
       labels,
@@ -98,7 +101,9 @@ export async function requireCurrentGithubApproval(
   if (!record?.approved) return { ok: false, code: "approval-missing" };
   const approval = record.approved;
   if (
-    (approval.remote?.version !== 1 && approval.remote?.version !== 2) ||
+    (approval.remote?.version !== 1 &&
+      approval.remote?.version !== 2 &&
+      approval.remote?.version !== 3) ||
     approval.remote.parentId !== parentId ||
     typeof approval.remote.digest !== "string" ||
     (record.reopened?.at && !approval.at)
@@ -359,8 +364,8 @@ export function addGithubGateRoutes(
             throw new GithubReadError("incomplete");
           const input = { parentId: item.id, body: detail.spec, tickets: detail.tickets };
           const [spec, tickets] = await Promise.all([
-            githubEvidenceDigestV2(input, false, [...labels.values()]),
-            githubEvidenceDigestV2(input, true, [...labels.values()]),
+            githubEvidenceDigestV3(input, false, [...labels.values()]),
+            githubEvidenceDigestV3(input, true, [...labels.values()]),
           ]);
           return (stageId: string) => (githubGateIncludesTickets(stages, stageId) ? tickets : spec);
         };
@@ -449,7 +454,7 @@ export function addGithubGateRoutes(
           by,
           at: new Date().toISOString(),
           commit,
-          remote: { version: 2 as const, parentId: item.id, digest: observed },
+          remote: { version: 3 as const, parentId: item.id, digest: observed },
         };
         const workflowCommit = await saveGithubWorkflow(
           directory,

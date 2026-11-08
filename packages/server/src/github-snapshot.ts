@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 import {
   githubEvidenceJson,
   githubEvidenceJsonV2,
+  githubEvidenceJsonV3,
   evidenceStale,
   type GithubEvidenceInput,
   type ProjectSnapshot,
@@ -79,14 +80,18 @@ export function projectGithubGates(
           Array.isArray(ticket.commentRecords),
       );
     const stages = snapshot.workflows[item.workflow].stages;
-    const digest = (stage: string, version: 1 | 2) => {
+    const digest = (stage: string, version: 1 | 2 | 3) => {
       if (!valid || !remote) return undefined;
       const includeTickets = githubGateIncludesTickets(stages, stage);
       if (!detail.complete && (includeTickets || !dependencyOnlyIncomplete(detail)))
         return undefined;
       return `sha256:${createHash("sha256")
         .update(
-          (version === 1 ? githubEvidenceJson : githubEvidenceJsonV2)(
+          (version === 1
+            ? githubEvidenceJson
+            : version === 2
+              ? githubEvidenceJsonV2
+              : githubEvidenceJsonV3)(
             {
               parentId: remote.id,
               body: detail.spec,
@@ -132,14 +137,16 @@ export function projectGithubGates(
           ? approval.remote
           : undefined;
       const current =
-        evidence && "version" in evidence && (evidence.version === 1 || evidence.version === 2)
+        evidence &&
+        "version" in evidence &&
+        (evidence.version === 1 || evidence.version === 2 || evidence.version === 3)
           ? digest(stage, evidence.version)
           : undefined;
       let state: "current" | "stale" | "unknown" =
         !current ||
         !evidence ||
         !("version" in evidence) ||
-        (evidence.version !== 1 && evidence.version !== 2) ||
+        (evidence.version !== 1 && evidence.version !== 2 && evidence.version !== 3) ||
         !("digest" in evidence) ||
         !("parentId" in evidence) ||
         evidence.parentId !== remote?.id
@@ -211,7 +218,13 @@ export function projectGithubGates(
           state = "unknown";
         }
       }
-      if (evidence && "version" in evidence && evidence.version !== 1 && evidence.version !== 2)
+      if (
+        evidence &&
+        "version" in evidence &&
+        evidence.version !== 1 &&
+        evidence.version !== 2 &&
+        evidence.version !== 3
+      )
         state = "unknown";
       record.approved = {
         ...approval,
@@ -220,7 +233,7 @@ export function projectGithubGates(
       };
       upstream = state;
     }
-    const reviewDigest = item.stage ? digest(item.stage, 2) : undefined;
+    const reviewDigest = item.stage ? digest(item.stage, 3) : undefined;
     if (reviewDigest) {
       try {
         const candidate = project.worktreePaths.get(item.slug);

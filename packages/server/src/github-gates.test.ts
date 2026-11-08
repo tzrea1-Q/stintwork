@@ -6,6 +6,7 @@ import { join } from "node:path";
 import {
   githubEvidenceDigest,
   githubEvidenceDigestV2,
+  githubEvidenceDigestV3,
   indexProject,
   createMemoryRepoFiles,
   gateReadiness,
@@ -212,7 +213,7 @@ async function setup(
   const reviewedHead = withWorktree
     ? execFileSync("git", ["-C", worktree, "rev-parse", "HEAD"], { encoding: "utf8" }).trim()
     : git("rev-parse", "HEAD");
-  const reviewedDigest = await githubEvidenceDigestV2(
+  const reviewedDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,
   );
@@ -244,6 +245,109 @@ async function setup(
   };
 }
 const path = ".stintwork/github/example/project/1/workflow.yaml";
+
+test("historical v2 approval becomes stale on a ticket comment while v3 stays current", async () => {
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    title: "Ticket",
+    body: "Ticket",
+    html_url: "https://github.com/Example/Project/issues/2",
+    comments: 1,
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const childPath = "api repos/Example/Project/issues/2";
+  const { root } = await setup({
+    [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
+    [`${issue}/sub_issues?per_page=100&page=1`]: { stdout: [child] },
+    [`${childPath}/labels?per_page=100&page=1`]: { stdout: [] },
+    [`${childPath}/comments?per_page=100&page=1`]: {
+      stdout: [{ id: 1, node_id: "C_1", body: "checks" }],
+    },
+    [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
+  });
+  const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
+  const before = structuredClone(detail.tickets);
+  before[0].commentRecords = [];
+  const input = { parentId: "I_1", body: detail.spec, tickets: before };
+  for (const [version, digest, expected] of [
+    [2, await githubEvidenceDigestV2(input, true), { ok: false, code: "approval-stale" }],
+    [3, await githubEvidenceDigestV3(input, true), { ok: true }],
+  ] as const) {
+    expect(
+      await requireCurrentGithubApproval(root, "Example/Project", "I_1", 1, true, [], {
+        approved: { remote: { version, parentId: "I_1", digest } },
+      }),
+    ).toEqual(expected);
+  }
+});
+
+test.each(["body", "set", "label", "blocker"] as const)(
+  "v3 ticket approval becomes stale after a %s change",
+  async (change) => {
+    const child = {
+      ...parent,
+      node_id: "I_2",
+      number: 2,
+      title: "Ticket",
+      body: "Ticket",
+      html_url: "https://github.com/Example/Project/issues/2",
+      issue_dependencies_summary: { total_blocked_by: change === "blocker" ? 1 : 0 },
+    };
+    const blocker = {
+      ...child,
+      node_id: "I_3",
+      number: 3,
+      html_url: "https://github.com/Example/Project/issues/3",
+      state: "closed",
+    };
+    const childPath = "api repos/Example/Project/issues/2";
+    const input = {
+      parentId: "I_1",
+      body: "Spec",
+      tickets: [
+        {
+          id: "I_2",
+          body: "Ticket",
+          state: "open",
+          stateReason: null,
+          labels: [],
+          blockers: [],
+          commentRecords: [],
+        },
+      ],
+    };
+    const digest = await githubEvidenceDigestV3(input, true, ["ready-for-agent"]);
+    const { root } = await setup({
+      [issue]: { stdout: { ...parent, sub_issues_summary: { total: change === "set" ? 0 : 1 } } },
+      [`${issue}/sub_issues?per_page=100&page=1`]: {
+        stdout:
+          change === "set" ? [] : [{ ...child, body: change === "body" ? "edited" : "Ticket" }],
+      },
+      [`${childPath}/labels?per_page=100&page=1`]: {
+        stdout: change === "label" ? [{ name: "ready-for-agent" }] : [],
+      },
+      [`${childPath}/comments?per_page=100&page=1`]: { stdout: [] },
+      [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: {
+        stdout: change === "blocker" ? [blocker] : [],
+      },
+    });
+    expect(
+      await requireCurrentGithubApproval(
+        root,
+        "Example/Project",
+        "I_1",
+        1,
+        true,
+        ["ready-for-agent"],
+        {
+          approved: { remote: { version: 3, parentId: "I_1", digest } },
+        },
+      ),
+    ).toEqual({ ok: false, code: "approval-stale" });
+  },
+);
 
 test("server refuses gate writes after discovery or viewer failure until discovery recovers", async () => {
   const { root, git, reviewedDigest } = await setup({}, "spec");
@@ -460,7 +564,7 @@ test.each([false, true])(
       );
     }
     const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
-    const reviewedDigest = await githubEvidenceDigestV2(
+    const reviewedDigest = await githubEvidenceDigestV3(
       { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
       true,
     );
@@ -676,7 +780,7 @@ test.each(["mixed", "open external", "cycle", "missing", "unknown state"] as con
     let reviewedDigest = "unavailable";
     try {
       const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
-      reviewedDigest = await githubEvidenceDigestV2(
+      reviewedDigest = await githubEvidenceDigestV3(
         { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
         true,
       );
@@ -711,7 +815,7 @@ test.each(["approve", "reopen"] as const)(
       "tickets",
       true,
     );
-    const reviewedDigest = await githubEvidenceDigestV2(
+    const reviewedDigest = await githubEvidenceDigestV3(
       {
         parentId: "I_1",
         body: "Spec",
@@ -785,7 +889,7 @@ test.each([
 
 test("reopens an earlier GitHub gate and retains its approval", async () => {
   const { git, request, reviewedHead } = await setup({}, "tickets");
-  const reviewedDigest = await githubEvidenceDigestV2(
+  const reviewedDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: "Spec", tickets: [] },
     true,
   );
@@ -797,7 +901,7 @@ test("reopens an earlier GitHub gate and retains its approval", async () => {
       spec: { approved: { remote: { parentId: "I_1" } }, reopened: { commit: reviewedHead } },
     },
   });
-  const specDigest = await githubEvidenceDigestV2(
+  const specDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: "Spec", tickets: [] },
     false,
   );
@@ -815,7 +919,7 @@ test("reopens an earlier GitHub gate and retains its approval", async () => {
 test("refuses a later approval when earlier evidence is unavailable", async () => {
   for (const reply of [{ code: 1 }]) {
     const { git, request, reviewedHead } = await setup({ [issue]: reply }, "spec");
-    const reviewedDigest = await githubEvidenceDigestV2(
+    const reviewedDigest = await githubEvidenceDigestV3(
       { parentId: "I_1", body: "Changed", tickets: [] },
       false,
     );
@@ -847,7 +951,7 @@ test("creates and commits a current approval", async () => {
           by: "Test",
           at: expect.any(String),
           commit: reviewedHead,
-          remote: { version: 2, parentId: "I_1", digest: reviewedDigest },
+          remote: { version: 3, parentId: "I_1", digest: reviewedDigest },
         },
       },
     },
@@ -931,7 +1035,7 @@ test.each(["spec", "clarify", "tickets"] as const)(
     expect(detail.complete).toBe(false);
     const digest =
       initialStage === "tickets"
-        ? await githubEvidenceDigestV2(
+        ? await githubEvidenceDigestV3(
             { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
             true,
           )
@@ -949,7 +1053,7 @@ test.each(["spec", "clarify", "tickets"] as const)(
       expect(await response.json()).toEqual({ approval: "current" });
       const record = parse(git("show", `HEAD:${path}`)).stages[stage];
       expect(record[stage === "clarify" ? "reopened" : "approved"].remote).toMatchObject({
-        version: 2,
+        version: 3,
         parentId: "I_1",
         digest,
       });
@@ -1118,7 +1222,7 @@ test("reopens Spec with unknown dependencies", async () => {
     "tickets",
   );
   const detail = await readGithubTickets(root, "Example/Project", "I_1", 1);
-  const reviewedDigest = await githubEvidenceDigestV2(
+  const reviewedDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: detail.spec, tickets: detail.tickets },
     true,
   );
@@ -1229,7 +1333,7 @@ test("records a stale approval when HEAD advances during the commit", async () =
 
 test("concurrent reopen and approval have one winner and leave a valid workflow", async () => {
   const { request, git, reviewedHead, root } = await setup({}, "tickets");
-  const reviewedDigest = await githubEvidenceDigestV2(
+  const reviewedDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: "Spec", tickets: [] },
     true,
   );
@@ -1250,7 +1354,7 @@ test("failed reopen commit restores workflow and index", async () => {
   mkdirSync(hooks);
   writeFileSync(join(hooks, "pre-commit"), "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   git("config", "core.hooksPath", hooks);
-  const reviewedDigest = await githubEvidenceDigestV2(
+  const reviewedDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: "Spec", tickets: [] },
     true,
   );
@@ -1300,7 +1404,7 @@ test.each([
         })),
       };
     }
-    const reviewedDigest = await githubEvidenceDigestV2(
+    const reviewedDigest = await githubEvidenceDigestV3(
       {
         parentId: "I_1",
         body: "Spec",
@@ -1321,7 +1425,7 @@ test.each([
     const response = await request({ stage, reviewedHead, reviewedDigest });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ approval: expected });
-    expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.version).toBe(2);
+    expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.version).toBe(3);
     expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.digest).toBe(
       reviewedDigest,
     );
@@ -1333,7 +1437,7 @@ test("Spec approval accepts an earlier v1 approval after the parent body changes
     { [issue]: { stdout: { ...parent, body: "Published spec" } } },
     "spec",
   );
-  const reviewedDigest = await githubEvidenceDigestV2(
+  const reviewedDigest = await githubEvidenceDigestV3(
     { parentId: "I_1", body: "Published spec", tickets: [] },
     false,
   );
@@ -1349,7 +1453,7 @@ test("fresh approval check distinguishes missing, unknown, stale, current and un
   expect(await check({ approved: {} })).toEqual({ ok: false, code: "approval-unknown" });
   const approval = {
     at: "2026-01-01",
-    remote: { version: 2, parentId: "I_1", digest: reviewedDigest },
+    remote: { version: 3, parentId: "I_1", digest: reviewedDigest },
   };
   expect(
     await check({ approved: { ...approval, remote: { ...approval.remote, digest: "old" } } }),
@@ -1359,7 +1463,7 @@ test("fresh approval check distinguishes missing, unknown, stale, current and un
     code: "approval-stale",
   });
   expect(await check({ approved: approval })).toEqual({ ok: true });
-  for (const version of [1, 2]) {
+  for (const version of [1, 2, 3]) {
     const old = { ...approval, remote: { ...approval.remote, version, digest: "old" } };
     expect(
       await requireCurrentGithubApproval(

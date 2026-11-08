@@ -8,7 +8,7 @@ import {
   builtInWorkflows,
   deriveAttentionItems,
   githubEvidenceDigest,
-  githubEvidenceDigestV2,
+  githubEvidenceDigestV3,
   indexProject,
 } from "@stintwork/core";
 import { expect, test } from "vitest";
@@ -139,7 +139,7 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
         spec: { approved: { remoteState: "stale" } },
       },
       github: {
-        reviewDigest: await githubEvidenceDigestV2(
+        reviewDigest: await githubEvidenceDigestV3(
           { parentId: "I_1", body: "Spec", tickets: [] },
           true,
         ),
