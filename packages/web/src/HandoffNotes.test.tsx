@@ -81,6 +81,20 @@ test.each(["note", "dismiss"])(
   },
 );
 
+test("mark resolved submits a persistent resolution", async () => {
+  const user = userEvent.setup();
+  const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetch);
+  render(<Board snapshot={handoffSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  await user.click(screen.getByRole("button", { name: "Mark resolved" }));
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/stints/stint/resolve-handoff",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(await screen.findByText("Handoff answered.")).toBeInTheDocument();
+});
+
 test("failed handoff answers keep the note editable and allow retry without claiming it was saved", async () => {
   const user = userEvent.setup();
   const fetch = vi

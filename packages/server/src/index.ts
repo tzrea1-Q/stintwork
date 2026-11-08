@@ -1302,7 +1302,6 @@ export function createProjectServer(
   };
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh, githubBriefSource);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
-  addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles, () => snapshot);
   addRoadmapRoute(app, root, readProjectFiles, refresh, () => snapshot);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
@@ -1329,6 +1328,15 @@ export function createProjectServer(
     },
   );
   gateWriteActive = (slug) => stopStints.workflowWrites.has(slug) || checks.isActive(slug);
+  addHandoffAnswerRoute(
+    app,
+    root,
+    readProjectFiles,
+    refresh,
+    (slug) => stopStints.isActive(slug) || checks.isActive(slug),
+    stopStints.workflowWrites,
+    () => snapshot,
+  );
   addGithubGateRoutes(
     app,
     root,

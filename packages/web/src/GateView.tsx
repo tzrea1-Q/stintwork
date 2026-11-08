@@ -12,12 +12,14 @@ import {
 
 import {
   builtInWorkflows,
+  deriveAttentionItems,
   gateReadiness,
   type WorkflowDefinitions,
   type StageId,
   type Warning,
 } from "@stintwork/core";
 import { useState } from "react";
+import { HandoffAnswer } from "./HandoffAnswer";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
 
@@ -53,6 +55,9 @@ export function GateView({
   if (!current) return null;
   const checkpoint = item.stints.find(({ checkpointCommit }) => checkpointCommit)?.checkpointCommit;
   const lastHandoff = item.stints.find(({ handoff }) => handoff);
+  const unresolved = deriveAttentionItems({ workItems: [item], workflows }).find(
+    (entry) => entry.kind === "handoff-unresolved" && entry.stintId === lastHandoff?.id,
+  );
   const earlier = stages.slice(0, position).filter(({ id }) => item.stages[id]?.approved);
 
   async function act(stage: StageId, action: "approve" | "reopen") {
@@ -154,6 +159,9 @@ export function GateView({
       </p>
       <h4>{t.stints.lastHandoff}</h4>
       {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
+      {unresolved?.kind === "handoff-unresolved" && (
+        <HandoffAnswer item={unresolved} onError={setError} showDetails={false} />
+      )}
       <h4>{t.stints.openWarnings}</h4>
       {warnings.length ? (
         <ul>

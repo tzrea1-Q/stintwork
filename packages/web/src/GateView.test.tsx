@@ -334,6 +334,27 @@ test("gate evidence shows tickets, last checkpoint, handoff and open warnings in
   expect(gate.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
 });
 
+test.each([
+  ["en", "Mark resolved"],
+  ["zh-CN", "标记为已解决"],
+])("last handoff offers resolution in %s", async (language, label) => {
+  localStorage.setItem(languageStorageKey, language);
+  const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetch);
+  const item = project().workItems[0];
+  item.stints = [stint];
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: label }));
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/stints/finished-stint/resolve-handoff",
+    expect.objectContaining({ method: "POST" }),
+  );
+});
+
 test("approving sends the action once and waits for acknowledgement", async () => {
   const user = userEvent.setup();
   let complete: (response: Response) => void = () => {};

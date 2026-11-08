@@ -113,11 +113,24 @@ test("changed since includes committed gate and memory decisions for the work it
   const checkpoint = git(worktree, "rev-parse", "HEAD");
   await write(worktree, ".scratch/first/workflow.yaml", "stage: spec\n");
   await write(worktree, ".scratch/first/review.yaml", "decisions: []\n");
+  for (const path of [
+    "GLOSSARY.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/adr/0001.md",
+    "docs/agents/domain.md",
+  ])
+    await write(worktree, path, "Memory");
   git(worktree, "add", "--all");
   git(worktree, "commit", "-qm", "Record decisions");
   expect(await changedSince(worktree, checkpoint, "first")).toEqual([
     ".scratch/first/review.yaml",
     ".scratch/first/workflow.yaml",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "GLOSSARY.md",
+    "docs/adr/0001.md",
+    "docs/agents/domain.md",
   ]);
 });
 

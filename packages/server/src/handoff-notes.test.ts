@@ -264,6 +264,36 @@ test("a pre-ready disconnect preserves gate evidence and developer notes", async
   expect((await preview(state.project, null)).developerNotes).toEqual(before.developerNotes);
 });
 
+test("mark resolved commits the decision and survives restart", async () => {
+  const state = await fixture();
+  const stint = await start(state.project);
+  await ended(state.project, stint.id);
+  const response = await state.project.app.request(`/api/stints/${stint.id}/resolve-handoff`, {
+    method: "POST",
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result.decision).toMatchObject({
+    id: stint.id,
+    kind: "handoff-unresolved",
+    status: "resolved",
+  });
+  expect(git(stint.worktree.path, "show", "--format=", "--name-only", result.commit)).toBe(
+    ".scratch/first/review.yaml",
+  );
+  expect(
+    (await snapshot(state.project)).attentionItems.filter(
+      (entry) => entry.kind === "handoff-unresolved",
+    ),
+  ).toEqual([]);
+  await state.restart();
+  expect(
+    (await snapshot(state.project)).attentionItems.filter(
+      (entry) => entry.kind === "handoff-unresolved",
+    ),
+  ).toEqual([]);
+});
+
 test("dismissing a handoff removes it across restarts without creating a developer note", async () => {
   const state = await fixture();
   const stint = await start(state.project);

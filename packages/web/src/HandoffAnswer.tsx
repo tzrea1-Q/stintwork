@@ -8,8 +8,10 @@ import { useId, useState } from "react";
 export function HandoffAnswer({
   item,
   onError,
+  showDetails = true,
 }: {
   item: HandoffUnresolvedAttentionItem;
+  showDetails?: boolean;
   onError: (reason: string | Error) => void;
 }) {
   const { t } = useLanguage();
@@ -18,12 +20,12 @@ export function HandoffAnswer({
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  async function answer(text: string | null) {
+  async function answer(text: string | null, resolve = false) {
     setSending(true);
     onError("");
     try {
       const response = await fetch(
-        `/api/stints/${encodeURIComponent(item.stintId)}/handoff-answer`,
+        `/api/stints/${encodeURIComponent(item.stintId)}/${resolve ? "resolve-handoff" : "handoff-answer"}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -50,7 +52,7 @@ export function HandoffAnswer({
 
   return (
     <>
-      <Markdown>{item.details}</Markdown>
+      {showDetails && <Markdown>{item.details}</Markdown>}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -68,6 +70,13 @@ export function HandoffAnswer({
         <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
           <Button variant="primary" type="submit" disabled={!note.trim() || sending || submitted}>
             {t.needsYou.saveNote}
+          </Button>
+          <Button
+            type="button"
+            disabled={sending || submitted}
+            onClick={() => void answer(null, true)}
+          >
+            {t.needsYou.markResolved}
           </Button>
           <Button type="button" disabled={sending || submitted} onClick={() => void answer(null)}>
             {t.needsYou.dismiss}

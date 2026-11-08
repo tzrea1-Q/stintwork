@@ -370,6 +370,7 @@ export const en = {
     developerNote: "Developer note",
     noteHelp:
       "Included in the next brief for this work item, then consumed when that stint starts.",
+    markResolved: "Mark resolved",
     saveNote: "Save developer note",
     dismiss: "Dismiss",
     handoffAnswered: "Handoff answered.",

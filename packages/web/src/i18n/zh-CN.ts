@@ -385,6 +385,7 @@ export const zhCN: Catalog = {
       joinChinese("已等待", minutes ? joinChinese(minutes, "分钟") : "不到一分钟"),
     developerNote: "开发者备注",
     noteHelp: "将纳入此工作项的下一份简报，并在该 Stint 开始时使用。",
+    markResolved: "标记为已解决",
     saveNote: "保存开发者备注",
     dismiss: "忽略",
     handoffAnswered: "已答复交接。",
