@@ -41,6 +41,7 @@ export function GateView({
   const [refreshNeeded, setRefreshNeeded] = useState(false);
   const github = item.github;
   const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
+  const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
   const gate = gateReadiness(item, workflows);
   const emptyGithubSpec =
     !!github &&
@@ -68,7 +69,14 @@ export function GateView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             github
-              ? { stage, reviewedDigest: github.reviewDigest, reviewedHead: github.reviewHead }
+              ? {
+                  stage,
+                  reviewedDigest:
+                    action === "reopen"
+                      ? (github.reviewDigest ?? github.reopenDigest)
+                      : github.reviewDigest,
+                  reviewedHead: github.reviewHead,
+                }
               : {},
           ),
         },
@@ -230,7 +238,7 @@ export function GateView({
             saving ||
             !!message ||
             !!item.activeStint ||
-            (!!github && (!reviewAvailable || refreshNeeded))
+            (!!github && (!reopenAvailable || refreshNeeded))
           }
           onClick={() => void act(stage.id, "reopen")}
         >

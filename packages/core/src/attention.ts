@@ -4,7 +4,7 @@ import { riskyPathAccepted } from "./review-evidence.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { CheckpointWarning, StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
-import type { StageId } from "./workflows.js";
+import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
 import { deriveGateAttentionItems, deriveStaleApprovalAttentionItems } from "./gates.js";
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 
@@ -81,6 +81,7 @@ export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems"> &
     Partial<Pick<ProjectSnapshot, "agents" | "workflows">>,
 ): AttentionItem[] {
+  const workflows: WorkflowDefinitions = snapshot.workflows ?? builtInWorkflows;
   const workItemAttention = snapshot.workItems.flatMap<AttentionItem>((item) => {
     if (item.merged) return [];
     // An unresolved handoff is answered by a later stint that started from it (same ticket,
@@ -107,7 +108,30 @@ export function deriveAttentionItems(
           !stint.handoffAnswer &&
           !supersededHandoffs.has(stint.id) &&
           stint.handoff &&
-          hasUnresolvedHandoff(stint.handoff.unresolved),
+          hasUnresolvedHandoff(stint.handoff.unresolved) &&
+          !item.stints.some(
+            (later) =>
+              later.id !== stint.id &&
+              later.status === "finished" &&
+              !!later.handoff &&
+              later.ticket === stint.ticket &&
+              (stint.ticket !== null || later.stage === stint.stage) &&
+              Date.parse(later.startedAt) >= Date.parse(stint.endedAt ?? stint.startedAt),
+          ) &&
+          !workflows[item.workflow].stages.some(({ id, name }) => {
+            const approval = item.stages[id]?.approved;
+            return (
+              approval &&
+              typeof approval === "object" &&
+              "at" in approval &&
+              typeof approval.at === "string" &&
+              Date.parse(approval.at) > Date.parse(stint.endedAt ?? stint.startedAt) &&
+              new RegExp(
+                `^(?:developer )?approval of the ${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} gate (?:remains |is )?pending[.!]?$`,
+                "i",
+              ).test(stint.handoff!.unresolved.trim())
+            );
+          }),
       )
       .map((stint) => ({
         kind: "handoff-unresolved",

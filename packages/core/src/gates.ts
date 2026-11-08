@@ -41,6 +41,7 @@ export function gateReadiness(
   );
   let reason: CoreText | null = null;
   if (item.merged) reason = coreText({ code: "workItem.shipped" });
+  else if (item.gateWriteActive) reason = coreText({ code: "gate.activeWrite" });
   else if (position < 0 || !nextStage || stages[position].gate === "merge")
     reason = coreText({ code: "gate.noApproval" });
   else if (

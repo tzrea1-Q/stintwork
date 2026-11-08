@@ -187,3 +187,34 @@ test("finishing the ticket from the handoff leaves no stale attention after rebu
   expect(project(started("earlier"), entries).attentionItems).toEqual([]);
   expect(project(started("earlier"), entries).attentionItems).toEqual([]);
 });
+
+test("a later gate approval resolves a gate-only handoff, but not other unresolved text", () => {
+  const snapshot = project(started("earlier", null, "tickets"));
+  const item = snapshot.workItems[0];
+  item.stints[0].handoff!.unresolved = "Developer approval of the Tickets gate remains pending.";
+  item.stages.tickets = {
+    approved: { by: "Developer", at: "2026-10-09T10:25:00Z", commit: "head" },
+  };
+  expect(
+    deriveAttentionItems(snapshot).filter((entry) => entry.kind === "handoff-unresolved"),
+  ).toEqual([]);
+  item.stints[0].handoff!.unresolved += " Check the deployment.";
+  expect(
+    deriveAttentionItems(snapshot).filter((entry) => entry.kind === "handoff-unresolved"),
+  ).toHaveLength(1);
+});
+
+test("a later finished stint with its own handoff supersedes the same stage handoff", () => {
+  const snapshot = project(started("earlier", null, "clarify"), [
+    started("later", null, "clarify"),
+    {
+      ...ended,
+      at: "2026-10-09T10:40:00Z",
+      status: "finished",
+      handoff: { ...handoff, stint: "later", unresolved: "None" },
+    },
+  ]);
+  expect(snapshot.attentionItems.filter((entry) => entry.kind === "handoff-unresolved")).toEqual(
+    [],
+  );
+});

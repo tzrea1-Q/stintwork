@@ -779,6 +779,8 @@ export const en = {
     firstHandoff: "None — start from the project conventions and work item scope.",
     developerNotes: "Developer notes",
     changedPaths: "Changed since the last handoff",
+    changedWorkflow: "Gate and workflow decisions",
+    changedReview: "Review and memory proposal decisions",
     none: "None.",
     filesWin: "Where the handoff and the files disagree, the files win.",
     fullPrompt: "Full prompt",

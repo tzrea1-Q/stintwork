@@ -796,6 +796,8 @@ export const zhCN: Catalog = {
     firstHandoff: "无 — 从项目约定和工作项范围开始。",
     developerNotes: "开发者备注",
     changedPaths: "上次交接后的变更",
+    changedWorkflow: "关卡和工作流决定",
+    changedReview: "审查和记忆提案决定",
     none: "无。",
     filesWin: "交接内容与文件不一致时，以文件为准。",
     fullPrompt: "完整提示词",

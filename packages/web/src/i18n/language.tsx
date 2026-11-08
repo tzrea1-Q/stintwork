@@ -72,7 +72,16 @@ export class CoreTextError extends Error {
   readonly reasonMessage: unknown;
 
   constructor(response: { reason?: unknown; reasonMessage?: unknown }, fallback: string) {
-    super(typeof response.reason === "string" ? response.reason : fallback);
+    const entry = isCoreTextMessage(response.reasonMessage)
+      ? en.coreText[response.reasonMessage.code]
+      : undefined;
+    super(
+      typeof response.reason === "string"
+        ? response.reason
+        : typeof entry === "string"
+          ? entry
+          : fallback,
+    );
     this.reasonMessage = response.reasonMessage;
   }
 }
@@ -113,7 +122,7 @@ export async function readResponseJson(response: Response) {
     return body &&
       typeof body === "object" &&
       !Array.isArray(body) &&
-      typeof body.reason === "string"
+      (typeof body.reason === "string" || isCoreTextMessage(body.reasonMessage))
       ? body
       : { reason: raw || response.statusText };
   } catch {

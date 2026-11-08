@@ -98,6 +98,7 @@ export function createProjectServer(
   );
   const readReviewEvidence = createReviewEvidenceReader(root, checks);
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
+  let gateWriteActive = (_slug: string) => false;
   let watchedPaths = new Set<string>();
   let github: GithubDiscovery | undefined;
   let githubSource: { viewer: { id: number; login: string }; origin: string } | undefined;
@@ -291,6 +292,10 @@ export function createProjectServer(
     projectGithubGates(snapshot, root, project);
     projectLocalApprovals(snapshot, root, project);
     readReviewEvidence(project, snapshot);
+    for (const item of snapshot.workItems) item.gateWriteActive = gateWriteActive(item.slug);
+    snapshot.attentionItems = snapshot.attentionItems.filter(
+      (item) => item.kind !== "gate-ready" || !gateWriteActive(item.workItem),
+    );
     for (const item of snapshot.workItems)
       if (item.activeStint)
         item.activeStint = projectStintPermissions(item.activeStint, hasPermissionBinding);
@@ -1323,6 +1328,7 @@ export function createProjectServer(
       drainStintDetails();
     },
   );
+  gateWriteActive = (slug) => stopStints.workflowWrites.has(slug) || checks.isActive(slug);
   addGithubGateRoutes(
     app,
     root,

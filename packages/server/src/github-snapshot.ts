@@ -80,10 +80,10 @@ export function projectGithubGates(
           Array.isArray(ticket.commentRecords),
       );
     const stages = snapshot.workflows[item.workflow].stages;
-    const digest = (stage: string, version: 1 | 2 | 3) => {
+    const digest = (stage: string, version: 1 | 2 | 3, reopen = false) => {
       if (!valid || !remote) return undefined;
       const includeTickets = githubGateIncludesTickets(stages, stage);
-      if (!detail.complete && (includeTickets || !dependencyOnlyIncomplete(detail)))
+      if (!detail.complete && ((!reopen && includeTickets) || !dependencyOnlyIncomplete(detail)))
         return undefined;
       return `sha256:${createHash("sha256")
         .update(
@@ -234,7 +234,9 @@ export function projectGithubGates(
       upstream = state;
     }
     const reviewDigest = item.stage ? digest(item.stage, 3) : undefined;
-    if (reviewDigest) {
+    const reopenDigest =
+      item.stage && item.github.dependenciesUnknown ? digest(item.stage, 3, true) : undefined;
+    if (reviewDigest || reopenDigest) {
       try {
         const candidate = project.worktreePaths.get(item.slug);
         const path = `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
@@ -248,7 +250,8 @@ export function projectGithubGates(
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         }).trim();
-        item.github.reviewDigest = reviewDigest;
+        if (reviewDigest) item.github.reviewDigest = reviewDigest;
+        if (reopenDigest) item.github.reopenDigest = reopenDigest;
         item.github.reviewHead = reviewHead;
       } catch {
         /* Approval requires a readable HEAD. */

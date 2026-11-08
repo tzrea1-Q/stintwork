@@ -150,7 +150,13 @@ export async function changedSince(
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
     throw new CoreTextError({ code: "git.invalidSlug" });
   const prefix = `.scratch/${workItem}/`;
-  const paths = [`${prefix}spec.md`, `${prefix}issues/`];
+  const paths = [
+    `${prefix}spec.md`,
+    `${prefix}issues/`,
+    `${prefix}workflow.yaml`,
+    `${prefix}review.yaml`,
+    ".stintwork/github/",
+  ];
   const outputs = await Promise.all(
     [
       ["diff", "--name-only", "--no-renames", "-z", checkpointCommit, "--", ...paths],
@@ -161,6 +167,12 @@ export async function changedSince(
     .filter(
       (path) =>
         path === `${prefix}spec.md` ||
+        path === `${prefix}workflow.yaml` ||
+        path === `${prefix}review.yaml` ||
+        (/^github-\d+$/.test(workItem) &&
+          new RegExp(`^\\.stintwork/github/[^/]+/[^/]+/${workItem.slice(7)}/workflow\\.yaml$`).test(
+            path,
+          )) ||
         (path.startsWith(`${prefix}issues/`) &&
           /^\d{2,}-[^/]+\.md$/.test(path.slice(`${prefix}issues/`.length))),
     )

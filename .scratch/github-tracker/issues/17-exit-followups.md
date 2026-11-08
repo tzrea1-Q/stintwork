@@ -148,3 +148,7 @@ Ten review rounds settled the design:
 - Login hints and attention items are unchanged.
 
 Remaining limitation: an unintended preview unmount still fails a start, but visibly. Two criteria are ticked.
+
+**Codex, 2026-11-08:** Batch C resolves gate-only pending handoffs after a later approval and supersedes earlier handoffs after a later finished stint with its own handoff. Gate readiness now exposes active writes and coded refusals, committed workflow and review decisions appear in changed paths, and dependency-only incomplete GitHub detail supplies separate evidence for reopening without enabling approval. Added focused regressions; the existing gate-write serialization test now also checks the busy snapshot and coded refusal. No existing expected behavior was changed. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed. The seven touched Vitest files passed (198 tests); the Git checkpoint file was rerun after adding the GitHub workflow-path regression and passed all 6 tests. The coordinator should run Playwright and browser review outside the sandbox. Criteria remain unchecked.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on `codex/m11-17c`.

@@ -308,7 +308,7 @@ export function addGithubGateRoutes(
           if (stage.gate === "evidence") readReviewEvidence?.(project, snapshot);
           else if (stage.column === "clarify") readMemoryProposals(project.files, snapshot);
           if (!workItem || workItem.stage !== stage.id) return refuse("gate.notCurrentStage");
-          const gate = gateReadiness(workItem, workflows);
+          const gate = gateReadiness({ ...workItem, gateWriteActive: false }, workflows);
           if (!gate.ready) {
             refresh();
             return context.json(

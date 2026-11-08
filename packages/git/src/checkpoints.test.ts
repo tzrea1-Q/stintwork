@@ -107,3 +107,27 @@ test("changed since compares main checkout content, including staged, deleted an
   );
   await expect(changedSince(root, checkpoint, "../other")).rejects.toThrow("Invalid work item");
 });
+
+test("changed since includes committed gate and memory decisions for the work item", async () => {
+  const { worktree } = await fixture();
+  const checkpoint = git(worktree, "rev-parse", "HEAD");
+  await write(worktree, ".scratch/first/workflow.yaml", "stage: spec\n");
+  await write(worktree, ".scratch/first/review.yaml", "decisions: []\n");
+  git(worktree, "add", "--all");
+  git(worktree, "commit", "-qm", "Record decisions");
+  expect(await changedSince(worktree, checkpoint, "first")).toEqual([
+    ".scratch/first/review.yaml",
+    ".scratch/first/workflow.yaml",
+  ]);
+});
+
+test("changed since includes the GitHub work item's committed gate record", async () => {
+  const { worktree } = await fixture();
+  const checkpoint = git(worktree, "rev-parse", "HEAD");
+  const record = ".stintwork/github/example/project/1/workflow.yaml";
+  await write(worktree, record, "stage: tickets\n");
+  await write(worktree, ".stintwork/github/example/project/2/workflow.yaml", "stage: spec\n");
+  git(worktree, "add", "--all");
+  git(worktree, "commit", "-qm", "Approve gate");
+  expect(await changedSince(worktree, checkpoint, "github-1")).toEqual([record]);
+});
