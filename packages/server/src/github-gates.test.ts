@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -61,6 +61,8 @@ async function setup(
   replies: Record<string, GhReply | GhReply[]> = {},
   initialStage?: string,
   withWorktree = false,
+  beforePublish = "",
+  beforeRead = "",
 ) {
   const root = mkdtempSync(join(tmpdir(), "github-gates-"));
   roots.push(root);
@@ -75,7 +77,7 @@ async function setup(
   const worktree = join(worktreeParent, "github-1");
   if (withWorktree) roots.push(worktreeParent);
   if (withWorktree) git("worktree", "add", "-qb", "stintwork/github-1", worktree);
-  const gh = await fakeGh(join(root, "bin"));
+  const gh = await fakeGh(join(root, "bin"), beforePublish, beforeRead);
   process.env.PATH = gh.path;
   await gh.script({
     "auth status": {},
@@ -1379,12 +1381,14 @@ test("failed reopen commit restores workflow and index", async () => {
 });
 
 test.each([
-  ["spec", "current", false],
-  ["tickets", "stale", false],
-  ["spec", "stale", true],
+  ["spec", "current", false, 0],
+  ["tickets", "stale", false, 0],
+  ["spec", "stale", true, 0],
+  ["spec", "stale", true, 1],
+  ["tickets", "stale", false, 4],
 ] as const)(
-  "%s approval is %s after a ticket edit (custom: %s)",
-  async (stage, expected, custom) => {
+  "%s approval is %s after a ticket edit (custom: %s, delayed read: %s)",
+  async (stage, expected, custom, delayAt) => {
     const child = {
       ...parent,
       node_id: "I_2",
@@ -1394,7 +1398,7 @@ test.each([
       issue_dependencies_summary: { total_blocked_by: 0 },
     };
     const childPath = "api repos/Example/Project/issues/2";
-    const { request, reviewedHead, snapshot, git } = await setup(
+    const { request, reviewedHead, snapshot, git, root } = await setup(
       {
         [issue]: { stdout: { ...parent, sub_issues_summary: { total: 1 } } },
         [`${issue}/sub_issues?per_page=100&page=1`]: [
@@ -1406,6 +1410,27 @@ test.each([
         [`${childPath}/dependencies/blocked_by?per_page=100&page=1`]: { stdout: [] },
       },
       stage,
+      false,
+      delayAt
+        ? `const countFile = script + '.count';
+           const count = (fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0) + 1;
+           fs.writeFileSync(countFile, String(count));
+           if (count === ${delayAt}) {
+             fs.writeFileSync(script + '.paused', '');
+             while (!fs.existsSync(script + '.release')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+           }`
+        : "",
+      delayAt
+        ? `if (args[1] === ${JSON.stringify(`${issue.slice(4)}/comments?per_page=100&page=1`)}) {
+             const countFile = script + '.comments';
+             const count = (fs.existsSync(countFile) ? Number(fs.readFileSync(countFile, 'utf8')) : 0) + 1;
+             fs.writeFileSync(countFile, String(count));
+             if (count === ${delayAt}) {
+               while (!fs.existsSync(script + '.paused')) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+               fs.writeFileSync(script + '.reader', '');
+             }
+           }`
+        : "",
     );
     if (custom) {
       snapshot.workflows.feature = {
@@ -1434,7 +1459,17 @@ test.each([
       },
       stage === "tickets" || custom,
     );
-    const response = await request({ stage, reviewedHead, reviewedDigest });
+    const pending = request({ stage, reviewedHead, reviewedDigest });
+    if (delayAt) {
+      const script = join(root, "bin/script.json");
+      try {
+        await expect.poll(() => existsSync(`${script}.paused`)).toBe(true);
+        await expect.poll(() => existsSync(`${script}.reader`)).toBe(true);
+      } finally {
+        writeFileSync(`${script}.release`, "");
+      }
+    }
+    const response = await pending;
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ approval: expected });
     expect(parse(git("show", `HEAD:${path}`)).stages[stage].approved.remote.version).toBe(3);
