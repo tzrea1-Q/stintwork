@@ -1073,7 +1073,9 @@ export function addStintRoutes(
                           event.agent,
                           event.adapterVersion,
                           event.source,
-                          event.executable,
+                          event.executable?.path,
+                          event.executable?.version,
+                          event.executable?.identity,
                         ]);
                         if (confirmedSources.has(key)) return Promise.resolve();
                         return new Promise<void>((resolve, reject) => {

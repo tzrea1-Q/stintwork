@@ -43,3 +43,5 @@ The commit attempt was blocked because the sandbox could not create the worktree
 **Codex, 2026-11-08:** Fixed the two batch A review findings on top of `3b04086`: detail reads reuse a fresh real viewer verification, and discovery preserves the actual verification time when switching accounts. Explicit discovery and write identity checks remain in place. Added sequential-detail call-count and account-switch response/project regression coverage; updated the obsolete per-detail call-count expectation. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed. The five requested GitHub test files passed (166 tests). Lifecycle passed 26 tests; its four WebSocket tests failed with sandbox `listen EPERM` and need the coordinator's outside-sandbox rerun. Ticket criteria remain unchecked.
 
 Staging for the requested commit failed because the sandbox could not create the worktree Git `index.lock` (`Operation not permitted`); these changes remain uncommitted on top of `3b04086`.
+
+**Codex, 2026-11-08:** Source confirmation now keys stable executable fields rather than probe timing; added installed-source regression coverage.
