@@ -468,7 +468,9 @@ export function createProjectServer(
     refresh();
     return false;
   }
-  let identityCheck: Promise<Awaited<ReturnType<typeof githubViewer>>> | undefined;
+  let identityCheck:
+    | Promise<{ viewer: Awaited<ReturnType<typeof githubViewer>>; checkedAt: number }>
+    | undefined;
   async function verifiedViewer() {
     if (!identityCheck) {
       const source = githubSource;
@@ -487,7 +489,7 @@ export function createProjectServer(
                 origin?.toLowerCase() === source.origin.toLowerCase()))
           )
             viewerVerifiedAt = checkedAt;
-          return viewer;
+          return { viewer, checkedAt };
         })
         .finally(() => {
           identityCheck = undefined;
@@ -516,7 +518,7 @@ export function createProjectServer(
     viewerChecking = true;
     refresh();
     try {
-      const viewer = await verifiedViewer();
+      const { viewer } = await verifiedViewer();
       if (
         !lifetime.signal.aborted &&
         githubSource === source &&
@@ -668,7 +670,8 @@ export function createProjectServer(
         refresh();
         if (loadMore) throw new GithubReadError("identity");
       }
-      viewer = await verifiedViewer();
+      const verification = await verifiedViewer();
+      viewer = verification.viewer;
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (
         githubSource &&
@@ -779,6 +782,7 @@ export function createProjectServer(
           }
         : undefined;
       githubSource = { viewer, origin };
+      viewerVerifiedAt = verification.checkedAt;
       if (!github.error) {
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
         cached = { viewer, origin, data: github };
@@ -1096,7 +1100,7 @@ export function createProjectServer(
         refresh();
         throw new GithubReadError("identity");
       }
-      const viewer = await verifiedViewer();
+      const viewer = viewerFresh() ? source.viewer : (await verifiedViewer()).viewer;
       if (
         currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||
         viewer.id !== githubSource.viewer.id ||
@@ -1270,7 +1274,7 @@ export function createProjectServer(
         expected,
         source,
         lifetime.signal,
-        verifiedViewer,
+        async () => (await verifiedViewer()).viewer,
       );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
@@ -1336,7 +1340,7 @@ export function createProjectServer(
         expected,
         source,
         lifetime.signal,
-        verifiedViewer,
+        async () => (await verifiedViewer()).viewer,
       );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;

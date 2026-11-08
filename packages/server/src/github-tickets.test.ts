@@ -113,7 +113,7 @@ test("refreshes a recorded parent and its direct tickets through read-only gh", 
       expect(response.status).toBe(200);
       const snapshot = await response.json();
       const calls = (await gh.calls()).slice(callsBefore);
-      expect(calls.filter(({ args }) => args[0] === "api" && args[1] === "user")).toHaveLength(1);
+      expect(calls.filter(({ args }) => args[0] === "api" && args[1] === "user")).toHaveLength(0);
       expect(
         calls.filter(({ args }) => args[0] === "api" && args[1] === "repos/github/gh-aw"),
       ).toHaveLength(1);
