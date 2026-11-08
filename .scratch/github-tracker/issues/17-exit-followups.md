@@ -20,6 +20,13 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [ ] “Changed since the last handoff” reports committed memory proposals and gate approvals instead of saying none.
 - [ ] Startup does not serially block ordinary API requests on each pending recovery's GitHub detail fetch in `packages/server/src/index.ts`; several interrupted GitHub stints and slow GitHub must not delay ordinary requests by minutes. This was deferred from ticket 14.
 - [ ] With dependency-only incomplete detail at a stage whose evidence includes tickets, Reopen remains available in `GateView` when the reopen route permits it, despite the projection suppressing `reviewDigest`. This was deferred from ticket 16.
+- [ ] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
+- [ ] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
+- [ ] A manual Refresh that gets 409 “Discovery busy” tells the developer instead of doing nothing visible.
+- [ ] GitHub identity is checked once per TTL, not per request: in 161 seconds of startup, detail and refresh, 24 of 48 `gh` calls were `auth status` or `api user`. Each call took 1.1–1.7 seconds.
+- [ ] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
+- [ ] A shipped GitHub item's drawer does not show “No spec yet” and “No tickets yet” before its detail loads.
+- [ ] Decide and document whether shipping a GitHub work item closes or links its parent issue. In the exit, parent #1 stayed open after PR #4 merged because the PR body had no closing keyword.
 
 ## Comments
 
