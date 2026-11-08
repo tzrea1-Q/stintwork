@@ -29,10 +29,11 @@ export function PullRequestChecksPanel({
   const number = item.pullRequest?.number;
   const url = item.pullRequest?.url;
   const head = item.pullRequest?.headCommit;
+  const prIdentity = JSON.stringify([item.slug, number, url]);
   const identity = JSON.stringify([item.slug, number, url, head]);
   const currentIdentity = useRef(identity);
   currentIdentity.current = identity;
-  const checksIdentity = useRef(identity);
+  const checksIdentity = useRef(prIdentity);
   const endpoint = `/api/work-items/${encodeURIComponent(item.slug)}/ship/pr-checks`;
   const refresh = useCallback(async () => {
     if (inFlight.current || paused) return;
@@ -58,7 +59,6 @@ export function PullRequestChecksPanel({
           current &&
           body.checks &&
           current.number === body.checks.number &&
-          current.headCommit === body.checks.headCommit &&
           Date.parse(current.fetchedAt) >= Date.parse(body.checks.fetchedAt)
             ? current
             : body.checks,
@@ -85,19 +85,18 @@ export function PullRequestChecksPanel({
     };
   }, [identity]);
   useEffect(() => {
-    const changed = checksIdentity.current !== identity;
-    checksIdentity.current = identity;
+    const changed = checksIdentity.current !== prIdentity;
+    checksIdentity.current = prIdentity;
     setChecks((current) =>
       !changed &&
       current &&
-      item.pullRequestChecks &&
-      current.number === item.pullRequestChecks.number &&
-      current.headCommit === item.pullRequestChecks.headCommit &&
-      Date.parse(current.fetchedAt) >= Date.parse(item.pullRequestChecks.fetchedAt)
+      (!item.pullRequestChecks ||
+        (current.number === item.pullRequestChecks.number &&
+          Date.parse(current.fetchedAt) >= Date.parse(item.pullRequestChecks.fetchedAt)))
         ? current
         : item.pullRequestChecks,
     );
-  }, [identity, item.pullRequestChecks]);
+  }, [prIdentity, item.pullRequestChecks]);
   useEffect(() => {
     if (!number || item.merged || paused || busy) return;
     const timer = setTimeout(() => void refresh(), 60_000);

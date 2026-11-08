@@ -348,6 +348,7 @@ test("PR CI ignores older refresh responses and older item evidence", async () =
   await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
   const newer = {
     ...checks,
+    headCommit: "b".repeat(40),
     fetchedAt: "2026-10-10T10:00:01Z",
     checks: [{ name: "CI", bucket: "fail", link: "" }],
   };
@@ -364,6 +365,43 @@ test("PR CI ignores older refresh responses and older item evidence", async () =
   expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
   view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: { ...checks } }} />);
   expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
+});
+
+test("PR CI keeps the latest observation across head changes and resets for another PR", async () => {
+  const newer = {
+    ...checks,
+    headCommit: "b".repeat(40),
+    fetchedAt: "2026-10-10T10:00:01Z",
+    checks: [{ name: "New CI", bucket: "pass", link: "" }],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ checks: newer }))),
+  );
+  const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+  const view = render(<PullRequestChecksPanel item={props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  await waitFor(() =>
+    expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI"),
+  );
+  view.rerender(
+    <PullRequestChecksPanel
+      item={{
+        ...props,
+        pullRequest: { ...pr, headCommit: newer.headCommit },
+        pullRequestChecks: { ...checks },
+      }}
+    />,
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI");
+  view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: undefined }} />);
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI");
+  view.rerender(
+    <PullRequestChecksPanel
+      item={{ ...props, pullRequest: { ...pr, url: "https://github.com/other/project/pull/12" } }}
+    />,
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · pending");
 });
 
 test.each([
@@ -392,6 +430,7 @@ test.each([
       ...checks,
       number: nextPr.number,
       headCommit: nextPr.headCommit,
+      fetchedAt: "2026-10-10T10:00:01Z",
       checks: [{ name: "New CI", bucket: "pending", link: "" }],
     };
     view.rerender(
@@ -445,6 +484,7 @@ test("PR CI displays a refreshed remote head and marks it stale", async () => {
           checks: {
             ...checks,
             headCommit: remoteHead,
+            fetchedAt: "2026-10-10T10:00:01Z",
             checks: [{ name: "New CI", bucket: "fail", link: "" }],
           },
         }),

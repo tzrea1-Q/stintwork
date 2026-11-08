@@ -82,3 +82,7 @@ The requested commit could not be staged because the sandbox denied creation of 
 **Codex, 2026-11-08:** Fixed the PR CI panel to display checks for a newer remote head of the current PR, including the stale-evidence warning, while retaining protection against superseded requests and other PRs. Web regression tests cover both cases. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (20 tests). Criteria remain unchecked.
 
 The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `35c6e3b`.
+
+**Codex, 2026-11-08:** Fixed the batch D review finding by ordering PR check observations across head changes for the same work item and PR number/URL; a different PR resets the evidence. In-flight requests still abort on a recorded head change. Web regression coverage checks older refresh responses and item snapshots, absent evidence, and a different PR. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (21 tests). The coordinator's outside-sandbox browser verification remains outstanding for this change. Criteria remain unchanged.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `6f988fb`.
