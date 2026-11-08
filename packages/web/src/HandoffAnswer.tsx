@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Markdown } from "./ui/Markdown";
 import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
 import type { HandoffUnresolvedAttentionItem } from "@stintwork/core";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 export function HandoffAnswer({
   item,
@@ -19,6 +20,9 @@ export function HandoffAnswer({
   const [note, setNote] = useState("");
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const status = useRef<HTMLParagraphElement>(null);
 
   async function answer(text: string | null, resolve = false) {
     setSending(true);
@@ -37,7 +41,9 @@ export function HandoffAnswer({
         throw new CoreTextError(body, t.needsYou.handoffFailed);
       }
       setSubmitted(true);
+      setConfirming(false);
     } catch (cause) {
+      setConfirming(false);
       onError(
         cause instanceof CoreTextError && cause.reasonMessage !== undefined
           ? cause
@@ -73,8 +79,10 @@ export function HandoffAnswer({
           </Button>
           <Button
             type="button"
+            ref={trigger}
+            variant="danger"
             disabled={sending || submitted}
-            onClick={() => void answer(null, true)}
+            onClick={() => setConfirming(true)}
           >
             {t.needsYou.markResolved}
           </Button>
@@ -83,7 +91,40 @@ export function HandoffAnswer({
           </Button>
         </div>
       </form>
-      {submitted && <p role="status">{t.needsYou.handoffAnswered}</p>}
+      <Dialog open={confirming} onOpenChange={(open) => !sending && setConfirming(open)}>
+        <DialogContent
+          returnFocusRef={trigger}
+          onCloseAutoFocus={(event) => {
+            if (status.current) {
+              event.preventDefault();
+              status.current.focus();
+            }
+          }}
+          onEscapeKeyDown={(event) => sending && event.preventDefault()}
+          onPointerDownOutside={(event) => sending && event.preventDefault()}
+        >
+          <DialogTitle className="text-lg font-medium">{t.needsYou.confirmResolve}</DialogTitle>
+          <DialogDescription className="my-3">{t.needsYou.resolveWarning}</DialogDescription>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" disabled={sending} onClick={() => setConfirming(false)}>
+              {t.needsYou.cancelResolve}
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              disabled={sending}
+              onClick={() => void answer(null, true)}
+            >
+              {t.needsYou.confirmResolve}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {submitted && (
+        <p ref={status} tabIndex={-1} role="status">
+          {t.needsYou.handoffAnswered}
+        </p>
+      )}
     </>
   );
 }

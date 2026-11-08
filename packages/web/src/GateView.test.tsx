@@ -335,9 +335,9 @@ test("gate evidence shows tickets, last checkpoint, handoff and open warnings in
 });
 
 test.each([
-  ["en", "Mark resolved"],
-  ["zh-CN", "标记为已解决"],
-])("last handoff offers resolution in %s", async (language, label) => {
+  ["en", "Mark resolved", "Confirm resolution"],
+  ["zh-CN", "标记为已解决", "确认解决"],
+])("last handoff offers resolution in %s", async (language, label, confirmation) => {
   localStorage.setItem(languageStorageKey, language);
   const fetch = vi.fn().mockResolvedValue(new Response("{}"));
   vi.stubGlobal("fetch", fetch);
@@ -349,6 +349,12 @@ test.each([
     </LanguageProvider>,
   );
   await userEvent.click(screen.getByRole("button", { name: label }));
+  expect(fetch).not.toHaveBeenCalled();
+  await userEvent.click(
+    within(screen.getByRole("dialog", { name: confirmation })).getByRole("button", {
+      name: confirmation,
+    }),
+  );
   expect(fetch).toHaveBeenCalledWith(
     "/api/stints/finished-stint/resolve-handoff",
     expect.objectContaining({ method: "POST" }),
