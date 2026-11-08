@@ -8,7 +8,11 @@ import { ensureWorktree, listWorkItemWorktrees } from "@stintwork/git";
 import type { PullRequestPreview, ProjectSnapshot } from "@stintwork/core";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
-import { githubRepository, pullRequestMergeMethod } from "./pull-requests.js";
+import {
+  fetchPullRequestChecks,
+  githubRepository,
+  pullRequestMergeMethod,
+} from "./pull-requests.js";
 
 const fixtures: { directory: string; project: ReturnType<typeof createProjectServer> }[] = [];
 const endpoint = "/api/work-items/first/ship";
@@ -144,6 +148,42 @@ afterEach(async () => {
   }
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
+});
+
+test("an older concurrent CI refresh cannot overwrite newer evidence", async () => {
+  const { root, fake, script, open } = await fixture();
+  const pr = await open();
+  const started = join(root, "started");
+  const release = join(root, "release");
+  await fake.script({
+    ...script,
+    "pr checks": [
+      {
+        stdout: [{ name: "CI", bucket: "pass", link: "" }],
+        effect: `fs.writeFileSync(${JSON.stringify(started)}, ''); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+      },
+      { stdout: [{ name: "CI", bucket: "fail", link: "" }] },
+    ],
+  });
+  const older = fetchPullRequestChecks(root, pr);
+  try {
+    await expect
+      .poll(async () =>
+        readFile(started).then(
+          () => true,
+          () => false,
+        ),
+      )
+      .toBe(true);
+    expect((await fetchPullRequestChecks(root, pr)).checks[0].bucket).toBe("fail");
+  } finally {
+    await writeFile(release, "");
+    await older;
+  }
+  const saved = JSON.parse(
+    await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
+  );
+  expect(saved.checks[0].bucket).toBe("fail");
 });
 
 test("preview and missing, forged or expired confirmation never push or create a PR", async () => {

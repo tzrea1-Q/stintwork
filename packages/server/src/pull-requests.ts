@@ -15,6 +15,10 @@ import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 
 const execute = promisify(execFile);
+const checksWrites = new Map<
+  string,
+  { next: number; written: number; active: number; tail: Promise<void> }
+>();
 export async function shipGit(root: string, args: string[]) {
   return (
     await execute("git", args, {
@@ -190,6 +194,36 @@ export async function fetchPullRequestChecks(
   root: string,
   pr: PullRequest,
 ): Promise<PullRequestChecks> {
+  const key = join(root, ".stintwork", "local", "pr-checks", `${pr.number}.json`);
+  const state = checksWrites.get(key) ?? {
+    next: 0,
+    written: 0,
+    active: 0,
+    tail: Promise.resolve(),
+  };
+  checksWrites.set(key, state);
+  const sequence = ++state.next;
+  state.active++;
+  try {
+    return await fetchChecks(root, pr, async (write) => {
+      const pending = state.tail.then(async () => {
+        if (sequence <= state.written) return;
+        await write();
+        state.written = sequence;
+      });
+      state.tail = pending.catch(() => {});
+      await pending;
+    });
+  } finally {
+    if (--state.active === 0) checksWrites.delete(key);
+  }
+}
+
+async function fetchChecks(
+  root: string,
+  pr: PullRequest,
+  persist: (write: () => Promise<void>) => Promise<void>,
+): Promise<PullRequestChecks> {
   const before = await viewPullRequest(root, pr, String(pr.number));
   const checks: unknown = JSON.parse(
     await gh(
@@ -234,19 +268,21 @@ export async function fetchPullRequestChecks(
     state: after.state,
     checks,
   } as PullRequestChecks;
-  ensureLocalIgnore(root);
-  let directory = root;
-  for (const part of [".stintwork", "local", "pr-checks"]) {
-    directory = join(directory, part);
-    await mkdir(directory, { recursive: true });
-    const stat = await lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new CoreTextError({ code: "ship.ciDirectories" });
-  }
-  const path = join(directory, `${pr.number}.json`);
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
-  await rename(temporary, path);
+  await persist(async () => {
+    ensureLocalIgnore(root);
+    let directory = root;
+    for (const part of [".stintwork", "local", "pr-checks"]) {
+      directory = join(directory, part);
+      await mkdir(directory, { recursive: true });
+      const stat = await lstat(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
+        throw new CoreTextError({ code: "ship.ciDirectories" });
+    }
+    const path = join(directory, `${pr.number}.json`);
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
+    await rename(temporary, path);
+  });
   return result;
 }
 
