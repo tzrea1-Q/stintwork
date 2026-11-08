@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { Hono } from "hono";
@@ -779,7 +779,7 @@ test.each(["waiting", "stopped", "finalizing"] as const)(
   },
 );
 
-test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as const)(
+test.each(["success", "retry", "offline", "stop", "incomplete", "identity", "pending"] as const)(
   "ticket-bound GitHub recovery waits for detail (%s)",
   async (mode) => {
     const fails = mode === "retry" || mode === "stop";
@@ -958,6 +958,13 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
         stdout: [],
       },
     };
+    const release = join(root, "release-recovery-detail");
+    const started = join(root, "started-recovery-detail");
+    if (mode === "pending")
+      replies["api repos/Example/Project/issues/1"] = {
+        stdout: parent,
+        effect: `fs.writeFileSync(${JSON.stringify(started)}, ""); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+      } as (typeof replies)["api repos/Example/Project/issues/1"];
     await gh.script(replies);
     if (mode === "identity")
       await gh.script({
@@ -979,6 +986,11 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
     const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
     try {
       await server.app.request("/api/project");
+      if (mode === "pending") {
+        await expect.poll(() => existsSync(started)).toBe(true);
+        expect((await server.app.request("/api/health")).status).toBe(200);
+        writeFileSync(release, "");
+      }
       if (fails || mode === "offline" || mode === "incomplete" || mode === "identity") {
         expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
         expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
@@ -1061,6 +1073,7 @@ test.each(["success", "retry", "offline", "stop", "incomplete", "identity"] as c
           .toBe(false);
       }
     } finally {
+      writeFileSync(release, "");
       await server.stop();
       timers.mockRestore();
       cleared.mockRestore();

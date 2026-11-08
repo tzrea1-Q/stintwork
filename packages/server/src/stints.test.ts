@@ -841,6 +841,38 @@ test("board/API/refresh never prepare; explicit start streams selection and wait
   expect(stream.messages.some((event) => event.progress?.phase === "installing")).toBe(true);
 });
 
+test("confirmed adapter source is reused until its pin changes", async () => {
+  let version = "2.1.1";
+  const prepareAgent = vi.fn(async (options: AgentPreparationOptions) => {
+    const event = { ...selectedPreparation, adapterVersion: version, phase: "selected" as const };
+    await options.beforePrepare?.(event, options.signal as AbortSignal);
+    return { ...selectedPreparation, adapterVersion: version };
+  });
+  const launch = vi.fn<AgentLauncher>(() => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  }));
+  const { project } = await fixture(launch, { prepareAgent });
+  const first = await streamedStart(project);
+  const confirmation = await first.until("preparation", "confirm");
+  await project.app.request(`/api/stints/${confirmation.stintId}/confirm-agent`, {
+    method: "POST",
+  });
+  expect((await first.until("result")).status).toBe(201);
+  await finished(project, confirmation.stintId as string);
+  const second = await streamedStart(project);
+  const result = await second.until("result");
+  expect(result.status).toBe(201);
+  expect(second.messages.some((event) => event.progress?.phase === "confirm")).toBe(false);
+  await finished(project, (result.body as { stint: Stint }).stint.id);
+  version = "2.1.2";
+  const third = await streamedStart(project);
+  const changed = await third.until("preparation", "confirm");
+  await project.app.request(`/api/stints/${changed.stintId}/confirm-agent`, { method: "POST" });
+  expect((await third.until("result")).status).toBe(201);
+});
+
 test("preparation cancellation launches nothing and permits retry with unchanged pins", async () => {
   const download = vi.fn();
   const prepareAgent = fakePreparation(download);

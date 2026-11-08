@@ -154,7 +154,7 @@ export async function githubLocalViewer(root: string): Promise<string> {
   return stdout.trim().toLowerCase();
 }
 
-export async function githubTrackerRepository(root: string) {
+export async function githubTrackerRepository(root: string, viewerVerified = false) {
   const repository = await githubOrigin(root);
   const gh = async (args: string[]) =>
     (
@@ -166,7 +166,7 @@ export async function githubTrackerRepository(root: string) {
       })
     ).stdout;
   try {
-    await gh(["auth", "status", "--active", "--hostname", "github.com"]);
+    if (!viewerVerified) await gh(["auth", "status", "--active", "--hostname", "github.com"]);
   } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT")
       throw new GithubReadError("gh-missing");
@@ -272,8 +272,9 @@ const relationshipQuery = (field: "labels" | "subIssues") =>
 export async function discoverGithubWorkItems(
   root: string,
   cursor: string | null = null,
+  viewerVerified = false,
 ): Promise<GithubDiscovery> {
-  const repository = await githubTrackerRepository(root);
+  const repository = await githubTrackerRepository(root, viewerVerified);
   const [owner, repo] = repository.repository.split("/");
   const result: GithubDiscovery = {
     ...repository,
