@@ -41,12 +41,14 @@ export async function verifyGithubGateIdentity(
   expected: GithubDiscovery,
   source: { viewer: { id: number; login: string }; origin: string },
   signal?: AbortSignal,
+  readViewer = () => githubViewer(root, signal),
 ) {
-  const viewer = await githubViewer(root, signal);
+  const viewer = await readViewer();
   if (signal?.aborted) return false;
-  const repository = await githubTrackerRepository(root);
+  const repository = await githubTrackerRepository(root, true);
   return (
     viewer.id === source.viewer.id &&
+    viewer.login === source.viewer.login &&
     repository.repository.toLowerCase() === source.origin.toLowerCase() &&
     repository.repository.toLowerCase() === expected.repository.toLowerCase() &&
     repository.repositoryId === expected.repositoryId

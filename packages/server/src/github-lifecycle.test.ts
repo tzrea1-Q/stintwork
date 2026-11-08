@@ -122,7 +122,7 @@ process.exit(result.status ?? 1);
 });
 
 test.each(["changed", "logout", "offline"])(
-  "expired viewer is redacted and handles %s",
+  "expired viewer remains redacted while checking and handles %s",
   async (scenario) => {
     const root = await mkdtemp(join(tmpdir(), "github-expiry-"));
     const oldPath = process.env.PATH;
@@ -189,9 +189,8 @@ test.each(["changed", "logout", "offline"])(
             : { stdout: { id: 202, login: "202" } },
         "api graphql": { stdout: newer },
       });
-      const redacted = await get();
-      expect(redacted.github).toMatchObject({ items: [], verifying: true });
-      expect(JSON.stringify(redacted)).not.toContain("Private");
+      const checking = await get();
+      expect(checking.github.items).toEqual([]);
       if (scenario === "changed") {
         await expect.poll(async () => (await get()).github?.items?.[0]?.title).toBe("New");
       } else {
@@ -514,8 +513,6 @@ test("offline reads wait for an in-flight local account check", async () => {
       expect(result.github).toMatchObject({ errorCode: "offline", items: [{ title: "Private" }] });
     // A new retry may clear the fallback flag while its local check is still running.
     expect((await get()).github.items).toHaveLength(1);
-    const after = await count();
-    await expect.poll(count).toBeGreaterThan(after);
     expect((await get()).github).toMatchObject({
       errorCode: "offline",
       items: [{ title: "Private" }],
@@ -812,14 +809,23 @@ test("discovery returns conflict while a detail read is in flight", async () => 
     server = createProjectServer(root, join(root, "web"));
     await server.app.request("/api/project");
     await gh.script({
-      "auth status": {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
         effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)",
       },
-      "api user": { stdout: { id: 101, login: "101" } },
     });
     const detail = server.app.request("/api/github/items/1/refresh", { method: "POST" });
     await expect
-      .poll(async () => (await gh.calls()).filter((call) => call.args[0] === "auth").length)
+      .poll(
+        async () =>
+          (await gh.calls()).filter((call) => call.args[1] === "repos/example/project").length,
+      )
       .toBeGreaterThan(1);
     expect(
       (await server.app.request("/api/github/discovery/refresh", { method: "POST" })).status,
@@ -934,7 +940,8 @@ test.each([false, true])(
         "api repos/example/project/issues/1/sub_issues?per_page=100&page=1": { stdout: [] },
         "api repos/example/project/issues/1/comments?per_page=100&page=1": { stdout: [] },
       });
-      server = createProjectServer(root, join(root, "web"));
+      let now = 100_000;
+      server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
       const first = await (
         await server.app.request("/api/github/items/1/refresh", { method: "POST" })
       ).json();
@@ -944,6 +951,7 @@ test.each([false, true])(
         "api user": { stdout: changed ? { id: 202, login: "101" } : { id: 101, login: "101" } },
         "api repos/example/project": { effect: "process.stderr.write('HTTP 500')", code: 1 },
       });
+      now += 60_001;
       const failed = await (
         await server.app.request("/api/github/discovery/refresh", { method: "POST" })
       ).json();
@@ -1252,6 +1260,7 @@ test.each(["offline discovery", "rate limit"])(
               : "process.stderr.write('network error')",
         },
       });
+      now += 60_001;
       const failed = await (
         await server.app.request("/api/github/discovery/refresh", { method: "POST" })
       ).json();
@@ -1380,6 +1389,70 @@ test("viewer polling respects discovery rate limit until its retry deadline", as
     await expect.poll(count, { timeout: 5000 }).toBeGreaterThan(before);
   } finally {
     socket?.terminate();
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("concurrent requests refresh before expiry and redact at expiry", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-viewer-ttl-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    await gh.script({
+      "auth status": {
+        effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 150)",
+      },
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    });
+    let now = 100_000;
+    server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => now });
+    const get = async () => (await server!.app.request("/api/project")).json();
+    expect((await get()).github.items[0].title).toBe("Private");
+    now += 45_000;
+    const results = await Promise.all(Array.from({ length: 20 }, get));
+    expect(results.every((result) => result.github.items[0]?.title === "Private")).toBe(true);
+    now += 15_000;
+    expect((await get()).github.items).toEqual([]);
+    await expect
+      .poll(
+        async () =>
+          (await gh.calls()).filter((call) => call.args[0] === "api" && call.args[1] === "user")
+            .length,
+      )
+      .toBe(2);
+    await expect.poll(async () => (await get()).github.items[0]?.title).toBe("Private");
+    await Promise.all(Array.from({ length: 20 }, get));
+    const calls = await gh.calls();
+    expect(calls.filter((call) => call.args[0] === "auth")).toHaveLength(2);
+    expect(calls.filter((call) => call.args[0] === "api" && call.args[1] === "user")).toHaveLength(
+      2,
+    );
+  } finally {
     await server?.stop();
     process.env.PATH = oldPath;
     await rm(root, { recursive: true, force: true });

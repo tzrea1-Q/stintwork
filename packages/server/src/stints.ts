@@ -142,6 +142,7 @@ export function addStintRoutes(
   if (!Number.isFinite(recoverySetupTimeoutMs) || recoverySetupTimeoutMs < 0)
     throw new Error("Recovery setup timeout must be a non-negative number of milliseconds.");
   const active = new Map<string, ActiveStint>();
+  const confirmedSources = new Set<string>();
   const workflowWrites = new Set<string>();
   addStageAgentRoute(
     app,
@@ -1067,8 +1068,17 @@ export function addStintRoutes(
                 },
                 ...(streaming
                   ? {
-                      beforePrepare: (event, signal) =>
-                        new Promise<void>((resolve, reject) => {
+                      beforePrepare: (event, signal) => {
+                        const key = JSON.stringify([
+                          event.agent,
+                          event.adapterVersion,
+                          event.source,
+                          event.executable?.path,
+                          event.executable?.version,
+                          event.executable?.identity,
+                        ]);
+                        if (confirmedSources.has(key)) return Promise.resolve();
+                        return new Promise<void>((resolve, reject) => {
                           const abort = () => {
                             state.confirmSource = undefined;
                             reject(signal.reason);
@@ -1081,10 +1091,12 @@ export function addStintRoutes(
                           state.confirmSource = () => {
                             signal.removeEventListener("abort", abort);
                             state.confirmSource = undefined;
+                            confirmedSources.add(key);
                             resolve();
                           };
                           progress({ ...event, phase: "confirm" });
-                        }),
+                        });
+                      },
                     }
                   : {}),
               });

@@ -70,6 +70,7 @@ export function createProjectServer(
   options: StintServerOptions & {
     githubViewerIntervalMs?: number;
     githubViewerTtlMs?: number;
+    githubViewerRefreshLeadMs?: number;
     githubViewerNow?: () => number;
   } = {},
 ) {
@@ -117,7 +118,7 @@ export function createProjectServer(
     for (const [number, id] of identities) knownIssues.set(number, id);
   }
   let discoveryRunning = false;
-  let detailRunning = false;
+  const detailRunning = new Set<number>();
   const pendingStintDetails = new Set<number>();
   const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
   const stintDetailAttempts = new Map<number, number>();
@@ -151,7 +152,7 @@ export function createProjectServer(
     );
   }
   function drainStintDetails() {
-    if (lifetime.signal.aborted || discoveryRunning || detailRunning) return;
+    if (lifetime.signal.aborted || discoveryRunning || detailRunning.size >= 3) return;
     const number = pendingStintDetails.values().next().value;
     if (number === undefined) return;
     if (github?.retryAt && githubRateLimitCoolingDown(github)) {
@@ -180,6 +181,7 @@ export function createProjectServer(
         }
         drainStintDetails();
       });
+    drainStintDetails();
   }
   const detailFailures = new Map<string, GithubReadError>();
   let discoveryFailure:
@@ -213,8 +215,10 @@ export function createProjectServer(
       .filter((value): value is string => !!value)
       .sort()
       .at(-1);
-    if (retryAt) github.retryAt = retryAt;
-    else delete github.retryAt;
+    if (retryAt) {
+      github.retryAt = retryAt;
+      if (githubRateLimitCoolingDown(github)) viewerVerifiedAt = 0;
+    } else delete github.retryAt;
   }
   function failGithubDetail(current: GithubDiscovery, number: number, error: unknown) {
     if (github !== current) return;
@@ -317,6 +321,8 @@ export function createProjectServer(
   let viewerVerifiedAt = 0;
   let offlineViewer = false;
   const viewerNow = options.githubViewerNow ?? Date.now;
+  const viewerTtl = options.githubViewerTtlMs ?? 60_000;
+  const viewerRefreshLead = options.githubViewerRefreshLeadMs ?? viewerTtl / 4;
   const localVerificationNeeded = () =>
     offlineViewer ||
     viewerFailure?.errorCode === "offline" ||
@@ -325,7 +331,9 @@ export function createProjectServer(
   const viewerFresh = () =>
     !githubRateLimitCoolingDown(github) &&
     viewerVerifiedAt > 0 &&
-    viewerNow() - viewerVerifiedAt < (options.githubViewerTtlMs ?? 60_000);
+    viewerNow() - viewerVerifiedAt < viewerTtl;
+  const viewerRefreshDue = () =>
+    !viewerFresh() || viewerNow() - viewerVerifiedAt >= Math.max(0, viewerTtl - viewerRefreshLead);
   function publicSnapshot(offlineVerified = false) {
     return githubSource && !viewerFresh() && !(localVerificationNeeded() && offlineVerified)
       ? readSnapshot(undefined, true)
@@ -336,17 +344,20 @@ export function createProjectServer(
   let stopping: Promise<void> | undefined;
   const lifetime = new AbortController();
   const websocket = new WebSocketServer({ noServer: true });
+  const initializingSockets = new Set<WebSocket>();
   let websocketClosed = false;
   websocket.once("close", () => {
     websocketClosed = true;
   });
   websocket.on("connection", (socket) => {
     socket.on("error", () => socket.terminate());
+    initializingSockets.add(socket);
     void (async () => {
+      if (!viewerFresh()) await checkGithubViewer();
       const verified = await verifyOfflineViewer();
+      initializingSockets.delete(socket);
       if (socket.readyState === WebSocket.OPEN)
         socket.send(JSON.stringify(coreTextWire(publicSnapshot(verified))));
-      void checkGithubViewer();
     })();
   });
 
@@ -457,14 +468,38 @@ export function createProjectServer(
     refresh();
     return false;
   }
+  let identityCheck:
+    | Promise<{ viewer: Awaited<ReturnType<typeof githubViewer>>; checkedAt: number }>
+    | undefined;
+  async function verifiedViewer() {
+    if (!identityCheck) {
+      const source = githubSource;
+      const generation = trackerGeneration;
+      identityCheck = githubViewer(root, lifetime.signal)
+        .then(async (viewer) => {
+          const checkedAt = viewerNow();
+          const origin = source ? await githubOrigin(root).catch(() => undefined) : undefined;
+          if (
+            !lifetime.signal.aborted &&
+            generation === trackerGeneration &&
+            githubSource === source &&
+            (!source ||
+              (viewer.id === source.viewer.id &&
+                viewer.login === source.viewer.login &&
+                origin?.toLowerCase() === source.origin.toLowerCase()))
+          )
+            viewerVerifiedAt = checkedAt;
+          return { viewer, checkedAt };
+        })
+        .finally(() => {
+          identityCheck = undefined;
+        });
+    }
+    return identityCheck;
+  }
   let viewerCheck: Promise<void> | undefined;
   function checkGithubViewer() {
-    if (
-      lifetime.signal.aborted ||
-      discoveryRunning ||
-      detailRunning ||
-      githubRateLimitCoolingDown(github)
-    )
+    if (lifetime.signal.aborted || !viewerRefreshDue() || githubRateLimitCoolingDown(github))
       return Promise.resolve();
     viewerCheck ??= runGithubViewerCheck().finally(() => {
       viewerCheck = undefined;
@@ -483,12 +518,16 @@ export function createProjectServer(
     viewerChecking = true;
     refresh();
     try {
-      const viewer = await githubViewer(root, lifetime.signal);
-      if (!lifetime.signal.aborted && githubSource === source && viewer.id !== source.viewer.id) {
+      const { viewer } = await verifiedViewer();
+      if (
+        !lifetime.signal.aborted &&
+        githubSource === source &&
+        (viewer.id !== source.viewer.id || viewer.login !== source.viewer.login)
+      ) {
         trackerGeneration++;
         clearGithub();
         refresh();
-        if (!discoveryRunning && !detailRunning) void refreshGithub().then(() => refresh());
+        if (!discoveryRunning && !detailRunning.size) void refreshGithub().then(() => refresh());
       } else if (!lifetime.signal.aborted && githubSource === source) {
         const origin = await githubOrigin(root);
         if (lifetime.signal.aborted || githubSource !== source) return;
@@ -496,12 +535,11 @@ export function createProjectServer(
           trackerGeneration++;
           clearGithub();
           refresh();
-          if (!discoveryRunning && !detailRunning) void refreshGithub().then(() => refresh());
+          if (!discoveryRunning && !detailRunning.size) void refreshGithub().then(() => refresh());
           return;
         }
         source.viewer = viewer;
         if (cached?.viewer.id === viewer.id) cached.viewer = viewer;
-        viewerVerifiedAt = viewerNow();
         offlineViewer = false;
         viewerFailure = undefined;
         updateGithubFreshness();
@@ -512,7 +550,7 @@ export function createProjectServer(
       const failure = classifyGithubError(error);
       viewerVerifiedAt = 0;
       const wasOffline = offlineViewer;
-      offlineViewer = false;
+      offlineViewer = wasOffline && (failure.code === "offline" || failure.code === "server-error");
       const currentViewerFailure = {
         error: failure.message,
         errorCode: failure.code,
@@ -573,7 +611,7 @@ export function createProjectServer(
       trackerGeneration++;
       clearGithub();
       snapshot = readSnapshot(paths);
-      if (snapshot.setup.tracker === "github-issues" && !discoveryRunning && !detailRunning)
+      if (snapshot.setup.tracker === "github-issues" && !discoveryRunning && !detailRunning.size)
         void refreshGithub().then(() => refresh());
     }
     for (const path of watchedPaths) {
@@ -589,7 +627,8 @@ export function createProjectServer(
     if (!force && message === lastBroadcast) return;
     lastBroadcast = message;
     for (const client of websocket.clients) {
-      if (client.readyState === WebSocket.OPEN) client.send(message);
+      if (client.readyState === WebSocket.OPEN && !initializingSockets.has(client))
+        client.send(message);
     }
     if (localVerificationNeeded() && websocket.clients.size)
       void verifyOfflineViewer().then((verified) => {
@@ -597,7 +636,8 @@ export function createProjectServer(
         const verifiedMessage = JSON.stringify(coreTextWire(publicSnapshot(true)));
         lastBroadcast = verifiedMessage;
         for (const client of websocket.clients)
-          if (client.readyState === WebSocket.OPEN) client.send(verifiedMessage);
+          if (client.readyState === WebSocket.OPEN && !initializingSockets.has(client))
+            client.send(verifiedMessage);
       });
   }
 
@@ -609,7 +649,7 @@ export function createProjectServer(
       clearGithub();
       return;
     }
-    if (discoveryRunning || detailRunning || githubRateLimitCoolingDown(github)) return;
+    if (discoveryRunning || detailRunning.size > 0 || githubRateLimitCoolingDown(github)) return;
     discoveryRunning = true;
     const generation = trackerGeneration;
     let viewer: Awaited<ReturnType<typeof githubViewer>> | undefined;
@@ -617,7 +657,6 @@ export function createProjectServer(
     const changedIssues = new Set<number>();
     let repositoryMismatch = false;
     try {
-      await viewerCheck;
       if (
         lifetime.signal.aborted ||
         generation !== trackerGeneration ||
@@ -631,22 +670,27 @@ export function createProjectServer(
         refresh();
         if (loadMore) throw new GithubReadError("identity");
       }
-      viewer = await githubViewer(root, lifetime.signal);
+      const verification = await verifiedViewer();
+      viewer = verification.viewer;
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (
         githubSource &&
         (githubSource.viewer.id !== viewer.id ||
+          githubSource.viewer.login !== viewer.login ||
           githubSource.origin.toLowerCase() !== origin.toLowerCase())
       ) {
         clearGithub();
         if (loadMore) throw new GithubReadError("identity");
       }
-      viewerVerifiedAt = viewerNow();
       offlineViewer = false;
       viewerFailure = undefined;
       const previous = github;
       const priorDiscoveryFailure = discoveryFailure;
-      let next = await discoverGithubWorkItems(root, loadMore ? (previous?.cursor ?? null) : null);
+      let next = await discoverGithubWorkItems(
+        root,
+        loadMore ? (previous?.cursor ?? null) : null,
+        true,
+      );
       if (lifetime.signal.aborted || generation !== trackerGeneration) return;
       if (
         knownRepository &&
@@ -738,6 +782,7 @@ export function createProjectServer(
           }
         : undefined;
       githubSource = { viewer, origin };
+      viewerVerifiedAt = verification.checkedAt;
       if (!github.error) {
         github = { ...github, fetchedAt: new Date().toISOString(), stale: false };
         cached = { viewer, origin, data: github };
@@ -954,9 +999,7 @@ export function createProjectServer(
         Promise.resolve().then(() => checks.recover()),
         localRecovery.then(async () => {
           await refreshGithub();
-          for (const number of pendingRecovery.keys()) {
-            retryStintDetail(number, await refreshGithubDetail(number));
-          }
+          for (const number of pendingRecovery.keys()) pendingStintDetails.add(number);
           drainStintDetails();
         }),
         refreshAgentRegistry(agentRegistry),
@@ -999,8 +1042,8 @@ export function createProjectServer(
   app.get("/api/health", (context) => context.json(coreTextWire(health)));
   app.get("/api/project", async (context) => {
     context.header("Cache-Control", "no-store");
+    if (viewerRefreshDue()) void checkGithubViewer();
     const result = publicSnapshot(await verifyOfflineViewer());
-    if (!viewerFresh()) void checkGithubViewer();
     return context.json(coreTextWire(result));
   });
   app.post("/api/github/discovery/:action", async (context) => {
@@ -1014,7 +1057,7 @@ export function createProjectServer(
       (action === "load-more" && !github?.cursor && !github?.retryable)
     )
       return context.text("Discovery unavailable", 409);
-    if (discoveryRunning || detailRunning) return context.text("Discovery busy", 409);
+    if (discoveryRunning || detailRunning.size) return context.text("Discovery busy", 409);
     await refreshGithub(action === "load-more");
     refresh();
     return context.json(coreTextWire(publicSnapshot()));
@@ -1028,14 +1071,15 @@ export function createProjectServer(
       !github ||
       !githubSource ||
       snapshot.setup.tracker !== "github-issues" ||
-      detailRunning ||
+      detailRunning.has(number) ||
+      detailRunning.size >= 3 ||
       discoveryRunning
     )
       return 409;
     if (githubRateLimitCoolingDown(github)) {
       return (await verifyOfflineViewer()) ? 429 : lifetime.signal.aborted ? 409 : 503;
     }
-    detailRunning = true;
+    detailRunning.add(number);
     const source = githubSource;
     const generation = trackerGeneration;
     const current = github;
@@ -1044,7 +1088,6 @@ export function createProjectServer(
     let repositoryMismatch = false;
     let publish: ReturnType<typeof beginDetail> | undefined;
     try {
-      await viewerCheck;
       if (lifetime.signal.aborted || generation !== trackerGeneration || githubSource !== source)
         return 409;
       if (githubRateLimitCoolingDown(github))
@@ -1057,21 +1100,21 @@ export function createProjectServer(
         refresh();
         throw new GithubReadError("identity");
       }
-      const viewer = await githubViewer(root, lifetime.signal);
+      const viewer = viewerFresh() ? source.viewer : (await verifiedViewer()).viewer;
       if (
         currentOrigin.toLowerCase() !== githubSource.origin.toLowerCase() ||
-        viewer.id !== githubSource.viewer.id
+        viewer.id !== githubSource.viewer.id ||
+        viewer.login !== githubSource.viewer.login
       ) {
         clearGithub();
         throw new GithubReadError("identity");
       }
-      viewerVerifiedAt = viewerNow();
       offlineViewer = false;
       viewerFailure = undefined;
       updateGithubFreshness();
       verified = true;
       if (githubRateLimitCoolingDown(github)) return 429;
-      const repository = await githubTrackerRepository(root);
+      const repository = await githubTrackerRepository(root, true);
       if (
         repository.repositoryId !== current.repositoryId ||
         repository.repository.toLowerCase() !== current.repository.toLowerCase()
@@ -1190,7 +1233,7 @@ export function createProjectServer(
       }
       return 503;
     } finally {
-      detailRunning = false;
+      detailRunning.delete(number);
       refresh(undefined, true);
       if (
         generation !== trackerGeneration &&
@@ -1226,7 +1269,13 @@ export function createProjectServer(
     verifyIdentity: async (expected: GithubDiscovery) => {
       const source = githubSource;
       if (!source || github !== expected) return false;
-      const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
+      const valid = await verifyGithubGateIdentity(
+        root,
+        expected,
+        source,
+        lifetime.signal,
+        async () => (await verifiedViewer()).viewer,
+      );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
     },
@@ -1286,7 +1335,13 @@ export function createProjectServer(
     async (expected) => {
       const source = githubSource;
       if (!source || github !== expected) return false;
-      const valid = await verifyGithubGateIdentity(root, expected, source, lifetime.signal);
+      const valid = await verifyGithubGateIdentity(
+        root,
+        expected,
+        source,
+        lifetime.signal,
+        async () => (await verifiedViewer()).viewer,
+      );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
     },
@@ -1361,10 +1416,13 @@ export function createProjectServer(
         metadataPoll = setInterval(() => {
           if (!lifetime.signal.aborted && readProjectFiles.metadataChanged()) refresh([]);
         }, 150).unref();
-        viewerPoll = setInterval(() => {
-          if ([...websocket.clients].some((client) => client.readyState === WebSocket.OPEN))
-            void checkGithubViewer();
-        }, options.githubViewerIntervalMs ?? 60_000).unref();
+        viewerPoll = setInterval(
+          () => {
+            if ([...websocket.clients].some((client) => client.readyState === WebSocket.OPEN))
+              void checkGithubViewer();
+          },
+          options.githubViewerIntervalMs ?? Math.max(1, Math.min(15_000, viewerRefreshLead / 2)),
+        ).unref();
         return server;
       } catch (error) {
         await stop();

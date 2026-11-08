@@ -339,7 +339,18 @@ test.each(scenarios)(
               true,
             );
           };
+          const beforeDetails = (await gh.calls()).length;
+          await post("/api/github/items/1433/refresh");
           await post("/api/github/items/1533/refresh");
+          expect(
+            (await gh.calls())
+              .slice(beforeDetails)
+              .filter(
+                ({ args }) =>
+                  (args[0] === "auth" && args[1] === "status") ||
+                  (args[0] === "api" && args[1] === "user"),
+              ),
+          ).toEqual([]);
           await post("/api/github/discovery/refresh");
           const oneRefreshed = await post("/api/github/items/1433/refresh");
           expect(oneRefreshed.github.stale).toBe(true);
@@ -450,7 +461,13 @@ test.each(scenarios)(
         const nodes =
           scenario === "removed" || scenario === "origin" || scenario === "load-more"
             ? []
-            : [{ ...issue, id: scenario === "identity" ? "I_changed" : issue.id }];
+            : [
+                {
+                  ...issue,
+                  id: scenario === "identity" ? "I_changed" : issue.id,
+                  title: scenario === "viewer" ? "New account item" : issue.title,
+                },
+              ];
         const refreshPage = page(nodes, newRepo.full_name);
         const morePages = Array.from({ length: 5 }, (_, index) => {
           const response = page([]);
@@ -474,6 +491,16 @@ test.each(scenarios)(
             { method: "POST" },
           )
         ).json();
+        if (scenario === "viewer") {
+          expect(refreshed.github.items.map((item: { title: string }) => item.title)).toEqual([
+            "New account item",
+          ]);
+          const next = await (await server.app.request("/api/project")).json();
+          expect(next.github.items.map((item: { title: string }) => item.title)).toEqual([
+            "New account item",
+          ]);
+          expect(JSON.stringify([refreshed, next])).not.toContain("Recorded body");
+        }
         if (scenario === "same" || scenario === "load-more") {
           expect(refreshed.github.stale).toBe(true);
           expect(refreshed.github.items[0].detail).toMatchObject({
