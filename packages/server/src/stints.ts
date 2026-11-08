@@ -1004,21 +1004,8 @@ export function addStintRoutes(
       }
       const streaming = context.req.header("accept") === "application/x-ndjson";
       const cancelSetup = () => {
-        if (state.stopRequested || state.ending || state.suspending) return;
-        try {
-          state.recordStop?.();
-        } catch (error) {
-          // A disconnected client cannot receive an error; keep running without durable intent.
-          console.error(
-            "Could not record Stop intent; disconnected stint left running:",
-            state.id,
-            error,
-          );
-          return;
-        }
-        state.stopRequested = true;
-        state.setupCancellation?.abort();
-        void state.handle?.cancel();
+        if (state.stopRequested || state.ending || state.suspending || state.handle) return;
+        state.setupCancellation?.abort(new Error("Start connection closed during preparation."));
       };
       const requestSignal = context.req.raw.signal;
       requestSignal.addEventListener("abort", cancelSetup, { once: true });
@@ -1034,7 +1021,7 @@ export function addStintRoutes(
           prepared = resolvePreparation;
         });
         try {
-          state.setupCancellation?.signal.throwIfAborted();
+          let preparationError: unknown;
           let preparedAgent: PreparedAgent | undefined;
           let selected: AgentSelection | PreparedAgent | undefined;
           const prepareOverride = options.prepareAgent;
@@ -1131,10 +1118,12 @@ export function addStintRoutes(
               };
               send({ type: "availability", agent: agent.id, availability: agent.availability });
               refresh();
-              throw auth ?? error;
+              preparationError = auth ?? error;
             }
           }
-          state.setupCancellation?.signal.throwIfAborted();
+          preparationError ??= state.setupCancellation?.signal.aborted
+            ? state.setupCancellation.signal.reason
+            : undefined;
           if (selected?.source === "pending")
             throw new Error("Agent source must be selected before launch.");
           if (workItem.github) {
@@ -1319,6 +1308,7 @@ export function addStintRoutes(
                     },
                   });
                 for (const text of setupMessages) progress(text);
+                if (preparationError) throw preparationError;
                 if (setupFailed) throw setupError;
                 const previous = workItem.stints[0];
                 await installWorktreeDependencies(

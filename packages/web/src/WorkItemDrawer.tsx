@@ -69,8 +69,12 @@ export function WorkItemDrawer({
   onCustomiseWorkflow,
   githubReadOnly = false,
   githubRetryAt,
+  pendingPermissions = false,
+  onOpenNeedsYou,
 }: {
   item: BoardWorkItem;
+  pendingPermissions?: boolean;
+  onOpenNeedsYou?: () => void;
   githubReadOnly?: boolean;
   githubRetryAt?: string;
   milestone?: Milestone;
@@ -163,6 +167,15 @@ export function WorkItemDrawer({
             if (reviewOpen) event.preventDefault();
           }}
         >
+          {pendingPermissions && (
+            <button
+              type="button"
+              className="shrink-0 border-b border-warning bg-surface px-4 py-2 text-left text-sm text-warning"
+              onClick={onOpenNeedsYou}
+            >
+              {t.needsYou.pendingPermissions}
+            </button>
+          )}
           <header className="drawer-header shrink-0 px-4 py-6 sm:px-7">
             <div className="flex items-center justify-between gap-3">
               <p className="eyebrow text-xs uppercase tracking-widest text-muted min-w-0 break-words">

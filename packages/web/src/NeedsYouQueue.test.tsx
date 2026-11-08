@@ -253,7 +253,7 @@ test.each([attentionProfile, loginAttentionProfile])(
 test("Needs you opens a slide-over with source, waiting time, full command and path; counts and badges follow snapshots", async () => {
   const user = userEvent.setup();
   const { rerender } = render(<Board snapshot={attentionSnapshot()} />);
-  expect(document.title).toBe("(1) Project · Stintwork");
+  expect(document.title).toBe("Permission requests need your attention · (1) Project · Stintwork");
   const card = within(screen.getByRole("article", { name: /^first:/ }));
   expect(card.getByLabelText("1 open attention items")).toHaveTextContent("Needs you · 1");
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
@@ -649,7 +649,7 @@ describe("Chinese Needs-you queue", () => {
     const originalTitle = document.title;
     const snapshot = allKindsSnapshot();
     const { rerender, unmount } = render(chineseBoard(snapshot));
-    expect(document.title).toBe("（5 个待处理事项）Project · Stintwork");
+    expect(document.title).toBe("权限请求需要你处理 · （5 个待处理事项）Project · Stintwork");
     expect(notify).not.toHaveBeenCalled();
     const next = {
       ...snapshot,
@@ -668,7 +668,9 @@ describe("Chinese Needs-you queue", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "设置" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
-    expect(document.title).toBe("(5) Project · Stintwork");
+    expect(document.title).toBe(
+      "Permission requests need your attention · (5) Project · Stintwork",
+    );
     expect(notify).toHaveBeenCalledTimes(5);
     await user.click(screen.getByRole("button", { name: "Settings" }));
     await user.click(await screen.findByRole("menuitemradio", { name: "简体中文" }));
@@ -874,3 +876,33 @@ test("Chinese notifications translate the stage for gate-ready and stale approva
     expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: later.id }),
   );
 });
+
+test.each(["en", "zh-CN"] as const)(
+  "pending permissions remain visible on board and drawer (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const t = language === "en" ? en : zhCN;
+    const snapshot = attentionSnapshot();
+    const user = userEvent.setup();
+    const view = render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    expect(screen.getByRole("button", { name: t.needsYou.pendingPermissions })).toBeVisible();
+    expect(document.title).toContain(t.needsYou.pendingPermissions);
+    await user.click(screen.getByRole("button", { name: /First work item/ }));
+    expect(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: t.needsYou.pendingPermissions,
+      }),
+    ).toBeVisible();
+    view.rerender(
+      <LanguageProvider>
+        <Board snapshot={{ ...snapshot, attentionItems: [] }} />
+      </LanguageProvider>,
+    );
+    expect(screen.queryByText(t.needsYou.pendingPermissions)).not.toBeInTheDocument();
+    expect(document.title).not.toContain(t.needsYou.pendingPermissions);
+  },
+);

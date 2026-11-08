@@ -233,13 +233,6 @@ function BriefPreviewSheet({
     }
   }
 
-  useEffect(
-    () => () => {
-      startRequest.current?.abort();
-    },
-    [],
-  );
-
   async function preparationAction(action: "stop" | "confirm-agent") {
     if (!stintId) return;
     const previous = preparation;

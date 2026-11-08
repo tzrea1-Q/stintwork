@@ -548,7 +548,7 @@ test.each([
     expect(screen.getByText("codex login", { selector: "code" })).toBeInTheDocument();
 });
 
-test("closing an explicit start aborts the request; cancellation is available during version inspection", async () => {
+test("closing an explicit start keeps the request alive; cancellation is available during version inspection", async () => {
   const user = userEvent.setup();
   let controller: ReadableStreamDefaultController<Uint8Array>;
   let signal: AbortSignal | undefined;
@@ -580,7 +580,7 @@ test("closing an explicit start aborts the request; cancellation is available du
   );
   expect(screen.getByRole("button", { name: en.stints.preparation.cancel })).toBeEnabled();
   await user.keyboard("{Escape}");
-  expect(signal?.aborted).toBe(true);
+  expect(signal?.aborted).toBe(false);
   expect(trigger).toHaveFocus();
   await act(async () => controller.close());
 });

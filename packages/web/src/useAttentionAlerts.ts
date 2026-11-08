@@ -74,8 +74,8 @@ export function useAttentionAlerts(snapshot: ProjectSnapshot) {
   }, []);
 
   useEffect(() => {
-    document.title = t.needsYou.tabTitle(items.length, projectName);
-  }, [items.length, projectName, t]);
+    document.title = `${items.some((item) => item.kind === "permission") ? `${t.needsYou.pendingPermissions} · ` : ""}${t.needsYou.tabTitle(items.length, projectName)}`;
+  }, [items, projectName, t]);
 
   useEffect(() => {
     const previous = seen.current;
