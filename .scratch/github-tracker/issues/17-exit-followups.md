@@ -162,3 +162,9 @@ Remaining limitation: an unintended preview unmount still fails a start, but vis
 **Codex, 2026-11-08:** Replaced the fake `gh` directory lock with an atomically linked, prewritten PID/timestamp file. Waiters recover dead owners, old locks and aged malformed locks using rename and unlink; waiting remains bounded. Added regressions for a SIGKILLed holder, an empty lock and an old lock. The age limit assumes critical sections finish within 10 seconds.
 
 `pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. The requested fake `gh` and GitHub gates Vitest run passed all 66 tests.
+
+**Coordinator, 2026-11-08:** The CI-only failures in `github-gates.test.ts` came from the fake `gh` harness. Batch D made evidence reads concurrent, so a reader could see a truncated `script.json`. The fix serializes reply selection behind an atomic pid-file lock and publishes updates atomically. Verified at `fe28541` with main merged: test 3,275 passed and test:e2e 432 passed.
+
+Two theoretical lock races remain as known limitations of this test-only harness, because its critical sections take milliseconds:
+- concurrent stale-lock recovery by several processes;
+- a live holder that exceeds the 10-second age limit.
