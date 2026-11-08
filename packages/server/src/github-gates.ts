@@ -73,6 +73,7 @@ export async function requireCurrentGithubApproval(
     | undefined,
   onFailure?: (error: unknown) => void,
   ignoreBody = false,
+  detailPromise?: ReturnType<typeof readGithubTickets>,
 ): Promise<
   | { ok: true }
   | {
@@ -82,7 +83,8 @@ export async function requireCurrentGithubApproval(
 > {
   let digest: string;
   try {
-    const detail = await readGithubTickets(directory, repository, parentId, number);
+    const detail = await (detailPromise ??
+      readGithubTickets(directory, repository, parentId, number));
     if (!detail.complete) {
       if (!dependencyOnlyIncomplete(detail)) throw new GithubReadError("incomplete");
       if (includeTickets) return { ok: false, code: "detail-unavailable" };

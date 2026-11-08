@@ -286,18 +286,22 @@ test("merge is disabled for missing, nonpassing or stale PR CI even with an appr
 
 test("PR state and commit-bound CI appear beside local checks; on-demand refresh replaces evidence", async () => {
   const user = userEvent.setup();
-  const fetch = vi
-    .fn()
-    .mockImplementation(
-      async (url: string) =>
-        new Response(
-          JSON.stringify(
-            url.endsWith("pr-checks")
-              ? { checks: { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] } }
-              : { commands: [], checks: [], headCommit: pr.headCommit, checkExecution: null },
-          ),
+  const fetch = vi.fn().mockImplementation(
+    async (url: string) =>
+      new Response(
+        JSON.stringify(
+          url.endsWith("pr-checks")
+            ? {
+                checks: {
+                  ...checks,
+                  fetchedAt: "2026-10-10T10:00:01Z",
+                  checks: [{ name: "CI", bucket: "pass", link: "" }],
+                },
+              }
+            : { commands: [], checks: [], headCommit: pr.headCommit, checkExecution: null },
         ),
-    );
+      ),
+  );
   vi.stubGlobal("fetch", fetch);
   render(
     <ChecksPanel
@@ -326,6 +330,177 @@ test("PR state and commit-bound CI appear beside local checks; on-demand refresh
   expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · pending");
   await user.click(screen.getByRole("button", { name: "Refresh PR checks" }));
   expect(await screen.findByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · pass");
+});
+
+test("PR CI ignores older refresh responses and older item evidence", async () => {
+  let finish = (_response: Response) => {};
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+  const view = render(<PullRequestChecksPanel item={props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  const newer = {
+    ...checks,
+    headCommit: "b".repeat(40),
+    fetchedAt: "2026-10-10T10:00:01Z",
+    checks: [{ name: "CI", bucket: "fail", link: "" }],
+  };
+  view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: newer }} />);
+  await act(async () =>
+    finish(
+      new Response(
+        JSON.stringify({
+          checks: { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] },
+        }),
+      ),
+    ),
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
+  view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: { ...checks } }} />);
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
+});
+
+test("PR CI keeps the latest observation across head changes and resets for another PR", async () => {
+  const newer = {
+    ...checks,
+    headCommit: "b".repeat(40),
+    fetchedAt: "2026-10-10T10:00:01Z",
+    checks: [{ name: "New CI", bucket: "pass", link: "" }],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ checks: newer }))),
+  );
+  const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+  const view = render(<PullRequestChecksPanel item={props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  await waitFor(() =>
+    expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI"),
+  );
+  view.rerender(
+    <PullRequestChecksPanel
+      item={{
+        ...props,
+        pullRequest: { ...pr, headCommit: newer.headCommit },
+        pullRequestChecks: { ...checks },
+      }}
+    />,
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI");
+  view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: undefined }} />);
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI");
+  view.rerender(
+    <PullRequestChecksPanel
+      item={{ ...props, pullRequest: { ...pr, url: "https://github.com/other/project/pull/12" } }}
+    />,
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · pending");
+});
+
+test.each([
+  { ...pr, number: 13 },
+  { ...pr, url: "https://github.com/other/project/pull/12" },
+  { ...pr, headCommit: "b".repeat(40) },
+])(
+  "PR CI aborts scheduled refresh when PR identity changes: $number $url $headCommit",
+  async (nextPr) => {
+    vi.useFakeTimers();
+    let finish!: (response: Response) => void;
+    const fetch = vi.fn(
+      (_url: string, _options: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+    const view = render(<PullRequestChecksPanel item={props} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    const signal = fetch.mock.calls[0][1].signal as AbortSignal;
+    const nextChecks = {
+      ...checks,
+      number: nextPr.number,
+      headCommit: nextPr.headCommit,
+      fetchedAt: "2026-10-10T10:00:01Z",
+      checks: [{ name: "New CI", bucket: "pending", link: "" }],
+    };
+    view.rerender(
+      <PullRequestChecksPanel
+        item={{ ...props, pullRequest: nextPr, pullRequestChecks: nextChecks }}
+      />,
+    );
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      finish(
+        new Response(
+          JSON.stringify({
+            checks: { ...checks, checks: [{ name: "Old CI", bucket: "pass", link: "" }] },
+          }),
+        ),
+      );
+    });
+    expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI");
+    expect(screen.getByRole("list", { name: "PR CI results" })).not.toHaveTextContent("Old CI");
+    expect(screen.getByRole("button", { name: "Refresh PR checks" })).toBeEnabled();
+  },
+);
+
+test("PR CI ignores a response for a different PR", async () => {
+  const responseChecks = {
+    ...checks,
+    number: 13,
+    checks: [{ name: "Wrong CI", bucket: "pass", link: "" }],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ checks: responseChecks }))),
+  );
+  render(
+    <PullRequestChecksPanel item={{ ...item(), pullRequest: pr, pullRequestChecks: checks }} />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Refresh PR checks" })).toBeEnabled(),
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).not.toHaveTextContent("Wrong CI");
+});
+
+test("PR CI displays a refreshed remote head and marks it stale", async () => {
+  const remoteHead = "b".repeat(40);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          checks: {
+            ...checks,
+            headCommit: remoteHead,
+            fetchedAt: "2026-10-10T10:00:01Z",
+            checks: [{ name: "New CI", bucket: "fail", link: "" }],
+          },
+        }),
+      ),
+    ),
+  );
+  render(
+    <PullRequestChecksPanel
+      item={{ ...item(), headCommit: pr.headCommit, pullRequest: pr, pullRequestChecks: checks }}
+    />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  const panel = screen.getByRole("region", { name: "Pull request CI checks" });
+  await waitFor(() => expect(panel).toHaveTextContent("New CI · fail"));
+  expect(panel).toHaveTextContent(remoteHead);
+  expect(panel).toHaveTextContent("Stale");
 });
 
 test("PR CI refreshes slowly, stops after unmount, and marks stale head evidence", async () => {
@@ -379,4 +554,60 @@ test("shipped PR history keeps CI evidence and merge method without refresh or m
   expect(screen.queryByRole("button", { name: "Merge pull request" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Refresh PR checks" })).not.toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
+});
+
+test("PR polling waits for a pending refresh and pauses during Ship", async () => {
+  vi.useFakeTimers();
+  let finish!: (response: Response) => void;
+  const fetch = vi.fn(
+    () =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  vi.stubGlobal("fetch", fetch);
+  const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+  const view = render(<PullRequestChecksPanel item={props} />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(180_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Checking CI…" })).toBeDisabled();
+  view.rerender(<PullRequestChecksPanel item={props} paused />);
+  await act(async () => {
+    finish(new Response(JSON.stringify({ checks })));
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(180_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  view.rerender(<PullRequestChecksPanel item={props} />);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  expect(fetch).toHaveBeenCalledTimes(2);
+  view.unmount();
+});
+
+test("Ship preview shows progress while GitHub evidence is checked", async () => {
+  const user = userEvent.setup();
+  let finish!: (response: Response) => void;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  render(<ShipActions item={item()} />);
+  await user.click(screen.getByRole("button", { name: "Open pull request" }));
+  expect(screen.getByRole("status")).toHaveTextContent("Verifying GitHub evidence");
+  await act(async () => {
+    finish(new Response(JSON.stringify({ preview })));
+  });
+  expect(
+    await screen.findByRole("dialog", { name: "Confirm publishing pull request" }),
+  ).toBeVisible();
 });

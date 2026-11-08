@@ -127,6 +127,7 @@ export function WorkItemDrawer({
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [shipPaused, setShipPaused] = useState(false);
   const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
@@ -296,7 +297,7 @@ export function WorkItemDrawer({
                 />
               </section>
             )}
-            <ShipActions item={item} workflows={workflows} />
+            <ShipActions item={item} workflows={workflows} onPausePolling={setShipPaused} />
             {!item.merged && (
               <GateView
                 key={item.github ? item.slug : `${item.slug}:${item.stage}`}
@@ -447,7 +448,7 @@ export function WorkItemDrawer({
                   <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
                     {t.stints.checks}
                   </h3>
-                  <ChecksPanel item={item} />
+                  <ChecksPanel item={item} shipPaused={shipPaused} />
                 </section>
               </>
             )}
@@ -464,7 +465,7 @@ export function WorkItemDrawer({
               reviewStageId={reviewStageId}
               item={item}
               onClose={() => setReviewOpen(false)}
-              checks={<ChecksPanel item={item} />}
+              checks={<ChecksPanel item={item} shipPaused={shipPaused} />}
             />
           )}
         </SheetContent>

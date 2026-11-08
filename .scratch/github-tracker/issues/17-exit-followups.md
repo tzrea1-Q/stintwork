@@ -10,18 +10,18 @@ Resolve the findings from the real-repository exit, including the issues deferre
 ## Acceptance criteria
 
 - [x] Re-verify the GitHub account before its 60-second TTL expires so the board does not periodically blank to “Verifying GitHub account…”, hiding pending permissions and making UI refs stale.
-- [ ] Diagnose and fix stint starts that fail silently or with “This operation was aborted” during adapter preparation, including the suspected link to the 60-second account re-check; preparation failures are never lost silently. This occurred twice on ticket #2 under low machine load.
+- [x] Diagnose and fix stint starts that fail silently or with “This operation was aborted” during adapter preparation, including the suspected link to the 60-second account re-check; preparation failures are never lost silently. This occurred twice on ticket #2 under low machine load.
 - [x] Starting another stint with the same pinned adapter does not repeatedly ask the developer to confirm its source.
 - [ ] GitHub blockers display issue numbers in GitHub format, such as “#2” rather than “02”.
 - [ ] Improve GitHub detail read latency for two tickets, observed at about 10–18 seconds.
-- [ ] Pending permission requests have a stronger signal so they do not go unnoticed, as one did for 25 minutes.
+- [x] Pending permission requests have a stronger signal so they do not go unnoticed, as one did for 25 minutes.
 - [ ] A handoff-unresolved attention item leaves Needs you when the gate it asks about is approved.
 - [ ] While a post-stint write is active, the gate does not misleadingly show “Ready to approve”; attempted gate changes surface the `gate.activeWrite` reason instead of only “Could not change the gate.”
 - [ ] “Changed since the last handoff” reports committed memory proposals and gate approvals instead of saying none.
 - [x] Startup does not serially block ordinary API requests on each pending recovery's GitHub detail fetch in `packages/server/src/index.ts`; several interrupted GitHub stints and slow GitHub must not delay ordinary requests by minutes. This was deferred from ticket 14.
 - [ ] With dependency-only incomplete detail at a stage whose evidence includes tickets, Reopen remains available in `GateView` when the reopen route permits it, despite the projection suppressing `reviewDigest`. This was deferred from ticket 16.
-- [ ] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
-- [ ] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
+- [x] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
+- [x] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
 - [ ] A manual Refresh that gets 409 “Discovery busy” tells the developer instead of doing nothing visible.
 - [x] GitHub identity is checked once per TTL, not per request: in 161 seconds of startup, detail and refresh, 24 of 48 `gh` calls were `auth status` or `api user`. Each call took 1.1–1.7 seconds.
 - [ ] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
@@ -94,3 +94,57 @@ Staging for the requested commit failed because the sandbox could not create the
 **Codex, 2026-11-08:** Fixed the retry history review finding on top of `7aaefcc`: pre-dependency preparation failures no longer hide an earlier failed dependency installation. Added a regression covering installation failure, adapter preparation failure, and successful reinstallation on the next start; it failed before the fix and passes afterward. `pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. The requested stint and worktree-readiness run passed 47 tests and failed 11: three socket `listen EPERM` failures and eight previously observed sandbox launch/session failures. All 12 worktree-readiness tests passed. The coordinator should rerun the stint file outside the sandbox. Criteria remain unchanged.
 
 Staging the requested commit failed because the sandbox could not create the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on `7aaefcc`.
+
+**Codex, 2026-11-08:** Ship PR checks now refresh without taking the exclusive Ship write, polls wait for completion and pause during Ship actions and confirmations, and merge retains its current-head Review and CI rechecks. GitHub evidence is read once per action with bounded concurrent connections; parent comments and sub-issues are fetched concurrently. Added English and Chinese Ship/CI progress and gate approval pending labels, with regression coverage for overlapping reads, write contention and polling. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed. The Ship, GitHub gates, GitHub tickets, GitHub item routes, PullRequests, GateView and ShipActions Vitest files passed. GitHub tickets initially failed because its capped-pagination fake did not provide the newly concurrent comments request; after completing that fake, the file passed. Criteria remain unchecked.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). The changes remain uncommitted.
+
+**Codex, 2026-11-08:** Fixed the batch D review race by ordering per-PR CI evidence writes while allowing reads to overlap; an older refresh cannot overwrite a newer successful refresh. Kept the gate approval button's accessible name stable while showing its pending state, with regression tests for both changes. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed; Ship, pull-request, and GateView Vitest files passed (112 tests). Playwright requires the coordinator's outside-sandbox rerun, including the gate layout screenshots. Criteria remain unchecked.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `006e0c3`.
+
+**Codex, 2026-11-08:** Fixed the batch D review finding: superseded CI refreshes return the newest persisted evidence, and the panel ignores older response and item snapshots. Evidence timestamps advance monotonically even when the clock does not. Added server and web regression tests. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed; pull-requests, Ship and PullRequests Vitest suites passed (78 tests), and the final concurrency and timestamp tests passed separately. Criteria remain unchecked.
+
+The requested commit remains uncommitted: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`).
+
+**Codex, 2026-11-08:** Fixed the batch D CI safety race: merge and merge preview decide using their own fresh CI fetch, while newer-started successful refreshes remain authoritative on disk and for polling. Regression tests cover a later passing poll overlapping a failing merge or merge preview. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed; pull-requests and Ship Vitest files passed (66 tests). No web files were changed. Criteria remain unchecked.
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `e7432a8`.
+
+**Codex, 2026-11-08:** Fixed the PR CI panel's identity-change race: in-flight refreshes are aborted when the recorded PR number, URL or head changes, and responses must match the current PR number and head. Web regression tests cover each identity change and mismatched responses. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (20 tests). Criteria remain unchecked.
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `36c0b31`.
+
+**Codex, 2026-11-08:** Fixed the CI evidence ordering review finding: publication follows the order in which `gh pr checks` returns, including when an earlier request is delayed before the checks call. Merge and merge preview still decide using their own fresh fetch. Added regression coverage for both delayed observation and delayed publication. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and the pull-requests and Ship Vitest files passed (67 tests). No web files were changed. Criteria remain unchecked.
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `f001bf7`.
+
+**Codex, 2026-11-08:** Fixed the PR CI panel to display checks for a newer remote head of the current PR, including the stale-evidence warning, while retaining protection against superseded requests and other PRs. Web regression tests cover both cases. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (20 tests). Criteria remain unchecked.
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `35c6e3b`.
+
+**Codex, 2026-11-08:** Fixed the batch D review finding by ordering PR check observations across head changes for the same work item and PR number/URL; a different PR resets the evidence. In-flight requests still abort on a recorded head change. Web regression coverage checks older refresh responses and item snapshots, absent evidence, and a different PR. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (21 tests). The coordinator's outside-sandbox browser verification remains outstanding for this change. Criteria remain unchanged.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `6f988fb`.
+
+**Coordinator, 2026-11-08:** Batch D verified at `1e0f401`, outside the sandbox. format:check, lint, typecheck, build, test (3,255 passed), smoke:package and test:e2e (432 passed) all exit 0. Seven `codex review` rounds fixed these findings:
+- a gate button whose accessible name changed while pending;
+- overwrites by older CI evidence;
+- superseded responses shown in the panel;
+- merge deciding on another request's CI result;
+- request-order versus observation-order publication;
+- PR-identity and head-change handling.
+
+The final review is clean. Two criteria are ticked.
+
+**Coordinator, 2026-11-08:** Batch B verified at `9061849`, outside the sandbox. format:check, lint, typecheck, build, test (3,255 passed), smoke:package and test:e2e (432 passed) all exit 0; the final `codex review` is clean.
+
+Root cause of the auto-stopped stint: an unmounted start preview aborted its request, and the server treated the disconnect as a developer Stop.
+
+Ten review rounds settled the design:
+- Pre-launch failures and cancellations are recorded as `preparation-failed`. They are visible in stint history but are never gate or review evidence, and they create no checkpoint.
+- Setup is atomic once worktree creation begins.
+- Dependencies are reinstalled only after a failure during installation.
+- Login hints and attention items are unchanged.
+
+Remaining limitation: an unintended preview unmount still fails a start, but visibly. Two criteria are ticked.

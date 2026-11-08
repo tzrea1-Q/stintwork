@@ -26,7 +26,13 @@ type ChecksItem = Pick<
 > &
   Partial<Pick<ProjectSnapshot["workItems"][number], "activeStint" | "stints">>;
 
-export function ChecksPanel({ item }: { item: ChecksItem }) {
+export function ChecksPanel({
+  item,
+  shipPaused = false,
+}: {
+  item: ChecksItem;
+  shipPaused?: boolean;
+}) {
   const { t } = useLanguage();
   const [data, setData] = useState<WorkItemChecks | null>(null);
   const [error, setError] = useErrorText();
@@ -95,7 +101,7 @@ export function ChecksPanel({ item }: { item: ChecksItem }) {
 
   return (
     <div className="checks-panel">
-      <PullRequestChecksPanel item={item} />
+      <PullRequestChecksPanel item={item} paused={shipPaused} />
       <p className="muted text-muted">
         {item.merged ? t.review.checks.shippedEvidence : t.review.checks.commandsExplanation}
       </p>

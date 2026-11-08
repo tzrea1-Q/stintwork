@@ -15,6 +15,10 @@ import { ensureLocalIgnore } from "./stint-repo-writes.js";
 import { createNodeRepoFiles } from "./repo-files.js";
 
 const execute = promisify(execFile);
+const checksWrites = new Map<
+  string,
+  { next: number; written: number; active: number; tail: Promise<void> }
+>();
 export async function shipGit(root: string, args: string[]) {
   return (
     await execute("git", args, {
@@ -190,22 +194,57 @@ export async function fetchPullRequestChecks(
   root: string,
   pr: PullRequest,
 ): Promise<PullRequestChecks> {
+  const key = join(root, ".stintwork", "local", "pr-checks", `${pr.number}.json`);
+  const state = checksWrites.get(key) ?? {
+    next: 0,
+    written: 0,
+    active: 0,
+    tail: Promise.resolve(),
+  };
+  checksWrites.set(key, state);
+  state.active++;
+  try {
+    return await fetchChecks(root, pr, () => {
+      const sequence = ++state.next;
+      return async (write) => {
+        const pending = state.tail.then(async () => {
+          if (sequence <= state.written) return;
+          await write();
+          state.written = sequence;
+        });
+        state.tail = pending.then(
+          () => {},
+          () => {},
+        );
+        return await pending;
+      };
+    });
+  } finally {
+    if (--state.active === 0) checksWrites.delete(key);
+  }
+}
+
+async function fetchChecks(
+  root: string,
+  pr: PullRequest,
+  observe: () => (write: () => Promise<void>) => Promise<void>,
+): Promise<PullRequestChecks> {
   const before = await viewPullRequest(root, pr, String(pr.number));
-  const checks: unknown = JSON.parse(
-    await gh(
-      root,
-      ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket,link"],
-      true,
-    ).catch((error: { code?: number; stderr?: string; stdout?: string }) => {
-      // Real gh exits 1 with plain text when no CI has reported; record no checks, which never pass.
-      if (
-        error.code === 1 &&
-        /no checks reported/i.test(`${error.stderr ?? ""}\n${error.stdout ?? ""}`)
-      )
-        return "[]";
-      throw error;
-    }),
-  );
+  const output = await gh(
+    root,
+    ["pr", "checks", String(pr.number), "--repo", pr.repo, "--json", "name,bucket,link"],
+    true,
+  ).catch((error: { code?: number; stderr?: string; stdout?: string }) => {
+    // Real gh exits 1 with plain text when no CI has reported; record no checks, which never pass.
+    if (
+      error.code === 1 &&
+      /no checks reported/i.test(`${error.stderr ?? ""}\n${error.stdout ?? ""}`)
+    )
+      return "[]";
+    throw error;
+  });
+  const persist = observe();
+  const checks: unknown = JSON.parse(output);
   if (
     !Array.isArray(checks) ||
     !checks.every(
@@ -234,19 +273,24 @@ export async function fetchPullRequestChecks(
     state: after.state,
     checks,
   } as PullRequestChecks;
-  ensureLocalIgnore(root);
-  let directory = root;
-  for (const part of [".stintwork", "local", "pr-checks"]) {
-    directory = join(directory, part);
-    await mkdir(directory, { recursive: true });
-    const stat = await lstat(directory);
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new CoreTextError({ code: "ship.ciDirectories" });
-  }
-  const path = join(directory, `${pr.number}.json`);
-  const temporary = `${path}.${randomUUID()}.tmp`;
-  await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
-  await rename(temporary, path);
+  await persist(async () => {
+    ensureLocalIgnore(root);
+    let directory = root;
+    for (const part of [".stintwork", "local", "pr-checks"]) {
+      directory = join(directory, part);
+      await mkdir(directory, { recursive: true });
+      const stat = await lstat(directory);
+      if (!stat.isDirectory() || stat.isSymbolicLink())
+        throw new CoreTextError({ code: "ship.ciDirectories" });
+    }
+    const previous = readPullRequestChecks(root, pr);
+    if (previous && Date.parse(result.fetchedAt) <= Date.parse(previous.fetchedAt))
+      result.fetchedAt = new Date(Date.parse(previous.fetchedAt) + 1).toISOString();
+    const path = join(directory, `${pr.number}.json`);
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
+    await rename(temporary, path);
+  });
   return result;
 }
 
