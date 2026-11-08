@@ -924,7 +924,7 @@ test("preparation cancellation launches nothing and permits retry with unchanged
     done: Promise.resolve({ stopReason: "end_turn" }),
     cancel: async () => {},
   }));
-  const { project } = await fixture(launch, { prepareAgent });
+  const { project, root } = await fixture(launch, { prepareAgent });
   const stream = await streamedStart(project);
   const confirmation = await stream.until("preparation", "confirm");
   expect(
@@ -932,6 +932,18 @@ test("preparation cancellation launches nothing and permits retry with unchanged
       .status,
   ).toBe(202);
   expect((await stream.until("result")).status).toBe(503);
+  const cancellation = JSON.parse(
+    await readFile(
+      join(root, `.stintwork/local/preparation-failures/${confirmation.stintId}.json`),
+      "utf8",
+    ),
+  );
+  expect(cancellation.reasonMessage.code).toBe("agent.preparationCancelled");
+  expect(
+    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
+      /^worktree /gm,
+    ),
+  ).toHaveLength(1);
   expect(download).not.toHaveBeenCalled();
   expect(launch).not.toHaveBeenCalled();
   const retry = await streamedStart(project);
@@ -962,10 +974,12 @@ test("preparation authentication-required records a failure and points to the de
     checkedAt: expect.any(String),
   });
   expect(launch).not.toHaveBeenCalled();
-  const files = await readdir(join(root, ".stintwork/local/stints"));
-  const log = await readFile(join(root, ".stintwork/local/stints", files[0]), "utf8");
-  expect(log).toContain('"status":"failed"');
+  const files = await readdir(join(root, ".stintwork/local/preparation-failures"));
+  const log = await readFile(join(root, ".stintwork/local/preparation-failures", files[0]), "utf8");
   expect(log).toContain("codex login");
+  await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
+    code: "ENOENT",
+  });
 });
 
 test("a disconnected start during preparation records a failure with its reason", async () => {
@@ -982,20 +996,12 @@ test("a disconnected start during preparation records a failure with its reason"
   request.abort();
   expect((await stream.until("result")).status).toBe(503);
   const log = await readFile(
-    join(root, `.stintwork/local/stints/${confirmation.stintId}.jsonl`),
+    join(root, `.stintwork/local/preparation-failures/${confirmation.stintId}.json`),
     "utf8",
   );
   expect(log).not.toContain("stop_requested");
-  expect(
-    foldStintLog(
-      log
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line)),
-    ),
-  ).toMatchObject({
-    status: "failed",
-    error: expect.stringContaining("Start connection closed"),
+  expect(JSON.parse(log)).toMatchObject({
+    reason: expect.stringContaining("Start connection closed"),
   });
   expect(launch).not.toHaveBeenCalled();
 });
@@ -1032,15 +1038,16 @@ test.each([
     kind: "preparation-failed",
   });
   expect(await readFile(join(root, ticketPath))).toEqual(ticket);
-  const logs = await readdir(join(root, ".stintwork/local/stints"));
-  const entries = (await readFile(join(root, ".stintwork/local/stints", logs[0]), "utf8"))
-    .trim()
-    .split("\n")
-    .map((line) => JSON.parse(line));
-  expect(foldStintLog(entries)).toMatchObject({
-    status: "failed",
-    error: expect.stringContaining(message),
-  });
+  const logs = await readdir(join(root, ".stintwork/local/preparation-failures"));
+  const record = JSON.parse(
+    await readFile(join(root, ".stintwork/local/preparation-failures", logs[0]), "utf8"),
+  );
+  expect(record).toMatchObject({ reason: expect.stringContaining(message) });
+  expect(
+    execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
+      /^worktree /gm,
+    ),
+  ).toHaveLength(1);
   expect((await start(project)).status).toBe(201);
   expect(prepareAgent).toHaveBeenCalledTimes(2);
   expect(launch).toHaveBeenCalledWith(

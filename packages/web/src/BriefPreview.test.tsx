@@ -76,6 +76,30 @@ test.each([
   localStorage.removeItem(languageStorageKey);
 });
 const agents = [codexProfile];
+
+test.each(["close", "unmount"])("%s cancels a pending preparation request", async (action) => {
+  let signal: AbortSignal | undefined;
+  const load = previewFetch();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, options?: RequestInit) => {
+      if (url !== "/api/stints") return load(url);
+      signal = options?.signal ?? undefined;
+      return new Promise<Response>(() => {});
+    }),
+  );
+  const user = userEvent.setup();
+  const view = render(<TicketBriefPreview item={item} ticket={ticket} />);
+  await user.click(screen.getByRole("button", { name: en.stints.startStint }));
+  await screen.findByRole("heading", { name: en.stints.fullPrompt });
+  await user.click(screen.getByRole("button", { name: en.stints.start }));
+  expect(signal?.aborted).toBe(false);
+  if (action === "close")
+    await user.click(screen.getByRole("button", { name: en.stints.closeBrief }));
+  else view.unmount();
+  expect(signal?.aborted).toBe(true);
+});
+
 const brief = compileBrief({
   files,
   workItem: item,
@@ -548,7 +572,7 @@ test.each([
     expect(screen.getByText("codex login", { selector: "code" })).toBeInTheDocument();
 });
 
-test("closing an explicit start keeps the request alive; cancellation is available during version inspection", async () => {
+test("closing an explicit start cancels it; cancellation is available during version inspection", async () => {
   const user = userEvent.setup();
   let controller: ReadableStreamDefaultController<Uint8Array>;
   let signal: AbortSignal | undefined;
@@ -580,7 +604,7 @@ test("closing an explicit start keeps the request alive; cancellation is availab
   );
   expect(screen.getByRole("button", { name: en.stints.preparation.cancel })).toBeEnabled();
   await user.keyboard("{Escape}");
-  expect(signal?.aborted).toBe(false);
+  expect(signal?.aborted).toBe(true);
   expect(trigger).toHaveFocus();
   await act(async () => controller.close());
 });

@@ -1124,6 +1124,25 @@ export function addStintRoutes(
           preparationError ??= state.setupCancellation?.signal.aborted
             ? state.setupCancellation.signal.reason
             : undefined;
+          if (preparationError) {
+            const reason = state.stopRequested
+              ? coreText({ code: "agent.preparationCancelled" })
+              : errorText(preparationError);
+            const logs = prepareLogs(root, "preparation-failures");
+            writeFileSync(
+              join(logs.directory, `${state.id}.json`),
+              JSON.stringify(
+                coreTextWire({
+                  at: new Date().toISOString(),
+                  workItem: workItem.slug,
+                  agent: agent.id,
+                  reason,
+                }),
+              ),
+              { flag: "wx" },
+            );
+            throw preparationError;
+          }
           if (selected?.source === "pending")
             throw new Error("Agent source must be selected before launch.");
           if (workItem.github) {
@@ -1308,7 +1327,6 @@ export function addStintRoutes(
                     },
                   });
                 for (const text of setupMessages) progress(text);
-                if (preparationError) throw preparationError;
                 if (setupFailed) throw setupError;
                 const previous = workItem.stints[0];
                 await installWorktreeDependencies(
