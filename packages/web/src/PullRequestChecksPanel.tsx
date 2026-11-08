@@ -25,53 +25,80 @@ export function PullRequestChecksPanel({
   const [checks, setChecks] = useState(item.pullRequestChecks);
   const [error, setError] = useErrorText();
   const [busy, setBusy] = useState(false);
-  const inFlight = useRef(false);
+  const inFlight = useRef<AbortController | null>(null);
   const number = item.pullRequest?.number;
+  const url = item.pullRequest?.url;
+  const head = item.pullRequest?.headCommit;
+  const identity = JSON.stringify([item.slug, number, url, head]);
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
+  const checksIdentity = useRef(identity);
   const endpoint = `/api/work-items/${encodeURIComponent(item.slug)}/ship/pr-checks`;
-  const refresh = useCallback(
-    async (signal?: AbortSignal) => {
-      if (inFlight.current || paused) return;
-      inFlight.current = true;
-      setBusy(true);
-      try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-          signal,
-        });
-        const body = await readResponseJson(response);
-        if (!response.ok) throw new CoreTextError(body, t.review.pr.refreshError);
-        if (!signal?.aborted) {
-          setChecks((current) =>
-            current &&
-            body.checks &&
-            current.number === body.checks.number &&
-            Date.parse(current.fetchedAt) >= Date.parse(body.checks.fetchedAt)
-              ? current
-              : body.checks,
-          );
-          setError("");
-        }
-      } catch (cause) {
-        if (!signal?.aborted) setError(cause instanceof Error ? cause : t.review.pr.refreshError);
-      } finally {
-        inFlight.current = false;
-        if (!signal?.aborted) setBusy(false);
+  const refresh = useCallback(async () => {
+    if (inFlight.current || paused) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    inFlight.current = controller;
+    setBusy(true);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+        signal,
+      });
+      const body = await readResponseJson(response);
+      if (!response.ok) throw new CoreTextError(body, t.review.pr.refreshError);
+      if (
+        !signal.aborted &&
+        currentIdentity.current === identity &&
+        body.checks?.number === number &&
+        body.checks?.headCommit === head
+      ) {
+        setChecks((current) =>
+          current &&
+          body.checks &&
+          current.number === body.checks.number &&
+          current.headCommit === body.checks.headCommit &&
+          Date.parse(current.fetchedAt) >= Date.parse(body.checks.fetchedAt)
+            ? current
+            : body.checks,
+        );
+        setError("");
       }
-    },
-    [endpoint, t.review.pr.refreshError, setError, paused],
-  );
+    } catch (cause) {
+      if (!signal.aborted && currentIdentity.current === identity)
+        setError(cause instanceof Error ? cause : t.review.pr.refreshError);
+    } finally {
+      if (inFlight.current === controller) {
+        inFlight.current = null;
+        setBusy(false);
+      }
+    }
+  }, [endpoint, t.review.pr.refreshError, setError, paused, identity, number, head]);
+  // The cleanup must also run when the recorded PR identity changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: identity scopes the request lifetime.
   useEffect(() => {
+    return () => {
+      inFlight.current?.abort();
+      inFlight.current = null;
+      setBusy(false);
+    };
+  }, [identity]);
+  useEffect(() => {
+    const changed = checksIdentity.current !== identity;
+    checksIdentity.current = identity;
     setChecks((current) =>
+      !changed &&
       current &&
       item.pullRequestChecks &&
       current.number === item.pullRequestChecks.number &&
+      current.headCommit === item.pullRequestChecks.headCommit &&
       Date.parse(current.fetchedAt) >= Date.parse(item.pullRequestChecks.fetchedAt)
         ? current
         : item.pullRequestChecks,
     );
-  }, [item.pullRequestChecks]);
+  }, [identity, item.pullRequestChecks]);
   useEffect(() => {
     if (!number || item.merged || paused || busy) return;
     const timer = setTimeout(() => void refresh(), 60_000);

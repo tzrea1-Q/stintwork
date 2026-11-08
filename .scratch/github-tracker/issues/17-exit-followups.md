@@ -70,3 +70,7 @@ The requested commit remains uncommitted: the sandbox denied creation of the wor
 **Codex, 2026-11-08:** Fixed the batch D CI safety race: merge and merge preview decide using their own fresh CI fetch, while newer-started successful refreshes remain authoritative on disk and for polling. Regression tests cover a later passing poll overlapping a failing merge or merge preview. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed; pull-requests and Ship Vitest files passed (66 tests). No web files were changed. Criteria remain unchecked.
 
 The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `e7432a8`.
+
+**Codex, 2026-11-08:** Fixed the PR CI panel's identity-change race: in-flight refreshes are aborted when the recorded PR number, URL or head changes, and responses must match the current PR number and head. Web regression tests cover each identity change and mismatched responses. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (20 tests). Criteria remain unchecked.
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `36c0b31`.

@@ -366,6 +366,77 @@ test("PR CI ignores older refresh responses and older item evidence", async () =
   expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
 });
 
+test.each([
+  { ...pr, number: 13 },
+  { ...pr, url: "https://github.com/other/project/pull/12" },
+  { ...pr, headCommit: "b".repeat(40) },
+])(
+  "PR CI aborts scheduled refresh when PR identity changes: $number $url $headCommit",
+  async (nextPr) => {
+    vi.useFakeTimers();
+    let finish!: (response: Response) => void;
+    const fetch = vi.fn(
+      (_url: string, _options: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+    const view = render(<PullRequestChecksPanel item={props} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    const signal = fetch.mock.calls[0][1].signal as AbortSignal;
+    const nextChecks = {
+      ...checks,
+      number: nextPr.number,
+      headCommit: nextPr.headCommit,
+      checks: [{ name: "New CI", bucket: "pending", link: "" }],
+    };
+    view.rerender(
+      <PullRequestChecksPanel
+        item={{ ...props, pullRequest: nextPr, pullRequestChecks: nextChecks }}
+      />,
+    );
+    expect(signal.aborted).toBe(true);
+    await act(async () => {
+      finish(
+        new Response(
+          JSON.stringify({
+            checks: { ...checks, checks: [{ name: "Old CI", bucket: "pass", link: "" }] },
+          }),
+        ),
+      );
+    });
+    expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("New CI");
+    expect(screen.getByRole("list", { name: "PR CI results" })).not.toHaveTextContent("Old CI");
+    expect(screen.getByRole("button", { name: "Refresh PR checks" })).toBeEnabled();
+  },
+);
+
+test.each([
+  { ...checks, number: 13 },
+  { ...checks, headCommit: "b".repeat(40) },
+])("PR CI ignores a response for a different PR or head", async (wrongChecks) => {
+  const responseChecks = {
+    ...wrongChecks,
+    checks: [{ name: "Wrong CI", bucket: "pass", link: "" }],
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(new Response(JSON.stringify({ checks: responseChecks }))),
+  );
+  render(
+    <PullRequestChecksPanel item={{ ...item(), pullRequest: pr, pullRequestChecks: checks }} />,
+  );
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Refresh PR checks" })).toBeEnabled(),
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).not.toHaveTextContent("Wrong CI");
+});
+
 test("PR CI refreshes slowly, stops after unmount, and marks stale head evidence", async () => {
   vi.useFakeTimers();
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ checks })));
