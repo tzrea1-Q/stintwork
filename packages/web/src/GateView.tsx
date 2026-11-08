@@ -162,7 +162,12 @@ export function GateView({
       <h4>{t.stints.lastHandoff}</h4>
       {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
       {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
-        <HandoffAnswer item={unresolved} onError={setError} showDetails={false} />
+        <HandoffAnswer
+          key={unresolved.stintId}
+          item={unresolved}
+          onError={setError}
+          showDetails={false}
+        />
       )}
       <h4>{t.stints.openWarnings}</h4>
       {warnings.length ? (

@@ -361,6 +361,35 @@ test.each([
   );
 });
 
+test("changing the last handoff resets its draft and resolution confirmation", async () => {
+  const user = userEvent.setup();
+  const fetcher = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetcher);
+  const item = project().workItems[0];
+  item.stints = [stint];
+  const { rerender } = render(<GateView item={item} />);
+  await user.type(screen.getByRole("textbox", { name: /developer note/i }), "Earlier note");
+  await user.click(screen.getByRole("button", { name: "Mark resolved" }));
+  expect(screen.getByRole("dialog", { name: "Confirm resolution" })).toBeInTheDocument();
+
+  const later = {
+    ...stint,
+    id: "later-stint",
+    handoff: stint.handoff && { ...stint.handoff, stint: "later-stint" },
+  };
+  rerender(<GateView item={{ ...item, stints: [later, stint] }} />);
+  expect(screen.queryByRole("dialog", { name: "Confirm resolution" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: /developer note/i })).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Save developer note" })).toBeDisabled();
+  expect(fetcher).not.toHaveBeenCalled();
+  await user.type(screen.getByRole("textbox", { name: /developer note/i }), "New note");
+  await user.click(screen.getByRole("button", { name: "Save developer note" }));
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/stints/later-stint/handoff-answer",
+    expect.objectContaining({ body: JSON.stringify({ note: "New note" }) }),
+  );
+});
+
 test("approving sends the action once and waits for acknowledgement", async () => {
   const user = userEvent.setup();
   let complete: (response: Response) => void = () => {};

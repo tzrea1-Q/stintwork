@@ -194,3 +194,7 @@ Two theoretical lock races remain as known limitations of this test-only harness
 **Codex, 2026-11-08:** The delayed gate test assumed the post-commit detail read was the fourth sub-issues publication. Batch E reuses the initial detail for earlier approval checks, so it is now the second. The test selects the parent sub-issues request by its `gh` arguments and pauses its second publication while the corresponding parent comments read starts. This preserves the original concurrent publication regression and the stale-approval assertions; the targeted test passes without a timeout increase.
 
 `pnpm format`, `pnpm format:check`, `pnpm lint` (10 warnings), `pnpm typecheck`, and the requested gates, fake-gh and tickets Vitest files passed (68 tests).
+
+**Codex, 2026-11-08:** Fixed the batch C handoff review finding by keying the gate's answer and confirmation state to the stint. The drawer uses that gate; the Needs you queue already keys its handoff item by stint. A web regression checks that a later handoff clears the earlier draft and confirmation and submits a new note to the later stint. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 warnings), `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/GateView.test.tsx` (57 tests) passed. Criteria remain unchanged.
+
+The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `f30016d`.
