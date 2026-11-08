@@ -286,18 +286,22 @@ test("merge is disabled for missing, nonpassing or stale PR CI even with an appr
 
 test("PR state and commit-bound CI appear beside local checks; on-demand refresh replaces evidence", async () => {
   const user = userEvent.setup();
-  const fetch = vi
-    .fn()
-    .mockImplementation(
-      async (url: string) =>
-        new Response(
-          JSON.stringify(
-            url.endsWith("pr-checks")
-              ? { checks: { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] } }
-              : { commands: [], checks: [], headCommit: pr.headCommit, checkExecution: null },
-          ),
+  const fetch = vi.fn().mockImplementation(
+    async (url: string) =>
+      new Response(
+        JSON.stringify(
+          url.endsWith("pr-checks")
+            ? {
+                checks: {
+                  ...checks,
+                  fetchedAt: "2026-10-10T10:00:01Z",
+                  checks: [{ name: "CI", bucket: "pass", link: "" }],
+                },
+              }
+            : { commands: [], checks: [], headCommit: pr.headCommit, checkExecution: null },
         ),
-    );
+      ),
+  );
   vi.stubGlobal("fetch", fetch);
   render(
     <ChecksPanel
@@ -326,6 +330,40 @@ test("PR state and commit-bound CI appear beside local checks; on-demand refresh
   expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · pending");
   await user.click(screen.getByRole("button", { name: "Refresh PR checks" }));
   expect(await screen.findByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · pass");
+});
+
+test("PR CI ignores older refresh responses and older item evidence", async () => {
+  let finish = (_response: Response) => {};
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+    ),
+  );
+  const props = { ...item(), pullRequest: pr, pullRequestChecks: checks };
+  const view = render(<PullRequestChecksPanel item={props} />);
+  await userEvent.click(screen.getByRole("button", { name: "Refresh PR checks" }));
+  const newer = {
+    ...checks,
+    fetchedAt: "2026-10-10T10:00:01Z",
+    checks: [{ name: "CI", bucket: "fail", link: "" }],
+  };
+  view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: newer }} />);
+  await act(async () =>
+    finish(
+      new Response(
+        JSON.stringify({
+          checks: { ...checks, checks: [{ name: "CI", bucket: "pass", link: "" }] },
+        }),
+      ),
+    ),
+  );
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
+  view.rerender(<PullRequestChecksPanel item={{ ...props, pullRequestChecks: { ...checks } }} />);
+  expect(screen.getByRole("list", { name: "PR CI results" })).toHaveTextContent("CI · fail");
 });
 
 test("PR CI refreshes slowly, stops after unmount, and marks stale head evidence", async () => {

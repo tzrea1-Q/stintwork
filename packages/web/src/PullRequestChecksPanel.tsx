@@ -43,7 +43,14 @@ export function PullRequestChecksPanel({
         const body = await readResponseJson(response);
         if (!response.ok) throw new CoreTextError(body, t.review.pr.refreshError);
         if (!signal?.aborted) {
-          setChecks(body.checks);
+          setChecks((current) =>
+            current &&
+            body.checks &&
+            current.number === body.checks.number &&
+            Date.parse(current.fetchedAt) >= Date.parse(body.checks.fetchedAt)
+              ? current
+              : body.checks,
+          );
           setError("");
         }
       } catch (cause) {
@@ -56,7 +63,14 @@ export function PullRequestChecksPanel({
     [endpoint, t.review.pr.refreshError, setError, paused],
   );
   useEffect(() => {
-    setChecks(item.pullRequestChecks);
+    setChecks((current) =>
+      current &&
+      item.pullRequestChecks &&
+      current.number === item.pullRequestChecks.number &&
+      Date.parse(current.fetchedAt) >= Date.parse(item.pullRequestChecks.fetchedAt)
+        ? current
+        : item.pullRequestChecks,
+    );
   }, [item.pullRequestChecks]);
   useEffect(() => {
     if (!number || item.merged || paused || busy) return;

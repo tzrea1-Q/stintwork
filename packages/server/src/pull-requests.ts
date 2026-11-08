@@ -207,12 +207,20 @@ export async function fetchPullRequestChecks(
   try {
     return await fetchChecks(root, pr, async (write) => {
       const pending = state.tail.then(async () => {
-        if (sequence <= state.written) return;
-        await write();
+        if (sequence <= state.written) {
+          const current = readPullRequestChecks(root, pr);
+          if (!current) throw new CoreTextError({ code: "ship.recordedCiInvalid" });
+          return current;
+        }
+        const result = await write();
         state.written = sequence;
+        return result;
       });
-      state.tail = pending.catch(() => {});
-      await pending;
+      state.tail = pending.then(
+        () => {},
+        () => {},
+      );
+      return await pending;
     });
   } finally {
     if (--state.active === 0) checksWrites.delete(key);
@@ -222,7 +230,7 @@ export async function fetchPullRequestChecks(
 async function fetchChecks(
   root: string,
   pr: PullRequest,
-  persist: (write: () => Promise<void>) => Promise<void>,
+  persist: (write: () => Promise<PullRequestChecks>) => Promise<PullRequestChecks>,
 ): Promise<PullRequestChecks> {
   const before = await viewPullRequest(root, pr, String(pr.number));
   const checks: unknown = JSON.parse(
@@ -268,7 +276,7 @@ async function fetchChecks(
     state: after.state,
     checks,
   } as PullRequestChecks;
-  await persist(async () => {
+  return await persist(async () => {
     ensureLocalIgnore(root);
     let directory = root;
     for (const part of [".stintwork", "local", "pr-checks"]) {
@@ -278,12 +286,15 @@ async function fetchChecks(
       if (!stat.isDirectory() || stat.isSymbolicLink())
         throw new CoreTextError({ code: "ship.ciDirectories" });
     }
+    const previous = readPullRequestChecks(root, pr);
+    if (previous && Date.parse(result.fetchedAt) <= Date.parse(previous.fetchedAt))
+      result.fetchedAt = new Date(Date.parse(previous.fetchedAt) + 1).toISOString();
     const path = join(directory, `${pr.number}.json`);
     const temporary = `${path}.${randomUUID()}.tmp`;
     await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
     await rename(temporary, path);
+    return result;
   });
-  return result;
 }
 
 export function readPullRequestChecks(root: string, pr: PullRequest) {

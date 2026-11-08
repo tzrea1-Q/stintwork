@@ -166,6 +166,7 @@ test("an older concurrent CI refresh cannot overwrite newer evidence", async () 
     ],
   });
   const older = fetchPullRequestChecks(root, pr);
+  let newer: Awaited<typeof older>;
   try {
     await expect
       .poll(async () =>
@@ -175,15 +176,26 @@ test("an older concurrent CI refresh cannot overwrite newer evidence", async () 
         ),
       )
       .toBe(true);
-    expect((await fetchPullRequestChecks(root, pr)).checks[0].bucket).toBe("fail");
+    newer = await fetchPullRequestChecks(root, pr);
+    expect(newer.checks[0].bucket).toBe("fail");
   } finally {
     await writeFile(release, "");
-    await older;
   }
+  expect(await older).toEqual(newer!);
   const saved = JSON.parse(
     await readFile(join(root, ".stintwork/local/pr-checks/12.json"), "utf8"),
   );
   expect(saved.checks[0].bucket).toBe("fail");
+});
+
+test("CI evidence timestamps advance even when the clock does not", async () => {
+  const { root, open } = await fixture();
+  const pr = await open();
+  const previous = await fetchPullRequestChecks(root, pr);
+  previous.fetchedAt = "2099-01-01T00:00:00.000Z";
+  await writeFile(join(root, ".stintwork/local/pr-checks/12.json"), JSON.stringify(previous));
+  const current = await fetchPullRequestChecks(root, pr);
+  expect(Date.parse(current.fetchedAt)).toBe(Date.parse(previous.fetchedAt) + 1);
 });
 
 test("preview and missing, forged or expired confirmation never push or create a PR", async () => {

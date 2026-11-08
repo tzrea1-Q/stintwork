@@ -62,3 +62,7 @@ The requested commit could not be staged: the sandbox denied creation of the wor
 **Codex, 2026-11-08:** Fixed the batch D review race by ordering per-PR CI evidence writes while allowing reads to overlap; an older refresh cannot overwrite a newer successful refresh. Kept the gate approval button's accessible name stable while showing its pending state, with regression tests for both changes. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed; Ship, pull-request, and GateView Vitest files passed (112 tests). Playwright requires the coordinator's outside-sandbox rerun, including the gate layout screenshots. Criteria remain unchecked.
 
 The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `006e0c3`.
+
+**Codex, 2026-11-08:** Fixed the batch D review finding: superseded CI refreshes return the newest persisted evidence, and the panel ignores older response and item snapshots. Evidence timestamps advance monotonically even when the clock does not. Added server and web regression tests. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed; pull-requests, Ship and PullRequests Vitest suites passed (78 tests), and the final concurrency and timestamp tests passed separately. Criteria remain unchecked.
+
+The requested commit remains uncommitted: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`).
