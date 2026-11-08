@@ -137,6 +137,16 @@ The requested commit could not be staged: the sandbox denied creation of the wor
 
 The final review is clean. Two criteria are ticked.
 
+**Codex, 2026-11-08:** The intermittent gate failures come from the test fake, not a background viewer or detail refresh: these cases mount `addGithubGateRoutes` directly, with no server background work. Batch D makes the parent sub-issues and comments requests overlap. When the sub-issues fake consumes its reply array, it rewrites `script.json` in place; a concurrent comments process can read the file after truncation and before the JSON is written. A failed pre-commit evidence read returns 409 `detail-unavailable`; the same failure in the post-commit read returns `approval: unknown` instead of `stale`. The fake now serializes reply selection and publishes updates by atomic rename, preventing partial reads and lost concurrent updates. Regression cases hold the sub-issues update open while the sibling comments read starts, both before approval and after the commit, and retain the existing 200 and stale assertions. Actual write contention remains rejected; viewer verification and detail reads are not treated as writes by this route.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/server/src/github-gates.test.ts` passed (63 tests).
+
+The optional combined gates, tickets and pull-requests test run was interrupted after the gates and tickets files passed while the pull-requests file was still running. The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted.
+
+**Codex, 2026-11-08:** Fixed the fake `gh` lock after a process is killed: the lock records its owner, waiters recover a dead owner's lock, and waiting is bounded. A harness regression kills a lock holder with `SIGKILL` and verifies the next invocation succeeds. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and the GitHub gates and fake `gh` Vitest files passed (64 tests).
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted on top of `7ab04d2`.
+
 **Coordinator, 2026-11-08:** Batch B verified at `9061849`, outside the sandbox. format:check, lint, typecheck, build, test (3,255 passed), smoke:package and test:e2e (432 passed) all exit 0; the final `codex review` is clean.
 
 Root cause of the auto-stopped stint: an unmounted start preview aborted its request, and the server treated the disconnect as a developer Stop.
@@ -148,3 +158,13 @@ Ten review rounds settled the design:
 - Login hints and attention items are unchanged.
 
 Remaining limitation: an unintended preview unmount still fails a start, but visibly. Two criteria are ticked.
+
+**Codex, 2026-11-08:** Replaced the fake `gh` directory lock with an atomically linked, prewritten PID/timestamp file. Waiters recover dead owners, old locks and aged malformed locks using rename and unlink; waiting remains bounded. Added regressions for a SIGKILLed holder, an empty lock and an old lock. The age limit assumes critical sections finish within 10 seconds.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. The requested fake `gh` and GitHub gates Vitest run passed all 66 tests.
+
+**Coordinator, 2026-11-08:** The CI-only failures in `github-gates.test.ts` came from the fake `gh` harness. Batch D made evidence reads concurrent, so a reader could see a truncated `script.json`. The fix serializes reply selection behind an atomic pid-file lock and publishes updates atomically. Verified at `fe28541` with main merged: test 3,275 passed and test:e2e 432 passed.
+
+Two theoretical lock races remain as known limitations of this test-only harness, because its critical sections take milliseconds:
+- concurrent stale-lock recovery by several processes;
+- a live holder that exceeds the 10-second age limit.
