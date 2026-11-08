@@ -662,7 +662,7 @@ test.each(["open", "closed"] as const)(
     for (const response of [await preview(), await start()]) {
       expect(response.status).toBe(409);
       expect(await response.json()).toMatchObject({
-        reasonMessage: { code: "brief.blockedBy", params: { tickets: "03" } },
+        reasonMessage: { code: "brief.blockedBy", params: { tickets: "#3" } },
       });
     }
   },
