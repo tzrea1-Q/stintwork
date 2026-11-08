@@ -932,13 +932,14 @@ test("preparation cancellation launches nothing and permits retry with unchanged
       .status,
   ).toBe(202);
   expect((await stream.until("result")).status).toBe(503);
-  const cancellation = JSON.parse(
-    await readFile(
-      join(root, `.stintwork/local/preparation-failures/${confirmation.stintId}.json`),
-      "utf8",
-    ),
-  );
-  expect(cancellation.reasonMessage.code).toBe("agent.preparationCancelled");
+  const cancellation = (
+    await readFile(join(root, `.stintwork/local/stints/${confirmation.stintId}.jsonl`), "utf8")
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line))
+    .at(-1);
+  expect(cancellation.errorMessage.code).toBe("agent.preparationCancelled");
   expect(
     execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
       /^worktree /gm,
@@ -974,11 +975,13 @@ test("preparation authentication-required records a failure and points to the de
     checkedAt: expect.any(String),
   });
   expect(launch).not.toHaveBeenCalled();
-  const files = await readdir(join(root, ".stintwork/local/preparation-failures"));
-  const log = await readFile(join(root, ".stintwork/local/preparation-failures", files[0]), "utf8");
+  const files = await readdir(join(root, ".stintwork/local/stints"));
+  const log = await readFile(join(root, ".stintwork/local/stints", files[0]), "utf8");
   expect(log).toContain("codex login");
-  await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
-    code: "ENOENT",
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "failed",
+    error: expect.stringContaining("codex login"),
   });
 });
 
@@ -996,14 +999,37 @@ test("a disconnected start during preparation records a failure with its reason"
   request.abort();
   expect((await stream.until("result")).status).toBe(503);
   const log = await readFile(
-    join(root, `.stintwork/local/preparation-failures/${confirmation.stintId}.json`),
+    join(root, `.stintwork/local/stints/${confirmation.stintId}.jsonl`),
     "utf8",
   );
   expect(log).not.toContain("stop_requested");
-  expect(JSON.parse(log)).toMatchObject({
-    reason: expect.stringContaining("Start connection closed"),
+  expect(JSON.parse(log.trim().split("\n").at(-1) as string)).toMatchObject({
+    error: expect.stringContaining("Start connection closed"),
   });
   expect(launch).not.toHaveBeenCalled();
+});
+
+test("disconnect after launch cancels the agent before ready and records the reason", async () => {
+  let finish!: (result: { stopReason: string }) => void;
+  const done = new Promise<{ stopReason: string }>((resolve) => {
+    finish = resolve;
+  });
+  const cancel = vi.fn(async () => {
+    finish({ stopReason: "cancelled" });
+  });
+  const launch = vi.fn<AgentLauncher>(() => ({ ready: new Promise(() => {}), done, cancel }));
+  const { project } = await fixture(launch);
+  const request = new AbortController();
+  const stream = await streamedStart(project, request.signal);
+  await expect.poll(() => launch.mock.calls.length).toBe(1);
+  request.abort();
+  expect((await stream.until("result")).status).toBe(503);
+  expect(cancel).toHaveBeenCalledOnce();
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "failed",
+    error: expect.stringContaining("Start connection closed"),
+  });
 });
 
 test.each([
@@ -1038,11 +1064,14 @@ test.each([
     kind: "preparation-failed",
   });
   expect(await readFile(join(root, ticketPath))).toEqual(ticket);
-  const logs = await readdir(join(root, ".stintwork/local/preparation-failures"));
+  const logs = await readdir(join(root, ".stintwork/local/stints"));
   const record = JSON.parse(
-    await readFile(join(root, ".stintwork/local/preparation-failures", logs[0]), "utf8"),
+    (await readFile(join(root, ".stintwork/local/stints", logs[0]), "utf8"))
+      .trim()
+      .split("\n")
+      .at(-1) as string,
   );
-  expect(record).toMatchObject({ reason: expect.stringContaining(message) });
+  expect(record).toMatchObject({ error: expect.stringContaining(message) });
   expect(
     execFileSync("git", ["worktree", "list", "--porcelain"], { cwd: root, encoding: "utf8" }).match(
       /^worktree /gm,
@@ -1377,7 +1406,7 @@ test.each([false, true])(
   },
 );
 
-test("disconnecting a pending start with an unwritable log leaves the server and stint running", async () => {
+test("disconnecting a pending start cancels even while its log is unwritable", async () => {
   const { root } = await fixture();
   const output = execFileSync(
     process.execPath,
@@ -1401,7 +1430,7 @@ test("disconnecting a pending start with an unwritable log leaves the server and
           const handle = {
             ready: new Promise(resolve => { ready = resolve; }),
             done: new Promise(resolve => { complete = resolve; }),
-            async cancel() { cancellations++; complete({ stopReason: 'cancelled' }); },
+            async cancel() { cancellations++; },
           };
           launched();
           return handle;
@@ -1422,7 +1451,7 @@ test("disconnecting a pending start with an unwritable log leaves the server and
       try {
         request.abort();
         await setImmediate(); // Node rethrows AbortSignal listener errors on the next tick.
-        assert.equal(cancellations, 0, 'No cancellation without durable Stop intent');
+        assert.equal(cancellations, 1);
         assert.equal(reports.length, 0);
         assert.equal((await project.app.request('/api/health')).status, 200);
       } finally {
@@ -1430,21 +1459,15 @@ test("disconnecting a pending start with an unwritable log leaves the server and
         renameSync(path + '.saved', path);
       }
       assert.equal(readFileSync(path, 'utf8'), original);
-      ready();
+      complete({ stopReason: 'cancelled' });
       const response = await starting;
-      assert.equal(response.status, 201);
-      const { stint } = await response.json();
-      assert.equal((await project.app.request('/api/stints/' + stint.id + '/stop', { method: 'POST' })).status, 202);
-      const deadline = Date.now() + 2000;
-      while ((await (await project.app.request('/api/stints/' + stint.id)).json()).stint.status === 'running') {
-        assert.ok(Date.now() < deadline, 'Stop must finish');
-        await setImmediate();
-      }
+      assert.equal(response.status, 503);
       await project.stop();
       const entries = readFileSync(path, 'utf8').trim().split('\\n').map(line => JSON.parse(line));
-      assert.equal(entries.filter(entry => entry.kind === 'stop_requested').length, 1);
+      assert.equal(entries.filter(entry => entry.kind === 'stop_requested').length, 0);
       assert.equal(entries.filter(entry => entry.type === 'ended').length, 1);
-      assert.equal(entries.at(-1).status, 'stopped');
+      assert.equal(entries.at(-1).status, 'failed');
+      assert.match(entries.at(-1).error, /Start connection closed/);
       assert.equal(cancellations, 1);
       process.stdout.write('survived');
     `,
