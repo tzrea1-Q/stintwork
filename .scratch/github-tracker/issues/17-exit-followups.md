@@ -102,3 +102,7 @@ The final review is clean. Two criteria are ticked.
 `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/server/src/github-gates.test.ts` passed (63 tests).
 
 The optional combined gates, tickets and pull-requests test run was interrupted after the gates and tickets files passed while the pull-requests file was still running. The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted.
+
+**Codex, 2026-11-08:** Fixed the fake `gh` lock after a process is killed: the lock records its owner, waiters recover a dead owner's lock, and waiting is bounded. A harness regression kills a lock holder with `SIGKILL` and verifies the next invocation succeeds. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and the GitHub gates and fake `gh` Vitest files passed (64 tests).
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted on top of `7ab04d2`.
