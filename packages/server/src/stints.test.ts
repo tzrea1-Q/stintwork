@@ -4,7 +4,7 @@ import { once } from "node:events";
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmdirSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { createFakeAgentLauncher, sourceNodeArgs } from "@stintwork/agents/testing";
 import {
   createAgentRegistry,
@@ -94,6 +94,7 @@ afterEach(async () => {
     await project.stop();
     await rm(parent, { recursive: true, force: true });
   }
+  vi.unstubAllEnvs();
 });
 function start(
   project: ReturnType<typeof createProjectServer>,
@@ -1103,6 +1104,37 @@ test.each([
   expect(launch).toHaveBeenCalledWith(
     expect.objectContaining({ preparedAgent: selectedPreparation }),
   );
+});
+
+test("adapter preparation failure preserves existing dependencies on retry", async () => {
+  const launch: AgentLauncher = () => ({
+    ready: Promise.resolve(),
+    done: Promise.resolve({ stopReason: "end_turn" }),
+    cancel: async () => {},
+  });
+  const prepareAgent = fakePreparation();
+  prepareAgent.mockRejectedValueOnce(new Error("Adapter unavailable"));
+  const registry = createAgentRegistry([{ ...codexProfile, launch }]);
+  const { root, project } = await fixture(launch, { prepareAgent, agentRegistry: registry });
+  const worktree = await git.ensureWorktree(root, "first");
+  await writeFile(join(worktree.path, "package-lock.json"), "{}");
+  await mkdir(join(worktree.path, "node_modules"));
+  await writeFile(join(worktree.path, "node_modules", "keep"), "usable");
+  const bin = join(root, "fake-bin");
+  await mkdir(bin);
+  await writeFile(join(bin, "npm"), "#!/bin/sh\nrm -rf node_modules\nexit 1\n", { mode: 0o755 });
+  vi.stubEnv("PATH", `${bin}${delimiter}${process.env.PATH}`);
+
+  expect((await start(project)).status).toBe(503);
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(snapshot.workItems[0].stints[0]).toMatchObject({
+    status: "preparation-failed",
+    dependencySetupStarted: false,
+  });
+  const retry = await start(project);
+  expect(retry.status).toBe(201);
+  await finished(project, (await retry.json()).stint.id);
+  expect(await readFile(join(worktree.path, "node_modules", "keep"), "utf8")).toBe("usable");
 });
 
 test("package completion is not login readiness; Ready waits for the current launch", async () => {

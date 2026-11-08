@@ -430,6 +430,7 @@ test("Stop during dependency setup refuses the pending start and never launches 
   const stint = await ended(root, id);
   expect(stint).toMatchObject({
     status: "preparation-failed",
+    dependencySetupStarted: true,
     handoff: null,
   });
   expect(stint.checkpointCommit).toBeNull();

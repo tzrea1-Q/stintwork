@@ -96,6 +96,7 @@ type ActiveStint = {
   completion?: Promise<void>;
   preparation?: Promise<void>;
   setupCancellation?: AbortController;
+  dependencySetupStarted?: boolean;
   stopRequested?: boolean;
   stopRecorded?: boolean;
   releaseOwnership?: () => void;
@@ -444,6 +445,7 @@ export function addStintRoutes(
           type: "ended",
           at: new Date().toISOString(),
           status: preparationFailed ? "preparation-failed" : status,
+          ...(preparationFailed ? { dependencySetupStarted: !!state.dependencySetupStarted } : {}),
           handoff: null,
           ...(preparationFailed ? {} : rest),
           ...(error ? coreTextFields("error", error) : {}),
@@ -1073,6 +1075,7 @@ export function addStintRoutes(
           type: "ended",
           at,
           status: "preparation-failed",
+          dependencySetupStarted: false,
           ...coreTextFields("error", reason),
         };
         writeFileSync(
@@ -1393,13 +1396,15 @@ export function addStintRoutes(
                 for (const text of setupMessages) progress(text);
                 if (setupFailed) throw setupError;
                 const previous = workItem.stints[0];
+                state.setupCancellation?.signal.throwIfAborted();
+                state.dependencySetupStarted = true;
                 await installWorktreeDependencies(
                   worktree.path,
                   progress,
                   !!previous &&
-                    ["failed", "interrupted", "stopped", "preparation-failed"].includes(
-                      previous.status,
-                    ),
+                    (["failed", "interrupted", "stopped"].includes(previous.status) ||
+                      (previous.status === "preparation-failed" &&
+                        previous.dependencySetupStarted === true)),
                   state.setupCancellation?.signal,
                 );
                 if (closing) throw new CoreTextError({ code: "server.stopping" });
