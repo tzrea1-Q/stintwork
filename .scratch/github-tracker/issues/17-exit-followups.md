@@ -20,8 +20,8 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [ ] “Changed since the last handoff” reports committed memory proposals and gate approvals instead of saying none.
 - [x] Startup does not serially block ordinary API requests on each pending recovery's GitHub detail fetch in `packages/server/src/index.ts`; several interrupted GitHub stints and slow GitHub must not delay ordinary requests by minutes. This was deferred from ticket 14.
 - [ ] With dependency-only incomplete detail at a stage whose evidence includes tickets, Reopen remains available in `GateView` when the reopen route permits it, despite the projection suppressing `reviewDigest`. This was deferred from ticket 16.
-- [ ] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
-- [ ] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
+- [x] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
+- [x] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
 - [ ] A manual Refresh that gets 409 “Discovery busy” tells the developer instead of doing nothing visible.
 - [x] GitHub identity is checked once per TTL, not per request: in 161 seconds of startup, detail and refresh, 24 of 48 `gh` calls were `auth status` or `api user`. Each call took 1.1–1.7 seconds.
 - [ ] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
@@ -86,3 +86,13 @@ The requested commit could not be staged because the sandbox denied creation of 
 **Codex, 2026-11-08:** Fixed the batch D review finding by ordering PR check observations across head changes for the same work item and PR number/URL; a different PR resets the evidence. In-flight requests still abort on a recorded head change. Web regression coverage checks older refresh responses and item snapshots, absent evidence, and a different PR. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/web/src/PullRequests.test.tsx` passed (21 tests). The coordinator's outside-sandbox browser verification remains outstanding for this change. Criteria remain unchanged.
 
 The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `6f988fb`.
+
+**Coordinator, 2026-11-08:** Batch D verified at `1e0f401`, outside the sandbox. format:check, lint, typecheck, build, test (3,255 passed), smoke:package and test:e2e (432 passed) all exit 0. Seven `codex review` rounds fixed these findings:
+- a gate button whose accessible name changed while pending;
+- overwrites by older CI evidence;
+- superseded responses shown in the panel;
+- merge deciding on another request's CI result;
+- request-order versus observation-order publication;
+- PR-identity and head-change handling.
+
+The final review is clean. Two criteria are ticked.
