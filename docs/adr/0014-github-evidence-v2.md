@@ -1,6 +1,6 @@
 # Exclude ticket and blocker states from GitHub evidence
 
-Status: partly superseded by [ADR 0015](0015-pre-spec-approvals-ignore-body.md) (pre-spec approvals)
+Status: partly superseded by [ADR 0015](0015-pre-spec-approvals-ignore-body.md) (pre-spec approvals) and [ADR 0016](0016-github-evidence-v3.md) (evidence content)
 
 Accepted by the maintainer on 2026-10-31.
 

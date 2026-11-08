@@ -5,12 +5,57 @@ import {
   githubEvidenceJson,
   githubEvidenceDigestV2,
   githubEvidenceJsonV2,
+  githubEvidenceDigestV3,
 } from "./github-evidence.js";
 
 test("version 1 digest hashes UTF-8 canonical JSON", async () => {
   expect(await githubEvidenceDigest({ parentId: "I_1", body: "hello", tickets: [] }, false)).toBe(
     "sha256:bb8901d6acaf063b2b172c54ca760129fe172c1761f0f1038b46e3f38b7dfc32",
   );
+});
+
+test("version 3 ignores comments and states but retains ticket evidence", async () => {
+  const input = {
+    parentId: "I_1",
+    body: "spec",
+    tickets: [
+      {
+        id: "I_2",
+        body: "ticket",
+        state: "open",
+        stateReason: null as string | null,
+        labels: ["ready"],
+        blockers: [{ id: "I_3", state: "open" }],
+        commentRecords: [{ id: "C_1", body: "original" }],
+      },
+    ],
+  };
+  const v3 = await githubEvidenceDigestV3(input, true, ["ready"]);
+  const v2 = await githubEvidenceDigestV2(input, true, ["ready"]);
+  const progress = structuredClone(input);
+  progress.tickets[0].state = "closed";
+  progress.tickets[0].stateReason = "completed";
+  progress.tickets[0].commentRecords.push({ id: "C_2", body: "checks" });
+  expect(await githubEvidenceDigestV3(progress, true, ["ready"])).toBe(v3);
+  expect(await githubEvidenceDigestV2(progress, true, ["ready"])).not.toBe(v2);
+  for (const change of [
+    (value: typeof input) => {
+      value.tickets[0].body = "changed";
+    },
+    (value: typeof input) => {
+      value.tickets.pop();
+    },
+    (value: typeof input) => {
+      value.tickets[0].labels = [];
+    },
+    (value: typeof input) => {
+      value.tickets[0].blockers[0].id = "I_4";
+    },
+  ]) {
+    const changed = structuredClone(input);
+    change(changed);
+    expect(await githubEvidenceDigestV3(changed, true, ["ready"])).not.toBe(v3);
+  }
 });
 
 test("version 1 spec evidence preserves exact body and excludes discussion", () => {

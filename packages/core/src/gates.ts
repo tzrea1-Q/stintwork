@@ -17,7 +17,7 @@ export type GateRecord = {
   by: string;
   at: string;
   commit: string;
-  remote?: { version: 1 | 2; parentId: string; digest: string };
+  remote?: { version: 1 | 2 | 3; parentId: string; digest: string };
 };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
 

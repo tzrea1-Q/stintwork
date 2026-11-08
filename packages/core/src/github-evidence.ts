@@ -86,3 +86,24 @@ export async function githubEvidenceDigestV2(
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return `sha256:${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
+
+export function githubEvidenceJsonV3(
+  input: GithubEvidenceInput,
+  includeTickets: boolean,
+  triageLabels: readonly string[] = [],
+): string {
+  const evidence = JSON.parse(githubEvidenceJsonV2(input, includeTickets, triageLabels));
+  evidence.version = 3;
+  for (const ticket of evidence.tickets ?? []) delete ticket.comments;
+  return JSON.stringify(evidence);
+}
+
+export async function githubEvidenceDigestV3(
+  input: GithubEvidenceInput,
+  includeTickets: boolean,
+  triageLabels: readonly string[] = [],
+): Promise<string> {
+  const bytes = new TextEncoder().encode(githubEvidenceJsonV3(input, includeTickets, triageLabels));
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return `sha256:${Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
