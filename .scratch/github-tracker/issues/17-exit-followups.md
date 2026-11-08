@@ -12,8 +12,8 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [x] Re-verify the GitHub account before its 60-second TTL expires so the board does not periodically blank to “Verifying GitHub account…”, hiding pending permissions and making UI refs stale.
 - [x] Diagnose and fix stint starts that fail silently or with “This operation was aborted” during adapter preparation, including the suspected link to the 60-second account re-check; preparation failures are never lost silently. This occurred twice on ticket #2 under low machine load.
 - [x] Starting another stint with the same pinned adapter does not repeatedly ask the developer to confirm its source.
-- [ ] GitHub blockers display issue numbers in GitHub format, such as “#2” rather than “02”.
-- [ ] Improve GitHub detail read latency for two tickets, observed at about 10–18 seconds.
+- [x] GitHub blockers display issue numbers in GitHub format, such as “#2” rather than “02”.
+- [x] Improve GitHub detail read latency for two tickets, observed at about 10–18 seconds.
 - [x] Pending permission requests have a stronger signal so they do not go unnoticed, as one did for 25 minutes.
 - [ ] A handoff-unresolved attention item leaves Needs you when the gate it asks about is approved.
 - [ ] While a post-stint write is active, the gate does not misleadingly show “Ready to approve”; attempted gate changes surface the `gate.activeWrite` reason instead of only “Could not change the gate.”
@@ -22,10 +22,10 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [ ] With dependency-only incomplete detail at a stage whose evidence includes tickets, Reopen remains available in `GateView` when the reopen route permits it, despite the projection suppressing `reviewDigest`. This was deferred from ticket 16.
 - [x] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
 - [x] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
-- [ ] A manual Refresh that gets 409 “Discovery busy” tells the developer instead of doing nothing visible.
+- [x] A manual Refresh that gets 409 “Discovery busy” tells the developer instead of doing nothing visible.
 - [x] GitHub identity is checked once per TTL, not per request: in 161 seconds of startup, detail and refresh, 24 of 48 `gh` calls were `auth status` or `api user`. Each call took 1.1–1.7 seconds.
-- [ ] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
-- [ ] A shipped GitHub item's drawer does not show “No spec yet” and “No tickets yet” before its detail loads.
+- [x] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
+- [x] A shipped GitHub item's drawer does not show “No spec yet” and “No tickets yet” before its detail loads.
 - [ ] Decide and document whether shipping a GitHub work item closes or links its parent issue. In the exit, parent #1 stayed open after PR #4 merged because the PR body had no closing keyword.
 
 ## Comments
@@ -137,6 +137,16 @@ The requested commit could not be staged: the sandbox denied creation of the wor
 
 The final review is clean. Two criteria are ticked.
 
+**Codex, 2026-11-08:** The intermittent gate failures come from the test fake, not a background viewer or detail refresh: these cases mount `addGithubGateRoutes` directly, with no server background work. Batch D makes the parent sub-issues and comments requests overlap. When the sub-issues fake consumes its reply array, it rewrites `script.json` in place; a concurrent comments process can read the file after truncation and before the JSON is written. A failed pre-commit evidence read returns 409 `detail-unavailable`; the same failure in the post-commit read returns `approval: unknown` instead of `stale`. The fake now serializes reply selection and publishes updates by atomic rename, preventing partial reads and lost concurrent updates. Regression cases hold the sub-issues update open while the sibling comments read starts, both before approval and after the commit, and retain the existing 200 and stale assertions. Actual write contention remains rejected; viewer verification and detail reads are not treated as writes by this route.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/server/src/github-gates.test.ts` passed (63 tests).
+
+The optional combined gates, tickets and pull-requests test run was interrupted after the gates and tickets files passed while the pull-requests file was still running. The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted.
+
+**Codex, 2026-11-08:** Fixed the fake `gh` lock after a process is killed: the lock records its owner, waiters recover a dead owner's lock, and waiting is bounded. A harness regression kills a lock holder with `SIGKILL` and verifies the next invocation succeeds. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and the GitHub gates and fake `gh` Vitest files passed (64 tests).
+
+The requested commit could not be staged because the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`); changes remain uncommitted on top of `7ab04d2`.
+
 **Coordinator, 2026-11-08:** Batch B verified at `9061849`, outside the sandbox. format:check, lint, typecheck, build, test (3,255 passed), smoke:package and test:e2e (432 passed) all exit 0; the final `codex review` is clean.
 
 Root cause of the auto-stopped stint: an unmounted start preview aborted its request, and the server treated the disconnect as a developer Stop.
@@ -152,3 +162,15 @@ Remaining limitation: an unintended preview unmount still fails a start, but vis
 **Codex, 2026-11-08:** Batch E formats GitHub ticket and blocker numbers with `#`, overlaps bounded GitHub detail reads and reuses detail within a refresh, reports discovery contention in English and Chinese, preserves completeness during stale or aborted refreshes, pluralises the membership warning, and avoids premature empty states for shipped GitHub details. Added focused server and web regressions, including fake-gh overlap and in-flight refresh coverage. No existing test expectations were changed. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm build` passed. The touched GitHub tickets, detail refresh, GithubStatus and WorkItemDrawer Vitest files passed (42 tests); the related GitHub gates and stints files also passed (110 tests). Playwright and real-browser review remain for the coordinator outside the sandbox. Criteria remain unchecked.
 
 **Codex, 2026-11-08:** Fixed the catalog parity test by sampling the translated membership warning for zero, singular, and plural counts; the Chinese catalog already contained the matching translated entries. GitHub blocker reasons now use `#N` in brief availability and preview/start refusals, while local tickets retain `NN` formatting. Added core and server regression coverage. `pnpm format`, `pnpm format:check`, `pnpm lint` (10 warnings), `pnpm typecheck`, and `pnpm build` passed. Vitest passed the catalog, core brief, and GitHub stints files (133 tests), plus local brief preview (9 tests). Criteria remain unchecked.
+
+**Codex, 2026-11-08:** Replaced the fake `gh` directory lock with an atomically linked, prewritten PID/timestamp file. Waiters recover dead owners, old locks and aged malformed locks using rename and unlink; waiting remains bounded. Added regressions for a SIGKILLed holder, an empty lock and an old lock. The age limit assumes critical sections finish within 10 seconds.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. The requested fake `gh` and GitHub gates Vitest run passed all 66 tests.
+
+**Coordinator, 2026-11-08:** The CI-only failures in `github-gates.test.ts` came from the fake `gh` harness. Batch D made evidence reads concurrent, so a reader could see a truncated `script.json`. The fix serializes reply selection behind an atomic pid-file lock and publishes updates atomically. Verified at `fe28541` with main merged: test 3,275 passed and test:e2e 432 passed.
+
+Two theoretical lock races remain as known limitations of this test-only harness, because its critical sections take milliseconds:
+- concurrent stale-lock recovery by several processes;
+- a live holder that exceeds the 10-second age limit.
+
+**Coordinator, 2026-11-08:** Batch E verified at `ed66600`, outside the sandbox. format:check, lint, typecheck, build, test (3,275 passed), smoke:package and test:e2e (432 passed) all exit 0. The final `codex review` is clean after one round, which applied `#N` to availability and blocked-start messages and completed the zh-CN catalog. Five criteria are ticked.
