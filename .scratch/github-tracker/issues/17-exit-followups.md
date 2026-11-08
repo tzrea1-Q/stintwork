@@ -174,3 +174,7 @@ Two theoretical lock races remain as known limitations of this test-only harness
 - a live holder that exceeds the 10-second age limit.
 
 **Coordinator, 2026-11-08:** Batch E verified at `ed66600`, outside the sandbox. format:check, lint, typecheck, build, test (3,275 passed), smoke:package and test:e2e (432 passed) all exit 0. The final `codex review` is clean after one round, which applied `#N` to availability and blocked-start messages and completed the zh-CN catalog. Five criteria are ticked.
+
+**Codex, 2026-11-08:** The delayed gate test assumed the post-commit detail read was the fourth sub-issues publication. Batch E reuses the initial detail for earlier approval checks, so it is now the second. The test selects the parent sub-issues request by its `gh` arguments and pauses its second publication while the corresponding parent comments read starts. This preserves the original concurrent publication regression and the stale-approval assertions; the targeted test passes without a timeout increase.
+
+`pnpm format`, `pnpm format:check`, `pnpm lint` (10 warnings), `pnpm typecheck`, and the requested gates, fake-gh and tickets Vitest files passed (68 tests).
