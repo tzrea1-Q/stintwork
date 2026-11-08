@@ -426,6 +426,7 @@ export function Board({
         <NeedsYouQueue
           snapshot={snapshot}
           alerts={alerts}
+          openSlug={openSlug}
           onClose={() => setNeedsYouOpen(false)}
           onOpenItem={openWorkItem}
         />

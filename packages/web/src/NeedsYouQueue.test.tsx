@@ -130,6 +130,19 @@ test("keyboard navigation from Needs you focuses the drawer, then returns to the
   await waitFor(() => expect(document.activeElement).toHaveAttribute("data-work-item", "first"));
 });
 
+test("selecting the open work item returns focus to the drawer's permission banner", async () => {
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: /First work item/ }));
+  const drawer = screen.getByRole("dialog", { name: "First work item" });
+  const banner = within(drawer).getByRole("button", { name: en.needsYou.pendingPermissions });
+  await user.click(banner);
+  const queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  await user.click(within(queue).getByRole("button", { name: "First work item · first" }));
+  expect(screen.queryByRole("dialog", { name: "Needs you 1" })).not.toBeInTheDocument();
+  await waitFor(() => expect(banner).toHaveFocus());
+});
+
 test("permission answer refusals retain their code through the queue", async () => {
   localStorage.setItem(languageStorageKey, "zh-CN");
   vi.stubGlobal(
