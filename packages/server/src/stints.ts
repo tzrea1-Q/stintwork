@@ -1045,6 +1045,7 @@ export function addStintRoutes(
       const initialBrief = result.brief;
       const initialAgent = agent;
       let preparationRecorded = false;
+      let logCreated = false;
       function recordPreparationFailure(preparationError: unknown) {
         const reason = state.stopRequested
           ? coreText({ code: "agent.preparationCancelled" })
@@ -1355,6 +1356,7 @@ export function addStintRoutes(
             },
           };
           writeFileSync(path, `${JSON.stringify(coreTextWire(started))}\n`, { flag: "wx" });
+          logCreated = true;
           activeStintIds.add(id);
           const sequence = 1;
           broadcast(
@@ -1408,7 +1410,7 @@ export function addStintRoutes(
           if (reason) return context.json(coreTextWire({ reason }), 503);
           return context.json(coreTextWire({ stint: foldStintLog([started]) }), 201);
         } catch (error) {
-          if (state.setupCancellation?.signal.aborted && !preparationRecorded && !state.handle) {
+          if (!preparationRecorded && !logCreated) {
             try {
               recordPreparationFailure(error);
             } catch (recordError) {

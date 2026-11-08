@@ -1011,6 +1011,25 @@ test("a disconnected start during preparation records a failure with its reason"
   expect(launch).not.toHaveBeenCalled();
 });
 
+test("worktree creation failure remains in history after the start response", async () => {
+  const { project } = await fixture();
+  const worktree = vi
+    .spyOn(git, "ensureWorktree")
+    .mockRejectedValueOnce(new Error("Worktree failed"));
+  try {
+    const response = await start(project);
+    expect(response.status).toBe(503);
+    expect((await response.json()).reason).toContain("Worktree failed");
+    const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+    expect(snapshot.workItems[0].stints[0]).toMatchObject({
+      status: "preparation-failed",
+      error: expect.stringContaining("Worktree failed"),
+    });
+  } finally {
+    worktree.mockRestore();
+  }
+});
+
 test("disconnect after launch cancels the agent before ready and records the reason", async () => {
   let finish!: (result: { stopReason: string }) => void;
   const done = new Promise<{ stopReason: string }>((resolve) => {
