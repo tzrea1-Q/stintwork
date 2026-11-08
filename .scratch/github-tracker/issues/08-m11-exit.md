@@ -45,3 +45,7 @@ After all prerequisites and ADR approval, the coordinator asks the maintainer wh
 - **Browser.** Board at 1440×900; board and detail drawer at 390×844, with no horizontal overflow (`scrollWidth` 390). Screenshots are kept outside the repo.
 - **Failures and limits.** These are filed as ticket 17 items: the 60 s re-verify blanks the board; a stint start was silently aborted; repeated adapter confirmation; "02" shown instead of "#2"; slow detail; an unnoticed permission wait; stale handoff items; misleading gate readiness during a write; "changed since handoff" not reporting changes; serial recovery at startup; Reopen disabled under unknown dependencies; PR-checks polling that blocks Merge; slow Ship actions without progress; a silent 409 on Refresh; per-request identity checks; a transient incomplete banner; an empty shipped drawer; and parent #1 left open after the merge.
 - **Pending.** Cleanup: the exit repository, the remote branch `stintwork/github-1`, the unpushed local record commit and open parent #1 are kept until the maintainer decides. The maintainer's decision on M11 shipped is also pending.
+
+**Coordinator, 2026-11-08:** Maintainer decisions:
+- M11 stays active until ticket 17 is resolved and a short retest in the exit repository passes.
+- Cleanup then archives `tzrea1-Q/stintwork-m11-exit`, after closing parent #1 and deleting the remote branch `stintwork/github-1`. Archiving waits for the retest because an archived repository is read-only.
