@@ -33,6 +33,7 @@ import { codexProfile } from "../../agents/src/profiles.js";
 import type { StintServerOptions } from "./stints.js";
 import { createProjectServer } from "./index.js";
 import * as stintHistory from "./stint-history.js";
+import * as briefPreview from "./brief-preview.js";
 
 const fixtures: {
   parent: string;
@@ -1577,46 +1578,84 @@ test.each(["metadata", "entire log"])(
   },
 );
 
-test("cancellation while worktree setup is pending prevents workflow setup and launch", async () => {
-  const launch = vi.fn<AgentLauncher>();
-  const { root, project } = await fixture(launch);
-  let entered!: () => void;
-  let release!: () => void;
-  const pending = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  const blocked = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const original = git.ensureWorktree;
-  const spy = vi.spyOn(git, "ensureWorktree").mockImplementation(async (...args) => {
-    entered();
-    await blocked;
-    return original(...args);
-  });
-  const controller = new AbortController();
-  try {
-    const request = project.app.request("/api/stints", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
-      signal: controller.signal,
+test.each(["worktree", "worktree-created", "brief", "brief-failure"] as const)(
+  "cancellation during %s setup commits inherited agents and permits retry",
+  async (boundary) => {
+    const launch = vi.fn<AgentLauncher>(() => ({
+      ready: Promise.resolve(),
+      done: Promise.resolve({ stopReason: "end_turn" }),
+      cancel: async () => {},
+    }));
+    const { root, project } = await fixture(launch);
+    const path = ".scratch/first/workflow.yaml";
+    await writeFile(
+      join(root, path),
+      "workflow: feature\nstage: implement\nstages:\n  implement:\n    agent: codex\n  review:\n    agent: claude\n",
+    );
+    let entered!: () => void;
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      entered = resolve;
     });
-    await pending;
-    controller.abort();
-    release();
-    expect((await request).status).toBe(503);
-    expect(launch).not.toHaveBeenCalled();
-    const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
-    expect(snapshot.workItems[0].stints[0]).toMatchObject({ status: "preparation-failed" });
-    expect(
-      execFileSync("git", ["worktree", "list", "--porcelain"], {
-        cwd: root,
-        encoding: "utf8",
-      }).match(/^worktree /gm),
-    ).toHaveLength(1);
-  } finally {
-    release();
-    spy.mockRestore();
-  }
-});
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const originalWorktree = git.ensureWorktree;
+    const originalBrief = briefPreview.prepareStintBrief;
+    let calls = 0;
+    const worktreeSpy = vi.spyOn(git, "ensureWorktree").mockImplementation(async (...args) => {
+      if (boundary === "worktree") {
+        entered();
+        await blocked;
+      }
+      const worktree = await originalWorktree(...args);
+      if (boundary === "worktree-created") {
+        entered();
+        await blocked;
+      }
+      return worktree;
+    });
+    const briefSpy = vi
+      .spyOn(briefPreview, "prepareStintBrief")
+      .mockImplementation(async (...args) => {
+        const result = await originalBrief(...args);
+        if (++calls === 2 && (boundary === "brief" || boundary === "brief-failure")) {
+          entered();
+          await blocked;
+          if (boundary === "brief-failure") throw new Error("Brief failed");
+        }
+        return result;
+      });
+    const controller = new AbortController();
+    try {
+      const request = project.app.request("/api/stints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+        signal: controller.signal,
+      });
+      await pending;
+      controller.abort();
+      release();
+      expect((await request).status).toBe(503);
+      expect(launch).not.toHaveBeenCalled();
+      const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+      expect(snapshot.workItems[0].stints[0]).toMatchObject({ status: "preparation-failed" });
+      const worktree = await git.worktreePath(root, "first");
+      const command = (...args: string[]) =>
+        execFileSync("git", args, { cwd: worktree, encoding: "utf8" }).trim();
+      expect(command("status", "--porcelain", "--", path)).toBe("");
+      expect(command("show", `HEAD:${path}`)).toContain("review:\n    agent: claude");
+      const retry = await start(project);
+      expect(retry.status, await retry.clone().text()).toBe(201);
+      const { stint } = await retry.json();
+      await finished(project, stint.id);
+      expect(launch).toHaveBeenCalledOnce();
+      expect(command("show", `HEAD:${path}`)).toContain("review:\n    agent: claude");
+    } finally {
+      release();
+      worktreeSpy.mockRestore();
+      briefSpy.mockRestore();
+    }
+  },
+);

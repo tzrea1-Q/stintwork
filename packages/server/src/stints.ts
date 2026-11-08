@@ -1199,6 +1199,7 @@ export function addStintRoutes(
               result.brief.permissionLevel,
               githubSource,
             );
+            state.setupCancellation?.signal.throwIfAborted();
             if (verified.reason) throw new CoreTextError(verified.reason);
           }
           state.setupCancellation?.signal.throwIfAborted();
@@ -1207,12 +1208,7 @@ export function addStintRoutes(
           if (discoveryFailure) throw new Error(discoveryFailure.message);
           const firstWorktree = !project.worktreePaths.has(workItem.slug);
           state.setupCancellation?.signal.throwIfAborted();
-          const worktree = await ensureWorktree(
-            root,
-            workItem.slug,
-            state.setupCancellation?.signal,
-          );
-          state.setupCancellation?.signal.throwIfAborted();
+          const worktree = await ensureWorktree(root, workItem.slug);
           worktree.path = realpathSync(worktree.path);
           if (closing) throw new CoreTextError({ code: "server.stopping" });
           const workflowPath = `.scratch/${workItem.slug}/workflow.yaml`;
@@ -1249,7 +1245,7 @@ export function addStintRoutes(
             );
             if (prepared.reason) throw new CoreTextError(prepared.reason);
           } catch (error) {
-            if (inheritedBytes && !state.setupCancellation?.signal.aborted) {
+            if (inheritedBytes) {
               try {
                 assertWorkflowUnchanged(worktree.path, workflowPath, {
                   indexEntry: workflowIndex,
@@ -1262,7 +1258,6 @@ export function addStintRoutes(
             }
             throw error;
           }
-          state.setupCancellation?.signal.throwIfAborted();
           const { stage } = prepared;
           let brief = { ...prepared.brief, agent: agent.id };
           const id = state.id as string;
@@ -1274,7 +1269,6 @@ export function addStintRoutes(
           let setupFailed = false;
           let recheckingWorkflow = false;
           try {
-            state.setupCancellation?.signal.throwIfAborted();
             ensureLocalIgnore(worktree.path);
             if (workItem.github && githubSource) {
               const github = githubSource.getGithub();
@@ -1282,7 +1276,6 @@ export function addStintRoutes(
               if (!github || !item) throw new CoreTextError({ code: "gate.identityAmbiguous" });
               await saveGithubWorkflow(worktree.path, github, item, workItem.workflow, stage.id);
             }
-            state.setupCancellation?.signal.throwIfAborted();
             if (
               !workItem.github &&
               (inheritedAgents ||
@@ -1310,13 +1303,13 @@ export function addStintRoutes(
                 coreText({ code: "stream.wroteWorkflow", params: { agent: agent.displayName } }),
               );
             }
-            state.setupCancellation?.signal.throwIfAborted();
             await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
           } catch (error) {
-            if (recheckingWorkflow || state.setupCancellation?.signal.aborted) throw error;
+            if (recheckingWorkflow) throw error;
             setupFailed = true;
             setupError = error;
           }
+          state.setupCancellation?.signal.throwIfAborted();
           const baseCommit = execFileSync("git", ["rev-parse", "HEAD"], {
             cwd: worktree.path,
             encoding: "utf8",
