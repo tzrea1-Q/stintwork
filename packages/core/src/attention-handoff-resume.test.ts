@@ -102,3 +102,23 @@ test("handoffs remain until a current later approval of their own stage", () => 
   ];
   expect(open()).toHaveLength(0);
 });
+
+test.each(["local", "GitHub"])("an upstream reopen restores a later %s handoff", (tracker) => {
+  const snapshot = project(started("earlier", 11, "tickets"));
+  const item = snapshot.workItems[0];
+  if (tracker === "GitHub") item.github = {} as NonNullable<typeof item.github>;
+  const approval = {
+    by: "Developer",
+    at: "2026-10-09T10:25:00Z",
+    commit: "head",
+    ...(item.github ? { remoteState: "current" } : {}),
+  };
+  item.stages.tickets = { approved: approval };
+  const open = () =>
+    deriveAttentionItems(snapshot).filter((entry) => entry.kind === "handoff-unresolved");
+  expect(open()).toHaveLength(0);
+  item.stages.spec = { reopened: { at: "2026-10-09T10:26:00Z" } };
+  expect(open()).toHaveLength(1);
+  item.stages.tickets.approved = { ...approval, at: "2026-10-09T10:27:00Z" };
+  expect(open()).toHaveLength(0);
+});

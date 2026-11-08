@@ -180,3 +180,5 @@ The queue no longer duplicates the handoff form inside its embedded gate view; t
 Two theoretical lock races remain as known limitations of this test-only harness, because its critical sections take milliseconds:
 - concurrent stale-lock recovery by several processes;
 - a live holder that exceeds the 10-second age limit.
+
+**Codex, 2026-11-08:** Fixed the batch C review finding: handoff clearing shares the GitHub approval projection's upstream-reopen currency check and requires current projected GitHub evidence. Added local and GitHub upstream-reopen regressions, including reapproval. `pnpm format`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm build`, and the attention, gates and GitHub snapshot Vitest files passed (70 tests). Criteria remain unchanged.

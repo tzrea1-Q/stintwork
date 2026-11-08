@@ -6,6 +6,7 @@ import {
   githubEvidenceJsonV2,
   githubEvidenceJsonV3,
   evidenceStale,
+  approvalReopenState,
   type GithubEvidenceInput,
   type ProjectSnapshot,
 } from "@stintwork/core";
@@ -104,17 +105,8 @@ export function projectGithubGates(
         .digest("hex")}`;
     };
     let upstream: "current" | "stale" | "unknown" = "current";
-    let latestReopen: number | undefined;
     for (const { id: stage } of stages) {
       const record = item.stages[stage];
-      const reopened = record?.reopened;
-      if (reopened) {
-        const at =
-          typeof reopened === "object" && "at" in reopened && typeof reopened.at === "string"
-            ? Date.parse(reopened.at)
-            : NaN;
-        latestReopen = Math.max(latestReopen ?? -Infinity, at);
-      }
       if (!record) {
         if (
           stages.findIndex((entry) => entry.id === stage) <
@@ -179,12 +171,8 @@ export function projectGithubGates(
           state = "unknown";
         }
       }
-      if (latestReopen !== undefined) {
-        const at =
-          "at" in approval && typeof approval.at === "string" ? Date.parse(approval.at) : NaN;
-        if (!Number.isFinite(at) || !Number.isFinite(latestReopen)) state = "unknown";
-        else if (at <= latestReopen) state = "stale";
-      }
+      const reopenState = approvalReopenState(item.stages, stages, stage);
+      if (reopenState !== "current") state = reopenState;
       if (upstream !== "current" && state === "current") state = upstream;
       if (headChanged) state = "stale";
       if (state === "current" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {

@@ -4,8 +4,12 @@ import { riskyPathAccepted } from "./review-evidence.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { CheckpointWarning, StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
-import { type StageId } from "./workflows.js";
-import { deriveGateAttentionItems, deriveStaleApprovalAttentionItems } from "./gates.js";
+import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
+import {
+  approvalReopenState,
+  deriveGateAttentionItems,
+  deriveStaleApprovalAttentionItems,
+} from "./gates.js";
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 
 export type AttentionItemSource = {
@@ -81,6 +85,7 @@ export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems"> &
     Partial<Pick<ProjectSnapshot, "agents" | "workflows">>,
 ): AttentionItem[] {
+  const workflows: WorkflowDefinitions = snapshot.workflows ?? builtInWorkflows;
   const workItemAttention = snapshot.workItems.flatMap<AttentionItem>((item) => {
     if (item.merged) return [];
     const handoffs: HandoffUnresolvedAttentionItem[] = item.stints
@@ -99,7 +104,6 @@ export function deriveAttentionItems(
           !(() => {
             const stage = item.stages[stint.stage];
             const approval = stage?.approved;
-            const reopened = stage?.reopened;
             if (
               !approval ||
               typeof approval !== "object" ||
@@ -108,18 +112,14 @@ export function deriveAttentionItems(
             )
               return false;
             const at = Date.parse(approval.at);
-            const reopenedAt =
-              reopened &&
-              typeof reopened === "object" &&
-              "at" in reopened &&
-              typeof reopened.at === "string"
-                ? Date.parse(reopened.at)
-                : -Infinity;
             return (
               at > Date.parse(stint.endedAt ?? stint.startedAt) &&
-              at > reopenedAt &&
+              approvalReopenState(item.stages, workflows[item.workflow].stages, stint.stage) ===
+                "current" &&
               (!("state" in approval) || approval.state === "current") &&
-              (!("remoteState" in approval) || approval.remoteState === "current")
+              (item.github
+                ? "remoteState" in approval && approval.remoteState === "current"
+                : !("remoteState" in approval) || approval.remoteState === "current")
             );
           })(),
       )

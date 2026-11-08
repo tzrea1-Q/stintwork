@@ -216,3 +216,4 @@ export {
 export * from "./pull-requests.js";
 
 export { pendingStintPermissions } from "./stint-permissions.js";
+export { approvalReopenState } from "./gates.js";
