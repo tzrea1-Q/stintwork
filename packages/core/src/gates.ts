@@ -36,7 +36,9 @@ export function gateReadiness(
   const stages = workflows[item.workflow].stages;
   const position = stages.findIndex(({ id }) => id === item.stage);
   const nextStage = stages[position + 1]?.id;
-  const stageStint = item.stints.find((stint) => stint.stage === item.stage);
+  const stageStint = item.stints.find(
+    (stint) => stint.stage === item.stage && stint.status !== "preparation-failed",
+  );
   let reason: CoreText | null = null;
   if (item.merged) reason = coreText({ code: "workItem.shipped" });
   else if (position < 0 || !nextStage || stages[position].gate === "merge")

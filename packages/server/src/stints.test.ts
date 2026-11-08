@@ -27,6 +27,7 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import { afterEach, expect, test, vi } from "vitest";
+import * as git from "@stintwork/git";
 import { WebSocket } from "ws";
 import { codexProfile } from "../../agents/src/profiles.js";
 import type { StintServerOptions } from "./stints.js";
@@ -980,7 +981,7 @@ test("preparation authentication-required records a failure and points to the de
   expect(log).toContain("codex login");
   const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
   expect(snapshot.workItems[0].stints[0]).toMatchObject({
-    status: "failed",
+    status: "preparation-failed",
     error: expect.stringContaining("codex login"),
   });
 });
@@ -1575,3 +1576,47 @@ test.each(["metadata", "entire log"])(
     }
   },
 );
+
+test("cancellation while worktree setup is pending prevents workflow setup and launch", async () => {
+  const launch = vi.fn<AgentLauncher>();
+  const { root, project } = await fixture(launch);
+  let entered!: () => void;
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const original = git.ensureWorktree;
+  const spy = vi.spyOn(git, "ensureWorktree").mockImplementation(async (...args) => {
+    entered();
+    await blocked;
+    return original(...args);
+  });
+  const controller = new AbortController();
+  try {
+    const request = project.app.request("/api/stints", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ workItem: "first", ticket: 1, agent: "codex" }),
+      signal: controller.signal,
+    });
+    await pending;
+    controller.abort();
+    release();
+    expect((await request).status).toBe(503);
+    expect(launch).not.toHaveBeenCalled();
+    const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+    expect(snapshot.workItems[0].stints[0]).toMatchObject({ status: "preparation-failed" });
+    expect(
+      execFileSync("git", ["worktree", "list", "--porcelain"], {
+        cwd: root,
+        encoding: "utf8",
+      }).match(/^worktree /gm),
+    ).toHaveLength(1);
+  } finally {
+    release();
+    spy.mockRestore();
+  }
+});

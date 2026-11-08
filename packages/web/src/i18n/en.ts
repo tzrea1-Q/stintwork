@@ -896,6 +896,7 @@ export const en = {
       finished: "finished",
       stopped: "stopped",
       failed: "failed",
+      "preparation-failed": "preparation failed",
       interrupted: "interrupted",
     },
     progress: {

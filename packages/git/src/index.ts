@@ -69,16 +69,19 @@ export async function withRepoLock<T>(repoRoot: string, task: () => Promise<T>):
 export async function ensureWorktree(
   repoRoot: string,
   workItemSlug: string,
+  signal?: AbortSignal,
 ): Promise<{ path: string; branch: string }> {
+  signal?.throwIfAborted();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItemSlug))
     throw new CoreTextError({ code: "git.invalidSlug" });
   const root = await realpath(resolve(repoRoot));
-  return withRepoLock(root, () => ensureWorktreeLocked(root, workItemSlug));
+  return withRepoLock(root, () => ensureWorktreeLocked(root, workItemSlug, signal));
 }
 
 async function ensureWorktreeLocked(
   root: string,
   workItemSlug: string,
+  signal?: AbortSignal,
 ): Promise<{ path: string; branch: string }> {
   const path = await worktreePath(root, workItemSlug);
   const branch = `stintwork/${workItemSlug}`;
@@ -96,10 +99,12 @@ async function ensureWorktreeLocked(
     }
     return { path, branch };
   }
+  signal?.throwIfAborted();
   const parent = dirname(path);
   await mkdir(parent, { recursive: true });
   if ((await lstat(parent)).isSymbolicLink())
     throw new CoreTextError({ code: "git.worktreeSymlink" });
+  signal?.throwIfAborted();
   await execute("git", ["worktree", "add", "-b", branch, path, "HEAD"], { cwd: root });
   const { stdout: base } = await execute("git", ["rev-parse", "HEAD"], { cwd: path });
   await execute("git", ["config", "--local", `branch.${branch}.stintwork-base`, base.trim()], {

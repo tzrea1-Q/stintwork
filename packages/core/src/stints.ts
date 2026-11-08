@@ -10,7 +10,13 @@ import {
   type StintToolUpdate,
 } from "./rich-stint-events.js";
 
-export type StintStatus = "running" | "finished" | "stopped" | "failed" | "interrupted";
+export type StintStatus =
+  | "running"
+  | "finished"
+  | "stopped"
+  | "failed"
+  | "interrupted"
+  | "preparation-failed";
 export type StintLaunch = {
   agent: "claude" | "codex";
   source: "installed" | "bundled";
@@ -42,7 +48,7 @@ export type StintProcessAttempt = {
 export type StintPhase = "work" | "handoff" | "findings" | "finalization";
 export type StintProgress = {
   phase: StintPhase;
-  status?: Exclude<StintStatus, "running">;
+  status?: Exclude<StintStatus, "running" | "preparation-failed">;
   error?: string;
   errorMessage?: CoreTextMessage;
   stopReason?: string;
@@ -472,7 +478,9 @@ export function isStintLogEntry(value: unknown): value is StintLogEntry {
   }
   if (entry.type === "ended")
     return (
-      ["finished", "stopped", "failed", "interrupted"].includes(String(entry.status)) &&
+      ["finished", "stopped", "failed", "interrupted", "preparation-failed"].includes(
+        String(entry.status),
+      ) &&
       (entry.checkpointWarnings === undefined || isCheckpointWarnings(entry.checkpointWarnings)) &&
       (entry.findings === undefined || isReviewFindings(entry.findings)) &&
       ["error", "stopReason", "checkpointCommit", "handoffError"].every(

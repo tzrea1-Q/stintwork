@@ -911,6 +911,7 @@ export const zhCN: Catalog = {
       finished: "已结束",
       stopped: "已停止",
       failed: "失败",
+      "preparation-failed": "准备失败",
       interrupted: "已中断",
     },
     progress: { pending: "待处理", in_progress: "进行中", completed: "已完成", failed: "失败" },

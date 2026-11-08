@@ -306,7 +306,7 @@ export function addStintRoutes(
       };
     }
     function completionOutcome(stopReason = "unknown"): {
-      status: Exclude<Stint["status"], "running">;
+      status: Exclude<Stint["status"], "running" | "preparation-failed">;
       error?: CoreText;
     } {
       const stopped = state.stopRequested || !!recovery?.stopRequestedAt;
@@ -753,6 +753,7 @@ export function addStintRoutes(
           ({ stopReason, handoff, handoffError, findings, findingsError, findingsRawReply }) => {
             if (state.suspending) return;
             if (
+              !closing &&
               !state.startReady &&
               state.setupCancellation?.signal.aborted &&
               !state.stopRequested
@@ -783,7 +784,7 @@ export function addStintRoutes(
             if (error instanceof ProcessOwnershipError) return blockOwnership(error);
             if (state.suspending) return;
             if (state.stopRequested) return end("stopped");
-            if (!state.startReady && state.setupCancellation?.signal.aborted)
+            if (!closing && !state.startReady && state.setupCancellation?.signal.aborted)
               return end("failed", { error: errorText(state.setupCancellation.signal.reason) });
             recordAuthentication(error);
             if (recovery && !resumeEstablished && savedProgress.phase !== "finalization")
@@ -1030,6 +1031,47 @@ export function addStintRoutes(
         send({ type: "preparation", stintId: state.id, progress: event });
       }
       active.set(workItem.slug, state);
+      const initialStage = result.stage;
+      const initialBrief = result.brief;
+      const initialAgent = agent;
+      let preparationRecorded = false;
+      function recordPreparationFailure(preparationError: unknown) {
+        const reason = state.stopRequested
+          ? coreText({ code: "agent.preparationCancelled" })
+          : errorText(preparationError);
+        const path = join(prepareLogs(root).directory, `${state.id}.jsonl`);
+        const at = new Date().toISOString();
+        const started: StintLogEntry = {
+          type: "started",
+          at,
+          stint: {
+            id: state.id as string,
+            workItem: workItem.slug,
+            stage: initialStage.id,
+            ticket: ticket?.number ?? null,
+            agent: initialAgent.id,
+            worktree: { path: root, branch: `stintwork/${workItem.slug}` },
+            baseCommit: execFileSync("git", ["rev-parse", "HEAD"], {
+              cwd: root,
+              encoding: "utf8",
+            }).trim(),
+            brief: { ...initialBrief, agent: initialAgent.id },
+          },
+        };
+        const ended: StintLogEntry = {
+          type: "ended",
+          at,
+          status: "preparation-failed",
+          ...coreTextFields("error", reason),
+        };
+        writeFileSync(
+          path,
+          [started, ended].map((entry) => JSON.stringify(coreTextWire(entry))).join("\n") + "\n",
+          { flag: "wx" },
+        );
+        refresh();
+        preparationRecorded = true;
+      }
       const runStart = async () => {
         let prepared: () => void = () => {};
         state.preparation = new Promise<void>((resolvePreparation) => {
@@ -1140,45 +1182,12 @@ export function addStintRoutes(
             ? state.setupCancellation.signal.reason
             : undefined;
           if (preparationError) {
-            const reason = state.stopRequested
-              ? coreText({ code: "agent.preparationCancelled" })
-              : errorText(preparationError);
-            const path = join(prepareLogs(root).directory, `${state.id}.jsonl`);
-            const at = new Date().toISOString();
-            const started: StintLogEntry = {
-              type: "started",
-              at,
-              stint: {
-                id: state.id as string,
-                workItem: workItem.slug,
-                stage: result.stage.id,
-                ticket: ticket?.number ?? null,
-                agent: agent.id,
-                worktree: { path: root, branch: `stintwork/${workItem.slug}` },
-                baseCommit: execFileSync("git", ["rev-parse", "HEAD"], {
-                  cwd: root,
-                  encoding: "utf8",
-                }).trim(),
-                brief: { ...result.brief, agent: agent.id },
-              },
-            };
-            const ended: StintLogEntry = {
-              type: "ended",
-              at,
-              status: "failed",
-              ...coreTextFields("error", reason),
-            };
-            writeFileSync(
-              path,
-              [started, ended].map((entry) => JSON.stringify(coreTextWire(entry))).join("\n") +
-                "\n",
-              { flag: "wx" },
-            );
-            refresh();
+            recordPreparationFailure(preparationError);
             throw preparationError;
           }
           if (selected?.source === "pending")
             throw new Error("Agent source must be selected before launch.");
+          state.setupCancellation?.signal.throwIfAborted();
           if (workItem.github) {
             const verified = await prepareStintBrief(
               readProjectFiles,
@@ -1192,16 +1201,25 @@ export function addStintRoutes(
             );
             if (verified.reason) throw new CoreTextError(verified.reason);
           }
+          state.setupCancellation?.signal.throwIfAborted();
           const project = readProjectFiles();
           const discoveryFailure = project.warnings.find(({ path }) => path === ".git");
           if (discoveryFailure) throw new Error(discoveryFailure.message);
           const firstWorktree = !project.worktreePaths.has(workItem.slug);
-          const worktree = await ensureWorktree(root, workItem.slug);
+          state.setupCancellation?.signal.throwIfAborted();
+          const worktree = await ensureWorktree(
+            root,
+            workItem.slug,
+            state.setupCancellation?.signal,
+          );
+          state.setupCancellation?.signal.throwIfAborted();
           worktree.path = realpathSync(worktree.path);
           if (closing) throw new CoreTextError({ code: "server.stopping" });
           const workflowPath = `.scratch/${workItem.slug}/workflow.yaml`;
           const workflowIndex =
-            !workItem.github && (firstWorktree || !workItem.stints.length)
+            !workItem.github &&
+            (firstWorktree ||
+              !workItem.stints.some((entry) => entry.status !== "preparation-failed"))
               ? assertWorkflowUnchanged(worktree.path, workflowPath)
               : "";
           const workflowFile = join(worktree.path, workflowPath);
@@ -1231,7 +1249,7 @@ export function addStintRoutes(
             );
             if (prepared.reason) throw new CoreTextError(prepared.reason);
           } catch (error) {
-            if (inheritedBytes) {
+            if (inheritedBytes && !state.setupCancellation?.signal.aborted) {
               try {
                 assertWorkflowUnchanged(worktree.path, workflowPath, {
                   indexEntry: workflowIndex,
@@ -1244,6 +1262,7 @@ export function addStintRoutes(
             }
             throw error;
           }
+          state.setupCancellation?.signal.throwIfAborted();
           const { stage } = prepared;
           let brief = { ...prepared.brief, agent: agent.id };
           const id = state.id as string;
@@ -1255,6 +1274,7 @@ export function addStintRoutes(
           let setupFailed = false;
           let recheckingWorkflow = false;
           try {
+            state.setupCancellation?.signal.throwIfAborted();
             ensureLocalIgnore(worktree.path);
             if (workItem.github && githubSource) {
               const github = githubSource.getGithub();
@@ -1262,10 +1282,12 @@ export function addStintRoutes(
               if (!github || !item) throw new CoreTextError({ code: "gate.identityAmbiguous" });
               await saveGithubWorkflow(worktree.path, github, item, workItem.workflow, stage.id);
             }
+            state.setupCancellation?.signal.throwIfAborted();
             if (
               !workItem.github &&
               (inheritedAgents ||
-                ((firstWorktree || !workItem.stints.length) &&
+                ((firstWorktree ||
+                  !workItem.stints.some((entry) => entry.status !== "preparation-failed")) &&
                   typeof prepared.workItem.stages[stage.id]?.agent !== "string"))
             ) {
               recheckingWorkflow = true;
@@ -1278,7 +1300,8 @@ export function addStintRoutes(
             }
             if (
               !workItem.github &&
-              (firstWorktree || !workItem.stints.length) &&
+              (firstWorktree ||
+                !workItem.stints.some((entry) => entry.status !== "preparation-failed")) &&
               typeof prepared.workItem.stages[stage.id]?.agent !== "string" &&
               writeFirstStintWorkflow(worktree.path, workItem, stage.id, agent.id)
             ) {
@@ -1287,9 +1310,10 @@ export function addStintRoutes(
                 coreText({ code: "stream.wroteWorkflow", params: { agent: agent.displayName } }),
               );
             }
+            state.setupCancellation?.signal.throwIfAborted();
             await commitStintworkSetup(worktree.path, workItem.slug, setupFiles);
           } catch (error) {
-            if (recheckingWorkflow) throw error;
+            if (recheckingWorkflow || state.setupCancellation?.signal.aborted) throw error;
             setupFailed = true;
             setupError = error;
           }
@@ -1311,6 +1335,7 @@ export function addStintRoutes(
             if (review.reason) throw new CoreTextError(review.reason);
             brief = { ...review.brief, agent: agent.id };
           }
+          state.setupCancellation?.signal.throwIfAborted();
           const path = join(logs.directory, `${id}.jsonl`);
           const started: StintLogEntry = {
             type: "started",
@@ -1362,7 +1387,9 @@ export function addStintRoutes(
                   });
                 for (const text of setupMessages) progress(text);
                 if (setupFailed) throw setupError;
-                const previous = workItem.stints[0];
+                const previous = workItem.stints.find(
+                  (entry) => entry.status !== "preparation-failed",
+                );
                 await installWorktreeDependencies(
                   worktree.path,
                   progress,
@@ -1377,6 +1404,13 @@ export function addStintRoutes(
           if (reason) return context.json(coreTextWire({ reason }), 503);
           return context.json(coreTextWire({ stint: foldStintLog([started]) }), 201);
         } catch (error) {
+          if (state.setupCancellation?.signal.aborted && !preparationRecorded && !state.handle) {
+            try {
+              recordPreparationFailure(error);
+            } catch (recordError) {
+              console.error("Could not record preparation failure:", recordError);
+            }
+          }
           state.releaseOwnership?.();
           state.releaseOwnership = undefined;
           active.delete(workItem.slug);
@@ -1427,7 +1461,7 @@ export function addStintRoutes(
       !workItem ||
       workItem.merged ||
       workItem.stage !== stint.stage ||
-      workItem.stints[0]?.id !== stint.id ||
+      workItem.stints.find((entry) => entry.status !== "preparation-failed")?.id !== stint.id ||
       !project.workflows[workItem.workflow]?.stages.some((stage) => stage.id === stint.stage) ||
       (stint.ticket !== null && !workItem.tickets.some((ticket) => ticket.number === stint.ticket))
     )

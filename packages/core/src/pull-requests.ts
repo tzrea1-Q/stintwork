@@ -34,8 +34,9 @@ export function pullRequestText(
   workflows: WorkflowDefinitions = builtInWorkflows,
 ) {
   const reviewStages = workflows[item.workflow].stages.filter(({ gate }) => gate === "evidence");
-  const review = item.stints.find((stint) =>
-    reviewStages.some(({ id }) => id === stint.stage),
+  const review = item.stints.find(
+    (stint) =>
+      stint.status !== "preparation-failed" && reviewStages.some(({ id }) => id === stint.stage),
   )?.findings;
   return {
     title: item.title,

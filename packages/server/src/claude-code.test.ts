@@ -254,9 +254,7 @@ test("board detection never executes Claude; an explicit preparation login failu
     const response = await start(project);
     expect(response.status).toBe(503);
     expect((await response.json()).reason).toContain("claude auth login");
-    await expect(readdir(join(root, ".stintwork/local/stints"))).rejects.toMatchObject({
-      code: "ENOENT",
-    });
+    expect(await readdir(join(root, ".stintwork/local/stints"))).toHaveLength(1);
     expect(git(root, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(1);
     loggedIn = true;
     const refreshed = await project.app.request("/api/agents?refresh=true");

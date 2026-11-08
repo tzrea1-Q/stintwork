@@ -68,7 +68,7 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
           variant={
             recorded.status === "finished"
               ? "success"
-              : recorded.status === "failed"
+              : recorded.status === "failed" || recorded.status === "preparation-failed"
                 ? "danger"
                 : "secondary"
           }
