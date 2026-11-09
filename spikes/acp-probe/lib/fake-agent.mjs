@@ -22,10 +22,21 @@ new AgentSideConnection((client) => {
   const message = (sessionId, text) => client.sessionUpdate({
     sessionId, update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text } },
   });
-  const restore = async ({ sessionId, cwd }) => {
+  const restore = async ({ sessionId, cwd }, method) => {
     const stored = JSON.parse(await readFile(join(cwd, `.fake-session-${sessionId}.json`), 'utf8'));
+    if (mode === 'contaminated_resume' && method === 'resume' && !stored.recalled) delete stored.word;
     sessions.set(sessionId, stored);
-    await message(sessionId, 'Historical reply: HERON');
+    if (mode === 'mixed_updates' || mode === 'updates_only') {
+      await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'available_commands_update', availableCommands: [] } });
+    }
+    if (mode === 'mixed_updates') {
+      await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'Earlier question' } } });
+      await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'tool_call', toolCallId: 'old', title: 'Earlier tool' } });
+      await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'tool_call_update', toolCallId: 'old', status: 'completed' } });
+    }
+    if (!['no_replay', 'updates_only'].includes(mode)) await message(sessionId, 'Historical reply: HERON');
+    if (mode === 'load_failure' && method === 'load') throw new Error('fake load failure');
+    if (mode === 'both_failure') throw new Error(`fake ${method} failure`);
     return {};
   };
   return {
@@ -35,7 +46,7 @@ new AgentSideConnection((client) => {
       assert.equal(request.clientCapabilities.terminal, false);
       const resumeCapabilities = mode === 'no_resume' ? {} : mode === 'list_only'
         ? { sessionCapabilities: { list: {} } } : mode === 'resume_method'
-          ? { sessionCapabilities: { resume: {} } } : { loadSession: true, sessionCapabilities: { list: {} } };
+          ? { sessionCapabilities: { resume: {} } } : { loadSession: true, sessionCapabilities: { list: {}, ...(['both_resume', 'mixed_updates', 'updates_only', 'load_failure', 'recall_failure', 'both_failure', 'contaminated_resume', 'list_failure'].includes(mode) ? { resume: {}, close: {} } : {}) } };
       return {
         protocolVersion: PROTOCOL_VERSION,
         agentInfo: { name: 'fake-acp-agent', version: '1.0.0' },
@@ -49,7 +60,7 @@ new AgentSideConnection((client) => {
     async newSession(request) {
       assert.ok(isAbsolute(request.cwd));
       assert.deepEqual(request.mcpServers, []);
-      if (mode === 'auth') throw RequestError.authRequired({ detail: 'fake login is missing' }, 'auth_required: fake login is missing');
+      if (mode === 'auth' || mode === 'agy_auth') throw RequestError.authRequired({ detail: 'fake login is missing' }, mode === 'agy_auth' ? 'Authentication required' : 'auth_required: fake login is missing');
       const sessionId = randomUUID();
       sessions.set(sessionId, { cwd: request.cwd, modeId: 'default' });
       await client.sessionUpdate({ sessionId, update: {
@@ -72,9 +83,10 @@ new AgentSideConnection((client) => {
       sessions.get(sessionId).modeId = modeId;
       return {};
     },
-    loadSession: restore,
-    resumeSession: restore,
+    loadSession: (request) => restore(request, 'load'),
+    resumeSession: (request) => restore(request, 'resume'),
     async listSessions({ cwd }) {
+      if (mode === 'list_failure') throw new Error('fake list failure');
       const { readdir } = await import('node:fs/promises');
       const files = await readdir(cwd);
       return { sessions: files.filter((file) => file.startsWith('.fake-session-')).map((file) => ({
@@ -139,7 +151,19 @@ new AgentSideConnection((client) => {
         await message(sessionId, 'OK');
       } else {
         assert.equal(text, 'What was the code word?');
-        await message(sessionId, mode === 'resume_replay_only' ? 'I do not remember' : session.word);
+        if (mode === 'recall_failure') {
+          const marker = join(session.cwd, '.fake-recall-failed');
+          try { await readFile(marker); } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+            await writeFile(marker, 'failed');
+            throw new Error('fake recall failure');
+          }
+        }
+        if (mode === 'contaminated_resume') {
+          session.recalled = true;
+          await writeFile(join(session.cwd, `.fake-session-${sessionId}.json`), JSON.stringify(session));
+        }
+        await message(sessionId, mode === 'resume_replay_only' ? 'I do not remember' : session.word ?? 'I do not remember');
       }
       return { stopReason: 'end_turn' };
     },

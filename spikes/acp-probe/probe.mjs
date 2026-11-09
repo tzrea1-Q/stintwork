@@ -75,20 +75,24 @@ async function createFixture(runDir) {
 
 export async function resolveAgent(agent, { adapterPrefix, executable } = {}, metadata = {}) {
   Object.assign(metadata, { agentSource: null, adapterPrefix: adapterPrefix ? resolve(adapterPrefix) : null, environment: environment() });
-  if (agent === 'grok' && (adapterPrefix || executable)) throw new Error('Prefix/executable options are only supported for Claude and Codex');
+  if (adapterPrefix && ['grok', 'antigravity'].includes(agent)) throw new Error('Adapter prefix is only supported for Claude and Codex');
+  if (agent === 'grok' && executable) throw new Error('Prefix/executable options are only supported for Claude and Codex');
   const prefix = adapterPrefix ? await realpath(resolve(adapterPrefix)) : undefined;
   metadata.adapterPrefix = prefix ?? null;
   const env = { CLAUDE_CODE_EXECUTABLE: '', CODEX_PATH: '' };
   let spec;
-  if (agent === 'grok') {
+  if (agent === 'grok' || agent === 'antigravity') {
+    const binary = agent === 'grok' ? 'grok' : 'agy';
+    if (executable) executable = resolve(executable);
     for (const directory of (process.env.PATH ?? '').split(delimiter)) {
-      const path = resolve(directory, 'grok');
+      if (executable) break;
+      const path = resolve(directory, binary);
       try { await access(path, constants.X_OK); executable = path; break; } catch (error) {
         if (!['ENOENT', 'EACCES'].includes(error.code)) throw error;
       }
     }
-    if (!executable) throw new Error('grok not found on PATH');
-    spec = { command: executable, args: ['agent', 'stdio'] };
+    if (!executable) throw new Error(`${binary} not found on PATH`);
+    spec = { command: executable, args: agent === 'grok' ? ['agent', 'stdio'] : ['acp'] };
   } else {
     const pin = PINS[agent];
     const adapter = await packageInfo(pin.adapter, join(prefix ?? here, 'package.json'), prefix);
@@ -289,7 +293,8 @@ function makeConnection(context, spec, label) {
       child.stdout.destroy();
       child.stderr.destroy();
       await new Promise((resolveEnd) => stderr.end(resolveEnd));
-      log('process_cleanup', { label, reason });
+      state.cleanup = { reason, signals: ['SIGTERM', 'SIGKILL'], exit: state.exit ?? null };
+      log('process_cleanup', { label, ...state.cleanup });
     })();
   }
 
@@ -347,9 +352,21 @@ function makeConnection(context, spec, label) {
     async restore(sessionId, method) {
       const request = { sessionId, cwd: fixture, mcpServers: [] };
       log('restore_request', { label, method, request });
-      const response = await guard(() => connection[method](request));
-      sessionState(sessionId).response = response;
-      log('restore_response', { label, method, sessionId, response });
+      const session = sessionState(sessionId);
+      const offset = session.updates.length;
+      try {
+        const response = await guard(() => connection[method](request));
+        session.response = response;
+        return response;
+      } finally {
+        const updateTypes = {};
+        for (const update of session.updates.slice(offset)) updateTypes[update.sessionUpdate] = (updateTypes[update.sessionUpdate] ?? 0) + 1;
+        const replayedUpdates = ['user_message_chunk', 'agent_message_chunk', 'tool_call', 'tool_call_update']
+          .reduce((count, type) => count + (updateTypes[type] ?? 0), 0);
+        result.facts.replayedUpdates[method] = replayedUpdates;
+        result.facts.restoreUpdateTypes[method] = updateTypes;
+        log('restore_updates', { label, method, sessionId, replayedUpdates, updateTypes });
+      }
     },
     async listSessions() {
       const pages = [];
@@ -482,22 +499,52 @@ async function scenarioBody(context, spec, cancelAfterMs) {
   }
   result.facts.remember = await client.prompt(sessionId, 'Remember the code word HERON. Reply OK.');
   result.facts.originalSessionId = sessionId;
+  if (capabilities.loadSession && capabilities.sessionCapabilities?.resume != null) {
+    result.facts.resumeSessionId = await client.newSession();
+    result.facts.resumeRemember = await client.prompt(result.facts.resumeSessionId, 'Remember the code word HERON. Reply OK.');
+  }
   await client.stop('restart for resume');
   const resumed = makeConnection(context, spec, 'b');
   const secondInitialization = await resumed.initialize();
   const secondCapabilities = secondInitialization.agentCapabilities ?? {};
   if (capabilities.sessionCapabilities?.list != null && secondCapabilities.sessionCapabilities?.list != null) {
-    result.facts.listPages = await resumed.listSessions();
-    result.facts.listedOriginalSession = result.facts.listPages.some((page) => page.sessions.some((session) => session.sessionId === sessionId));
+    try {
+      result.facts.listPages = await resumed.listSessions();
+      result.facts.listedOriginalSession = result.facts.listPages.some((page) => page.sessions.some((session) => session.sessionId === sessionId));
+    } catch (error) { result.facts.listError = errorInfo(error); }
   }
   const method = capabilities.loadSession && secondCapabilities.loadSession ? 'loadSession'
     : capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null ? 'resumeSession' : null;
-  if (!method) return { status: 'unsupported', facts: { reason: 'Listing sessions does not imply an advertised load/resume method on both connections' } };
+  if (!method) return { status: result.facts.listError ? 'fail' : 'unsupported', facts: { reason: 'Listing sessions does not imply an advertised load/resume method on both connections' } };
   result.facts.method = method;
-  await resumed.restore(sessionId, method);
-  result.facts.recall = await resumed.prompt(sessionId, 'What was the code word?');
-  result.facts.heronReturned = /\bHERON\b/.test(result.facts.recall.reply);
-  return { status: result.facts.heronReturned ? 'pass' : 'fail' };
+  result.facts.replayedUpdates = {};
+  result.facts.restoreUpdateTypes = {};
+  result.facts.restoreAttempts = {};
+  const methods = [method];
+  if (method === 'loadSession' && capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null) methods.push('resumeSession');
+  for (const [index, currentMethod] of methods.entries()) {
+    const attempt = result.facts.restoreAttempts[currentMethod] = {};
+    attempt.sessionId = index ? result.facts.resumeSessionId : sessionId;
+    try {
+      let connection = resumed;
+      if (index) {
+        await resumed.stop('restart for session/resume');
+        connection = makeConnection(context, spec, 'c');
+        const initialization = await connection.initialize();
+        if (initialization.agentCapabilities?.sessionCapabilities?.resume == null) throw new Error('session/resume capability disappeared on third connection');
+      }
+      attempt.response = await connection.restore(attempt.sessionId, currentMethod);
+      attempt.recall = await connection.prompt(attempt.sessionId, 'What was the code word?');
+      attempt.heronReturned = /\bHERON\b/.test(attempt.recall.reply);
+    } catch (error) { attempt.error = errorInfo(error); }
+  }
+  result.facts.recall = result.facts.restoreAttempts[method].recall;
+  result.facts.heronReturned = result.facts.restoreAttempts[method].heronReturned;
+  if (methods.length > 1) {
+    result.facts.resumeRecall = result.facts.restoreAttempts.resumeSession.recall;
+    result.facts.resumeHeronReturned = result.facts.restoreAttempts.resumeSession.heronReturned;
+  }
+  return { status: !result.facts.listError && methods.every((name) => result.facts.restoreAttempts[name].heronReturned) ? 'pass' : 'fail' };
 }
 
 async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawnSpec, launchError, cancelAfterMs, permissionMode }) {
@@ -539,7 +586,8 @@ async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawn
 }
 
 export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120, root = join(here, 'runs'), spawnSpec, adapterPrefix, executable, cancelAfterMs = 8000, permissionMode = 'ask' }) {
-  if (!['claude', 'codex', 'grok'].includes(agent)) throw new Error('agent must be claude, codex, or grok');
+  if (!['claude', 'codex', 'grok', 'antigravity'].includes(agent)) throw new Error('agent must be claude, codex, grok, or antigravity');
+  if (agent === 'antigravity' && adapterPrefix) throw new Error('Adapter prefix is only supported for Claude and Codex');
   if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new Error('timeout-sec must be a positive number');
   if (!scenarios.length || scenarios.some((scenario) => !SCENARIOS.includes(scenario))) throw new Error('Unknown scenario');
   if (!['ask', 'default'].includes(permissionMode)) throw new Error('permission-mode must be ask or default');
@@ -607,7 +655,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const options = parseArgs(process.argv.slice(2));
     if (options.help) {
-      console.log('Usage: node probe.mjs --agent <claude|codex|grok> --scenario <basic|commands|permission|cancel|resume|all> [--timeout-sec N] [--adapter-prefix DIR] [--executable PATH] [--permission-mode ask|default]');
+      console.log('Usage: node probe.mjs --agent <claude|codex|grok|antigravity> --scenario <basic|commands|permission|cancel|resume|all> [--timeout-sec N] [--adapter-prefix DIR] [--executable PATH] [--permission-mode ask|default]');
     } else {
       const summary = await runProbe(options);
       console.log(`\nAgent: ${summary.agent}\nFixture: ${summary.fixture.path}\n`);

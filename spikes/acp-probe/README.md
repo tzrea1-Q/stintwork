@@ -7,6 +7,7 @@ existing `tsx` to load Stintwork's permission mapping, with no added dependencie
 node probe.mjs --agent claude --scenario all
 node probe.mjs --agent codex --scenario commands --timeout-sec 120
 node probe.mjs --agent grok --scenario cancel
+node probe.mjs --agent antigravity --scenario all
 node --check probe.mjs
 node selftest.mjs
 ```
@@ -16,6 +17,21 @@ Run each agent separately. By default, adapters come from this directory's
 login zsh, and Codex uses `CODEX_PATH` or its bundled launcher. Grok requires
 `grok` on PATH. Existing agent logins are used. The
 probe records authentication errors and advertised methods, never logs in.
+
+## Antigravity
+
+Use `--agent antigravity` to run the installed `agy` on PATH, or select a
+specific executable with `--executable PATH` (resolved to an absolute path).
+The probe records `agy --version` and starts `agy acp` without extra flags. It
+uses existing authentication and records authentication errors and advertised
+methods; it never authenticates or logs in. No adapter prefix is supported.
+
+All five scenarios record capabilities, session settings, command and permission
+observations, cancellation and process cleanup. Resume counts updates received
+during `session/load` and, when also advertised, `session/resume` in separate
+new processes, then tests recall. Ask mode uses the advertised default until an
+Antigravity permission mapping is proven; inspect the permission observations.
+A fake selftest is not evidence of real-agent compatibility or a version floor.
 
 ## Isolated installed/bundled comparison
 
@@ -58,7 +74,7 @@ that prefix, including SDK/launcher/native packages. With a prefix, supplying
 `CODEX_PATH` (Codex). Omitting it selects Bundled: inherited executable overrides
 are cleared, and Claude's PATH lookup is skipped. Explicit executable paths are
 resolved to absolute paths; missing/non-executable files fail without fallback.
-These options do not apply to Grok. The probe client still uses this spike's SDK;
+`--adapter-prefix` does not apply to Grok or Antigravity; `--executable` also works for Antigravity, but not Grok. The probe client still uses this spike's SDK;
 the adapter and its own SDK/launcher come from the selected prefix.
 
 Ticket 03's Comments contain all four coordinator commands and acceptance rules.

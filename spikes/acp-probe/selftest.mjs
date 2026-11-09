@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -170,6 +170,76 @@ try {
   await symlink(join(prefix, 'node_modules/@agentclientprotocol/codex-acp'), join(missingPrefix, 'node_modules/@agentclientprotocol/codex-acp'));
   await assert.rejects(resolveAgent('codex', { adapterPrefix: missingPrefix, executable: process.execPath }), /outside adapter prefix/);
   await assert.rejects(resolveAgent('grok', { adapterPrefix: prefix }), /only supported for Claude and Codex/);
+  await assert.rejects(resolveAgent('antigravity', { adapterPrefix: prefix }), /only supported for Claude and Codex/);
+  const agy = join(root, 'agy');
+  await writeFile(agy, `#!${process.execPath}\nimport assert from 'node:assert/strict';\nif (process.argv[2] === '--version') console.log('agy fake 1.0');\nelse { assert.deepEqual(process.argv.slice(2), ['acp']); await import(${JSON.stringify(pathToFileURL(join(here, 'lib/fake-agent.mjs')).href)}); }\n`);
+  await chmod(agy, 0o755);
+  const previousPath = process.env.PATH;
+  const previousOutside = process.env.FAKE_OUTSIDE_FILE;
+  const previousMode = process.env.FAKE_MODE;
+  try {
+    process.env.PATH = `${root}:${previousPath}`;
+    process.env.FAKE_OUTSIDE_FILE = outsideFile;
+    process.env.FAKE_MODE = 'both_resume';
+    const resolvedAgy = await resolveAgent('antigravity');
+    assert.equal(resolvedAgy.spec.command, agy);
+    assert.deepEqual(resolvedAgy.spec.args, ['acp']);
+    assert.equal(resolvedAgy.metadata.executable.version, 'agy fake 1.0');
+    assert.equal((await resolveAgent('antigravity', { executable: relative(process.cwd(), agy) })).spec.command, agy);
+    await assert.rejects(resolveAgent('antigravity', { executable: join(root, 'missing-agy') }), { code: 'ENOENT' });
+    const agyRun = await runProbe({ agent: 'antigravity', scenarios: SCENARIOS, root, timeoutSec: 10, cancelAfterMs: 100 });
+    assert.deepEqual(agyRun.scenarios.map(({ status }) => status), SCENARIOS.map(() => 'pass'));
+    assert.deepEqual(agyRun.scenarios[4].facts.replayedUpdates, { loadSession: 1, resumeSession: 1 });
+    assert.notEqual(agyRun.scenarios[4].facts.restoreAttempts.loadSession.sessionId, agyRun.scenarios[4].facts.restoreAttempts.resumeSession.sessionId);
+    process.env.FAKE_MODE = 'contaminated_resume';
+    const isolated = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.equal(isolated.status, 'fail');
+    assert.equal(isolated.facts.restoreAttempts.loadSession.heronReturned, true);
+    assert.equal(isolated.facts.restoreAttempts.resumeSession.heronReturned, false);
+    assert.notEqual(isolated.facts.restoreAttempts.loadSession.sessionId, isolated.facts.restoreAttempts.resumeSession.sessionId);
+    process.env.FAKE_MODE = 'list_failure';
+    const listFailure = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.equal(listFailure.status, 'fail');
+    assert.ok(listFailure.facts.listError);
+    assert.equal(listFailure.facts.restoreAttempts.loadSession.heronReturned, true);
+    assert.equal(listFailure.facts.restoreAttempts.resumeSession.heronReturned, true);
+    for (const scenario of agyRun.scenarios) for (const connection of scenario.connections) { assert.ok(connection.cleanup); assertDead(connection); }
+    process.env.FAKE_MODE = 'no_replay';
+    const noReplay = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.equal(noReplay.facts.replayedUpdates.loadSession, 0);
+    process.env.FAKE_MODE = 'updates_only';
+    const updatesOnly = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.deepEqual(updatesOnly.facts.replayedUpdates, { loadSession: 0, resumeSession: 0 });
+    assert.deepEqual(updatesOnly.facts.restoreUpdateTypes.loadSession, { available_commands_update: 1 });
+    process.env.FAKE_MODE = 'mixed_updates';
+    const mixed = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.deepEqual(mixed.facts.replayedUpdates, { loadSession: 4, resumeSession: 4 });
+    assert.deepEqual(mixed.facts.restoreUpdateTypes.loadSession, { available_commands_update: 1, user_message_chunk: 1, tool_call: 1, tool_call_update: 1, agent_message_chunk: 1 });
+    for (const mode of ['load_failure', 'recall_failure', 'both_failure']) {
+      process.env.FAKE_MODE = mode;
+      const failure = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+      assert.equal(failure.status, 'fail');
+      assert.ok(failure.facts.restoreAttempts.loadSession.error);
+      if (mode === 'both_failure') assert.ok(failure.facts.restoreAttempts.resumeSession.error);
+      else assert.equal(failure.facts.restoreAttempts.resumeSession.heronReturned, true);
+      assert.equal(failure.facts.replayedUpdates.loadSession, 1);
+      assert.equal(failure.facts.replayedUpdates.resumeSession, 1);
+    }
+    await assert.rejects(execute(process.execPath, [join(here, 'probe.mjs'), '--agent', 'antigravity', '--adapter-prefix', prefix, '--scenario', 'basic']), /only supported for Claude and Codex/);
+    await assert.rejects(execute(process.execPath, [join(here, 'probe.mjs'), '--agent', 'antigravity', '--executable']), /Missing value/);
+    process.env.FAKE_MODE = 'agy_auth';
+    const agyAuth = (await runProbe({ agent: 'antigravity', executable: agy, scenarios: ['basic'], root })).scenarios[0];
+    assert.equal(agyAuth.status, 'error');
+    assert.equal(agyAuth.error.code, -32000);
+    assert.match(agyAuth.error.message, /Authentication required/);
+    assert.equal(agyAuth.authMethods[0][0].id, 'test-login');
+    assertDead(agyAuth.connections[0]);
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousOutside === undefined) delete process.env.FAKE_OUTSIDE_FILE; else process.env.FAKE_OUTSIDE_FILE = previousOutside;
+    if (previousMode === undefined) delete process.env.FAKE_MODE; else process.env.FAKE_MODE = previousMode;
+  }
+  console.log('PASS: Antigravity native launch, resolution, all scenarios, both replay counts, auth failure and cleanup');
   for (const options of [
     { agent: 'grok', profile: 'installed' }, { agent: 'codex', profile: 'other' },
     { agent: 'codex', profile: 'installed', dir: join(root, 'bad-prefix'), cache: join(root, 'bad-prefix/cache'), registry: 'https://registry.example.invalid' },
