@@ -49,3 +49,24 @@ After all prerequisites and ADR approval, the coordinator asks the maintainer wh
 **Coordinator, 2026-11-08:** Maintainer decisions:
 - M11 stays active until ticket 17 is resolved and a short retest in the exit repository passes.
 - Cleanup then archives `tzrea1-Q/stintwork-m11-exit`, after closing parent #1 and deleting the remote branch `stintwork/github-1`. Archiving waits for the retest because an archived repository is read-only.
+
+**Coordinator, 2026-11-09:** Short retest after ticket 17, as the maintainer required ("Ship after 17"). Tested revision `ade3b5f` (built `dist`, served from the main checkout), feature workflow, agent Codex 0.163.0 with adapter 2.1.1, same repository and `gh` login; no credentials were read or recorded.
+
+- **Flow.** The coordinator opened parent [#5](https://github.com/tzrea1-Q/stintwork-m11-exit/issues/5) with the `stintwork:work-item` label. Clarify ran twice (two questions, answered through a developer note), with memory proposals for GLOSSARY and ADR 0002 accepted. Spec rewrote #5's body. Tickets published [#6](https://github.com/tzrea1-Q/stintwork-m11-exit/issues/6) as a direct sub-issue after the breakdown was approved in a developer note. Implement committed `c4a7f59`, then commented on and closed #6. Review reported no findings, and the `test` check passed. Every gate was approved in Stintwork (`2ad5c76`, `7c5b819`, `2c61e6b`, `675efc3`, `75e5258`). Every agent issue write went through the agent's skill and `gh`, and the coordinator reviewed each request and allowed it once.
+- **Ship.** The PR preview body ended with `Closes #5`. [PR #7](https://github.com/tzrea1-Q/stintwork-m11-exit/pull/7) passed CI (`test`) on head `75e5258` and was merged through Stintwork. GitHub closed #5 as completed by PR #7 (ADR 0017). Stintwork recorded the merge (`671cd14`) and removed the worktree and the local branch.
+- **Ticket 17 fixes confirmed live.**
+  - The board did not blank.
+  - The adapter was confirmed once after the server restart, then shown as Ready.
+  - The permission banner and tab-title marker appeared.
+  - Approval progress ("Approving…") and Ship progress ("Verifying GitHub evidence and checking readiness…") were shown.
+  - Unresolved handoff items cleared on gate approval.
+  - Approvals stayed current after ticket comments and the close (evidence v3).
+  - The ticket section showed `#6`.
+  - PR checks polling did not block Merge.
+- **Timing.** 550 `gh` calls in 63 minutes, with a mean of 1.49 s each. 4 failed, all expected: two `pr view <branch>` lookups before a PR existed, and two branch-protection reads on an unprotected `main`. There were 94 identity checks, about one every 40 seconds. Building the PR preview took about 20 s and the merge confirmation about 25 s.
+- **New defects.** Filed as ticket 19:
+  - After a board Refresh, a changed item stays stale until its drawer is opened. Meanwhile it shows "Blocked", and handoff items already cleared by gate approvals reappear.
+  - The merge button reads "Confirm merge merge".
+  - The gate's ticket list shows `6 ·` instead of `#6`.
+  - The Ship previews are slow because their `gh` reads run serially and repeat.
+- **Pending.** Cleanup is not done yet: close #1, delete the remote branches `stintwork/github-1` and `stintwork/github-5`, and archive the repository (maintainer decision of 2026-11-08). The local record commits `185c67e` and `671cd14` remain unpushed. The maintainer then decides M11 shipped.
