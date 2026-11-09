@@ -354,11 +354,19 @@ function makeConnection(context, spec, label) {
       log('restore_request', { label, method, request });
       const session = sessionState(sessionId);
       const offset = session.updates.length;
-      const response = await guard(() => connection[method](request));
-      const replayedUpdates = session.updates.length - offset;
-      session.response = response;
-      log('restore_response', { label, method, sessionId, response, replayedUpdates });
-      return replayedUpdates;
+      try {
+        const response = await guard(() => connection[method](request));
+        session.response = response;
+        return response;
+      } finally {
+        const updateTypes = {};
+        for (const update of session.updates.slice(offset)) updateTypes[update.sessionUpdate] = (updateTypes[update.sessionUpdate] ?? 0) + 1;
+        const replayedUpdates = ['user_message_chunk', 'agent_message_chunk', 'tool_call', 'tool_call_update']
+          .reduce((count, type) => count + (updateTypes[type] ?? 0), 0);
+        result.facts.replayedUpdates[method] = replayedUpdates;
+        result.facts.restoreUpdateTypes[method] = updateTypes;
+        log('restore_updates', { label, method, sessionId, replayedUpdates, updateTypes });
+      }
     },
     async listSessions() {
       const pages = [];
@@ -496,29 +504,42 @@ async function scenarioBody(context, spec, cancelAfterMs) {
   const secondInitialization = await resumed.initialize();
   const secondCapabilities = secondInitialization.agentCapabilities ?? {};
   if (capabilities.sessionCapabilities?.list != null && secondCapabilities.sessionCapabilities?.list != null) {
-    result.facts.listPages = await resumed.listSessions();
-    result.facts.listedOriginalSession = result.facts.listPages.some((page) => page.sessions.some((session) => session.sessionId === sessionId));
+    try {
+      result.facts.listPages = await resumed.listSessions();
+      result.facts.listedOriginalSession = result.facts.listPages.some((page) => page.sessions.some((session) => session.sessionId === sessionId));
+    } catch (error) { result.facts.listError = errorInfo(error); }
   }
   const method = capabilities.loadSession && secondCapabilities.loadSession ? 'loadSession'
     : capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null ? 'resumeSession' : null;
   if (!method) return { status: 'unsupported', facts: { reason: 'Listing sessions does not imply an advertised load/resume method on both connections' } };
   result.facts.method = method;
-  result.facts.replayedUpdates = { [method]: await resumed.restore(sessionId, method) };
-  result.facts.recall = await resumed.prompt(sessionId, 'What was the code word?');
-  result.facts.heronReturned = /\bHERON\b/.test(result.facts.recall.reply);
-  if (context.agent === 'antigravity' && method === 'loadSession' && capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null) {
-    await resumed.stop('restart for session/resume');
-    const again = makeConnection(context, spec, 'c');
-    const third = await again.initialize();
-    if (third.agentCapabilities?.sessionCapabilities?.resume != null) {
-      result.facts.replayedUpdates.resumeSession = await again.restore(sessionId, 'resumeSession');
-      result.facts.resumeRecall = await again.prompt(sessionId, 'What was the code word?');
-      result.facts.resumeHeronReturned = /\bHERON\b/.test(result.facts.resumeRecall.reply);
-    } else {
-      throw new Error('session/resume capability disappeared on third connection');
-    }
+  result.facts.replayedUpdates = {};
+  result.facts.restoreUpdateTypes = {};
+  result.facts.restoreAttempts = {};
+  const methods = [method];
+  if (method === 'loadSession' && capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null) methods.push('resumeSession');
+  for (const [index, currentMethod] of methods.entries()) {
+    const attempt = result.facts.restoreAttempts[currentMethod] = {};
+    try {
+      let connection = resumed;
+      if (index) {
+        await resumed.stop('restart for session/resume');
+        connection = makeConnection(context, spec, 'c');
+        const initialization = await connection.initialize();
+        if (initialization.agentCapabilities?.sessionCapabilities?.resume == null) throw new Error('session/resume capability disappeared on third connection');
+      }
+      attempt.response = await connection.restore(sessionId, currentMethod);
+      attempt.recall = await connection.prompt(sessionId, 'What was the code word?');
+      attempt.heronReturned = /\bHERON\b/.test(attempt.recall.reply);
+    } catch (error) { attempt.error = errorInfo(error); }
   }
-  return { status: result.facts.heronReturned && result.facts.resumeHeronReturned !== false ? 'pass' : 'fail' };
+  result.facts.recall = result.facts.restoreAttempts[method].recall;
+  result.facts.heronReturned = result.facts.restoreAttempts[method].heronReturned;
+  if (methods.length > 1) {
+    result.facts.resumeRecall = result.facts.restoreAttempts.resumeSession.recall;
+    result.facts.resumeHeronReturned = result.facts.restoreAttempts.resumeSession.heronReturned;
+  }
+  return { status: methods.every((name) => result.facts.restoreAttempts[name].heronReturned) ? 'pass' : 'fail' };
 }
 
 async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawnSpec, launchError, cancelAfterMs, permissionMode }) {

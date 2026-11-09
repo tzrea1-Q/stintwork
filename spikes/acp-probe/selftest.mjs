@@ -194,6 +194,24 @@ try {
     process.env.FAKE_MODE = 'no_replay';
     const noReplay = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
     assert.equal(noReplay.facts.replayedUpdates.loadSession, 0);
+    process.env.FAKE_MODE = 'updates_only';
+    const updatesOnly = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.deepEqual(updatesOnly.facts.replayedUpdates, { loadSession: 0, resumeSession: 0 });
+    assert.deepEqual(updatesOnly.facts.restoreUpdateTypes.loadSession, { available_commands_update: 1 });
+    process.env.FAKE_MODE = 'mixed_updates';
+    const mixed = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.deepEqual(mixed.facts.replayedUpdates, { loadSession: 4, resumeSession: 4 });
+    assert.deepEqual(mixed.facts.restoreUpdateTypes.loadSession, { available_commands_update: 1, user_message_chunk: 1, tool_call: 1, tool_call_update: 1, agent_message_chunk: 1 });
+    for (const mode of ['load_failure', 'recall_failure', 'both_failure']) {
+      process.env.FAKE_MODE = mode;
+      const failure = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+      assert.equal(failure.status, 'fail');
+      assert.ok(failure.facts.restoreAttempts.loadSession.error);
+      if (mode === 'both_failure') assert.ok(failure.facts.restoreAttempts.resumeSession.error);
+      else assert.equal(failure.facts.restoreAttempts.resumeSession.heronReturned, true);
+      assert.equal(failure.facts.replayedUpdates.loadSession, 1);
+      assert.equal(failure.facts.replayedUpdates.resumeSession, 1);
+    }
     await assert.rejects(execute(process.execPath, [join(here, 'probe.mjs'), '--agent', 'antigravity', '--adapter-prefix', prefix, '--scenario', 'basic']), /only supported for Claude and Codex/);
     await assert.rejects(execute(process.execPath, [join(here, 'probe.mjs'), '--agent', 'antigravity', '--executable']), /Missing value/);
     process.env.FAKE_MODE = 'agy_auth';
