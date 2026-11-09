@@ -115,7 +115,7 @@ A Chinese-speaking developer can use the whole web UI in Simplified Chinese. Spe
 
 Make Stintwork ready for developers outside the project: finish the UI foundations, start fast, survive restarts, fit GitHub-tracked repos and work with more agents. Then release v0.2 and go public. Feedback from outside developers is gathered after the public release and sets later scope.
 
-As of 2026-10-17, v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test now follows the public release, outside v0.2. M6 shipped after the maintainer approved the Chinese UI on 2026-10-13; go-public 05 is resolved. M8 has only ui-foundations 07's human walk-through left. go-public 01 and 02 are built and merged, waiting on the maintainer. Grok Build's end-to-end ticket (agent-polish 04) stays deferred until M12. `tzrea1-Q/stintwork` stays private until M13.
+As of 2026-10-17, v0.1.0 was published on npm on 2026-10-11, and v0.1.1 on 2026-10-12. M1–M4 shipped. M5's implementation shipped; its deferred outside-developer test now follows the public release, outside v0.2. M6 shipped after the maintainer approved the Chinese UI on 2026-10-13; go-public 05 is resolved. M8 has only ui-foundations 07's human walk-through left. go-public 01 and 02 are built and merged, waiting on the maintainer. As of 2026-11-09, Grok Build's end-to-end ticket (agent-polish 04) is back in scope for M12 and needs the maintainer to sign in again. `tzrea1-Q/stintwork` stays private until M13.
 
 **Rule:** if M11 runs long, M12 moves to v0.3 rather than delaying v0.2.
 
@@ -173,13 +173,12 @@ A repo whose tracker config says GitHub shows top-level issues with a direct sam
 
 ### M12 · More agents · M
 
-Verify Grok Build and add Gemini CLI over ACP.
+Verify Grok Build and add Antigravity CLI over ACP ([ADR 0018](adr/0018-antigravity-cli-for-m12.md)).
 
-- Grok Build verified end to end (agent-polish 04), subject to its API rate limits.
-- Gemini CLI: ACP probe, capability profile and permission mapping.
-- Touches only the `agents` package, so it can run alongside other milestones.
+- Verify Grok Build end to end (agent-polish 04) after the maintainer signs in again.
+- Probe Antigravity CLI, then add its capability profile, permission mapping and restart behavior. It remains experimental until the M12 exit.
 
-**Exit test:** one real stint each with Grok Build and Gemini CLI, each ending in a parsed handoff.
+**Exit test:** one real stint each with Grok Build and Antigravity CLI, each ending in a parsed handoff.
 
 ### M13 · v0.2 release and going public · S
 

@@ -70,7 +70,9 @@ Status: active
 
 ## M12 · More agents
 Id: m12
-Status: planned
+Status: active
+
+- more-agents
 
 ## M13 · v0.2 release and going public
 Id: m13
