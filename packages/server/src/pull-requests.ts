@@ -206,6 +206,10 @@ export async function fetchPullRequestChecks(
   root: string,
   pr: PullRequest,
 ): Promise<PullRequestChecks> {
+  return (await fetchPullRequestChecksWithView(root, pr)).checks;
+}
+
+export async function fetchPullRequestChecksWithView(root: string, pr: PullRequest) {
   const key = join(root, ".stintwork", "local", "pr-checks", `${pr.number}.json`);
   const state = checksWrites.get(key) ?? {
     next: 0,
@@ -240,7 +244,7 @@ async function fetchChecks(
   root: string,
   pr: PullRequest,
   observe: () => (write: () => Promise<void>) => Promise<void>,
-): Promise<PullRequestChecks> {
+) {
   const before = await viewPullRequest(root, pr, String(pr.number));
   const output = await gh(
     root,
@@ -303,7 +307,7 @@ async function fetchChecks(
     await writeFile(temporary, JSON.stringify(result), { flag: "wx" });
     await rename(temporary, path);
   });
-  return result;
+  return { checks: result, remote: after };
 }
 
 export function readPullRequestChecks(root: string, pr: PullRequest) {

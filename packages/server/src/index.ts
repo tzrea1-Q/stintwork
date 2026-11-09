@@ -1357,7 +1357,7 @@ export function createProjectServer(
         expected,
         source,
         lifetime.signal,
-        async () => (await verifiedViewer()).viewer,
+        async () => (viewerFresh() ? source.viewer : (await verifiedViewer()).viewer),
       );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;

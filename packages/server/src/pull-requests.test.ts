@@ -157,6 +157,32 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
+test("merge preview overlaps protection and CI reads and uses the checked PR view", async () => {
+  const { root, fake, script, open, post } = await fixture();
+  await open();
+  const started = join(root, "checks-started");
+  await fake.script({
+    ...script,
+    "api repos/example/project/branches/main/protection": {
+      stdout: { required_linear_history: { enabled: false } },
+      effect: `const until = Date.now() + 10000; while (!fs.existsSync(${JSON.stringify(started)}) && Date.now() < until) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); if (!fs.existsSync(${JSON.stringify(started)})) throw Error('CI did not overlap protection');`,
+    },
+    "pr checks": {
+      ...script["pr checks"],
+      effect: `fs.writeFileSync(${JSON.stringify(started)}, '');`,
+    },
+  });
+  const offset = (await fake.calls()).length;
+  const response = await post("preview-merge-pr");
+  expect(response.status, await response.clone().text()).toBe(200);
+  const calls = (await fake.calls()).slice(offset).map(({ args }) => args.slice(0, 2).join(" "));
+  expect(calls.filter((call) => call === "pr view")).toHaveLength(2);
+  expect(calls.filter((call) => call === "pr checks")).toHaveLength(1);
+  expect(
+    calls.filter((call) => call === "api repos/example/project/branches/main/protection"),
+  ).toHaveLength(1);
+});
+
 test("an older concurrent CI refresh cannot overwrite newer evidence", async () => {
   const { root, fake, script, open } = await fixture();
   const pr = await open();
