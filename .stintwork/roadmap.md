@@ -77,3 +77,5 @@ Status: active
 ## M13 · v0.2 release and going public
 Id: m13
 Status: planned
+
+- v02-release
