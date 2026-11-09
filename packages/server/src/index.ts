@@ -1002,7 +1002,7 @@ export function createProjectServer(
         void refreshGithub().then(() => refresh());
       for (const number of pendingRecovery.keys()) pendingStintDetails.add(number);
       drainStintDetails();
-      if (!github?.error && generation === trackerGeneration) {
+      if (!discoveryFailure && !viewerFailure && generation === trackerGeneration) {
         for (const item of github?.items ?? [])
           if (item.detail?.stale) backgroundDetails.add(item.number);
         drainBackgroundDetails();

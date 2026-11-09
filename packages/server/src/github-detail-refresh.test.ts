@@ -162,7 +162,13 @@ test.each(scenarios)(
         "api graphql":
           scenario === "load-more" || scenario === "background-discovery-race"
             ? firstPages
-            : { stdout: page(scenario === "isolated-details" ? [issue, secondIssue] : [issue]) },
+            : {
+                stdout: page(
+                  scenario === "isolated-details" || scenario === "background-retry-limit"
+                    ? [issue, secondIssue]
+                    : [issue],
+                ),
+              },
         "api repos/github/gh-aw/issues/1433": { stdout: parent },
         "api repos/github/gh-aw/issues/1433/sub_issues?per_page=100&page=1": { stdout: children },
         "api repos/github/gh-aw/issues/1433/comments?per_page=100&page=1": { stdout: comments },
@@ -335,6 +341,7 @@ test.each(scenarios)(
           return;
         }
         if (scenario === "background-retry-limit") {
+          await server.app.request("/api/github/items/1533/refresh", { method: "POST" });
           await gh.script({
             ...replies,
             "api repos/github/gh-aw/issues/1433": {
@@ -351,6 +358,32 @@ test.each(scenarios)(
           await expect.poll(async () => (await calls()).length, { timeout: 12000 }).toBe(4);
           await new Promise((resolve) => setTimeout(resolve, 1200));
           expect(await calls()).toHaveLength(4);
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: { ...parent, body: "First recovered" },
+            },
+            "api repos/github/gh-aw/issues/1533": {
+              stdout: { ...secondParent, body: "Second refreshed" },
+            },
+          });
+          const recoveredAt = (await gh.calls()).length;
+          expect(
+            (await server.app.request("/api/github/discovery/refresh", { method: "POST" })).status,
+          ).toBe(200);
+          await expect
+            .poll(async () => {
+              const snapshot = await (await server.app.request("/api/project")).json();
+              return snapshot.workItems.map((item: { spec: { text: string } }) => item.spec.text);
+            })
+            .toEqual(["First recovered", "Second refreshed"]);
+          const refreshed = (await gh.calls()).slice(recoveredAt);
+          expect(refreshed.some(({ args }) => args[1] === "repos/github/gh-aw/issues/1433")).toBe(
+            true,
+          );
+          expect(refreshed.some(({ args }) => args[1] === "repos/github/gh-aw/issues/1533")).toBe(
+            true,
+          );
           return;
         }
         if (scenario === "background-retry") {
