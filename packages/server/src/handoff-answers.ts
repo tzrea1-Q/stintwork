@@ -36,6 +36,11 @@ export function addHandoffAnswerRoute(
         403,
       );
     const project = readProjectFiles();
+    if (project.warnings.some(({ path }) => path === ".git"))
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
+        503,
+      );
     const snapshot = resolveProjectSnapshot(project, getSnapshot);
     const item = snapshot.workItems.find((entry) =>
       entry.stints.some((stint) => stint.id === context.req.param("stintId")),
@@ -45,6 +50,8 @@ export function addHandoffAnswerRoute(
         coreTextWire({ reason: coreText({ code: "server.stintNotFound" }) }),
         404,
       );
+    if (item.merged)
+      return context.json(coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }), 409);
     const stint = item.stints.find((entry) => entry.id === context.req.param("stintId"));
     if (!stint)
       return context.json(
