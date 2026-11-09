@@ -15,11 +15,11 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [x] GitHub blockers display issue numbers in GitHub format, such as “#2” rather than “02”.
 - [x] Improve GitHub detail read latency for two tickets, observed at about 10–18 seconds.
 - [x] Pending permission requests have a stronger signal so they do not go unnoticed, as one did for 25 minutes.
-- [ ] A handoff-unresolved attention item leaves Needs you when the gate it asks about is approved.
-- [ ] While a post-stint write is active, the gate does not misleadingly show “Ready to approve”; attempted gate changes surface the `gate.activeWrite` reason instead of only “Could not change the gate.”
-- [ ] “Changed since the last handoff” reports committed memory proposals and gate approvals instead of saying none.
+- [x] A handoff-unresolved attention item leaves Needs you when the gate it asks about is approved.
+- [x] While a post-stint write is active, the gate does not misleadingly show “Ready to approve”; attempted gate changes surface the `gate.activeWrite` reason instead of only “Could not change the gate.”
+- [x] “Changed since the last handoff” reports committed memory proposals and gate approvals instead of saying none.
 - [x] Startup does not serially block ordinary API requests on each pending recovery's GitHub detail fetch in `packages/server/src/index.ts`; several interrupted GitHub stints and slow GitHub must not delay ordinary requests by minutes. This was deferred from ticket 14.
-- [ ] With dependency-only incomplete detail at a stage whose evidence includes tickets, Reopen remains available in `GateView` when the reopen route permits it, despite the projection suppressing `reviewDigest`. This was deferred from ticket 16.
+- [x] With dependency-only incomplete detail at a stage whose evidence includes tickets, Reopen remains available in `GateView` when the reopen route permits it, despite the projection suppressing `reviewDigest`. This was deferred from ticket 16.
 - [x] The pull request checks panel does not hold the Ship write continuously. It polls `ship/pr-checks` every 60 seconds while one request took 60–90 seconds, so overlapping requests returned 409 `ship.activeWrite` and Merge could only proceed after the review overlay was closed.
 - [x] Ship preview, PR checks refresh and merge preview each took about 60–100 seconds of serial GitHub reads with only “Working…”; reduce the latency and show progress. Approving the Review gate likewise gave no visible feedback for several seconds.
 - [x] A manual Refresh that gets 409 “Discovery busy” tells the developer instead of doing nothing visible.
@@ -200,3 +200,7 @@ Two theoretical lock races remain as known limitations of this test-only harness
 The requested commit could not be staged: the sandbox denied creation of the worktree Git `index.lock` (`Operation not permitted`). Changes remain uncommitted on top of `f30016d`.
 
 **Codex, 2026-11-08:** Fixed the batch C review finding: resolving a handoff now refuses shipped work items with `workItem.shipped` (409), and refuses unavailable branch discovery with `server.branchesUnavailable` (503). Existing active stint, check, write and worktree guards remain in place; GitHub identity validation in the finding routes applies to send-back's workflow mutation, not a review-only decision. Server regressions verify both new refusals leave the branch unchanged. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 warnings), `pnpm typecheck`, `pnpm build`, and `pnpm vitest run packages/server/src/handoff-notes.test.ts` (11 tests) passed. Criteria remain unchanged.
+
+**Coordinator, 2026-11-08:** Batch C verified at `7f480c5`, outside the sandbox. format:check, lint, typecheck, build, test (3,278 passed), smoke:package and test:e2e (432 passed) all exit 0; the final `codex review` is clean.
+
+Design decision: approving a stage's gate, while that approval stays current under the shared currency check (including upstream reopens), clears handoff-unresolved items from that stage's earlier stints. Any other unresolved handoff is cleared with **Mark resolved**, which asks for confirmation and is refused for shipped items. Text matching and "a later stint finished" were rejected as clearing rules. Four criteria are ticked.
