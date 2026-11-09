@@ -1391,7 +1391,7 @@ export function createProjectServer(
     getGithub: () => github,
     getSnapshot: () => snapshot,
     discoveryFailed: () => !!(discoveryFailure || viewerFailure),
-    verifyIdentity: async (expected: GithubDiscovery) => {
+    verifyIdentity: async (expected: GithubDiscovery, fresh = false) => {
       const source = githubSource;
       if (!source || github !== expected) return false;
       const valid = await verifyGithubGateIdentity(
@@ -1399,7 +1399,12 @@ export function createProjectServer(
         expected,
         source,
         lifetime.signal,
-        async () => (viewerFresh() ? source.viewer : (await verifiedViewer()).viewer),
+        async () =>
+          fresh
+            ? githubViewer(root, lifetime.signal)
+            : viewerFresh()
+              ? source.viewer
+              : (await verifiedViewer()).viewer,
       );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;

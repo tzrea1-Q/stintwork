@@ -289,6 +289,16 @@ export function addShipRoutes(
           }
           return { github, remote };
         }
+        async function verifyGithubWrite() {
+          if (!initial.item.github) return;
+          let valid = false;
+          try {
+            valid = !!github && !!(await githubSource?.verifyIdentity(github, true));
+          } catch {
+            /* Fail closed. */
+          }
+          if (!valid) throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+        }
         let { github, remote: githubRemote } =
           action === "pr-checks"
             ? await validateGithub()
@@ -432,15 +442,18 @@ export function addShipRoutes(
               )
                 throw new LocalMergeRefusal({ code: "ship.confirmPush" });
               previews.delete(slug);
-              if (!existing)
+              if (!existing) {
+                await verifyGithubWrite();
                 await shipGit(checkout, [
                   "push",
                   "-u",
                   repository.remote,
                   `${head}:refs/heads/${branch}`,
                 ]);
+              }
               await shipGit(checkout, ["config", `branch.${branch}.remote`, repository.remote]);
               await shipGit(checkout, ["config", `branch.${branch}.merge`, `refs/heads/${branch}`]);
+              await verifyGithubWrite();
               const opened = existing ?? (await createPullRequest(checkout, details));
               if (
                 opened.headRefOid !== head ||
@@ -537,6 +550,7 @@ export function addShipRoutes(
                 `Record merge method for pull request #${pr.number} for ${slug}`,
               );
               head = await shipGit(checkout, ["rev-parse", "HEAD"]);
+              await verifyGithubWrite();
               await mergePullRequest(root, pr, checks.headCommit, method);
               remote = await viewPullRequest(root, pr, String(pr.number));
             }

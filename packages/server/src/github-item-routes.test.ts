@@ -17,7 +17,11 @@ import { ensureWorktree, withRepoLock } from "@stintwork/git";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectFiles } from "./work-item-files.js";
 import { githubSnapshotFiles } from "./github-snapshot.js";
-import { validateGithubIdentities, type GithubDiscovery } from "./github-discovery.js";
+import {
+  githubViewer,
+  validateGithubIdentities,
+  type GithubDiscovery,
+} from "./github-discovery.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addStageAgentRoute } from "./stage-agent.js";
 import { addWorkItemDiffRoute } from "./work-item-diff.js";
@@ -139,7 +143,7 @@ async function fixture(shipOnly = false) {
     getSnapshot,
     refresh,
     discoveryFailed: () => !!github.discoveryFailed,
-    verifyIdentity: async () => true,
+    verifyIdentity: async (_github: GithubDiscovery, _fresh?: boolean) => true,
     beginDetail: createDetailPublisher(),
     detailFailed: () => {},
     registerDetailIdentities: () => {},
@@ -545,6 +549,106 @@ test("GitHub recovery finds the item and finalises its stint", async () => {
   } finally {
     await stop();
   }
+});
+
+test.each(["create", "merge"] as const)("Ship rechecks the viewer before %s", async (action) => {
+  const { root, worktree, git, post, gh, source } = await fixture(true);
+  const bare = `${root}-remote.git`;
+  roots.push(bare);
+  git(root, "clone", "--quiet", "--bare", root, bare);
+  git(root, "remote", "add", "origin", bare);
+  writeFileSync(join(worktree, "change.txt"), "done\n");
+  git(worktree, "add", "change.txt");
+  git(worktree, "commit", "-qm", "work");
+  const reviewed = git(worktree, "rev-parse", "HEAD");
+  writeFileSync(
+    join(worktree, workflowPath),
+    `${readFileSync(join(worktree, workflowPath), "utf8")}stages:\n  review:\n    approved: { by: Developer, at: '2026-10-10T10:00:00Z', commit: ${reviewed} }\n`,
+  );
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "approve");
+  const head = git(worktree, "rev-parse", "HEAD");
+  const view = {
+    number: 12,
+    url: "https://github.com/Example/Project/pull/12",
+    state: "OPEN",
+    headRefOid: head,
+    headRefName: "stintwork/github-1",
+    baseRefName: "main",
+    isCrossRepository: false,
+  };
+  const replies = {
+    "auth status": {},
+    "repo view": {
+      stdout: {
+        nameWithOwner: "Example/Project",
+        url: "https://github.com/Example/Project",
+        mergeCommitAllowed: true,
+        defaultBranchRef: { name: "main" },
+      },
+    },
+    "api repos/Example/Project/branches/main/protection": {
+      stdout: { required_linear_history: { enabled: false } },
+    },
+    "api user":
+      action === "create"
+        ? [{ stdout: { id: 101, login: "first" } }, { stdout: { id: 202, login: "second" } }]
+        : { stdout: { id: 101, login: "first" } },
+    "pr view": [
+      { code: 1, stdout: "no pull requests found for branch" },
+      { code: 1, stdout: "no pull requests found for branch" },
+      { stdout: view },
+    ],
+    "pr create": { stdout: view.url },
+    "pr checks": { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
+    "pr merge": {},
+  };
+  await gh.script(replies);
+  // Discovery has already verified the first account and its cache is still fresh.
+  source.verifyIdentity = async (_github, fresh) => !fresh || (await githubViewer(root)).id === 101;
+  const request = (name: string, body = {}) => post(`/api/work-items/github-1/ship/${name}`, body);
+  const preview = await request("preview-pr");
+  expect(preview.status, await preview.clone().text()).toBe(200);
+  expect(
+    (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
+  ).toHaveLength(0);
+  const opened = await request("open-pr", {
+    confirmation: (await preview.json()).preview.confirmation,
+  });
+  if (action === "create") {
+    expect(opened.status).toBe(409);
+    expect((await opened.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+    expect(
+      (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
+    ).toHaveLength(2);
+    expect((await gh.calls()).some(({ args }) => args[0] === "pr" && args[1] === "create")).toBe(
+      false,
+    );
+    return;
+  }
+  expect(opened.status, await opened.clone().text()).toBe(200);
+  await gh.script({
+    ...replies,
+    "api user": { stdout: { id: 202, login: "second" } },
+    "pr view": { stdout: view },
+  });
+  const before = (await gh.calls()).filter(
+    ({ args }) => args[0] === "api" && args[1] === "user",
+  ).length;
+  const mergePreview = await request("preview-merge-pr");
+  expect(mergePreview.status, await mergePreview.clone().text()).toBe(200);
+  expect(
+    (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
+  ).toHaveLength(before);
+  const merged = await request("merge-pr");
+  expect(merged.status).toBe(409);
+  expect((await merged.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+  expect(
+    (await gh.calls()).filter(({ args }) => args[0] === "api" && args[1] === "user"),
+  ).toHaveLength(before + 1);
+  expect((await gh.calls()).some(({ args }) => args[0] === "pr" && args[1] === "merge")).toBe(
+    false,
+  );
 });
 
 test("GitHub pull request ship records the merged workflow", async () => {
