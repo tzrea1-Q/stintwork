@@ -297,6 +297,7 @@ test("preview and missing, forged or expired confirmation never push or create a
     title: "First change",
   });
   expect(details.body).toContain("First ticket");
+  expect(details.body).not.toContain("Closes #");
   for (const confirmation of [undefined, "forged"])
     expect((await post("open-pr", { confirmation })).status).toBe(409);
   vi.spyOn(Date, "now").mockReturnValue(Date.now() + 11 * 60_000);

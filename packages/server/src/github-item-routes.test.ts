@@ -595,9 +595,14 @@ test("GitHub pull request ship records the merged workflow", async () => {
   });
   let response = await post("/api/work-items/github-1/ship/preview-pr", {});
   expect(response.status, await response.clone().text()).toBe(200);
-  const confirmation = (await response.json()).preview.confirmation;
+  const preview = (await response.json()).preview;
+  expect(preview.body).toContain("Closes #1");
+  const confirmation = preview.confirmation;
   response = await post("/api/work-items/github-1/ship/open-pr", { confirmation });
   expect(response.status, await response.clone().text()).toBe(200);
+  expect(
+    (await gh.calls()).find(({ args }) => args[0] === "pr" && args[1] === "create")?.args,
+  ).toContain(preview.body);
   response = await post("/api/work-items/github-1/ship/merge-pr", {});
   expect(response.status, await response.clone().text()).toBe(200);
   expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");

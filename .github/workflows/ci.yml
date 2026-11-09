@@ -46,6 +46,7 @@ jobs:
         if: always()
         with:
           name: browser-layout-evidence-${{ matrix.shard }}
+          retention-days: 7
           path: |
             packages/web/coverage/e2e/test-results/
             packages/web/coverage/e2e/report/

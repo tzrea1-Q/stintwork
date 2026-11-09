@@ -381,6 +381,8 @@ export function addShipRoutes(
                 headCommit: head,
                 ...pullRequestText(item, workflows),
               };
+              if (item.github?.repository.toLowerCase() === repository.repo.toLowerCase())
+                details.body += `\n\nCloses #${item.github.number}`;
               if (action === "preview-pr") {
                 const preview = { ...details, confirmation: randomUUID() };
                 previews.set(slug, { preview, expires: Date.now() + 10 * 60_000 });

@@ -26,7 +26,7 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [x] GitHub identity is checked once per TTL, not per request: in 161 seconds of startup, detail and refresh, 24 of 48 `gh` calls were `auth status` or `api user`. Each call took 1.1–1.7 seconds.
 - [x] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
 - [x] A shipped GitHub item's drawer does not show “No spec yet” and “No tickets yet” before its detail loads.
-- [ ] Decide and document whether shipping a GitHub work item closes or links its parent issue. In the exit, parent #1 stayed open after PR #4 merged because the PR body had no closing keyword.
+- [x] Decide and document whether shipping a GitHub work item closes or links its parent issue. In the exit, parent #1 stayed open after PR #4 merged because the PR body had no closing keyword.
 
 ## Comments
 
@@ -204,3 +204,5 @@ The requested commit could not be staged: the sandbox denied creation of the wor
 **Coordinator, 2026-11-08:** Batch C verified at `7f480c5`, outside the sandbox. format:check, lint, typecheck, build, test (3,278 passed), smoke:package and test:e2e (432 passed) all exit 0; the final `codex review` is clean.
 
 Design decision: approving a stage's gate, while that approval stays current under the shared currency check (including upstream reopens), clears handoff-unresolved items from that stage's earlier stints. Any other unresolved handoff is cleared with **Mark resolved**, which asks for confirmation and is refused for shipped items. Text matching and "a later stint finished" were rejected as clearing rules. Four criteria are ticked.
+
+**Codex, 2026-11-08:** The maintainer decided that the generated pull request body closes the same-repository GitHub parent on merge into the default branch. ADR 0017 records the decision; the Ship preview shows the closing keyword. Artifact uploads now retain evidence for seven days.
