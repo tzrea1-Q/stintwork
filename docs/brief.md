@@ -134,7 +134,7 @@ Throughout: a ⌘K command palette, `c` to create, `j`/`k` to move, and a stable
 
 Teams and accounts, cloud runners, scheduled automations, a visual workflow editor, two-way GitHub Issues sync, mobile, autonomous swarms, more than one active stint per work item (parallel stints across work items are fine).
 
-v0.2 scope is in `docs/plan.md`: repo preparation in M7, UI foundations in M8, a fast first run in M9, stints surviving restarts in M10, reading GitHub Issues in M11 and a fourth agent, Gemini CLI, in M12. M13 releases v0.2 and makes the repo public. Outside-developer feedback follows the public release and sets later scope. Further agent support follows the plan.
+v0.2 scope is in `docs/plan.md`: repo preparation in M7, UI foundations in M8, a fast first run in M9, stints surviving restarts in M10, reading GitHub Issues in M11 and a fourth agent, Antigravity CLI, in M12. M13 releases v0.2 and makes the repo public. Outside-developer feedback follows the public release and sets later scope. Further agent support follows the plan.
 
 ## 13. First milestone: acceptance scenario
 

@@ -49,7 +49,7 @@ _Avoid_: Command, prompt, plugin
 ## Agents and stints
 
 **Agent**:
-A coding agent used under the developer's own login, such as Claude Code, Codex or Grok Build.
+A coding agent used under the developer's own login, such as Claude Code, Codex, Grok Build or Antigravity CLI.
 _Avoid_: Model, bot, harness, runtime
 
 **Agent source**:
