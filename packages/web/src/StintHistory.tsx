@@ -14,7 +14,7 @@ import { useEffect, useId, useState } from "react";
 import { HandoffCard } from "./HandoffCard";
 import { StintStream } from "./StintStream";
 
-function StintHistoryEntry({ stint }: { stint: StintSummary }) {
+function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boolean }) {
   const { t, language } = useLanguage();
   const date = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" });
   const replayId = useId();
@@ -63,7 +63,10 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
     <li>
       <p>
         {recorded.agent} ·{" "}
-        {recorded.ticket === null ? t.stints.noTicket : t.stints.ticket(recorded.ticket)} ·{" "}
+        {recorded.ticket === null
+          ? t.stints.noTicket
+          : t.stints.briefTicket(recorded.ticket, github)}{" "}
+        ·{" "}
         <Badge
           variant={
             recorded.status === "finished"
@@ -127,12 +130,18 @@ function StintHistoryEntry({ stint }: { stint: StintSummary }) {
   );
 }
 
-export function StintHistory({ stints }: { stints: StintSummary[] }) {
+export function StintHistory({
+  stints,
+  github = false,
+}: {
+  stints: StintSummary[];
+  github?: boolean;
+}) {
   const { t } = useLanguage();
   return stints.length ? (
     <ol aria-label={t.stints.history}>
       {stints.map((stint) => (
-        <StintHistoryEntry key={stint.id} stint={stint} />
+        <StintHistoryEntry key={stint.id} stint={stint} github={github} />
       ))}
     </ol>
   ) : (

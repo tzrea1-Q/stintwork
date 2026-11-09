@@ -39,6 +39,11 @@ const scenarios = [
   "cooldown",
   "detail-cooldown",
   "in-flight",
+  "background-sharing",
+  "background-retry",
+  "background-retry-limit",
+  "background-discovery-race",
+  "cleared-handoff",
 ] as const;
 
 test.each(scenarios)(
@@ -155,9 +160,15 @@ test.each(scenarios)(
         "config get": { stdout: "101" },
         "api repos/github/gh-aw": { stdout: repo },
         "api graphql":
-          scenario === "load-more"
+          scenario === "load-more" || scenario === "background-discovery-race"
             ? firstPages
-            : { stdout: page(scenario === "isolated-details" ? [issue, secondIssue] : [issue]) },
+            : {
+                stdout: page(
+                  scenario === "isolated-details" || scenario === "background-retry-limit"
+                    ? [issue, secondIssue]
+                    : [issue],
+                ),
+              },
         "api repos/github/gh-aw/issues/1433": { stdout: parent },
         "api repos/github/gh-aw/issues/1433/sub_issues?per_page=100&page=1": { stdout: children },
         "api repos/github/gh-aw/issues/1433/comments?per_page=100&page=1": { stdout: comments },
@@ -176,6 +187,73 @@ test.each(scenarios)(
         ...detailReplies,
       };
       await gh.script(replies);
+      if (scenario === "cleared-handoff") {
+        const workflowPath = join(root, ".stintwork/github/github/gh-aw/1433/workflow.yaml");
+        await mkdir(join(root, ".stintwork/github/github/gh-aw/1433"), { recursive: true });
+        await writeFile(
+          workflowPath,
+          JSON.stringify({
+            workflow: "feature",
+            stage: "clarify",
+            github: {
+              host: "github.com",
+              repositoryId: "R_test",
+              repository: "github/gh-aw",
+              issueId: parent.node_id,
+              number: 1433,
+              url: parent.html_url,
+            },
+            stages: {
+              clarify: {
+                approved: {
+                  at: "2026-10-10T00:00:00Z",
+                  remote: { version: 3, parentId: parent.node_id, digest: "ignored" },
+                },
+              },
+            },
+          }),
+        );
+        await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+        await writeFile(
+          join(root, ".stintwork/local/stints/earlier.jsonl"),
+          [
+            {
+              type: "started",
+              at: "2026-10-09T10:00:00Z",
+              stint: {
+                id: "earlier",
+                workItem: "github-1433",
+                ticket: null,
+                stage: "clarify",
+                agent: "codex",
+                baseCommit: "base",
+                worktree: { path: "/worktree", branch: "branch" },
+                brief: {
+                  prompt: "Work",
+                  skill: null,
+                  pointers: [],
+                  changedPaths: [],
+                  lastHandoff: null,
+                },
+              },
+            },
+            {
+              type: "ended",
+              at: "2026-10-09T10:20:00Z",
+              status: "finished",
+              handoff: {
+                stint: "earlier",
+                agent: "codex",
+                stoppedAt: "Done",
+                unresolved: "Question",
+                nextStep: "Approve",
+              },
+            },
+          ]
+            .map((entry) => JSON.stringify(entry))
+            .join("\n"),
+        );
+      }
       const { createProjectServer } = await import("./index.js");
       const server = createProjectServer(root, join(root, "web"), {
         githubViewerIntervalMs: scenario === "cooldown" ? 100 : undefined,
@@ -201,6 +279,179 @@ test.each(scenarios)(
         ]);
         expect(broadcast?.workItems[0]).toEqual(initial.workItems[0]);
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
+        if (scenario === "cleared-handoff") {
+          expect(initial.workItems[0].stages.clarify.approved.remoteState).toBe("current");
+          expect(initial.workItems[0].stints[0].handoff.unresolved).toBe("Question");
+          expect(
+            initial.attentionItems.filter(
+              (entry: { kind: string }) => entry.kind === "handoff-unresolved",
+            ),
+          ).toHaveLength(0);
+          const stale = await (
+            await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+          ).json();
+          expect(stale.workItems[0].github.stale).toBe(true);
+          expect(stale.workItems[0].stages.clarify.approved.remoteState).toBe("unknown");
+          expect(
+            stale.attentionItems.filter(
+              (entry: { kind: string }) => entry.kind === "handoff-unresolved",
+            ),
+          ).toHaveLength(0);
+          return;
+        }
+        if (scenario === "background-sharing") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: { ...parent, body: "Changed remotely" },
+              effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)",
+            },
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(
+              async () =>
+                (await gh.calls())
+                  .slice(before)
+                  .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433").length,
+            )
+            .toBe(1);
+          const response = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(response.status).toBe(200);
+          expect((await response.json()).workItems[0].spec.text).toBe("Changed remotely");
+          expect(
+            (await gh.calls())
+              .slice(before)
+              .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+          ).toHaveLength(1);
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": { stdout: { ...parent, body: "Changed again" } },
+          });
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(
+              async () =>
+                (await (await server.app.request("/api/project")).json()).workItems[0].spec.text,
+            )
+            .toBe("Changed again");
+          return;
+        }
+        if (scenario === "background-retry-limit") {
+          await server.app.request("/api/github/items/1533/refresh", { method: "POST" });
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              code: 1,
+              effect: "process.stderr.write('HTTP 500')",
+            },
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          const calls = async () =>
+            (await gh.calls())
+              .slice(before)
+              .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433");
+          await expect.poll(async () => (await calls()).length, { timeout: 12000 }).toBe(4);
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          expect(await calls()).toHaveLength(4);
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: { ...parent, body: "First recovered" },
+            },
+            "api repos/github/gh-aw/issues/1533": {
+              stdout: { ...secondParent, body: "Second refreshed" },
+            },
+          });
+          const recoveredAt = (await gh.calls()).length;
+          expect(
+            (await server.app.request("/api/github/discovery/refresh", { method: "POST" })).status,
+          ).toBe(200);
+          await expect
+            .poll(async () => {
+              const snapshot = await (await server.app.request("/api/project")).json();
+              return snapshot.workItems.map((item: { spec: { text: string } }) => item.spec.text);
+            })
+            .toEqual(["First recovered", "Second refreshed"]);
+          const refreshed = (await gh.calls()).slice(recoveredAt);
+          expect(refreshed.some(({ args }) => args[1] === "repos/github/gh-aw/issues/1433")).toBe(
+            true,
+          );
+          expect(refreshed.some(({ args }) => args[1] === "repos/github/gh-aw/issues/1533")).toBe(
+            true,
+          );
+          return;
+        }
+        if (scenario === "background-retry") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": [
+              {
+                code: 1,
+                effect:
+                  "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 2\\n')",
+              },
+              { stdout: { ...parent, body: "Recovered" } },
+            ],
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(
+              async () =>
+                (await (await server.app.request("/api/project")).json()).github.errorCode,
+            )
+            .toBe("rate-limited");
+          await new Promise((resolve) => setTimeout(resolve, 1100));
+          expect(
+            (await gh.calls())
+              .slice(before)
+              .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+          ).toHaveLength(1);
+          await expect
+            .poll(
+              async () =>
+                (await (await server.app.request("/api/project")).json()).workItems[0].spec.text,
+              { timeout: 8000 },
+            )
+            .toBe("Recovered");
+          return;
+        }
+        if (scenario === "background-discovery-race") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: parent,
+              effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1200)",
+            },
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(async () =>
+              (await gh.calls())
+                .slice(before)
+                .some(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+            )
+            .toBe(true);
+          const first = server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          const second = await server.app.request("/api/github/discovery/refresh", {
+            method: "POST",
+          });
+          expect(second.status).toBe(409);
+          expect(await second.text()).toBe("Discovery busy");
+          const loadMore = await server.app.request("/api/github/discovery/load-more", {
+            method: "POST",
+          });
+          expect(loadMore.status).toBe(409);
+          expect(await loadMore.text()).toBe("Discovery busy");
+          expect((await first).status).toBe(200);
+          return;
+        }
         if (scenario === "cooldown") {
           await server.start();
           live.messages.length = 0;
@@ -380,9 +631,7 @@ test.each(scenarios)(
           ).toEqual([]);
           await post("/api/github/discovery/refresh");
           const oneRefreshed = await post("/api/github/items/1433/refresh");
-          expect(oneRefreshed.github.stale).toBe(true);
           expectKnown(oneRefreshed, 1433);
-          expectUnknown(oneRefreshed, 1533);
           await post("/api/github/items/1533/refresh");
           await gh.script({
             ...replies,
@@ -582,4 +831,5 @@ test.each(scenarios)(
       await rm(root, { recursive: true, force: true });
     }
   },
+  20000,
 );

@@ -51,6 +51,7 @@ import {
   createPullRequest,
   findPullRequest,
   fetchPullRequestChecks,
+  fetchPullRequestChecksWithView,
   readPullRequestChecks,
   viewPullRequest,
   mergePullRequest,
@@ -221,30 +222,7 @@ export function addShipRoutes(
             );
             if (action === "merge-local" || action === "merge-pr")
               assertWorkflowUnchanged(root, initial.workflowPath);
-            let valid = false;
-            try {
-              valid = await githubSource.verifyIdentity(github);
-            } catch {
-              /* Fail closed. */
-            }
-            if (
-              !valid ||
-              (action !== "send-back" &&
-                (githubSource.discoveryFailed() || githubRateLimitCoolingDown(github)))
-            )
-              throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
             const stages = initial.workflows[initial.item.workflow].stages;
-            const labels = new Map(
-              ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(
-                (role) => [role, role],
-              ),
-            );
-            for (const line of (
-              initial.project.files.read("docs/agents/triage-labels.md") ?? ""
-            ).split(/\r?\n/)) {
-              const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
-              if (match && labels.has(match[1])) labels.set(match[1], match[2]);
-            }
             const priorStages =
               action === "send-back"
                 ? []
@@ -260,6 +238,31 @@ export function addShipRoutes(
                   remote.number,
                 )
               : undefined;
+            // Attach a handler immediately while identity is checked first for refusal ordering.
+            void detail?.catch(() => {});
+            let valid = false;
+            try {
+              valid = await githubSource.verifyIdentity(github);
+            } catch {
+              /* Fail closed. */
+            }
+            if (
+              !valid ||
+              (action !== "send-back" &&
+                (githubSource.discoveryFailed() || githubRateLimitCoolingDown(github)))
+            )
+              throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+            const labels = new Map(
+              ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map(
+                (role) => [role, role],
+              ),
+            );
+            for (const line of (
+              initial.project.files.read("docs/agents/triage-labels.md") ?? ""
+            ).split(/\r?\n/)) {
+              const match = /^\s*\|\s*`([^`]+)`\s*\|\s*`([^`]+)`/.exec(line);
+              if (match && labels.has(match[1])) labels.set(match[1], match[2]);
+            }
             for (const stage of priorStages) {
               const approval = await requireCurrentGithubApproval(
                 initial.project.worktreePaths.get(slug) ?? root,
@@ -285,6 +288,16 @@ export function addShipRoutes(
             }
           }
           return { github, remote };
+        }
+        async function verifyGithubWrite() {
+          if (!initial.item.github) return;
+          let valid = false;
+          try {
+            valid = !!github && !!(await githubSource?.verifyIdentity(github, true));
+          } catch {
+            /* Fail closed. */
+          }
+          if (!valid) throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
         }
         let { github, remote: githubRemote } =
           action === "pr-checks"
@@ -429,15 +442,18 @@ export function addShipRoutes(
               )
                 throw new LocalMergeRefusal({ code: "ship.confirmPush" });
               previews.delete(slug);
-              if (!existing)
+              if (!existing) {
+                await verifyGithubWrite();
                 await shipGit(checkout, [
                   "push",
                   "-u",
                   repository.remote,
                   `${head}:refs/heads/${branch}`,
                 ]);
+              }
               await shipGit(checkout, ["config", `branch.${branch}.remote`, repository.remote]);
               await shipGit(checkout, ["config", `branch.${branch}.merge`, `refs/heads/${branch}`]);
+              await verifyGithubWrite();
               const opened = existing ?? (await createPullRequest(checkout, details));
               if (
                 opened.headRefOid !== head ||
@@ -486,7 +502,12 @@ export function addShipRoutes(
             }
             if (pr.base !== (await shipGit(root, ["symbolic-ref", "--short", "HEAD"])))
               throw new LocalMergeRefusal({ code: "ship.baseMismatch" });
-            const checks = await fetchPullRequestChecks(root, pr);
+            const methodRead = pullRequestMergeMethod(root, pr, repository);
+            void methodRead.catch(() => {});
+            const { checks, remote: checkedRemote } = await fetchPullRequestChecksWithView(
+              root,
+              pr,
+            );
             if (!checks.checks.length || checks.checks.some((check) => check.bucket !== "pass"))
               throw new LocalMergeRefusal({ code: "ship.ciRequired" });
             if (
@@ -504,7 +525,7 @@ export function addShipRoutes(
               )
             )
               throw new LocalMergeRefusal({ code: "ship.headChanged" });
-            let remote = await viewPullRequest(root, pr, String(pr.number));
+            let remote = checkedRemote;
             if (
               remote.headRefOid !== checks.headCommit ||
               remote.baseRefName !== pr.base ||
@@ -515,13 +536,14 @@ export function addShipRoutes(
               const report = await dryRunLocalMerge(root, slug);
               if (report.conflicts.length)
                 throw new LocalMergeRefusal({ code: "ship.conflicts" }, report.conflicts);
-              const method = await pullRequestMergeMethod(root, pr, repository);
+              const method = await methodRead;
               if (action === "preview-merge-pr")
                 return context.json(coreTextWire({ mergeMethod: method }));
               if (body.mergeMethod !== undefined && body.mergeMethod !== method)
                 throw new LocalMergeRefusal({ code: "ship.methodChanged" });
               const requested = { ...pr, mergeMethod: method };
               pr = requested;
+              await verifyGithubWrite();
               await saveWorkflow(
                 checkout,
                 item,
@@ -529,6 +551,7 @@ export function addShipRoutes(
                 `Record merge method for pull request #${pr.number} for ${slug}`,
               );
               head = await shipGit(checkout, ["rev-parse", "HEAD"]);
+              await verifyGithubWrite();
               await mergePullRequest(root, pr, checks.headCommit, method);
               remote = await viewPullRequest(root, pr, String(pr.number));
             }
@@ -584,8 +607,7 @@ export function addShipRoutes(
           });
         }
         if (action !== "merge-local") ({ github, remote: githubRemote } = await validateGithub());
-        else if (initial.item.github && github && !(await githubSource?.verifyIdentity(github)))
-          throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+        else await verifyGithubWrite();
         if (action === "merge-local") {
           const { workflows, item } = locate();
           const commit = await mergeLocalWorkItem(
@@ -602,6 +624,7 @@ export function addShipRoutes(
             },
             async () => {
               await validateGithub();
+              await verifyGithubWrite();
               return merged?.commit;
             },
           );
@@ -631,6 +654,7 @@ export function addShipRoutes(
           }
           const at = new Date().toISOString();
           const record = { by, at, commit: report.headCommit };
+          await verifyGithubWrite();
           const commit = await saveWorkItemReview(worktree, slug, [], undefined, {
             workflow: workflowGate(
               item.github

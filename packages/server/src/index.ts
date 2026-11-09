@@ -5,6 +5,7 @@ import {
   coreTextWire,
   type Health,
   indexProject,
+  indexStints,
   type Warning,
 } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
@@ -64,6 +65,14 @@ import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
 
+// Local safety actions must remain available without GitHub. Stop also cancels
+// preparation and recovery; permission answers include both denial and allowance.
+const localSafetyRoutes = [
+  /^\/api\/stints\/[^/]+\/stop$/,
+  /^\/api\/stints\/[^/]+\/permissions\/[^/]+$/,
+  /^\/api\/work-items\/[^/]+\/checks\/cancel$/,
+];
+
 export function createProjectServer(
   repoRoot: string,
   webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url)),
@@ -120,6 +129,71 @@ export function createProjectServer(
   }
   let discoveryRunning = false;
   const detailRunning = new Set<number>();
+  const handoffApprovals = new Map<string, string>();
+  const sharedDetails = new Map<number, { read: Promise<number>; generation: number }>();
+  const backgroundDetails = new Set<number>();
+  const backgroundRunning = new Set<number>();
+  const backgroundRetries = new Map<
+    number,
+    { attempts: number; timer: ReturnType<typeof setTimeout> }
+  >();
+  let discoveryRequested = false;
+  let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
+  function drainBackgroundDetails() {
+    if (lifetime.signal.aborted || discoveryRunning || discoveryRequested) return;
+    for (const number of backgroundDetails) {
+      if (githubRateLimitCoolingDown(github)) break;
+      if (detailRunning.size >= 2) break;
+      if (!github?.items.some((item) => item.number === number && item.detail?.stale)) {
+        backgroundDetails.delete(number);
+        continue;
+      }
+      if (gateWriteActive(`github-${number}`)) continue;
+      backgroundDetails.delete(number);
+      backgroundRunning.add(number);
+      const generation = trackerGeneration;
+      void refreshGithubDetail(number).then((status) => {
+        backgroundRunning.delete(number);
+        if (lifetime.signal.aborted || generation !== trackerGeneration) return;
+        const item = github?.items.find((entry) => entry.number === number);
+        const failure = item && detailFailures.get(item.id);
+        const previous = backgroundRetries.get(number);
+        if (previous) clearTimeout(previous.timer);
+        if (
+          (status === 429 ||
+            (status === 503 &&
+              failure &&
+              ["offline", "server-error", "rate-limited"].includes(failure.code))) &&
+          (previous?.attempts ?? 0) < 3 &&
+          item?.detail?.stale
+        ) {
+          const attempts = (previous?.attempts ?? 0) + 1;
+          const delay = Math.max(
+            1000 * 2 ** (attempts - 1),
+            github?.retryAt ? Date.parse(github.retryAt) - Date.now() : 0,
+          );
+          const timer = setTimeout(
+            () => {
+              if (backgroundRetries.get(number)?.timer !== timer) return;
+              backgroundDetails.add(number);
+              drainBackgroundDetails();
+            },
+            Math.min(delay, 2_147_483_647),
+          );
+          backgroundRetries.set(number, { attempts, timer });
+        } else {
+          backgroundRetries.delete(number);
+        }
+        drainBackgroundDetails();
+      });
+    }
+    if (backgroundDetails.size && !backgroundTimer) {
+      backgroundTimer = setTimeout(() => {
+        backgroundTimer = undefined;
+        drainBackgroundDetails();
+      }, 1000);
+    }
+  }
   const pendingStintDetails = new Set<number>();
   const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
   const stintDetailAttempts = new Map<number, number>();
@@ -294,7 +368,7 @@ export function createProjectServer(
         ...(branch ? { branch } : {}),
       },
     );
-    projectGithubGates(snapshot, root, project);
+    projectGithubGates(snapshot, root, project, handoffApprovals);
     projectLocalApprovals(snapshot, root, project);
     readReviewEvidence(project, snapshot);
     for (const item of snapshot.workItems) item.gateWriteActive = gateWriteActive(item.slug);
@@ -378,6 +452,12 @@ export function createProjectServer(
     cached = undefined;
     knownRepository = undefined;
     knownIssues.clear();
+    handoffApprovals.clear();
+    backgroundDetails.clear();
+    for (const { timer } of backgroundRetries.values()) clearTimeout(timer);
+    backgroundRetries.clear();
+    clearTimeout(backgroundTimer);
+    backgroundTimer = undefined;
     pendingStintDetails.clear();
     for (const timer of stintDetailTimers.values()) clearTimeout(timer);
     stintDetailTimers.clear();
@@ -931,6 +1011,11 @@ export function createProjectServer(
         void refreshGithub().then(() => refresh());
       for (const number of pendingRecovery.keys()) pendingStintDetails.add(number);
       drainStintDetails();
+      if (!discoveryFailure && !viewerFailure && generation === trackerGeneration) {
+        for (const item of github?.items ?? [])
+          if (item.detail?.stale) backgroundDetails.add(item.number);
+        drainBackgroundDetails();
+      }
     }
   }
   const pendingRecovery = new Map<number, Array<() => void>>();
@@ -1051,6 +1136,42 @@ export function createProjectServer(
     }
     await next();
   });
+  app.use("/api/*", async (context, next) => {
+    if (context.req.method !== "POST" && context.req.method !== "DELETE") return next();
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin) return next();
+    const path = new URL(context.req.url).pathname;
+    if (context.req.method === "POST" && localSafetyRoutes.some((route) => route.test(path)))
+      return next();
+    const workItem = /^\/api\/work-items\/(github-\d+)\//.exec(path)?.[1];
+    const gate = /^\/api\/github\/items\/(\d+)\/gates\//.exec(path)?.[1];
+    const stint = /^\/api\/stints\/([^/]+)\//.exec(path)?.[1];
+    let slug = workItem ?? (gate ? `github-${gate}` : undefined);
+    if (stint) slug = indexStints(files).stints.find((entry) => entry.id === stint)?.workItem;
+    if (path === "/api/stints" || path === "/api/roadmap") {
+      const body = await context.req.raw
+        .clone()
+        .json()
+        .catch(() => undefined);
+      if (body && typeof body.workItem === "string") slug = body.workItem;
+    }
+    const readOnlyShip = /\/ship\/(?:preview-pr|preview-merge-pr|pr-checks)$/.test(path);
+    if (slug?.match(/^github-\d+$/) && !readOnlyShip) {
+      const current = github;
+      let valid = false;
+      try {
+        valid = !!current && (await githubBriefSource.verifyIdentity(current, true));
+      } catch {
+        // An unverified identity cannot authorize a write.
+      }
+      if (!valid)
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }), code: "identity" }),
+          409,
+        );
+    }
+    await next();
+  });
   const health: Health = { ok: true, repo: name };
   app.get("/api/health", (context) => context.json(coreTextWire(health)));
   app.get("/api/project", async (context) => {
@@ -1070,13 +1191,38 @@ export function createProjectServer(
       (action === "load-more" && !github?.cursor && !github?.retryable)
     )
       return context.text("Discovery unavailable", 409);
-    if (discoveryRunning || detailRunning.size) return context.text("Discovery busy", 409);
-    await refreshGithub(action === "load-more");
+    if (
+      discoveryRunning ||
+      discoveryRequested ||
+      [...detailRunning].some((number) => !backgroundRunning.has(number))
+    )
+      return context.text("Discovery busy", 409);
+    discoveryRequested = true;
+    try {
+      await Promise.all([...backgroundRunning].map((number) => sharedDetails.get(number)?.read));
+      await refreshGithub(action === "load-more");
+    } finally {
+      discoveryRequested = false;
+      drainBackgroundDetails();
+    }
     refresh();
     return context.json(coreTextWire(publicSnapshot()));
   });
   const beginDetail = createDetailPublisher();
-  async function refreshGithubDetail(number: number) {
+  function refreshGithubDetail(number: number): Promise<number> {
+    const existing = sharedDetails.get(number);
+    if (existing)
+      return existing.generation === trackerGeneration
+        ? existing.read
+        : existing.read.then(() => refreshGithubDetail(number));
+    const read = readGithubDetail(number);
+    sharedDetails.set(number, { read, generation: trackerGeneration });
+    void read.finally(() => {
+      if (sharedDetails.get(number)?.read === read) sharedDetails.delete(number);
+    });
+    return read;
+  }
+  async function readGithubDetail(number: number) {
     if (lifetime.signal.aborted) return 409;
     const item = github?.items.find((entry) => entry.number === number);
     if (
@@ -1290,7 +1436,7 @@ export function createProjectServer(
     getGithub: () => github,
     getSnapshot: () => snapshot,
     discoveryFailed: () => !!(discoveryFailure || viewerFailure),
-    verifyIdentity: async (expected: GithubDiscovery) => {
+    verifyIdentity: async (expected: GithubDiscovery, fresh = false) => {
       const source = githubSource;
       if (!source || github !== expected) return false;
       const valid = await verifyGithubGateIdentity(
@@ -1298,7 +1444,12 @@ export function createProjectServer(
         expected,
         source,
         lifetime.signal,
-        async () => (await verifiedViewer()).viewer,
+        async () =>
+          fresh
+            ? githubViewer(root, lifetime.signal)
+            : viewerFresh()
+              ? source.viewer
+              : (await verifiedViewer()).viewer,
       );
       if (!valid && github === expected && githubSource === source) invalidateGithubIdentity();
       return valid && github === expected && githubSource === source;
@@ -1468,10 +1619,13 @@ export function createProjectServer(
   function stop(): Promise<void> {
     stopping ??= (async () => {
       lifetime.abort();
+      for (const { timer } of backgroundRetries.values()) clearTimeout(timer);
+      backgroundRetries.clear();
       clearTimeout(debounce);
       clearTimeout(settle);
       clearInterval(metadataPoll);
       clearInterval(viewerPoll);
+      clearTimeout(backgroundTimer);
       for (const timer of stintDetailTimers.values()) clearTimeout(timer);
       stintDetailTimers.clear();
       try {

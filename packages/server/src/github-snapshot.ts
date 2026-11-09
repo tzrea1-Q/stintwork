@@ -26,6 +26,7 @@ export function projectGithubGates(
   snapshot: ProjectSnapshot,
   root: string,
   project: ReturnType<ProjectFilesReader>,
+  handoffApprovals = new Map<string, string>(),
 ) {
   const labels = new Map(
     ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map((role) => [
@@ -65,13 +66,14 @@ export function projectGithubGates(
       remote?.discoveryComplete &&
       !remote.detailFailed &&
       !snapshot.github?.discoveryFailed &&
-      !snapshot.github?.stale &&
       detail &&
       !detail.stale &&
       dependencyOnlyIncomplete(detail)
     );
     const valid =
       triageReadable &&
+      !snapshot.github?.discoveryFailed &&
+      !remote?.detailFailed &&
       detail &&
       !detail.stale &&
       detail.tickets.every(
@@ -105,6 +107,7 @@ export function projectGithubGates(
         .digest("hex")}`;
     };
     let upstream: "current" | "stale" | "unknown" = "current";
+    let localCurrencyVerified = true;
     for (const { id: stage } of stages) {
       const record = item.stages[stage];
       if (!record) {
@@ -168,17 +171,23 @@ export function projectGithubGates(
             checkoutText: worktree ? () => project.files.read(path) : undefined,
           });
         } catch {
+          localCurrencyVerified = false;
           state = "unknown";
         }
       }
       const reopenState = approvalReopenState(item.stages, stages, stage);
       if (reopenState !== "current") state = reopenState;
       if (upstream !== "current" && state === "current") state = upstream;
-      if (headChanged) state = "stale";
-      if (state === "current" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
+      if (headChanged) {
+        localCurrencyVerified = false;
+        state = "stale";
+      }
+      if (state !== "stale" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
         try {
-          if (!("commit" in approval) || typeof approval.commit !== "string") state = "unknown";
-          else {
+          if (!("commit" in approval) || typeof approval.commit !== "string") {
+            localCurrencyVerified = false;
+            state = "unknown";
+          } else {
             const directory =
               (item.github.bound ? project.worktreePaths.get(item.slug) : undefined) ?? root;
             const headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -199,10 +208,13 @@ export function projectGithubGates(
                 },
                 approval.commit,
               )
-            )
+            ) {
+              localCurrencyVerified = false;
               state = "stale";
+            }
           }
         } catch {
+          localCurrencyVerified = false;
           state = "unknown";
         }
       }
@@ -214,9 +226,18 @@ export function projectGithubGates(
         evidence.version !== 3
       )
         state = "unknown";
+      const handoffKey = `${item.github.repository.toLowerCase()}:${item.github.issueId}:${stage}`;
+      const approvalIdentity = JSON.stringify(approval);
+      if (state === "current") handoffApprovals.set(handoffKey, approvalIdentity);
+      else if (state === "stale") handoffApprovals.delete(handoffKey);
       record.approved = {
         ...approval,
         remoteState: state,
+        ...(state === "unknown" &&
+        localCurrencyVerified &&
+        handoffApprovals.get(handoffKey) === approvalIdentity
+          ? { handoffRemoteState: "current" }
+          : {}),
         ...(headChanged ? { remoteStateReason: "head-changed" } : {}),
       };
       upstream = state;

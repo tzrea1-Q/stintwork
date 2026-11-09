@@ -542,7 +542,7 @@ test.each(["en", "zh-CN"] as const)(
       </LanguageProvider>,
     );
     expect(header).toHaveTextContent(
-      `Registered Codex 原文 · ${t.stints.ticket(7)} · ${t.stints.statuses.running}`,
+      `Registered Codex 原文 · ${t.stints.briefTicket(7)} · ${t.stints.statuses.running}`,
     );
     view.rerender(
       <LanguageProvider>

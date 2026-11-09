@@ -66,8 +66,10 @@ test("PR title and body include spec, ticket outcome, review decisions and commi
   ];
   expect(pullRequestText(item)).toEqual({
     title: "First change",
-    body: `## Spec\n\n# First change\n\nKeep inputs safe.\n\n## Tickets\n\n- [x] 1: Validate input\n\n## Review\n\n- Validate empty input: accepted\n\n## Checks\n\n- Test: passed (${"a".repeat(40)})`,
+    body: `## Spec\n\n# First change\n\nKeep inputs safe.\n\n## Tickets\n\n- [x] 01: Validate input\n\n## Review\n\n- Validate empty input: accepted\n\n## Checks\n\n- Test: passed (${"a".repeat(40)})`,
   });
+  item.github = {} as NonNullable<typeof item.github>;
+  expect(pullRequestText(item).body).toContain("- [x] #1: Validate input");
   item.stints[0].findings = { commit: "a".repeat(40), findings: [] };
   expect(pullRequestText(item).body).toContain("No findings.");
 });

@@ -366,7 +366,8 @@ export const en = {
     refreshFailed: "Could not refresh agent availability.",
     refreshRetry: "Could not refresh agent availability. Try again.",
     noTicket: "No ticket",
-    ticket: (number: number) => `Ticket ${number}`,
+    ticket: (number: number, github = false) =>
+      `Ticket ${github ? `#${number}` : String(number).padStart(2, "0")}`,
     stint: "Stint",
     noReadinessTime: "No readiness time recorded",
     waiting: (minutes: number) => `Waiting ${minutes ? `${minutes} min` : "less than a minute"}`,
@@ -615,7 +616,8 @@ export const en = {
         `Shipped ${number === undefined ? "locally" : `through pull request #${number}`} at ${commit}.`,
       sentBack: (stage: string) => `Sent back to ${stage}.`,
       pullRequest: (number: number | string | undefined) => `Pull request #${number}`,
-      confirmMethod: (method: string) => `Confirm ${method} merge`,
+      confirmMethod: (method: string) =>
+        method === "merge" ? "Confirm merge" : `Confirm ${method} merge`,
       mergeMethod: "Merge method:",
       mergedAt: "Merged at ",
       remote: "Remote: ",

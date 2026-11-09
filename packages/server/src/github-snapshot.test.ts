@@ -129,7 +129,57 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     });
     expect(unbound.workItems[0].github?.reviewHead).toBe(worktreeHead);
     const snapshot = indexProject(files, { name: "Test", github });
-    projectGithubGates(snapshot, root, project);
+    const handoffApprovals = new Map<string, string>();
+    projectGithubGates(snapshot, root, project, handoffApprovals);
+    for (const other of [
+      { detail: { spec: "Other", tickets: [], complete: true, stale: true } },
+      { detail: { spec: "Other", tickets: [], complete: true }, detailFailed: true },
+    ]) {
+      const isolated = indexProject(files, {
+        name: "Test",
+        github: {
+          ...github,
+          stale: true,
+          discoveryFailed: false,
+          items: [...github.items, { ...github.items[0], ...other, id: "I_2", number: 2 }],
+        },
+      });
+      projectGithubGates(isolated, root, project);
+      expect(
+        isolated.workItems.find((item) => item.github?.number === 1)?.stages.clarify.approved,
+      ).toMatchObject({ remoteState: "current" });
+    }
+    const failedDiscovery = indexProject(files, {
+      name: "Test",
+      github: { ...github, stale: true, discoveryFailed: true },
+    });
+    projectGithubGates(failedDiscovery, root, project);
+    expect(failedDiscovery.workItems[0].stages.clarify.approved).toMatchObject({
+      remoteState: "unknown",
+    });
+    const failedDetail = indexProject(files, {
+      name: "Test",
+      github: { ...github, items: [{ ...github.items[0], detailFailed: true }] },
+    });
+    projectGithubGates(failedDetail, root, project);
+    expect(failedDetail.workItems[0].stages.clarify.approved).toMatchObject({
+      remoteState: "unknown",
+    });
+    const staleSnapshot = indexProject(files, {
+      name: "Test",
+      github: {
+        ...github,
+        items: [{ ...github.items[0], detail: { ...github.items[0].detail, stale: true } }],
+      },
+    });
+    projectGithubGates(staleSnapshot, root, project, handoffApprovals);
+    expect(staleSnapshot.workItems[0].stages.clarify.approved).toMatchObject({
+      remoteState: "unknown",
+      handoffRemoteState: "current",
+    });
+    expect(staleSnapshot.workItems[0].stages.spec.approved).not.toHaveProperty(
+      "handoffRemoteState",
+    );
     const item = snapshot.workItems[0];
     expect(item).toMatchObject({
       workflow: "feature",
@@ -203,6 +253,50 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     reviewItem.stage = "ship";
     projectGithubGates(reviewSnapshot, root, project);
     expect(reviewItem.stages.review.approved).toMatchObject({ remoteState: "current" });
+    const handoffCache = new Map<string, string>();
+    const handoffSnapshot = () => {
+      const result = indexProject(files, { name: "Test", github: structuredClone(github) });
+      const item = result.workItems[0];
+      item.stage = "ship";
+      item.stages.spec = { approved: { ...approval, remote: { ...approval.remote, digest } } };
+      item.stages.tickets = { approved: approval };
+      item.stages.implement = { approved: approval };
+      item.stages.review = { approved: approval };
+      item.stints = [
+        {
+          id: "review-stint",
+          workItem: item.slug,
+          stage: "review",
+          ticket: null,
+          agent: "codex",
+          status: "finished",
+          startedAt: "2025-12-31T00:00:00Z",
+          endedAt: "2025-12-31T00:01:00Z",
+          checkpointCommit: null,
+          handoff: {
+            stint: "review-stint",
+            agent: "codex",
+            stoppedAt: "Done",
+            unresolved: "Fix this",
+            nextStep: "Review",
+          },
+        },
+      ];
+      return result;
+    };
+    projectGithubGates(handoffSnapshot(), root, project, handoffCache);
+    const staleHandoffSnapshot = () => {
+      const result = handoffSnapshot();
+      if (!result.github?.items[0].detail) throw new Error("Missing detail");
+      result.github.items[0].detail.stale = true;
+      projectGithubGates(result, root, project, handoffCache);
+      return result;
+    };
+    expect(
+      deriveAttentionItems(staleHandoffSnapshot()).filter(
+        (entry) => entry.kind === "handoff-unresolved",
+      ),
+    ).toEqual([]);
     writeFileSync(join(root, "code.ts"), "code\n");
     execFileSync("git", ["-C", root, "add", "code.ts"]);
     execFileSync("git", [
@@ -218,6 +312,9 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     ]);
     projectGithubGates(reviewSnapshot, root, project);
     expect(reviewItem.stages.review.approved).toMatchObject({ remoteState: "stale" });
+    expect(deriveAttentionItems(staleHandoffSnapshot())).toContainEqual(
+      expect.objectContaining({ kind: "handoff-unresolved", stintId: "review-stint" }),
+    );
     const freshDefault = indexProject(files, {
       name: "Test",
       github: { ...github, items: [{ ...github.items[0], bound: false }] },

@@ -45,7 +45,7 @@ export type GithubBriefSource = {
   readDetail?: typeof readGithubTickets;
   getSnapshot: () => ProjectSnapshot;
   discoveryFailed: () => boolean;
-  verifyIdentity: (github: GithubDiscovery) => Promise<boolean>;
+  verifyIdentity: (github: GithubDiscovery, fresh?: boolean) => Promise<boolean>;
   detailFailed: (github: GithubDiscovery, number: number, error: unknown) => void;
   registerDetailIdentities: (
     github: GithubDiscovery,

@@ -43,9 +43,11 @@ export async function verifyGithubGateIdentity(
   signal?: AbortSignal,
   readViewer = () => githubViewer(root, signal),
 ) {
-  const viewer = await readViewer();
+  const [viewer, repository] = await Promise.all([
+    readViewer(),
+    githubTrackerRepository(root, true),
+  ]);
   if (signal?.aborted) return false;
-  const repository = await githubTrackerRepository(root, true);
   return (
     viewer.id === source.viewer.id &&
     viewer.login === source.viewer.login &&

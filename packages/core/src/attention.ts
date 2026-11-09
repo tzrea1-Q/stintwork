@@ -118,7 +118,11 @@ export function deriveAttentionItems(
                 "current" &&
               (!("state" in approval) || approval.state === "current") &&
               (item.github
-                ? "remoteState" in approval && approval.remoteState === "current"
+                ? ("remoteState" in approval && approval.remoteState === "current") ||
+                  ("remoteState" in approval &&
+                    approval.remoteState === "unknown" &&
+                    "handoffRemoteState" in approval &&
+                    approval.handoffRemoteState === "current")
                 : !("remoteState" in approval) || approval.remoteState === "current")
             );
           })(),

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { WebSocket } from "ws";
+import { ensureWorktree } from "@stintwork/git";
 import { expect, test, vi } from "vitest";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
@@ -28,6 +29,276 @@ const page = {
     rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
   },
 };
+
+test("every registered write route has an identity classification", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-route-inventory-"));
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    await writeFile(join(root, "index.html"), "<!doctype html>");
+    server = createProjectServer(root, root);
+    // Project-wide operations and read-only POSTs have no GitHub work-item write to authorize.
+    const projectOrReadOnly = [
+      "/api/project/permission-level",
+      "/api/github/discovery/:action",
+      "/api/github/items/:number/refresh",
+      "/api/work-items/preview",
+      "/api/work-items",
+      "/api/workflows/:id/customise/preview",
+      "/api/workflows/:id/customise",
+      "/api/setup",
+      "/api/work-items/:slug/ship/preview-pr",
+      "/api/work-items/:slug/ship/pr-checks",
+      "/api/work-items/:slug/ship/preview-merge-pr",
+    ];
+    const localSafety = [
+      "/api/stints/:stintId/stop",
+      "/api/stints/:stintId/permissions/:requestId",
+      "/api/work-items/:slug/checks/cancel",
+    ];
+    const freshViewer = [
+      "/api/roadmap",
+      "/api/stints",
+      "/api/stints/:stintId/confirm-agent",
+      "/api/stints/:stintId/resolve-handoff",
+      "/api/stints/:stintId/handoff-answer",
+      "/api/github/items/:number/gates/approve",
+      "/api/github/items/:number/gates/reopen",
+      "/api/work-items/:slug/stages/:stage/agent",
+      "/api/work-items/:slug/gates/:stage/approve",
+      "/api/work-items/:slug/gates/:stage/reopen",
+      "/api/work-items/:slug/findings/decision",
+      "/api/work-items/:slug/findings/send-back",
+      "/api/work-items/:slug/risky-paths/accept",
+      "/api/work-items/:slug/memory-proposals/decision",
+      "/api/work-items/:slug/checks",
+      "/api/work-items/:slug/ship/merge-local",
+      "/api/work-items/:slug/ship/send-back",
+      "/api/work-items/:slug/ship/open-pr",
+      "/api/work-items/:slug/ship/merge-pr",
+    ];
+    const classified = [...projectOrReadOnly, ...localSafety, ...freshViewer].map(
+      (path) => `POST ${path}`,
+    );
+    const registered = server.app.routes
+      .filter(({ method }) => method === "POST" || method === "DELETE")
+      .map(({ method, path }) => `${method} ${path}`);
+    expect(new Set(classified).size).toBe(classified.length);
+    expect(registered.sort()).toEqual(classified.sort());
+  } finally {
+    await server?.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  ["merge local", "/api/work-items/github-1/ship/merge-local", {}],
+  ["send back from Ship", "/api/work-items/github-1/ship/send-back", {}],
+  ["open PR", "/api/work-items/github-1/ship/open-pr", {}],
+  ["merge PR", "/api/work-items/github-1/ship/merge-pr", {}],
+  ["approve gate", "/api/github/items/1/gates/approve", {}],
+  ["reopen gate", "/api/github/items/1/gates/reopen", {}],
+  ["accept memory", "/api/work-items/github-1/memory-proposals/decision", { status: "accepted" }],
+  ["reject memory", "/api/work-items/github-1/memory-proposals/decision", { status: "rejected" }],
+  ["finding decision", "/api/work-items/github-1/findings/decision", {}],
+  ["finding send back", "/api/work-items/github-1/findings/send-back", {}],
+  ["accept risk", "/api/work-items/github-1/risky-paths/accept", {}],
+  ["stage agent", "/api/work-items/github-1/stages/review/agent", {}],
+  ["local gate", "/api/work-items/github-1/gates/review/approve", {}],
+  ["local gate reopen", "/api/work-items/github-1/gates/review/reopen", {}],
+  ["start checks", "/api/work-items/github-1/checks", {}],
+  ["start stint", "/api/stints", { workItem: "github-1" }],
+  ["move roadmap item", "/api/roadmap", { kind: "move", workItem: "github-1" }],
+  ["resolve handoff", "/api/stints/s1/resolve-handoff", {}],
+  ["answer handoff", "/api/stints/s1/handoff-answer", {}],
+  ["confirm agent", "/api/stints/s1/confirm-agent", {}],
+])("%s verifies the viewer inside the cache TTL", async (_name, path, body) => {
+  const root = await mkdtemp(join(tmpdir(), "github-write-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    await writeFile(
+      join(root, ".stintwork/local/stints/s1.jsonl"),
+      `${JSON.stringify({
+        type: "started",
+        at: "2026-01-01T00:00:00Z",
+        stint: {
+          id: "s1",
+          workItem: "github-1",
+          stage: "review",
+          ticket: null,
+          agent: "codex",
+          worktree: { path: root, branch: "stintwork/github-1" },
+          baseCommit: "abc",
+          brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+        },
+      })}\n${JSON.stringify({ type: "ended", at: "2026-01-01T00:01:00Z", status: "finished" })}\n`,
+    );
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => 100_000 });
+    const initial = await (await server.app.request("/api/project")).json();
+    expect(initial.github.items).toHaveLength(1);
+    await gh.script({ ...replies, "api user": { stdout: { id: 202, login: "202" } } });
+    const response = await server.app.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test.each([
+  ["offline", { code: 1, stdout: "network offline" }, { code: 1, stdout: "network offline" }],
+  [
+    "rate limited",
+    { code: 1, stdout: "HTTP 429 rate limit exceeded" },
+    { code: 1, stdout: "HTTP 429 rate limit exceeded" },
+  ],
+  [
+    "expired login",
+    { code: 1, stdout: "authentication required" },
+    { code: 1, stdout: "authentication required" },
+  ],
+  ["account change", {}, { stdout: { id: 202, login: "202" } }],
+])(
+  "local stop and permission routes remain reachable after GitHub %s",
+  async (_failure, authFailure, viewerFailure) => {
+    const root = await mkdtemp(join(tmpdir(), "github-local-safety-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      await mkdir(join(root, ".stintwork"), { recursive: true });
+      await writeFile(
+        join(root, ".stintwork/config"),
+        "checks:\n  - name: Wait\n    command: \"node -e 'setInterval(() => {}, 1000)'\"\n",
+      );
+      execFileSync("git", ["-C", root, "add", "."]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "fixture",
+      ]);
+      await ensureWorktree(root, "github-1");
+      await writeFile(
+        join(root, ".stintwork/local/stints/s1.jsonl"),
+        `${JSON.stringify({
+          type: "started",
+          at: "2026-01-01T00:00:00Z",
+          stint: {
+            id: "s1",
+            workItem: "github-1",
+            stage: "review",
+            ticket: null,
+            agent: "codex",
+            worktree: { path: root, branch: "stintwork/github-1" },
+            baseCommit: "abc",
+            brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+          },
+        })}\n${JSON.stringify({ type: "ended", at: "2026-01-01T00:01:00Z", status: "finished" })}\n`,
+      );
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: { id: 101, login: "101" } },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
+        },
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => 100_000 });
+      expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(
+        1,
+      );
+      expect(
+        (await server.app.request("/api/work-items/github-1/checks", { method: "POST" })).status,
+      ).toBe(202);
+      await gh.script({ ...replies, "auth status": authFailure, "api user": viewerFailure });
+      expect(
+        (await server.app.request("/api/work-items/github-1/checks/cancel", { method: "POST" }))
+          .status,
+      ).toBe(202);
+      for (const [path, body, code] of [
+        ["/api/stints/s1/stop", {}, "stint.notRunning"],
+        ["/api/stints/s1/permissions/p1", { optionId: "cancel" }, "permission.notPending"],
+        ["/api/stints/s1/permissions/p1", { optionId: "allow" }, "permission.notPending"],
+      ] as const) {
+        const response = await server.app.request(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(response.status).toBe(409);
+        expect((await response.json()).reasonMessage.code).toBe(code);
+      }
+      const response = await server.app.request("/api/stints/s1/confirm-agent", { method: "POST" });
+      expect((await response.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+    } finally {
+      await server?.stop();
+      process.env.PATH = oldPath;
+      await rm(root, { recursive: true, force: true });
+      await rm(`${root}-worktrees`, { recursive: true, force: true });
+    }
+  },
+);
 
 test("concurrent offline fallback never returns a fresh snapshot", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-offline-race-"));

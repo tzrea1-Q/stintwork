@@ -26,7 +26,8 @@ export function WorkItemCard({
   const { t } = useLanguage();
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
   const open = item.tickets.filter((ticket) => !ticket.resolved);
-  const blocked = open.length > 0 && open.every((ticket) => ticket.blocked);
+  const blocked =
+    !item.github?.ticketsStale && open.length > 0 && open.every((ticket) => ticket.blocked);
   const type = item.type === "effort" ? "effort" : item.workflow;
   const icons: Record<string, typeof Sparkles> = {
     feature: Sparkles,

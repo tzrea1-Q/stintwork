@@ -264,7 +264,9 @@ export function NeedsYouQueue({
                     {workItem?.title ?? item.workItem} · {item.workItem}
                   </Button>
                   <p className="muted text-muted">
-                    {item.ticket === null ? t.needsYou.noTicket : t.needsYou.ticket(item.ticket)}
+                    {item.ticket === null
+                      ? t.needsYou.noTicket
+                      : t.needsYou.ticket(item.ticket, !!workItem?.github)}
                     {item.stintId && (
                       <>
                         {" "}

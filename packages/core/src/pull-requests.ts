@@ -46,7 +46,7 @@ export function pullRequestText(
     title: item.title,
     body: [
       `## Spec\n\n${item.spec?.text ?? "No spec."}`,
-      `## Tickets\n\n${item.tickets.map((ticket) => `- [${ticket.resolved ? "x" : " "}] ${ticket.number}: ${ticket.title}`).join("\n") || "No tickets."}`,
+      `## Tickets\n\n${item.tickets.map((ticket) => `- [${ticket.resolved ? "x" : " "}] ${item.github ? `#${ticket.number}` : String(ticket.number).padStart(2, "0")}: ${ticket.title}`).join("\n") || "No tickets."}`,
       `## Review\n\n${review?.findings?.length === 0 ? "No findings." : review?.findings?.map((finding) => `- ${finding.title}: ${item.reviewDecisions?.find((decision) => decision.id === finding.id)?.status ?? "open"}`).join("\n") || "No review evidence."}`,
       `## Checks\n\n${item.checks?.map((check) => `- ${check.name}: ${check.status} (${check.commit})`).join("\n") || "No local check results recorded."}`,
     ].join("\n\n"),
