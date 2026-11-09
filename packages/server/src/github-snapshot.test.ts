@@ -131,6 +131,40 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     const snapshot = indexProject(files, { name: "Test", github });
     const handoffApprovals = new Map<string, string>();
     projectGithubGates(snapshot, root, project, handoffApprovals);
+    for (const other of [
+      { detail: { spec: "Other", tickets: [], complete: true, stale: true } },
+      { detail: { spec: "Other", tickets: [], complete: true }, detailFailed: true },
+    ]) {
+      const isolated = indexProject(files, {
+        name: "Test",
+        github: {
+          ...github,
+          stale: true,
+          discoveryFailed: false,
+          items: [...github.items, { ...github.items[0], ...other, id: "I_2", number: 2 }],
+        },
+      });
+      projectGithubGates(isolated, root, project);
+      expect(
+        isolated.workItems.find((item) => item.github?.number === 1)?.stages.clarify.approved,
+      ).toMatchObject({ remoteState: "current" });
+    }
+    const failedDiscovery = indexProject(files, {
+      name: "Test",
+      github: { ...github, stale: true, discoveryFailed: true },
+    });
+    projectGithubGates(failedDiscovery, root, project);
+    expect(failedDiscovery.workItems[0].stages.clarify.approved).toMatchObject({
+      remoteState: "unknown",
+    });
+    const failedDetail = indexProject(files, {
+      name: "Test",
+      github: { ...github, items: [{ ...github.items[0], detailFailed: true }] },
+    });
+    projectGithubGates(failedDetail, root, project);
+    expect(failedDetail.workItems[0].stages.clarify.approved).toMatchObject({
+      remoteState: "unknown",
+    });
     const staleSnapshot = indexProject(files, {
       name: "Test",
       github: {

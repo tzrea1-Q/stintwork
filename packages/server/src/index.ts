@@ -124,11 +124,16 @@ export function createProjectServer(
   const sharedDetails = new Map<number, { read: Promise<number>; generation: number }>();
   const backgroundDetails = new Set<number>();
   const backgroundRunning = new Set<number>();
+  const backgroundRetries = new Map<
+    number,
+    { attempts: number; timer: ReturnType<typeof setTimeout> }
+  >();
   let discoveryRequested = false;
   let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
   function drainBackgroundDetails() {
     if (lifetime.signal.aborted || discoveryRunning || discoveryRequested) return;
     for (const number of backgroundDetails) {
+      if (githubRateLimitCoolingDown(github)) break;
       if (detailRunning.size >= 2) break;
       if (!github?.items.some((item) => item.number === number && item.detail?.stale)) {
         backgroundDetails.delete(number);
@@ -137,8 +142,39 @@ export function createProjectServer(
       if (gateWriteActive(`github-${number}`)) continue;
       backgroundDetails.delete(number);
       backgroundRunning.add(number);
-      void refreshGithubDetail(number).finally(() => {
+      const generation = trackerGeneration;
+      void refreshGithubDetail(number).then((status) => {
         backgroundRunning.delete(number);
+        if (lifetime.signal.aborted || generation !== trackerGeneration) return;
+        const item = github?.items.find((entry) => entry.number === number);
+        const failure = item && detailFailures.get(item.id);
+        const previous = backgroundRetries.get(number);
+        if (previous) clearTimeout(previous.timer);
+        if (
+          (status === 429 ||
+            (status === 503 &&
+              failure &&
+              ["offline", "server-error", "rate-limited"].includes(failure.code))) &&
+          (previous?.attempts ?? 0) < 3 &&
+          item?.detail?.stale
+        ) {
+          const attempts = (previous?.attempts ?? 0) + 1;
+          const delay = Math.max(
+            1000 * 2 ** (attempts - 1),
+            github?.retryAt ? Date.parse(github.retryAt) - Date.now() : 0,
+          );
+          const timer = setTimeout(
+            () => {
+              if (backgroundRetries.get(number)?.timer !== timer) return;
+              backgroundDetails.add(number);
+              drainBackgroundDetails();
+            },
+            Math.min(delay, 2_147_483_647),
+          );
+          backgroundRetries.set(number, { attempts, timer });
+        } else {
+          backgroundRetries.delete(number);
+        }
         drainBackgroundDetails();
       });
     }
@@ -409,6 +445,8 @@ export function createProjectServer(
     knownIssues.clear();
     handoffApprovals.clear();
     backgroundDetails.clear();
+    for (const { timer } of backgroundRetries.values()) clearTimeout(timer);
+    backgroundRetries.clear();
     clearTimeout(backgroundTimer);
     backgroundTimer = undefined;
     pendingStintDetails.clear();
@@ -1108,7 +1146,11 @@ export function createProjectServer(
       (action === "load-more" && !github?.cursor && !github?.retryable)
     )
       return context.text("Discovery unavailable", 409);
-    if (discoveryRunning || [...detailRunning].some((number) => !backgroundRunning.has(number)))
+    if (
+      discoveryRunning ||
+      discoveryRequested ||
+      [...detailRunning].some((number) => !backgroundRunning.has(number))
+    )
       return context.text("Discovery busy", 409);
     discoveryRequested = true;
     try {
@@ -1527,6 +1569,8 @@ export function createProjectServer(
   function stop(): Promise<void> {
     stopping ??= (async () => {
       lifetime.abort();
+      for (const { timer } of backgroundRetries.values()) clearTimeout(timer);
+      backgroundRetries.clear();
       clearTimeout(debounce);
       clearTimeout(settle);
       clearInterval(metadataPoll);

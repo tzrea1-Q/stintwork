@@ -40,6 +40,9 @@ const scenarios = [
   "detail-cooldown",
   "in-flight",
   "background-sharing",
+  "background-retry",
+  "background-retry-limit",
+  "background-discovery-race",
   "cleared-handoff",
 ] as const;
 
@@ -157,7 +160,7 @@ test.each(scenarios)(
         "config get": { stdout: "101" },
         "api repos/github/gh-aw": { stdout: repo },
         "api graphql":
-          scenario === "load-more"
+          scenario === "load-more" || scenario === "background-discovery-race"
             ? firstPages
             : { stdout: page(scenario === "isolated-details" ? [issue, secondIssue] : [issue]) },
         "api repos/github/gh-aw/issues/1433": { stdout: parent },
@@ -329,6 +332,91 @@ test.each(scenarios)(
                 (await (await server.app.request("/api/project")).json()).workItems[0].spec.text,
             )
             .toBe("Changed again");
+          return;
+        }
+        if (scenario === "background-retry-limit") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              code: 1,
+              effect: "process.stderr.write('HTTP 500')",
+            },
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          const calls = async () =>
+            (await gh.calls())
+              .slice(before)
+              .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433");
+          await expect.poll(async () => (await calls()).length, { timeout: 12000 }).toBe(4);
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          expect(await calls()).toHaveLength(4);
+          return;
+        }
+        if (scenario === "background-retry") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": [
+              {
+                code: 1,
+                effect:
+                  "process.stderr.write('secondary rate limit (HTTP 403)\\nRetry-After: 2\\n')",
+              },
+              { stdout: { ...parent, body: "Recovered" } },
+            ],
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(
+              async () =>
+                (await (await server.app.request("/api/project")).json()).github.errorCode,
+            )
+            .toBe("rate-limited");
+          await new Promise((resolve) => setTimeout(resolve, 1100));
+          expect(
+            (await gh.calls())
+              .slice(before)
+              .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+          ).toHaveLength(1);
+          await expect
+            .poll(
+              async () =>
+                (await (await server.app.request("/api/project")).json()).workItems[0].spec.text,
+              { timeout: 8000 },
+            )
+            .toBe("Recovered");
+          return;
+        }
+        if (scenario === "background-discovery-race") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: parent,
+              effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1200)",
+            },
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(async () =>
+              (await gh.calls())
+                .slice(before)
+                .some(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+            )
+            .toBe(true);
+          const first = server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          const second = await server.app.request("/api/github/discovery/refresh", {
+            method: "POST",
+          });
+          expect(second.status).toBe(409);
+          expect(await second.text()).toBe("Discovery busy");
+          const loadMore = await server.app.request("/api/github/discovery/load-more", {
+            method: "POST",
+          });
+          expect(loadMore.status).toBe(409);
+          expect(await loadMore.text()).toBe("Discovery busy");
+          expect((await first).status).toBe(200);
           return;
         }
         if (scenario === "cooldown") {
@@ -710,4 +798,5 @@ test.each(scenarios)(
       await rm(root, { recursive: true, force: true });
     }
   },
+  20000,
 );

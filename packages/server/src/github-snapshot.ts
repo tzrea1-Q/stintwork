@@ -66,15 +66,14 @@ export function projectGithubGates(
       remote?.discoveryComplete &&
       !remote.detailFailed &&
       !snapshot.github?.discoveryFailed &&
-      !snapshot.github?.stale &&
       detail &&
       !detail.stale &&
       dependencyOnlyIncomplete(detail)
     );
     const valid =
       triageReadable &&
-      !snapshot.github?.stale &&
       !snapshot.github?.discoveryFailed &&
+      !remote?.detailFailed &&
       detail &&
       !detail.stale &&
       detail.tickets.every(
