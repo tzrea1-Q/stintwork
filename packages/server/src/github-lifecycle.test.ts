@@ -50,9 +50,7 @@ test.each([
   ["move roadmap item", "/api/roadmap", { kind: "move", workItem: "github-1" }],
   ["resolve handoff", "/api/stints/s1/resolve-handoff", {}],
   ["answer handoff", "/api/stints/s1/handoff-answer", {}],
-  ["stop stint", "/api/stints/s1/stop", {}],
   ["confirm agent", "/api/stints/s1/confirm-agent", {}],
-  ["answer permission", "/api/stints/s1/permissions/p1", {}],
 ])("%s verifies the viewer inside the cache TTL", async (_name, path, body) => {
   const root = await mkdtemp(join(tmpdir(), "github-write-viewer-"));
   const oldPath = process.env.PATH;
@@ -121,6 +119,91 @@ test.each([
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test.each([
+  ["offline", { code: 1, stdout: "network offline" }],
+  ["rate limited", { code: 1, stdout: "HTTP 429 rate limit exceeded" }],
+  ["expired login", { code: 1, stdout: "authentication required" }],
+])(
+  "local stop and permission routes remain reachable after GitHub %s",
+  async (_failure, failure) => {
+    const root = await mkdtemp(join(tmpdir(), "github-local-safety-"));
+    const oldPath = process.env.PATH;
+    let server: ReturnType<typeof createProjectServer> | undefined;
+    try {
+      execFileSync("git", ["init", "-q", root]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/example/project.git",
+      ]);
+      await mkdir(join(root, "docs/agents"), { recursive: true });
+      await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+      await mkdir(join(root, "web"));
+      await writeFile(join(root, "web/index.html"), "<!doctype html>");
+      await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      await writeFile(
+        join(root, ".stintwork/local/stints/s1.jsonl"),
+        `${JSON.stringify({
+          type: "started",
+          at: "2026-01-01T00:00:00Z",
+          stint: {
+            id: "s1",
+            workItem: "github-1",
+            stage: "review",
+            ticket: null,
+            agent: "codex",
+            worktree: { path: root, branch: "stintwork/github-1" },
+            baseCommit: "abc",
+            brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+          },
+        })}\n${JSON.stringify({ type: "ended", at: "2026-01-01T00:01:00Z", status: "finished" })}\n`,
+      );
+      const gh = await fakeGh(join(root, "bin"));
+      process.env.PATH = gh.path;
+      const replies = {
+        "auth status": {},
+        "api user": { stdout: { id: 101, login: "101" } },
+        "api repos/example/project": {
+          stdout: {
+            node_id: "R_1",
+            full_name: "example/project",
+            html_url: "https://github.com/example/project",
+          },
+        },
+        "api graphql": { stdout: page },
+      };
+      await gh.script(replies);
+      server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => 100_000 });
+      expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(
+        1,
+      );
+      await gh.script({ ...replies, "auth status": failure, "api user": failure });
+      for (const [path, body, code] of [
+        ["/api/stints/s1/stop", {}, "stint.notRunning"],
+        ["/api/stints/s1/permissions/p1", { optionId: "cancel" }, "permission.notPending"],
+        ["/api/stints/s1/permissions/p1", { optionId: "allow" }, "permission.notPending"],
+      ] as const) {
+        const response = await server.app.request(path, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        expect(response.status).toBe(409);
+        expect((await response.json()).reasonMessage.code).toBe(code);
+      }
+      const response = await server.app.request("/api/stints/s1/confirm-agent", { method: "POST" });
+      expect((await response.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+    } finally {
+      await server?.stop();
+      process.env.PATH = oldPath;
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);
 
 test("concurrent offline fallback never returns a fresh snapshot", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-offline-race-"));

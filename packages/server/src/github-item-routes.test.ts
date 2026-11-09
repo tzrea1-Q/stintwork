@@ -955,307 +955,537 @@ test.each(["waiting", "stopped", "finalizing"] as const)(
   },
 );
 
-test.each(["success", "retry", "offline", "stop", "incomplete", "identity", "pending"] as const)(
-  "ticket-bound GitHub recovery waits for detail (%s)",
-  async (mode) => {
-    const fails = mode === "retry" || mode === "stop";
-    const timers = vi.spyOn(globalThis, "setTimeout");
-    const cleared = vi.spyOn(globalThis, "clearTimeout");
-    const { root, worktree, git, gh, registry } = await fixture();
-    git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
-    mkdirSync(join(root, "web"));
-    writeFileSync(join(root, "web/index.html"), "<!doctype html>");
-    const base = git(worktree, "rev-parse", "HEAD");
-    const path = join(root, ".stintwork/local/stints/restart.jsonl");
-    mkdirSync(dirname(path), { recursive: true });
-    const selected = {
-      agent: "codex" as const,
-      source: "installed" as const,
-      reason: "compatible" as const,
-      executable: {
-        path: process.execPath,
-        version: "1",
-        identity: readExecutableIdentity(process.execPath)?.identity ?? "fixture",
-      },
-      adapterEntry: "/fake/adapter.js",
-      adapterVersion: "1",
-      cacheKey: "a".repeat(64),
-      lockDigest: "b".repeat(64),
-    };
-    const agent = registry.get("codex")!;
-    agent.verifyRecovery = async () => selected;
-    const launchAgent = vi.fn<typeof agent.launch>(() => {
-      let finish: () => void = () => {};
-      return {
-        ready: Promise.resolve(),
-        done: new Promise((resolve) => {
-          finish = () => resolve({ stopReason: "cancelled" });
-        }),
-        cancel: async () => finish(),
-      };
-    });
-    agent.launch = launchAgent;
-    const entry: StintLogEntry = {
-      type: "started",
-      at: "2026-01-01T00:00:00Z",
-      stint: {
-        id: "restart",
-        workItem: "github-1",
-        stage: "review",
-        ticket: 2,
-        agent: "codex",
-        worktree: { path: worktree, branch: "stintwork/github-1" },
-        baseCommit: base,
-        brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
-      },
-    };
-    const phase: StintLogEntry = {
-      type: "recovery",
-      version: 1,
-      at: "2026-01-01T00:00:01Z",
-      kind: "phase",
-      attemptId: "attempt-1",
-      progress: { phase: "findings" },
-    };
-    const attempt: StintLogEntry = {
-      type: "recovery",
-      version: 1,
-      at: entry.at,
-      kind: "attempt",
-      attempt: {
-        id: "attempt-1",
-        owner: { pid: process.pid, startedAt: entry.at },
-        pid: process.pid,
-        marker: "stintwork-attempt-1",
-      },
-    };
-    const suspended: StintLogEntry = {
-      type: "recovery",
-      version: 1,
-      at: entry.at,
-      kind: "resume",
-      state: "suspended",
-    };
+test.each([
+  ["offline", "network offline"],
+  ["rate limited", "HTTP 429 rate limit exceeded"],
+  ["expired authentication", "authentication required"],
+])("cancels GitHub agent preparation after %s", async (_scenario, failure) => {
+  const { root, worktree, git, gh, registry } = await fixture();
+  for (const directory of [root, worktree]) {
+    const workflow = join(directory, workflowPath);
     writeFileSync(
-      path,
-      [
-        entry,
-        {
-          type: "recovery",
-          version: 1,
-          at: entry.at,
-          kind: "launch",
-          launch: { ...selected, host: adapterHost(), permissionLevel: "ask" },
-        },
-        attempt,
-        {
-          type: "recovery",
-          version: 1,
-          at: entry.at,
-          kind: "session",
-          attemptId: "attempt-1",
-          sessionId: "fake-session",
-        },
-        phase,
-        suspended,
-      ]
-        .map((value) => JSON.stringify(value))
-        .join("\n") + "\n",
+      workflow,
+      readFileSync(workflow, "utf8").replace("stage: review", "stage: clarify"),
     );
-    const connection = (nodes: unknown[]) => ({
-      nodes,
-      pageInfo: { hasNextPage: false, endCursor: null },
+  }
+  git(worktree, "add", workflowPath);
+  git(worktree, "commit", "-qm", "clarify stage");
+  git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const connection = (nodes: unknown[]) => ({
+    nodes,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  });
+  const parent = {
+    node_id: "I_1",
+    number: 1,
+    title: "Parent",
+    body: "Spec",
+    html_url: "https://github.com/Example/Project/issues/1",
+    repository_url: "https://api.github.com/repos/Example/Project",
+    state: "open",
+    state_reason: null,
+    labels: [],
+    comments: 0,
+    sub_issues_summary: { total: 0 },
+  };
+  const replies = {
+    "auth status": {},
+    "api user": { stdout: { id: 101, login: "101" } },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_1",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": {
+      stdout: {
+        data: {
+          repository: {
+            id: "R_1",
+            nameWithOwner: "Example/Project",
+            issues: connection([
+              {
+                id: "I_1",
+                number: 1,
+                title: "Parent",
+                url: parent.html_url,
+                parent: null,
+                labels: connection([{ name: "stintwork:work-item" }]),
+                subIssues: { ...connection([]), totalCount: 0 },
+              },
+            ]),
+          },
+          rateLimit: { cost: 1, remaining: 4999, resetAt: "2099-01-01T00:00:00Z" },
+        },
+      },
+    },
+    "api repos/Example/Project/issues/1": { stdout: parent },
+    "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": { stdout: [] },
+    "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
+  };
+  await gh.script(replies);
+  const agent = registry.get("codex");
+  if (!agent) throw new Error("Expected Codex agent");
+  const launch = vi.fn(agent.launch);
+  agent.launch = launch;
+  const prepareAgent = vi.fn(
+    async (options: import("@stintwork/agents").AgentPreparationOptions) => {
+      const selection = {
+        agent: "codex" as const,
+        source: "bundled" as const,
+        reason: "below-tested-range" as const,
+        adapterVersion: "1",
+        executable: { path: process.execPath, version: "1", identity: "fixture" },
+        adapterEntry: "/fake/adapter.js",
+        cacheKey: "a".repeat(64),
+        lockDigest: "b".repeat(64),
+      };
+      await options.beforePrepare?.(
+        { ...selection, phase: "selected" },
+        options.signal as AbortSignal,
+      );
+      options.signal?.throwIfAborted();
+      return selection;
+    },
+  );
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"), {
+    agentRegistry: registry,
+    prepareAgent,
+  });
+  try {
+    const snapshot = await (await server.app.request("/api/project")).json();
+    expect(snapshot.github.items).toHaveLength(1);
+    const response = await server.app.request("/api/stints", {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: "application/x-ndjson" },
+      body: JSON.stringify({ workItem: "github-1", agent: "codex" }),
     });
-    const parent = {
-      node_id: "I_1",
-      number: 1,
-      title: "Parent",
-      body: "Spec",
-      html_url: "https://github.com/Example/Project/issues/1",
-      repository_url: "https://api.github.com/repos/Example/Project",
-      state: "open",
-      state_reason: null,
-      labels: [],
-      comments: 0,
-      sub_issues_summary: { total: mode === "incomplete" ? 2 : 1 },
+    if (response.status !== 200)
+      throw new Error(`Start ${response.status}: ${await response.text()}`);
+    if (!response.body) throw new Error("Expected a start stream");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let pending = "";
+    const events: {
+      type: string;
+      stintId?: string;
+      progress?: { phase: string };
+      status?: number;
+    }[] = [];
+    const until = async (type: string, phase?: string) => {
+      while (
+        !events.some((event) => event.type === type && (!phase || event.progress?.phase === phase))
+      ) {
+        const { value, done } = await reader.read();
+        if (done) throw new Error(`Stream ended before ${type}: ${JSON.stringify(events)}`);
+        pending += decoder.decode(value, { stream: true });
+        const lines = pending.split("\n");
+        pending = lines.pop() ?? "";
+        events.push(...lines.filter(Boolean).map((line) => JSON.parse(line)));
+      }
+      const event = events.find(
+        (entry) => entry.type === type && (!phase || entry.progress?.phase === phase),
+      );
+      if (!event) throw new Error(`Missing ${type}`);
+      return event;
     };
-    const child = {
-      ...parent,
-      node_id: "I_2",
-      number: 2,
-      title: "Ticket",
-      html_url: "https://github.com/Example/Project/issues/2",
-      sub_issues_summary: { total: 0 },
-      issue_dependencies_summary: { total_blocked_by: 0 },
+    const confirmation = await until("preparation", "confirm");
+    expect(confirmation.stintId).toBeDefined();
+    await gh.script({
+      ...replies,
+      "auth status": { code: 1, stdout: failure },
+      "api user": { code: 1, stdout: failure },
+    });
+    expect(
+      (await server.app.request(`/api/stints/${confirmation.stintId}/stop`, { method: "POST" }))
+        .status,
+    ).toBe(202);
+    expect((await until("result")).status).toBe(503);
+    expect(
+      readFileSync(join(root, `.stintwork/local/stints/${confirmation.stintId}.jsonl`), "utf8"),
+    ).toContain('"code":"agent.preparationCancelled"');
+    expect(prepareAgent).toHaveBeenCalledOnce();
+    expect(launch).not.toHaveBeenCalled();
+  } finally {
+    await server.stop();
+  }
+});
+
+test.each([
+  "success",
+  "retry",
+  "offline",
+  "stop-offline",
+  "stop-rate-limited",
+  "stop-expired",
+  "incomplete",
+  "identity",
+  "pending",
+] as const)("ticket-bound GitHub recovery waits for detail (%s)", async (mode) => {
+  const fails = mode === "retry" || mode.startsWith("stop-");
+  const timers = vi.spyOn(globalThis, "setTimeout");
+  const cleared = vi.spyOn(globalThis, "clearTimeout");
+  const { root, worktree, git, gh, registry } = await fixture();
+  git(root, "remote", "add", "origin", "https://github.com/Example/Project.git");
+  mkdirSync(join(root, "web"));
+  writeFileSync(join(root, "web/index.html"), "<!doctype html>");
+  const base = git(worktree, "rev-parse", "HEAD");
+  const path = join(root, ".stintwork/local/stints/restart.jsonl");
+  mkdirSync(dirname(path), { recursive: true });
+  const selected = {
+    agent: "codex" as const,
+    source: "installed" as const,
+    reason: "compatible" as const,
+    executable: {
+      path: process.execPath,
+      version: "1",
+      identity: readExecutableIdentity(process.execPath)?.identity ?? "fixture",
+    },
+    adapterEntry: "/fake/adapter.js",
+    adapterVersion: "1",
+    cacheKey: "a".repeat(64),
+    lockDigest: "b".repeat(64),
+  };
+  const agent = registry.get("codex")!;
+  agent.verifyRecovery = async () => selected;
+  const launchAgent = vi.fn<typeof agent.launch>(() => {
+    let finish: () => void = () => {};
+    return {
+      ready: Promise.resolve(),
+      done: new Promise((resolve) => {
+        finish = () => resolve({ stopReason: "cancelled" });
+      }),
+      cancel: async () => finish(),
     };
-    const replies = {
-      "auth status": {},
-      "api user": { stdout: { id: 101, login: "101" } },
-      "api repos/Example/Project": {
-        stdout: {
-          node_id: "R_1",
-          full_name: "Example/Project",
-          html_url: "https://github.com/Example/Project",
-        },
+  });
+  agent.launch = launchAgent;
+  const entry: StintLogEntry = {
+    type: "started",
+    at: "2026-01-01T00:00:00Z",
+    stint: {
+      id: "restart",
+      workItem: "github-1",
+      stage: "review",
+      ticket: 2,
+      agent: "codex",
+      worktree: { path: worktree, branch: "stintwork/github-1" },
+      baseCommit: base,
+      brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+    },
+  };
+  const phase: StintLogEntry = {
+    type: "recovery",
+    version: 1,
+    at: "2026-01-01T00:00:01Z",
+    kind: "phase",
+    attemptId: "attempt-1",
+    progress: { phase: "findings" },
+  };
+  const attempt: StintLogEntry = {
+    type: "recovery",
+    version: 1,
+    at: entry.at,
+    kind: "attempt",
+    attempt: {
+      id: "attempt-1",
+      owner: { pid: process.pid, startedAt: entry.at },
+      pid: process.pid,
+      marker: "stintwork-attempt-1",
+    },
+  };
+  const suspended: StintLogEntry = {
+    type: "recovery",
+    version: 1,
+    at: entry.at,
+    kind: "resume",
+    state: "suspended",
+  };
+  writeFileSync(
+    path,
+    [
+      entry,
+      {
+        type: "recovery",
+        version: 1,
+        at: entry.at,
+        kind: "launch",
+        launch: { ...selected, host: adapterHost(), permissionLevel: "ask" },
       },
-      "api graphql": {
-        stdout: {
-          data: {
-            repository: {
-              id: "R_1",
-              nameWithOwner: "Example/Project",
-              issues: connection([
-                {
-                  id: "I_1",
-                  number: 1,
-                  title: "Parent",
-                  url: parent.html_url,
-                  parent: null,
-                  labels: connection([]),
-                  subIssues: {
-                    ...connection([{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }]),
-                    totalCount: 1,
-                  },
+      attempt,
+      {
+        type: "recovery",
+        version: 1,
+        at: entry.at,
+        kind: "session",
+        attemptId: "attempt-1",
+        sessionId: "fake-session",
+      },
+      phase,
+      suspended,
+    ]
+      .map((value) => JSON.stringify(value))
+      .join("\n") + "\n",
+  );
+  const connection = (nodes: unknown[]) => ({
+    nodes,
+    pageInfo: { hasNextPage: false, endCursor: null },
+  });
+  const parent = {
+    node_id: "I_1",
+    number: 1,
+    title: "Parent",
+    body: "Spec",
+    html_url: "https://github.com/Example/Project/issues/1",
+    repository_url: "https://api.github.com/repos/Example/Project",
+    state: "open",
+    state_reason: null,
+    labels: [],
+    comments: 0,
+    sub_issues_summary: { total: mode === "incomplete" ? 2 : 1 },
+  };
+  const child = {
+    ...parent,
+    node_id: "I_2",
+    number: 2,
+    title: "Ticket",
+    html_url: "https://github.com/Example/Project/issues/2",
+    sub_issues_summary: { total: 0 },
+    issue_dependencies_summary: { total_blocked_by: 0 },
+  };
+  const replies = {
+    "auth status": {},
+    "api user": { stdout: { id: 101, login: "101" } },
+    "api repos/Example/Project": {
+      stdout: {
+        node_id: "R_1",
+        full_name: "Example/Project",
+        html_url: "https://github.com/Example/Project",
+      },
+    },
+    "api graphql": {
+      stdout: {
+        data: {
+          repository: {
+            id: "R_1",
+            nameWithOwner: "Example/Project",
+            issues: connection([
+              {
+                id: "I_1",
+                number: 1,
+                title: "Parent",
+                url: parent.html_url,
+                parent: null,
+                labels: connection([]),
+                subIssues: {
+                  ...connection([{ repository: { id: "R_1" }, subIssues: { totalCount: 0 } }]),
+                  totalCount: 1,
                 },
-              ]),
-            },
-            rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-10-28T00:00:00Z" },
+              },
+            ]),
           },
+          rateLimit: { cost: 1, remaining: 4999, resetAt: "2026-10-28T00:00:00Z" },
         },
       },
-      "api repos/Example/Project/issues/1": { stdout: parent },
-      "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": fails
-        ? { code: 1, stdout: "network offline" }
-        : { stdout: [child] },
-      "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
-      "api repos/Example/Project/issues/2/labels?per_page=100&page=1": { stdout: [] },
-      "api repos/Example/Project/issues/2/comments?per_page=100&page=1": { stdout: [] },
-      "api repos/Example/Project/issues/2/dependencies/blocked_by?per_page=100&page=1": {
-        stdout: [],
-      },
-    };
-    const release = join(root, "release-recovery-detail");
-    const started = join(root, "started-recovery-detail");
-    if (mode === "pending")
-      replies["api repos/Example/Project/issues/1"] = {
-        stdout: parent,
-        effect: `fs.writeFileSync(${JSON.stringify(started)}, ""); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
-      } as (typeof replies)["api repos/Example/Project/issues/1"];
-    await gh.script(replies);
-    if (mode === "identity")
-      await gh.script({
-        ...replies,
-        "api repos/Example/Project": [
-          replies["api repos/Example/Project"],
-          {
-            stdout: {
-              node_id: "R_other",
-              full_name: "Example/Project",
-              html_url: "https://github.com/Example/Project",
-            },
+    },
+    "api repos/Example/Project/issues/1": { stdout: parent },
+    "api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1": fails
+      ? { code: 1, stdout: "network offline" }
+      : { stdout: [child] },
+    "api repos/Example/Project/issues/1/comments?per_page=100&page=1": { stdout: [] },
+    "api repos/Example/Project/issues/2/labels?per_page=100&page=1": { stdout: [] },
+    "api repos/Example/Project/issues/2/comments?per_page=100&page=1": { stdout: [] },
+    "api repos/Example/Project/issues/2/dependencies/blocked_by?per_page=100&page=1": {
+      stdout: [],
+    },
+  };
+  const release = join(root, "release-recovery-detail");
+  const started = join(root, "started-recovery-detail");
+  if (mode === "pending")
+    replies["api repos/Example/Project/issues/1"] = {
+      stdout: parent,
+      effect: `fs.writeFileSync(${JSON.stringify(started)}, ""); while (!fs.existsSync(${JSON.stringify(release)})) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);`,
+    } as (typeof replies)["api repos/Example/Project/issues/1"];
+  await gh.script(replies);
+  if (mode === "identity")
+    await gh.script({
+      ...replies,
+      "api repos/Example/Project": [
+        replies["api repos/Example/Project"],
+        {
+          stdout: {
+            node_id: "R_other",
+            full_name: "Example/Project",
+            html_url: "https://github.com/Example/Project",
           },
-        ],
-      });
-    if (mode === "offline")
-      await gh.script({ ...replies, "api graphql": { code: 1, stdout: "network offline" } });
-    const { createProjectServer } = await import("./index.js");
-    const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
-    try {
-      await server.app.request("/api/project");
-      if (mode === "pending") {
-        await expect.poll(() => existsSync(started)).toBe(true);
-        expect((await server.app.request("/api/health")).status).toBe(200);
-        writeFileSync(release, "");
-      }
-      if (fails || mode === "offline" || mode === "incomplete" || mode === "identity") {
-        expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
-        expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
-        const post = (url: string, body: unknown) =>
-          server.app.request(url, {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify(body),
-          });
-        if (mode === "identity") {
-          const project = await (await server.app.request("/api/project")).json();
-          expect(
-            project.workItems.find((item: { slug: string }) => item.slug === "github-1")
-              ?.activeStint?.id,
-          ).toBe("restart");
-          expect(
-            project.warnings.some(
-              (warning: { messageMessage?: { code: string } }) =>
-                warning.messageMessage?.code === "recovery.blocked",
-            ),
-          ).toBe(true);
-        }
-        if (mode === "stop") {
-          for (const [url, body, code] of [
-            ["/api/stints", { workItem: "github-1", agent: "codex" }, "stint.alreadyActive"],
-            [
-              "/api/work-items/github-1/stages/review/agent",
-              { agent: "codex" },
-              "agent.activeWrite",
-            ],
-            ["/api/work-items/github-1/ship/pr-checks", {}, "ship.running"],
-          ] as const) {
-            const response = await post(url, body);
-            expect(response.status).toBe(409);
-            expect((await response.json()).reasonMessage.code).toBe(code);
-          }
-          const retryTimer = () =>
-            timers.mock.results[timers.mock.calls.findIndex((call) => call[1] === 5000)]?.value;
-          await expect.poll(retryTimer).toBeDefined();
-          const retry = retryTimer();
-          expect(retry).toBeDefined();
-          expect((await post("/api/stints/restart/stop", {})).status).toBe(202);
-          await expect
-            .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
-            .toContain('"status":"stopped"');
-          await expect
-            .poll(async () => {
-              const afterStop = await post("/api/stints", { workItem: "github-1", agent: "codex" });
-              return (await afterStop.json()).reasonMessage?.code;
-            })
-            .not.toBe("stint.alreadyActive");
-          expect(cleared).toHaveBeenCalledWith(retry);
-          return;
-        }
-        if (fails)
-          replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
-            stdout: [child],
-          };
-        parent.sub_issues_summary.total = 1;
-        await gh.script(replies);
-        if (mode === "identity")
-          await expect
-            .poll(async () => (await post("/api/github/discovery/refresh", {})).status)
-            .toBe(200);
-      }
-      await expect
-        .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
-        .toContain('"state":"resuming"');
-      await expect.poll(() => launchAgent.mock.calls.length, { timeout: 15000 }).toBe(1);
+        },
+      ],
+    });
+  if (mode === "offline")
+    await gh.script({ ...replies, "api graphql": { code: 1, stdout: "network offline" } });
+  const { createProjectServer } = await import("./index.js");
+  const server = createProjectServer(root, join(root, "web"), { agentRegistry: registry });
+  try {
+    await server.app.request("/api/project");
+    if (mode === "pending") {
+      await expect.poll(() => existsSync(started)).toBe(true);
+      expect((await server.app.request("/api/health")).status).toBe(200);
+      writeFileSync(release, "");
+    }
+    if (fails || mode === "offline" || mode === "incomplete" || mode === "identity") {
       expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+      expect(readFileSync(path, "utf8")).not.toContain('"state":"resuming"');
+      const post = (url: string, body: unknown) =>
+        server.app.request(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(body),
+        });
       if (mode === "identity") {
+        const project = await (await server.app.request("/api/project")).json();
+        expect(
+          project.workItems.find((item: { slug: string }) => item.slug === "github-1")?.activeStint
+            ?.id,
+        ).toBe("restart");
+        expect(
+          project.warnings.some(
+            (warning: { messageMessage?: { code: string } }) =>
+              warning.messageMessage?.code === "recovery.blocked",
+          ),
+        ).toBe(true);
+      }
+      if (mode.startsWith("stop-")) {
+        for (const [url, body, code] of [
+          ["/api/stints", { workItem: "github-1", agent: "codex" }, "stint.alreadyActive"],
+          ["/api/work-items/github-1/stages/review/agent", { agent: "codex" }, "agent.activeWrite"],
+          ["/api/work-items/github-1/ship/pr-checks", {}, "ship.running"],
+        ] as const) {
+          const response = await post(url, body);
+          expect(response.status).toBe(409);
+          expect((await response.json()).reasonMessage.code).toBe(code);
+        }
+        const retryTimer = () =>
+          timers.mock.results[timers.mock.calls.findIndex((call) => call[1] === 5000)]?.value;
+        await expect.poll(retryTimer).toBeDefined();
+        const retry = retryTimer();
+        expect(retry).toBeDefined();
+        const failure =
+          mode === "stop-offline"
+            ? "network offline"
+            : mode === "stop-rate-limited"
+              ? "HTTP 429 rate limit exceeded"
+              : "authentication required";
+        await gh.script({
+          ...replies,
+          "auth status": { code: 1, stdout: failure },
+          "api user": { code: 1, stdout: failure },
+        });
+        expect((await post("/api/stints/restart/stop", {})).status).toBe(202);
+        await gh.script(replies);
+        await expect
+          .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
+          .toContain('"status":"stopped"');
         await expect
           .poll(async () => {
-            const project = await (await server.app.request("/api/project")).json();
-            return project.warnings.some(
-              (warning: { messageMessage?: { code: string } }) =>
-                warning.messageMessage?.code === "recovery.blocked",
-            );
+            const afterStop = await post("/api/stints", { workItem: "github-1", agent: "codex" });
+            return (await afterStop.json()).reasonMessage?.code;
           })
-          .toBe(false);
+          .not.toBe("stint.alreadyActive");
+        expect(cleared).toHaveBeenCalledWith(retry);
+        return;
       }
-    } finally {
-      writeFileSync(release, "");
-      await server.stop();
-      timers.mockRestore();
-      cleared.mockRestore();
+      if (fails)
+        replies["api repos/Example/Project/issues/1/sub_issues?per_page=100&page=1"] = {
+          stdout: [child],
+        };
+      parent.sub_issues_summary.total = 1;
+      await gh.script(replies);
+      if (mode === "identity")
+        await expect
+          .poll(async () => (await post("/api/github/discovery/refresh", {})).status)
+          .toBe(200);
     }
-  },
-);
+    await expect
+      .poll(() => readFileSync(path, "utf8"), { timeout: 15000 })
+      .toContain('"state":"resuming"');
+    await expect.poll(() => launchAgent.mock.calls.length, { timeout: 15000 }).toBe(1);
+    expect(readFileSync(path, "utf8")).not.toContain('"state":"fallback"');
+    if (mode === "success") {
+      const onPermission = launchAgent.mock.calls[0][0].onPermission;
+      if (!onPermission) throw new Error("Expected permission callback");
+      for (const [index, failure] of [
+        "network offline",
+        "HTTP 429 rate limit exceeded",
+        "authentication required",
+      ].entries()) {
+        await gh.script({
+          ...replies,
+          "auth status": { code: 1, stdout: failure },
+          "api user": { code: 1, stdout: failure },
+        });
+        for (const optionId of ["reject", "allow"]) {
+          let forwarded = () => {};
+          const decision = onPermission({
+            sessionId: "fake-session",
+            requestId: `${index}-${optionId}`,
+            toolCall: { toolCallId: "tool" },
+            options: [
+              {
+                optionId,
+                name: optionId,
+                kind: optionId === "allow" ? "allow_once" : "reject_once",
+              },
+            ],
+            forwarded: new Promise<void>((resolve) => {
+              forwarded = resolve;
+            }),
+          });
+          const answer = server.app.request(
+            `/api/stints/restart/permissions/${index}-${optionId}`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ optionId }),
+            },
+          );
+          expect(await decision).toMatchObject({ outcome: { outcome: "selected", optionId } });
+          forwarded();
+          expect((await answer).status).toBe(200);
+        }
+      }
+      const pending = onPermission({
+        sessionId: "fake-session",
+        requestId: "cancelled",
+        toolCall: { toolCallId: "tool" },
+        options: [{ optionId: "reject", name: "No", kind: "reject_once" }],
+        forwarded: new Promise<void>(() => {}),
+      });
+      expect(
+        (await server.app.request("/api/stints/restart/stop", { method: "POST" })).status,
+      ).toBe(202);
+      expect(await pending).toMatchObject({ outcome: { outcome: "cancelled" } });
+    }
+    if (mode === "identity") {
+      await expect
+        .poll(async () => {
+          const project = await (await server.app.request("/api/project")).json();
+          return project.warnings.some(
+            (warning: { messageMessage?: { code: string } }) =>
+              warning.messageMessage?.code === "recovery.blocked",
+          );
+        })
+        .toBe(false);
+    }
+  } finally {
+    writeFileSync(release, "");
+    await server.stop();
+    timers.mockRestore();
+    cleared.mockRestore();
+  }
+});
 
 test("repository replacement invalidates all cached items until discovery succeeds", async () => {
   const { root, git, gh, registry } = await fixture();

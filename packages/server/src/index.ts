@@ -1133,6 +1133,7 @@ export function createProjectServer(
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin) return next();
     const path = new URL(context.req.url).pathname;
+    if (/^\/api\/stints\/[^/]+\/(?:stop|permissions\/[^/]+)$/.test(path)) return next();
     const workItem = /^\/api\/work-items\/(github-\d+)\//.exec(path)?.[1];
     const gate = /^\/api\/github\/items\/(\d+)\/gates\//.exec(path)?.[1];
     const stint = /^\/api\/stints\/([^/]+)\//.exec(path)?.[1];
@@ -1148,8 +1149,6 @@ export function createProjectServer(
     const readOnlyShip = /\/ship\/(?:preview-pr|preview-merge-pr|pr-checks)$/.test(path);
     if (slug?.match(/^github-\d+$/) && !readOnlyShip) {
       const current = github;
-      // Stopping a pending recovery must remain possible before discovery has established an identity.
-      if (!current && /^\/api\/stints\/[^/]+\/stop$/.test(path)) return next();
       let valid = false;
       try {
         valid = !!current && (await githubBriefSource.verifyIdentity(current, true));
