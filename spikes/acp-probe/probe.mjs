@@ -75,20 +75,24 @@ async function createFixture(runDir) {
 
 export async function resolveAgent(agent, { adapterPrefix, executable } = {}, metadata = {}) {
   Object.assign(metadata, { agentSource: null, adapterPrefix: adapterPrefix ? resolve(adapterPrefix) : null, environment: environment() });
-  if (agent === 'grok' && (adapterPrefix || executable)) throw new Error('Prefix/executable options are only supported for Claude and Codex');
+  if (adapterPrefix && ['grok', 'antigravity'].includes(agent)) throw new Error('Adapter prefix is only supported for Claude and Codex');
+  if (agent === 'grok' && executable) throw new Error('Prefix/executable options are only supported for Claude and Codex');
   const prefix = adapterPrefix ? await realpath(resolve(adapterPrefix)) : undefined;
   metadata.adapterPrefix = prefix ?? null;
   const env = { CLAUDE_CODE_EXECUTABLE: '', CODEX_PATH: '' };
   let spec;
-  if (agent === 'grok') {
+  if (agent === 'grok' || agent === 'antigravity') {
+    const binary = agent === 'grok' ? 'grok' : 'agy';
+    if (executable) executable = resolve(executable);
     for (const directory of (process.env.PATH ?? '').split(delimiter)) {
-      const path = resolve(directory, 'grok');
+      if (executable) break;
+      const path = resolve(directory, binary);
       try { await access(path, constants.X_OK); executable = path; break; } catch (error) {
         if (!['ENOENT', 'EACCES'].includes(error.code)) throw error;
       }
     }
-    if (!executable) throw new Error('grok not found on PATH');
-    spec = { command: executable, args: ['agent', 'stdio'] };
+    if (!executable) throw new Error(`${binary} not found on PATH`);
+    spec = { command: executable, args: agent === 'grok' ? ['agent', 'stdio'] : ['acp'] };
   } else {
     const pin = PINS[agent];
     const adapter = await packageInfo(pin.adapter, join(prefix ?? here, 'package.json'), prefix);
@@ -289,7 +293,8 @@ function makeConnection(context, spec, label) {
       child.stdout.destroy();
       child.stderr.destroy();
       await new Promise((resolveEnd) => stderr.end(resolveEnd));
-      log('process_cleanup', { label, reason });
+      state.cleanup = { reason, signals: ['SIGTERM', 'SIGKILL'], exit: state.exit ?? null };
+      log('process_cleanup', { label, ...state.cleanup });
     })();
   }
 
@@ -347,9 +352,13 @@ function makeConnection(context, spec, label) {
     async restore(sessionId, method) {
       const request = { sessionId, cwd: fixture, mcpServers: [] };
       log('restore_request', { label, method, request });
+      const session = sessionState(sessionId);
+      const offset = session.updates.length;
       const response = await guard(() => connection[method](request));
-      sessionState(sessionId).response = response;
-      log('restore_response', { label, method, sessionId, response });
+      const replayedUpdates = session.updates.length - offset;
+      session.response = response;
+      log('restore_response', { label, method, sessionId, response, replayedUpdates });
+      return replayedUpdates;
     },
     async listSessions() {
       const pages = [];
@@ -494,10 +503,22 @@ async function scenarioBody(context, spec, cancelAfterMs) {
     : capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null ? 'resumeSession' : null;
   if (!method) return { status: 'unsupported', facts: { reason: 'Listing sessions does not imply an advertised load/resume method on both connections' } };
   result.facts.method = method;
-  await resumed.restore(sessionId, method);
+  result.facts.replayedUpdates = { [method]: await resumed.restore(sessionId, method) };
   result.facts.recall = await resumed.prompt(sessionId, 'What was the code word?');
   result.facts.heronReturned = /\bHERON\b/.test(result.facts.recall.reply);
-  return { status: result.facts.heronReturned ? 'pass' : 'fail' };
+  if (context.agent === 'antigravity' && method === 'loadSession' && capabilities.sessionCapabilities?.resume != null && secondCapabilities.sessionCapabilities?.resume != null) {
+    await resumed.stop('restart for session/resume');
+    const again = makeConnection(context, spec, 'c');
+    const third = await again.initialize();
+    if (third.agentCapabilities?.sessionCapabilities?.resume != null) {
+      result.facts.replayedUpdates.resumeSession = await again.restore(sessionId, 'resumeSession');
+      result.facts.resumeRecall = await again.prompt(sessionId, 'What was the code word?');
+      result.facts.resumeHeronReturned = /\bHERON\b/.test(result.facts.resumeRecall.reply);
+    } else {
+      throw new Error('session/resume capability disappeared on third connection');
+    }
+  }
+  return { status: result.facts.heronReturned && result.facts.resumeHeronReturned !== false ? 'pass' : 'fail' };
 }
 
 async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawnSpec, launchError, cancelAfterMs, permissionMode }) {
@@ -539,7 +560,8 @@ async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawn
 }
 
 export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120, root = join(here, 'runs'), spawnSpec, adapterPrefix, executable, cancelAfterMs = 8000, permissionMode = 'ask' }) {
-  if (!['claude', 'codex', 'grok'].includes(agent)) throw new Error('agent must be claude, codex, or grok');
+  if (!['claude', 'codex', 'grok', 'antigravity'].includes(agent)) throw new Error('agent must be claude, codex, grok, or antigravity');
+  if (agent === 'antigravity' && adapterPrefix) throw new Error('Adapter prefix is only supported for Claude and Codex');
   if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new Error('timeout-sec must be a positive number');
   if (!scenarios.length || scenarios.some((scenario) => !SCENARIOS.includes(scenario))) throw new Error('Unknown scenario');
   if (!['ask', 'default'].includes(permissionMode)) throw new Error('permission-mode must be ask or default');
@@ -607,7 +629,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   try {
     const options = parseArgs(process.argv.slice(2));
     if (options.help) {
-      console.log('Usage: node probe.mjs --agent <claude|codex|grok> --scenario <basic|commands|permission|cancel|resume|all> [--timeout-sec N] [--adapter-prefix DIR] [--executable PATH] [--permission-mode ask|default]');
+      console.log('Usage: node probe.mjs --agent <claude|codex|grok|antigravity> --scenario <basic|commands|permission|cancel|resume|all> [--timeout-sec N] [--adapter-prefix DIR] [--executable PATH] [--permission-mode ask|default]');
     } else {
       const summary = await runProbe(options);
       console.log(`\nAgent: ${summary.agent}\nFixture: ${summary.fixture.path}\n`);

@@ -15,3 +15,5 @@ Add `--agent antigravity` to `spikes/acp-probe` using installed `agy acp`. Exerc
 ## Comments
 
 **Coordinator, 2026-11-09:** `agy` was not installed. See `docs/research/2026-11-09-antigravity-acp.md`.
+
+**Codex, 2026-11-09:** Added the Antigravity probe and fake-agent coverage. Changed `spikes/acp-probe/probe.mjs`, `spikes/acp-probe/lib/fake-agent.mjs`, `spikes/acp-probe/selftest.mjs`, `spikes/acp-probe/README.md`, and this ticket. Checks run: `node --check probe.mjs` and `node selftest.mjs` in `spikes/acp-probe` (both passed); `git diff --check` (passed). The selftest used a fake agent; no authenticated Antigravity probe or version floor was established.

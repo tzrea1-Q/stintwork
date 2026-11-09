@@ -25,7 +25,7 @@ new AgentSideConnection((client) => {
   const restore = async ({ sessionId, cwd }) => {
     const stored = JSON.parse(await readFile(join(cwd, `.fake-session-${sessionId}.json`), 'utf8'));
     sessions.set(sessionId, stored);
-    await message(sessionId, 'Historical reply: HERON');
+    if (mode !== 'no_replay') await message(sessionId, 'Historical reply: HERON');
     return {};
   };
   return {
@@ -35,7 +35,7 @@ new AgentSideConnection((client) => {
       assert.equal(request.clientCapabilities.terminal, false);
       const resumeCapabilities = mode === 'no_resume' ? {} : mode === 'list_only'
         ? { sessionCapabilities: { list: {} } } : mode === 'resume_method'
-          ? { sessionCapabilities: { resume: {} } } : { loadSession: true, sessionCapabilities: { list: {} } };
+          ? { sessionCapabilities: { resume: {} } } : { loadSession: true, sessionCapabilities: { list: {}, ...(mode === 'both_resume' ? { resume: {}, close: {} } : {}) } };
       return {
         protocolVersion: PROTOCOL_VERSION,
         agentInfo: { name: 'fake-acp-agent', version: '1.0.0' },
@@ -49,7 +49,7 @@ new AgentSideConnection((client) => {
     async newSession(request) {
       assert.ok(isAbsolute(request.cwd));
       assert.deepEqual(request.mcpServers, []);
-      if (mode === 'auth') throw RequestError.authRequired({ detail: 'fake login is missing' }, 'auth_required: fake login is missing');
+      if (mode === 'auth' || mode === 'agy_auth') throw RequestError.authRequired({ detail: 'fake login is missing' }, mode === 'agy_auth' ? 'Authentication required' : 'auth_required: fake login is missing');
       const sessionId = randomUUID();
       sessions.set(sessionId, { cwd: request.cwd, modeId: 'default' });
       await client.sessionUpdate({ sessionId, update: {
