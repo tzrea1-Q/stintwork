@@ -60,7 +60,7 @@ export async function githubRepository(root: string, remote = "origin") {
       "view",
       remoteUrl,
       "--json",
-      "nameWithOwner,url,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,viewerDefaultMergeMethod",
+      "nameWithOwner,url,mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed,viewerDefaultMergeMethod,defaultBranchRef",
     ]),
   );
   if (
@@ -78,7 +78,14 @@ export async function githubRepository(root: string, remote = "origin") {
       : "";
   const method = allowed.find((method) => method === preferred) ?? allowed[0];
   if (!method) throw new CoreTextError({ code: "ship.mergeMethods" });
-  return { repo: info.nameWithOwner as string, remote, remoteUrl, method, allowedMethods: allowed };
+  return {
+    repo: info.nameWithOwner as string,
+    remote,
+    remoteUrl,
+    method,
+    allowedMethods: allowed,
+    defaultBranch: info.defaultBranchRef?.name as unknown,
+  };
 }
 
 export async function pullRequestMergeMethod(
@@ -126,7 +133,7 @@ export async function viewPullRequest(
       "--repo",
       pr.repo,
       "--json",
-      "number,url,state,headRefOid,headRefName,baseRefName,mergeCommit,mergedAt,isCrossRepository",
+      "number,url,state,headRefOid,headRefName,baseRefName,mergeCommit,mergedAt,isCrossRepository,title,body",
     ]),
   );
   if (
@@ -150,6 +157,8 @@ export async function viewPullRequest(
     baseRefName: string;
     mergeCommit: { oid: string } | null;
     mergedAt: string | null;
+    title: unknown;
+    body: unknown;
   };
 }
 
@@ -176,7 +185,10 @@ export async function createPullRequest(
 
 export async function findPullRequest(root: string, repo: string, branch: string) {
   try {
-    return await viewPullRequest(root, { repo }, branch);
+    const pr = await viewPullRequest(root, { repo }, branch);
+    if (typeof pr.title !== "string" || typeof pr.body !== "string")
+      throw new CoreTextError({ code: "ship.prIdentity" });
+    return { ...pr, title: pr.title, body: pr.body };
   } catch (error) {
     const failure = error as { code?: number; stderr?: string; stdout?: string };
     if (

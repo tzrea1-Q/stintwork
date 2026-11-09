@@ -116,7 +116,10 @@ test.each([
   ],
   ["ship.methodChanged", "The merge method changed since confirmation. Preview and confirm again."],
   ["server.stopping", "The project server is stopping."],
-  ["ship.baseMismatch", "The pull request base must match the main checkout's branch."],
+  [
+    "ship.baseMismatch",
+    "The pull request base must match the main checkout's branch. Retarget or close the pull request before retrying.",
+  ],
   ["ship.prChanged", "The pull request changed after reading CI. Refresh again."],
   [
     "ship.mainDiverged",

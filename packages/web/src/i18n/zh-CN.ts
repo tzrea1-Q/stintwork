@@ -608,6 +608,10 @@ export const zhCN: Catalog = {
       confirmPublishing: "确认发布拉取请求",
       confirmPushTitle: "确认推送并创建拉取请求",
       pushWarning: "发布会将此代码推送到下方远程仓库。只有明确确认后才会推送。",
+      adoptionNotice: (number: number | undefined) =>
+        `现有拉取请求将原样接管；Stintwork 不会编辑它。如果希望合并时关闭父议题，请检查它是否关闭${number === undefined ? "父议题" : ` #${number}`}，并以默认分支为目标。`,
+      parentWillNotClose: "此拉取请求的目标不是默认分支，合并后不会关闭父议题。",
+      confirmAdoption: "确认接管",
       confirmPush: "确认推送并创建拉取请求",
       conflicts: "合并冲突",
       sendBack: "退回",
@@ -1135,7 +1139,8 @@ export const zhCN: Catalog = {
     "ship.mainUncommitted": "主检出目录中，本次合并涉及的文件存在未提交的更改。",
     "ship.methodChanged": "确认后合并方式已更改。请重新预览并确认。",
     "server.stopping": "项目服务器正在停止。",
-    "ship.baseMismatch": "拉取请求的目标分支必须与主检出目录的分支一致。",
+    "ship.baseMismatch":
+      "拉取请求的目标分支必须与主检出目录的分支一致。请更改目标分支或关闭该拉取请求后重试。",
     "ship.prChanged": "读取 CI 后，拉取请求已更改。请重新刷新。",
     "ship.mainDiverged":
       "拉取请求已在远程合并，但本地主分支已分叉。工作树和分支已保留；请协调主分支后重试。",

@@ -258,8 +258,12 @@ export function ShipActions({
                 <DialogTitle className="text-lg font-medium">
                   {t.review.ship.confirmPublishing}
                 </DialogTitle>
-                <p>{t.review.ship.confirmPushTitle}</p>
-                <p>{t.review.ship.pushWarning}</p>
+                {!preview.existingPrUrl && (
+                  <>
+                    <p>{t.review.ship.confirmPushTitle}</p>
+                    <p>{t.review.ship.pushWarning}</p>
+                  </>
+                )}
                 <p>
                   {t.review.ship.remote}
                   <code>{preview.remote}</code> · <code>{preview.remoteUrl}</code>
@@ -277,6 +281,17 @@ export function ShipActions({
                   {preview.title}
                 </p>
                 <CodeBlock className="max-h-60">{preview.body}</CodeBlock>
+                {preview.existingPrUrl && (
+                  <>
+                    <p>
+                      <a href={preview.existingPrUrl}>{preview.existingPrUrl}</a>
+                    </p>
+                    <p>{t.review.ship.adoptionNotice(preview.parentNumber)}</p>
+                  </>
+                )}
+                {preview.parentWillNotClose && (
+                  <p role="alert">{t.review.ship.parentWillNotClose}</p>
+                )}
                 <Button
                   type="button"
                   variant="danger"
@@ -284,7 +299,9 @@ export function ShipActions({
                   disabled={busy}
                   onClick={() => void action("open-pr")}
                 >
-                  {t.review.ship.confirmPush}
+                  {preview.existingPrUrl
+                    ? t.review.ship.confirmAdoption
+                    : t.review.ship.confirmPush}
                 </Button>
                 <Button type="button" disabled={busy} onClick={() => setPreview(null)}>
                   {t.review.ship.cancel}

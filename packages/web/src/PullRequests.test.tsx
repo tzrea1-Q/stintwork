@@ -113,6 +113,7 @@ test("Open pull request previews publishing; cancel does not publish, and confir
   render(<ShipActions item={item()} />);
   await user.click(screen.getByRole("button", { name: "Open pull request" }));
   const dialog = await screen.findByRole("dialog", { name: "Confirm publishing pull request" });
+  expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
   for (const text of [
     preview.remoteUrl,
     preview.branch,
@@ -142,6 +143,49 @@ test("Open pull request previews publishing; cancel does not publish, and confir
   expect(screen.getByRole("link", { name: "View on GitHub" })).toHaveAttribute("href", pr.url);
   expect(screen.queryByRole("button", { name: "Merge locally" })).not.toBeInTheDocument();
 });
+
+test.each([false, true])(
+  "adoption preview shows actual details and notice (non-default: %s)",
+  async (warning) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            preview: {
+              ...preview,
+              title: "Existing title",
+              body: "Existing pull request body",
+              base: "release",
+              existingPrUrl: pr.url,
+              existingPrNumber: 12,
+              parentNumber: 1,
+              parentWillNotClose: warning,
+            },
+          }),
+        ),
+      ),
+    );
+    render(<ShipActions item={item()} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open pull request" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm publishing pull request" });
+    for (const text of [
+      "Existing title",
+      "Existing pull request body",
+      "release",
+      "adopted unchanged",
+      "#1",
+      "default branch",
+    ])
+      expect(dialog).toHaveTextContent(text);
+    expect(within(dialog).getByRole("link", { name: pr.url })).toHaveAttribute("href", pr.url);
+    if (warning)
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(
+        "Merging it will not close the parent issue.",
+      );
+    else expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+  },
+);
 
 test("merge refusal is visible; retry reports the PR merge commit", async () => {
   const user = userEvent.setup();

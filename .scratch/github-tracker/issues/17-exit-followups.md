@@ -1,6 +1,6 @@
 # 17 — Real-repository exit follow-ups
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 16
 
 ## What to build
@@ -26,7 +26,7 @@ Resolve the findings from the real-repository exit, including the issues deferre
 - [x] GitHub identity is checked once per TTL, not per request: in 161 seconds of startup, detail and refresh, 24 of 48 `gh` calls were `auth status` or `api user`. Each call took 1.1–1.7 seconds.
 - [x] While a detail read is refreshing, the board does not flash “Results are incomplete” or “1 items have incomplete membership”, and that copy pluralises correctly.
 - [x] A shipped GitHub item's drawer does not show “No spec yet” and “No tickets yet” before its detail loads.
-- [ ] Decide and document whether shipping a GitHub work item closes or links its parent issue. In the exit, parent #1 stayed open after PR #4 merged because the PR body had no closing keyword.
+- [x] Decide and document whether shipping a GitHub work item closes or links its parent issue. In the exit, parent #1 stayed open after PR #4 merged because the PR body had no closing keyword.
 
 ## Comments
 
@@ -204,3 +204,21 @@ The requested commit could not be staged: the sandbox denied creation of the wor
 **Coordinator, 2026-11-08:** Batch C verified at `7f480c5`, outside the sandbox. format:check, lint, typecheck, build, test (3,278 passed), smoke:package and test:e2e (432 passed) all exit 0; the final `codex review` is clean.
 
 Design decision: approving a stage's gate, while that approval stays current under the shared currency check (including upstream reopens), clears handoff-unresolved items from that stage's earlier stints. Any other unresolved handoff is cleared with **Mark resolved**, which asks for confirmation and is refused for shipped items. Text matching and "a later stint finished" were rejected as clearing rules. Four criteria are ticked.
+
+**Codex, 2026-11-08:** The maintainer decided that the generated pull request body closes the same-repository GitHub parent on merge into the default branch. ADR 0017 records the decision; the Ship preview shows the closing keyword. Artifact uploads now retain evidence for seven days.
+
+**Codex, 2026-11-08:** Fixed the adoption review finding: Ship previews the existing pull request body and warns in English and Chinese when it lacks a closing reference to the GitHub parent. Confirmation rechecks the PR identity and body, and adoption does not edit the PR. ADR 0017 records the consequence. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck`, and `pnpm build` passed. Ship, pull-request, GitHub item routes, web pull-request and i18n catalog Vitest files passed (178 tests), plus the new adoption test passed separately. The targeted Playwright run could not start because the sandbox denied listening on 127.0.0.1:4178 (`EPERM`); browser layout and coordinator visual review remain outstanding.
+
+**Codex, 2026-11-08:** Simplified adoption per coordinator decision: the preview uses the existing PR's title, body, base and URL, explains in English and Chinese that adoption leaves it unchanged and asks the developer to check closure and the default branch, and warns when a GitHub parent's PR targets a non-default branch. Confirmation re-fetches and compares the title, body and base; no closing-keyword parsing remains. ADR 0017 was updated. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck`, `pnpm build`, the web and i18n Vitest files, the full Ship, pull-request and GitHub item route suites, and focused adoption regressions passed. The initial combined run found a missing catalog interpolation sample; after adding it, the web and catalog suites passed on rerun. The targeted Playwright run could not start: the sandbox denied listening on 127.0.0.1:4178 (`EPERM`). Browser layout and coordinator visual review remain outstanding.
+
+**Codex, 2026-11-08:** Fixed the adoption base review finding. Preview and open refuse an existing PR targeting a different branch from the main checkout; merge preview and merge also refuse a mismatched recorded base before calling `gh pr merge`. The coded refusal tells the developer to retarget or close the PR in English and Chinese. The parent-closure warning remains for a valid Ship base that differs from the repository default; ADR 0017 and regression tests were updated. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck`, `pnpm build`, and the Ship, pull-request, GitHub item routes, web, i18n catalog and core text Vitest files passed (394 tests). The new coded-refusal regressions also passed separately.
+
+**Codex, 2026-11-08:** Fixed the new-PR preview to warn when a GitHub parent's Ship base differs from the repository default branch, and added server coverage for both matching and differing bases. The preview requires a known default branch when computing this warning. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck`, and `pnpm build` passed. Ship, pull-request, web pull-request and core pull-request tests passed; the GitHub item routes suite passed after updating a fixture that lacked the default branch (the initial combined run caught that fixture failure).
+
+**Codex, 2026-11-08:** Commit remains blocked in this sandbox: `git add` could not create the worktree Git `index.lock` (operation not permitted). Changes remain uncommitted on 74396a5.
+
+**Coordinator, 2026-11-08:** Resolved. The last batch, 17f, was verified at `98bf1ac`, outside the sandbox: format:check, lint, typecheck, build, test (3,287 passed), smoke:package and test:e2e (432 passed) all exit 0, and the final `codex review` is clean.
+- **Maintainer decision (ADR 0017):** the Ship PR body includes `Closes #N` for the GitHub parent. An adopted PR is previewed as-is with a neutral notice. Adopting or merging a PR whose base differs from the Ship base is refused. A warning appears when the Ship base is not the default branch.
+- **CI:** artifact uploads keep 7 days; the maintainer approved deleting 93 old artifacts.
+
+All batches (A–F plus the fake `gh` harness fix) are merged. All 18 criteria are ticked. M11 still needs the short exit retest before the maintainer decides it is shipped.

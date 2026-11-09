@@ -574,19 +574,69 @@ test("GitHub pull request ship records the merged workflow", async () => {
     mergeCommit: null,
     mergedAt: null,
     isCrossRepository: false,
+    title: "Existing title",
   };
+  const repo = {
+    stdout: {
+      defaultBranchRef: { name: "main" },
+      nameWithOwner: "Example/Project",
+      url: "https://github.com/Example/Project",
+      mergeCommitAllowed: true,
+    },
+  };
+  for (const [defaultBranch, warning] of [
+    ["main", false],
+    ["release", true],
+  ] as const) {
+    await gh.script({
+      "repo view": { stdout: { ...repo.stdout, defaultBranchRef: { name: defaultBranch } } },
+      "pr view": { stdout: { ...view, body: "Existing body" } },
+    });
+    const response = await post("/api/work-items/github-1/ship/preview-pr", {});
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await response.json()).preview).toMatchObject({
+      title: "Existing title",
+      body: "Existing body",
+      base: "main",
+      existingPrNumber: 12,
+      existingPrUrl: view.url,
+      parentNumber: 1,
+      parentWillNotClose: warning,
+    });
+  }
+  for (const [defaultBranch, warning] of [
+    ["main", false],
+    ["release", true],
+  ] as const) {
+    await gh.script({
+      "repo view": { stdout: { ...repo.stdout, defaultBranchRef: { name: defaultBranch } } },
+      "pr view": { code: 1, stdout: "no pull requests found for branch" },
+    });
+    const response = await post("/api/work-items/github-1/ship/preview-pr", {});
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await response.json()).preview).toMatchObject({
+      base: "main",
+      parentWillNotClose: warning,
+      body: expect.stringContaining("Closes #1"),
+    });
+  }
   await gh.script({
     "repo view": {
       stdout: {
         nameWithOwner: "Example/Project",
         url: "https://github.com/Example/Project",
         mergeCommitAllowed: true,
+        defaultBranchRef: { name: "main" },
       },
     },
     "api repos/Example/Project/branches/main/protection": {
       stdout: { required_linear_history: { enabled: false } },
     },
-    "pr view": [{ code: 1, stdout: "no pull requests found for branch" }, { stdout: view }],
+    "pr view": [
+      { code: 1, stdout: "no pull requests found for branch" },
+      { code: 1, stdout: "no pull requests found for branch" },
+      { stdout: view },
+    ],
     "pr create": { stdout: view.url },
     "pr checks": { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
     "pr merge": {
@@ -595,9 +645,14 @@ test("GitHub pull request ship records the merged workflow", async () => {
   });
   let response = await post("/api/work-items/github-1/ship/preview-pr", {});
   expect(response.status, await response.clone().text()).toBe(200);
-  const confirmation = (await response.json()).preview.confirmation;
+  const preview = (await response.json()).preview;
+  expect(preview.body).toContain("Closes #1");
+  const confirmation = preview.confirmation;
   response = await post("/api/work-items/github-1/ship/open-pr", { confirmation });
   expect(response.status, await response.clone().text()).toBe(200);
+  expect(
+    (await gh.calls()).find(({ args }) => args[0] === "pr" && args[1] === "create")?.args,
+  ).toContain(preview.body);
   response = await post("/api/work-items/github-1/ship/merge-pr", {});
   expect(response.status, await response.clone().text()).toBe(200);
   expect(readFileSync(join(root, workflowPath), "utf8")).toContain("merged:");
@@ -637,12 +692,17 @@ test("GitHub pull request ship retries cleanup after recording the merge", async
         nameWithOwner: "Example/Project",
         url: "https://github.com/Example/Project",
         mergeCommitAllowed: true,
+        defaultBranchRef: { name: "main" },
       },
     },
     "api repos/Example/Project/branches/main/protection": {
       stdout: { required_linear_history: { enabled: false } },
     },
-    "pr view": [{ code: 1, stdout: "no pull requests found for branch" }, { stdout: view }],
+    "pr view": [
+      { code: 1, stdout: "no pull requests found for branch" },
+      { code: 1, stdout: "no pull requests found for branch" },
+      { stdout: view },
+    ],
     "pr create": { stdout: view.url },
     "pr checks": { stdout: [{ name: "CI", bucket: "pass", link: "" }] },
     "pr merge": {

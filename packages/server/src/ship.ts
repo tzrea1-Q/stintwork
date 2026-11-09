@@ -372,6 +372,16 @@ export function addShipRoutes(
                 throw new LocalMergeRefusal({ code: "ship.conflicts" }, report.conflicts);
               if (branch !== `stintwork/${slug}`)
                 throw new LocalMergeRefusal({ code: "ship.checkoutsRequired" });
+              const existing = await findPullRequest(checkout, repository.repo, branch);
+              if (existing && existing.baseRefName !== base)
+                throw new LocalMergeRefusal({ code: "ship.baseMismatch" });
+              if (
+                existing &&
+                (existing.headRefOid !== head ||
+                  existing.headRefName !== branch ||
+                  existing.state !== "OPEN")
+              )
+                throw new LocalMergeRefusal({ code: "ship.existingPrMismatch" });
               const details = {
                 repo: repository.repo,
                 remote: repository.remote,
@@ -381,14 +391,35 @@ export function addShipRoutes(
                 headCommit: head,
                 ...pullRequestText(item, workflows),
               };
+              const parent =
+                item.github?.repository.toLowerCase() === repository.repo.toLowerCase()
+                  ? item.github.number
+                  : undefined;
+              if (parent) details.body += `\n\nCloses #${parent}`;
+              if (
+                (existing || parent) &&
+                (typeof repository.defaultBranch !== "string" || !repository.defaultBranch)
+              )
+                throw new LocalMergeRefusal({ code: "ship.githubRepository" });
+              const closure = { parentWillNotClose: !!parent && base !== repository.defaultBranch };
+              const adoption = existing
+                ? {
+                    title: existing.title,
+                    body: existing.body,
+                    base: existing.baseRefName,
+                    existingPrNumber: existing.number,
+                    existingPrUrl: existing.url,
+                    parentNumber: parent,
+                  }
+                : {};
               if (action === "preview-pr") {
-                const preview = { ...details, confirmation: randomUUID() };
+                const preview = { ...details, ...closure, ...adoption, confirmation: randomUUID() };
                 previews.set(slug, { preview, expires: Date.now() + 10 * 60_000 });
                 return context.json(coreTextWire({ preview }));
               }
               const saved = previews.get(slug);
               const expected = saved
-                ? { ...details, confirmation: saved.preview.confirmation }
+                ? { ...details, ...closure, ...adoption, confirmation: saved.preview.confirmation }
                 : undefined;
               if (
                 !saved ||
@@ -398,15 +429,6 @@ export function addShipRoutes(
               )
                 throw new LocalMergeRefusal({ code: "ship.confirmPush" });
               previews.delete(slug);
-              const existing = await findPullRequest(checkout, details.repo, branch);
-              if (
-                existing &&
-                (existing.headRefOid !== head ||
-                  existing.headRefName !== branch ||
-                  existing.baseRefName !== base ||
-                  existing.state !== "OPEN")
-              )
-                throw new LocalMergeRefusal({ code: "ship.existingPrMismatch" });
               if (!existing)
                 await shipGit(checkout, [
                   "push",
@@ -425,7 +447,12 @@ export function addShipRoutes(
               )
                 throw new LocalMergeRefusal({ code: "ship.createdPrMismatch" });
               const { title: _title, body: _body, ...identity } = details;
-              const pullRequest = { ...identity, number: opened.number, url: opened.url };
+              const pullRequest = {
+                ...identity,
+                base: opened.baseRefName,
+                number: opened.number,
+                url: opened.url,
+              };
               await saveWorkflow(
                 checkout,
                 item,
@@ -457,6 +484,8 @@ export function addShipRoutes(
               refresh();
               return context.json(coreTextWire({ merged }));
             }
+            if (pr.base !== (await shipGit(root, ["symbolic-ref", "--short", "HEAD"])))
+              throw new LocalMergeRefusal({ code: "ship.baseMismatch" });
             const checks = await fetchPullRequestChecks(root, pr);
             if (!checks.checks.length || checks.checks.some((check) => check.bucket !== "pass"))
               throw new LocalMergeRefusal({ code: "ship.ciRequired" });

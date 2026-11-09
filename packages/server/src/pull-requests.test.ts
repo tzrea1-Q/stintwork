@@ -77,6 +77,8 @@ async function fixture(method = "merge") {
     mergeCommit: null,
     mergedAt: null,
     isCrossRepository: false,
+    title: "Existing title",
+    body: "Existing body",
   };
   const script = {
     "api repos/example/project/branches/main/protection": {
@@ -84,6 +86,7 @@ async function fixture(method = "merge") {
     },
     "repo view": {
       stdout: {
+        defaultBranchRef: { name: "main" },
         nameWithOwner: "example/project",
         url: "https://github.com/example/project",
         mergeCommitAllowed: method === "merge",
@@ -118,7 +121,11 @@ async function fixture(method = "merge") {
   };
   await fake.script({
     ...script,
-    "pr view": [{ code: 1, stdout: "no pull requests found for branch" }, script["pr view"]],
+    "pr view": [
+      { code: 1, stdout: "no pull requests found for branch" },
+      { code: 1, stdout: "no pull requests found for branch" },
+      script["pr view"],
+    ],
   });
   const project = createProjectServer(root, join(root, "web"));
   fixtures.push({ directory, project });
@@ -297,14 +304,81 @@ test("preview and missing, forged or expired confirmation never push or create a
     title: "First change",
   });
   expect(details.body).toContain("First ticket");
+  expect(details.body).not.toContain("Closes #");
   for (const confirmation of [undefined, "forged"])
     expect((await post("open-pr", { confirmation })).status).toBe(409);
   vi.spyOn(Date, "now").mockReturnValue(Date.now() + 11 * 60_000);
   expect((await post("open-pr", { confirmation: details.confirmation })).status).toBe(409);
   vi.restoreAllMocks();
-  expect((await fake.calls()).some(({ args }) => args[0] === "pr")).toBe(false);
+  expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
   expect(git(bare, "branch", "--list", "stintwork/first")).toBe("");
 });
+
+test("a confirmed existing pull request is adopted without creating or pushing", async () => {
+  const { fake, script, preview, post, bare } = await fixture();
+  await fake.script(script);
+  const details = await preview();
+  expect(details).toMatchObject({
+    title: "Existing title",
+    body: "Existing body",
+    base: "main",
+    existingPrUrl: script["pr view"].stdout.url,
+  });
+  expect(details.existingPrNumber).toBe(12);
+  const response = await post("open-pr", { confirmation: details.confirmation });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
+  expect(git(bare, "branch", "--list", "stintwork/first")).toBe("");
+});
+
+test("adoption refuses a pull request targeting a different base", async () => {
+  const { fake, script, preview, post } = await fixture();
+  await fake.script(script);
+  const { confirmation } = await preview();
+  await fake.script({
+    ...script,
+    "pr view": { stdout: { ...script["pr view"].stdout, baseRefName: "release" } },
+  });
+  for (const action of ["preview-pr", "open-pr"]) {
+    const response = await post(action, { confirmation });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reason: expect.stringContaining("Retarget or close"),
+      reasonMessage: { code: "ship.baseMismatch" },
+    });
+  }
+  expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
+});
+
+test.each(["preview-merge-pr", "merge-pr"])(
+  "%s refuses a recorded base different from the main checkout before remote merge",
+  async (action) => {
+    const { root, open, post, fake } = await fixture();
+    await open();
+    git(root, "checkout", "-b", "release");
+    const response = await post(action);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reason: expect.stringContaining("Retarget or close"),
+      reasonMessage: { code: "ship.baseMismatch" },
+    });
+    expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+  },
+);
+
+test.each(["title", "body", "baseRefName"] as const)(
+  "a changed existing PR %s requires confirmation again",
+  async (field) => {
+    const { fake, script, preview, post } = await fixture();
+    await fake.script(script);
+    const { confirmation } = await preview();
+    await fake.script({
+      ...script,
+      "pr view": { stdout: { ...script["pr view"].stdout, [field]: "changed" } },
+    });
+    expect((await post("open-pr", { confirmation })).status).toBe(409);
+  },
+);
 
 test.each(["head", "remote", "body"])(
   "a changed %s invalidates push confirmation",
