@@ -1,6 +1,6 @@
 # 17 — Real-repository exit follow-ups
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 16
 
 ## What to build
@@ -216,3 +216,9 @@ Design decision: approving a stage's gate, while that approval stays current und
 **Codex, 2026-11-08:** Fixed the new-PR preview to warn when a GitHub parent's Ship base differs from the repository default branch, and added server coverage for both matching and differing bases. The preview requires a known default branch when computing this warning. `pnpm format`, `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck`, and `pnpm build` passed. Ship, pull-request, web pull-request and core pull-request tests passed; the GitHub item routes suite passed after updating a fixture that lacked the default branch (the initial combined run caught that fixture failure).
 
 **Codex, 2026-11-08:** Commit remains blocked in this sandbox: `git add` could not create the worktree Git `index.lock` (operation not permitted). Changes remain uncommitted on 74396a5.
+
+**Coordinator, 2026-11-08:** Resolved. The last batch, 17f, was verified at `98bf1ac`, outside the sandbox: format:check, lint, typecheck, build, test (3,287 passed), smoke:package and test:e2e (432 passed) all exit 0, and the final `codex review` is clean.
+- **Maintainer decision (ADR 0017):** the Ship PR body includes `Closes #N` for the GitHub parent. An adopted PR is previewed as-is with a neutral notice. Adopting or merging a PR whose base differs from the Ship base is refused. A warning appears when the Ship base is not the default branch.
+- **CI:** artifact uploads keep 7 days; the maintainer approved deleting 93 old artifacts.
+
+All batches (A–F plus the fake `gh` harness fix) are merged. All 18 criteria are ticked. M11 still needs the short exit retest before the maintainer decides it is shipped.
