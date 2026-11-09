@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { once } from "node:events";
 import { WebSocket } from "ws";
+import { ensureWorktree } from "@stintwork/git";
 import { expect, test, vi } from "vitest";
 import { fakeGh } from "../test/fake-gh.js";
 import { createProjectServer } from "./index.js";
@@ -29,6 +30,66 @@ const page = {
   },
 };
 
+test("every registered write route has an identity classification", async () => {
+  const root = await mkdtemp(join(tmpdir(), "github-route-inventory-"));
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    await writeFile(join(root, "index.html"), "<!doctype html>");
+    server = createProjectServer(root, root);
+    // Project-wide operations and read-only POSTs have no GitHub work-item write to authorize.
+    const projectOrReadOnly = [
+      "/api/project/permission-level",
+      "/api/github/discovery/:action",
+      "/api/github/items/:number/refresh",
+      "/api/work-items/preview",
+      "/api/work-items",
+      "/api/workflows/:id/customise/preview",
+      "/api/workflows/:id/customise",
+      "/api/setup",
+      "/api/work-items/:slug/ship/preview-pr",
+      "/api/work-items/:slug/ship/pr-checks",
+      "/api/work-items/:slug/ship/preview-merge-pr",
+    ];
+    const localSafety = [
+      "/api/stints/:stintId/stop",
+      "/api/stints/:stintId/permissions/:requestId",
+      "/api/work-items/:slug/checks/cancel",
+    ];
+    const freshViewer = [
+      "/api/roadmap",
+      "/api/stints",
+      "/api/stints/:stintId/confirm-agent",
+      "/api/stints/:stintId/resolve-handoff",
+      "/api/stints/:stintId/handoff-answer",
+      "/api/github/items/:number/gates/approve",
+      "/api/github/items/:number/gates/reopen",
+      "/api/work-items/:slug/stages/:stage/agent",
+      "/api/work-items/:slug/gates/:stage/approve",
+      "/api/work-items/:slug/gates/:stage/reopen",
+      "/api/work-items/:slug/findings/decision",
+      "/api/work-items/:slug/findings/send-back",
+      "/api/work-items/:slug/risky-paths/accept",
+      "/api/work-items/:slug/memory-proposals/decision",
+      "/api/work-items/:slug/checks",
+      "/api/work-items/:slug/ship/merge-local",
+      "/api/work-items/:slug/ship/send-back",
+      "/api/work-items/:slug/ship/open-pr",
+      "/api/work-items/:slug/ship/merge-pr",
+    ];
+    const classified = [...projectOrReadOnly, ...localSafety, ...freshViewer].map(
+      (path) => `POST ${path}`,
+    );
+    const registered = server.app.routes
+      .filter(({ method }) => method === "POST" || method === "DELETE")
+      .map(({ method, path }) => `${method} ${path}`);
+    expect(new Set(classified).size).toBe(classified.length);
+    expect(registered.sort()).toEqual(classified.sort());
+  } finally {
+    await server?.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test.each([
   ["merge local", "/api/work-items/github-1/ship/merge-local", {}],
   ["send back from Ship", "/api/work-items/github-1/ship/send-back", {}],
@@ -45,7 +106,6 @@ test.each([
   ["local gate", "/api/work-items/github-1/gates/review/approve", {}],
   ["local gate reopen", "/api/work-items/github-1/gates/review/reopen", {}],
   ["start checks", "/api/work-items/github-1/checks", {}],
-  ["cancel checks", "/api/work-items/github-1/checks/cancel", {}],
   ["start stint", "/api/stints", { workItem: "github-1" }],
   ["move roadmap item", "/api/roadmap", { kind: "move", workItem: "github-1" }],
   ["resolve handoff", "/api/stints/s1/resolve-handoff", {}],
@@ -121,12 +181,21 @@ test.each([
 });
 
 test.each([
-  ["offline", { code: 1, stdout: "network offline" }],
-  ["rate limited", { code: 1, stdout: "HTTP 429 rate limit exceeded" }],
-  ["expired login", { code: 1, stdout: "authentication required" }],
+  ["offline", { code: 1, stdout: "network offline" }, { code: 1, stdout: "network offline" }],
+  [
+    "rate limited",
+    { code: 1, stdout: "HTTP 429 rate limit exceeded" },
+    { code: 1, stdout: "HTTP 429 rate limit exceeded" },
+  ],
+  [
+    "expired login",
+    { code: 1, stdout: "authentication required" },
+    { code: 1, stdout: "authentication required" },
+  ],
+  ["account change", {}, { stdout: { id: 202, login: "202" } }],
 ])(
   "local stop and permission routes remain reachable after GitHub %s",
-  async (_failure, failure) => {
+  async (_failure, authFailure, viewerFailure) => {
     const root = await mkdtemp(join(tmpdir(), "github-local-safety-"));
     const oldPath = process.env.PATH;
     let server: ReturnType<typeof createProjectServer> | undefined;
@@ -145,6 +214,24 @@ test.each([
       await mkdir(join(root, "web"));
       await writeFile(join(root, "web/index.html"), "<!doctype html>");
       await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+      await mkdir(join(root, ".stintwork"), { recursive: true });
+      await writeFile(
+        join(root, ".stintwork/config"),
+        "checks:\n  - name: Wait\n    command: \"node -e 'setInterval(() => {}, 1000)'\"\n",
+      );
+      execFileSync("git", ["-C", root, "add", "."]);
+      execFileSync("git", [
+        "-C",
+        root,
+        "-c",
+        "user.name=Test",
+        "-c",
+        "user.email=test@example.com",
+        "commit",
+        "-qm",
+        "fixture",
+      ]);
+      await ensureWorktree(root, "github-1");
       await writeFile(
         join(root, ".stintwork/local/stints/s1.jsonl"),
         `${JSON.stringify({
@@ -181,7 +268,14 @@ test.each([
       expect((await (await server.app.request("/api/project")).json()).github.items).toHaveLength(
         1,
       );
-      await gh.script({ ...replies, "auth status": failure, "api user": failure });
+      expect(
+        (await server.app.request("/api/work-items/github-1/checks", { method: "POST" })).status,
+      ).toBe(202);
+      await gh.script({ ...replies, "auth status": authFailure, "api user": viewerFailure });
+      expect(
+        (await server.app.request("/api/work-items/github-1/checks/cancel", { method: "POST" }))
+          .status,
+      ).toBe(202);
       for (const [path, body, code] of [
         ["/api/stints/s1/stop", {}, "stint.notRunning"],
         ["/api/stints/s1/permissions/p1", { optionId: "cancel" }, "permission.notPending"],
@@ -201,6 +295,7 @@ test.each([
       await server?.stop();
       process.env.PATH = oldPath;
       await rm(root, { recursive: true, force: true });
+      await rm(`${root}-worktrees`, { recursive: true, force: true });
     }
   },
 );

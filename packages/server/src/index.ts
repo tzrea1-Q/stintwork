@@ -65,6 +65,14 @@ import { addWorkflowCustomisationRoutes } from "./customise-workflow.js";
 export { createNodeRepoFiles } from "./repo-files.js";
 export type { StintServerOptions } from "./stints.js";
 
+// Local safety actions must remain available without GitHub. Stop also cancels
+// preparation and recovery; permission answers include both denial and allowance.
+const localSafetyRoutes = [
+  /^\/api\/stints\/[^/]+\/stop$/,
+  /^\/api\/stints\/[^/]+\/permissions\/[^/]+$/,
+  /^\/api\/work-items\/[^/]+\/checks\/cancel$/,
+];
+
 export function createProjectServer(
   repoRoot: string,
   webRoot = fileURLToPath(new URL("../../web/dist/", import.meta.url)),
@@ -1129,11 +1137,12 @@ export function createProjectServer(
     await next();
   });
   app.use("/api/*", async (context, next) => {
-    if (context.req.method !== "POST") return next();
+    if (context.req.method !== "POST" && context.req.method !== "DELETE") return next();
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin) return next();
     const path = new URL(context.req.url).pathname;
-    if (/^\/api\/stints\/[^/]+\/(?:stop|permissions\/[^/]+)$/.test(path)) return next();
+    if (context.req.method === "POST" && localSafetyRoutes.some((route) => route.test(path)))
+      return next();
     const workItem = /^\/api\/work-items\/(github-\d+)\//.exec(path)?.[1];
     const gate = /^\/api\/github\/items\/(\d+)\/gates\//.exec(path)?.[1];
     const stint = /^\/api\/stints\/([^/]+)\//.exec(path)?.[1];
