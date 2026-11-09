@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 09 — Simpler top bar
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -20,13 +20,13 @@ Scope: `packages/web`, the one `GLOSSARY.md` entry, tickets 07 and 09, and `docs
 
 ## Acceptance criteria
 
-- [ ] The top bar contains only the agreed controls and fits on one row at 768 and 390px without wrapping.
+- [x] The top bar contains only the agreed controls and fits on one row at 768 and 390px without wrapping.
 - [x] Settings language choices persist; setup shows its count and warning description, opens the existing dialog and restores gear focus on dismissal.
 - [x] Needs you preserves the attention count, announces warnings and shows distinct warning content below attention items with correct empty states.
 - [x] The board milestone picker preserves filtering, URL/state, keyboard use and full long names; the command palette still reaches its existing destinations.
 - [x] Behaviour tests cover moved controls, keyboard interaction, dismissal and focus return.
-- [ ] Browser specs cover 1440, 1024, 768 and 390px in both languages, light/dark at 1440 and 390px, overlay readiness, layout checks and top-bar screenshots at each width.
-- [ ] Comments record actual checks and coordinator browser results and screenshot/interaction review at 1440/390px in both languages before merging. The coordinator runs e2e because the agent sandbox cannot bind sockets.
+- [x] Browser specs cover 1440, 1024, 768 and 390px in both languages, light/dark at 1440 and 390px, overlay readiness, layout checks and top-bar screenshots at each width.
+- [x] Comments record actual checks and coordinator browser results and screenshot/interaction review at 1440/390px in both languages before merging. The coordinator runs e2e because the agent sandbox cannot bind sockets.
 
 ## Comments
 

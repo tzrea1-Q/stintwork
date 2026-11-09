@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 08 — Setup dialog organised by check
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
