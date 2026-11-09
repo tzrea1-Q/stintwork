@@ -372,6 +372,15 @@ export function addShipRoutes(
                 throw new LocalMergeRefusal({ code: "ship.conflicts" }, report.conflicts);
               if (branch !== `stintwork/${slug}`)
                 throw new LocalMergeRefusal({ code: "ship.checkoutsRequired" });
+              const existing = await findPullRequest(checkout, repository.repo, branch);
+              if (
+                existing &&
+                (existing.headRefOid !== head ||
+                  existing.headRefName !== branch ||
+                  existing.baseRefName !== base ||
+                  existing.state !== "OPEN")
+              )
+                throw new LocalMergeRefusal({ code: "ship.existingPrMismatch" });
               const details = {
                 repo: repository.repo,
                 remote: repository.remote,
@@ -381,16 +390,31 @@ export function addShipRoutes(
                 headCommit: head,
                 ...pullRequestText(item, workflows),
               };
-              if (item.github?.repository.toLowerCase() === repository.repo.toLowerCase())
-                details.body += `\n\nCloses #${item.github.number}`;
+              const parent =
+                item.github?.repository.toLowerCase() === repository.repo.toLowerCase()
+                  ? item.github.number
+                  : undefined;
+              if (parent) details.body += `\n\nCloses #${parent}`;
+              const adoption = existing
+                ? {
+                    body: existing.body,
+                    existingPrNumber: existing.number,
+                    parentWillNotClose:
+                      !!parent &&
+                      !new RegExp(
+                        `\\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\\s+#${parent}(?!\\d)`,
+                        "i",
+                      ).test(existing.body),
+                  }
+                : {};
               if (action === "preview-pr") {
-                const preview = { ...details, confirmation: randomUUID() };
+                const preview = { ...details, ...adoption, confirmation: randomUUID() };
                 previews.set(slug, { preview, expires: Date.now() + 10 * 60_000 });
                 return context.json(coreTextWire({ preview }));
               }
               const saved = previews.get(slug);
               const expected = saved
-                ? { ...details, confirmation: saved.preview.confirmation }
+                ? { ...details, ...adoption, confirmation: saved.preview.confirmation }
                 : undefined;
               if (
                 !saved ||
@@ -400,15 +424,6 @@ export function addShipRoutes(
               )
                 throw new LocalMergeRefusal({ code: "ship.confirmPush" });
               previews.delete(slug);
-              const existing = await findPullRequest(checkout, details.repo, branch);
-              if (
-                existing &&
-                (existing.headRefOid !== head ||
-                  existing.headRefName !== branch ||
-                  existing.baseRefName !== base ||
-                  existing.state !== "OPEN")
-              )
-                throw new LocalMergeRefusal({ code: "ship.existingPrMismatch" });
               if (!existing)
                 await shipGit(checkout, [
                   "push",

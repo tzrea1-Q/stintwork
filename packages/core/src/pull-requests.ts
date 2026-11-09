@@ -27,6 +27,8 @@ export type PullRequestPreview = Omit<PullRequest, "number" | "url"> & {
   title: string;
   body: string;
   confirmation: string;
+  existingPrNumber?: number;
+  parentWillNotClose?: boolean;
 };
 
 export function pullRequestText(

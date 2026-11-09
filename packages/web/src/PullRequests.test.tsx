@@ -113,6 +113,7 @@ test("Open pull request previews publishing; cancel does not publish, and confir
   render(<ShipActions item={item()} />);
   await user.click(screen.getByRole("button", { name: "Open pull request" }));
   const dialog = await screen.findByRole("dialog", { name: "Confirm publishing pull request" });
+  expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
   for (const text of [
     preview.remoteUrl,
     preview.branch,
@@ -141,6 +142,30 @@ test("Open pull request previews publishing; cancel does not publish, and confir
   expect(await screen.findByRole("button", { name: "Merge pull request" })).toBeDisabled();
   expect(screen.getByRole("link", { name: "View on GitHub" })).toHaveAttribute("href", pr.url);
   expect(screen.queryByRole("button", { name: "Merge locally" })).not.toBeInTheDocument();
+});
+
+test("adopted pull request preview shows its body and closing warning", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          preview: {
+            ...preview,
+            body: "Existing pull request body",
+            parentWillNotClose: true,
+          },
+        }),
+      ),
+    ),
+  );
+  render(<ShipActions item={item()} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Open pull request" }));
+  const dialog = await screen.findByRole("dialog", { name: "Confirm publishing pull request" });
+  expect(dialog).toHaveTextContent("Existing pull request body");
+  expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    "The parent will not close automatically on merge.",
+  );
 });
 
 test("merge refusal is visible; retry reports the PR merge commit", async () => {

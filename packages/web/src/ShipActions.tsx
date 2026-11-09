@@ -277,6 +277,9 @@ export function ShipActions({
                   {preview.title}
                 </p>
                 <CodeBlock className="max-h-60">{preview.body}</CodeBlock>
+                {preview.parentWillNotClose && (
+                  <p role="alert">{t.review.ship.parentWillNotClose}</p>
+                )}
                 <Button
                   type="button"
                   variant="danger"

@@ -77,6 +77,7 @@ async function fixture(method = "merge") {
     mergeCommit: null,
     mergedAt: null,
     isCrossRepository: false,
+    body: "Existing body",
   };
   const script = {
     "api repos/example/project/branches/main/protection": {
@@ -118,7 +119,11 @@ async function fixture(method = "merge") {
   };
   await fake.script({
     ...script,
-    "pr view": [{ code: 1, stdout: "no pull requests found for branch" }, script["pr view"]],
+    "pr view": [
+      { code: 1, stdout: "no pull requests found for branch" },
+      { code: 1, stdout: "no pull requests found for branch" },
+      script["pr view"],
+    ],
   });
   const project = createProjectServer(root, join(root, "web"));
   fixtures.push({ directory, project });
@@ -303,7 +308,19 @@ test("preview and missing, forged or expired confirmation never push or create a
   vi.spyOn(Date, "now").mockReturnValue(Date.now() + 11 * 60_000);
   expect((await post("open-pr", { confirmation: details.confirmation })).status).toBe(409);
   vi.restoreAllMocks();
-  expect((await fake.calls()).some(({ args }) => args[0] === "pr")).toBe(false);
+  expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
+  expect(git(bare, "branch", "--list", "stintwork/first")).toBe("");
+});
+
+test("a confirmed existing pull request is adopted without creating or pushing", async () => {
+  const { fake, script, preview, post, bare } = await fixture();
+  await fake.script(script);
+  const details = await preview();
+  expect(details.body).toBe("Existing body");
+  expect(details.existingPrNumber).toBe(12);
+  const response = await post("open-pr", { confirmation: details.confirmation });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
   expect(git(bare, "branch", "--list", "stintwork/first")).toBe("");
 });
 

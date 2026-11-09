@@ -126,7 +126,7 @@ export async function viewPullRequest(
       "--repo",
       pr.repo,
       "--json",
-      "number,url,state,headRefOid,headRefName,baseRefName,mergeCommit,mergedAt,isCrossRepository",
+      "number,url,state,headRefOid,headRefName,baseRefName,mergeCommit,mergedAt,isCrossRepository,body",
     ]),
   );
   if (
@@ -150,6 +150,7 @@ export async function viewPullRequest(
     baseRefName: string;
     mergeCommit: { oid: string } | null;
     mergedAt: string | null;
+    body: unknown;
   };
 }
 
@@ -176,7 +177,9 @@ export async function createPullRequest(
 
 export async function findPullRequest(root: string, repo: string, branch: string) {
   try {
-    return await viewPullRequest(root, { repo }, branch);
+    const pr = await viewPullRequest(root, { repo }, branch);
+    if (typeof pr.body !== "string") throw new CoreTextError({ code: "ship.prIdentity" });
+    return { ...pr, body: pr.body };
   } catch (error) {
     const failure = error as { code?: number; stderr?: string; stdout?: string };
     if (

@@ -602,6 +602,8 @@ export const en = {
       confirmPublishing: "Confirm publishing pull request",
       confirmPushTitle: "Confirm push and pull request",
       pushWarning: "Publishing sends this code to the remote. Nothing is pushed until you confirm.",
+      parentWillNotClose:
+        "This existing pull request does not reference the parent with a closing keyword. The parent will not close automatically on merge.",
       confirmPush: "Confirm push and open pull request",
       conflicts: "Merge conflicts",
       sendBack: "Send back",
