@@ -1139,7 +1139,8 @@ export const zhCN: Catalog = {
     "ship.mainUncommitted": "主检出目录中，本次合并涉及的文件存在未提交的更改。",
     "ship.methodChanged": "确认后合并方式已更改。请重新预览并确认。",
     "server.stopping": "项目服务器正在停止。",
-    "ship.baseMismatch": "拉取请求的目标分支必须与主检出目录的分支一致。",
+    "ship.baseMismatch":
+      "拉取请求的目标分支必须与主检出目录的分支一致。请更改目标分支或关闭该拉取请求后重试。",
     "ship.prChanged": "读取 CI 后，拉取请求已更改。请重新刷新。",
     "ship.mainDiverged":
       "拉取请求已在远程合并，但本地主分支已分叉。工作树和分支已保留；请协调主分支后重试。",

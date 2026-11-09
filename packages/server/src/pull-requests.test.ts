@@ -331,18 +331,40 @@ test("a confirmed existing pull request is adopted without creating or pushing",
   expect(git(bare, "branch", "--list", "stintwork/first")).toBe("");
 });
 
-test("adoption records the existing PR base", async () => {
+test("adoption refuses a pull request targeting a different base", async () => {
   const { fake, script, preview, post } = await fixture();
+  await fake.script(script);
+  const { confirmation } = await preview();
   await fake.script({
     ...script,
     "pr view": { stdout: { ...script["pr view"].stdout, baseRefName: "release" } },
   });
-  const details = await preview();
-  expect(details.base).toBe("release");
-  const response = await post("open-pr", { confirmation: details.confirmation });
-  expect(response.status, await response.clone().text()).toBe(200);
-  expect((await response.json()).pullRequest.base).toBe("release");
+  for (const action of ["preview-pr", "open-pr"]) {
+    const response = await post(action, { confirmation });
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reason: expect.stringContaining("Retarget or close"),
+      reasonMessage: { code: "ship.baseMismatch" },
+    });
+  }
+  expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
 });
+
+test.each(["preview-merge-pr", "merge-pr"])(
+  "%s refuses a recorded base different from the main checkout before remote merge",
+  async (action) => {
+    const { root, open, post, fake } = await fixture();
+    await open();
+    git(root, "checkout", "-b", "release");
+    const response = await post(action);
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      reason: expect.stringContaining("Retarget or close"),
+      reasonMessage: { code: "ship.baseMismatch" },
+    });
+    expect((await fake.calls()).some(({ args }) => args[1] === "merge")).toBe(false);
+  },
+);
 
 test.each(["title", "body", "baseRefName"] as const)(
   "a changed existing PR %s requires confirmation again",

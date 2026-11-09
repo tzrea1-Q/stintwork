@@ -373,6 +373,8 @@ export function addShipRoutes(
               if (branch !== `stintwork/${slug}`)
                 throw new LocalMergeRefusal({ code: "ship.checkoutsRequired" });
               const existing = await findPullRequest(checkout, repository.repo, branch);
+              if (existing && existing.baseRefName !== base)
+                throw new LocalMergeRefusal({ code: "ship.baseMismatch" });
               if (
                 existing &&
                 (existing.headRefOid !== head ||
@@ -441,7 +443,7 @@ export function addShipRoutes(
               if (
                 opened.headRefOid !== head ||
                 opened.headRefName !== branch ||
-                opened.baseRefName !== (existing?.baseRefName ?? base) ||
+                opened.baseRefName !== base ||
                 opened.state !== "OPEN"
               )
                 throw new LocalMergeRefusal({ code: "ship.createdPrMismatch" });
@@ -483,6 +485,8 @@ export function addShipRoutes(
               refresh();
               return context.json(coreTextWire({ merged }));
             }
+            if (pr.base !== (await shipGit(root, ["symbolic-ref", "--short", "HEAD"])))
+              throw new LocalMergeRefusal({ code: "ship.baseMismatch" });
             const checks = await fetchPullRequestChecks(root, pr);
             if (!checks.checks.length || checks.checks.some((check) => check.bucket !== "pass"))
               throw new LocalMergeRefusal({ code: "ship.ciRequired" });

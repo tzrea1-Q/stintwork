@@ -584,20 +584,20 @@ test("GitHub pull request ship records the merged workflow", async () => {
       mergeCommitAllowed: true,
     },
   };
-  for (const [baseRefName, warning] of [
+  for (const [defaultBranch, warning] of [
     ["main", false],
     ["release", true],
   ] as const) {
     await gh.script({
-      "repo view": repo,
-      "pr view": { stdout: { ...view, baseRefName, body: "Existing body" } },
+      "repo view": { stdout: { ...repo.stdout, defaultBranchRef: { name: defaultBranch } } },
+      "pr view": { stdout: { ...view, body: "Existing body" } },
     });
     const response = await post("/api/work-items/github-1/ship/preview-pr", {});
     expect(response.status, await response.clone().text()).toBe(200);
     expect((await response.json()).preview).toMatchObject({
       title: "Existing title",
       body: "Existing body",
-      base: baseRefName,
+      base: "main",
       existingPrNumber: 12,
       existingPrUrl: view.url,
       parentNumber: 1,
