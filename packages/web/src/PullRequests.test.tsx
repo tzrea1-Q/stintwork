@@ -265,7 +265,9 @@ test.each(["merge", "squash", "rebase"])(
     expect(dialog).toHaveTextContent(`Merge method: ${mergeMethod}`);
     expect(dialog).toHaveTextContent("main");
     expect(
-      within(dialog).getByRole("button", { name: `Confirm ${mergeMethod} merge` }),
+      within(dialog).getByRole("button", {
+        name: mergeMethod === "merge" ? "Confirm merge" : `Confirm ${mergeMethod} merge`,
+      }),
     ).toBeEnabled();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenLastCalledWith(

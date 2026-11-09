@@ -58,7 +58,7 @@ test.each(["note", "dismiss"])(
     const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
     expect(queue.getByText("Handoff · Test Agent")).toBeInTheDocument();
     expect(queue.getByText("format", { selector: "strong" })).toBeInTheDocument();
-    expect(queue.getByText(/Ticket 1 · Stint/)).toHaveTextContent("stint");
+    expect(queue.getByText(/Ticket 01 · Stint/)).toHaveTextContent("stint");
     expect(queue.getByRole("button", { name: "Save developer note" })).toBeDisabled();
     if (action === "note")
       await user.type(queue.getByRole("textbox", { name: "Developer note" }), "Use CSV.");

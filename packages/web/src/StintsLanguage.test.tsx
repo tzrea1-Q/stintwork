@@ -403,7 +403,11 @@ test.each(["drawer", "gate"])(
     for (const [index, [, label]] of statuses.entries()) {
       const number = index + 1;
       expect(
-        list.getByText(view === "drawer" ? label : `${number} · Ticket ${number} 原文 · ${label}`),
+        list.getByText(
+          view === "drawer"
+            ? label
+            : `${String(number).padStart(2, "0")} · Ticket ${number} 原文 · ${label}`,
+        ),
       ).toBeInTheDocument();
       if (view === "drawer")
         expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
@@ -414,7 +418,7 @@ test.each(["drawer", "gate"])(
         list.getByText(
           view === "drawer"
             ? status
-            : `${index + 1} · Ticket ${index + 1} 原文 · ${status === "resolved" ? "Resolved" : status}`,
+            : `${String(index + 1).padStart(2, "0")} · Ticket ${index + 1} 原文 · ${status === "resolved" ? "Resolved" : status}`,
         ),
       ).toBeInTheDocument();
   },
@@ -438,7 +442,7 @@ test("Chinese gate approval keeps ticket titles, warning paths and warning messa
   expect(gate.getByText("Core warning 原文", { exact: false })).toHaveTextContent(
     ".scratch/中文/spec.md",
   );
-  expect(gate.getByText("1 · Ticket title 原文 · 已解决")).toBeInTheDocument();
+  expect(gate.getByText("01 · Ticket title 原文 · 已解决")).toBeInTheDocument();
   await user.click(gate.getByRole("button", { name: "批准实现" }));
   expect(await gate.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
 });

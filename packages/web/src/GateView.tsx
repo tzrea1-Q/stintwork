@@ -152,7 +152,8 @@ export function GateView({
       <ul>
         {item.tickets.map((ticket) => (
           <li key={ticket.path}>
-            {ticket.number} · {ticket.title} · {ticketStatus(ticket.status, t, ticket.resolved)}
+            {github ? `#${ticket.number}` : String(ticket.number).padStart(2, "0")} · {ticket.title}{" "}
+            · {ticketStatus(ticket.status, t, ticket.resolved)}
           </li>
         ))}
       </ul>

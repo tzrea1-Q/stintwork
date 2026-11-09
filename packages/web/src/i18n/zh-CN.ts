@@ -380,7 +380,8 @@ export const zhCN: Catalog = {
     refreshFailed: "无法刷新 Agent 可用状态。",
     refreshRetry: "无法刷新 Agent 可用状态，请重试。",
     noTicket: "无工单",
-    ticket: (number) => joinChinese("工单", number),
+    ticket: (number, github = false) =>
+      joinChinese("工单", github ? `#${number}` : String(number).padStart(2, "0")),
     stint: "Stint",
     noReadinessTime: "未记录就绪时间",
     waiting: (minutes) =>
@@ -626,7 +627,8 @@ export const zhCN: Catalog = {
         ),
       sentBack: (stage: string) => joinChinese("已退回至", stage, "。"),
       pullRequest: (number: number | string | undefined) => `拉取请求 #${number}`,
-      confirmMethod: (method: string) => joinChinese("确认以", method, "方式合并"),
+      confirmMethod: (method: string) =>
+        method === "merge" ? "确认合并" : joinChinese("确认以", method, "方式合并"),
       mergeMethod: "合并方式：",
       mergedAt: "合并于 ",
       remote: "远程仓库：",

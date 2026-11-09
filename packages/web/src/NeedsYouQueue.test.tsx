@@ -273,7 +273,7 @@ test("Needs you opens a slide-over with source, waiting time, full command and p
   const queue = screen.getByRole("dialog", { name: "Needs you 1" });
   expect(screen.getByRole("button", { name: "Close Needs you" })).toHaveFocus();
   expect(within(queue).getByText("Permission · Test Agent")).toBeInTheDocument();
-  expect(within(queue).getByText(/Ticket 1 · Stint/)).toHaveTextContent("stint");
+  expect(within(queue).getByText(/Ticket 01 · Stint/)).toHaveTextContent("stint");
   expect(within(queue).getByText(/Waiting/)).toHaveAttribute("datetime", "2026-10-09T10:15:00Z");
   expect(within(queue).getByText(/pnpm test --filter/).textContent).toBe(
     "pnpm test --filter /full/path/to/project\n/full/path/to/file.ts",
@@ -517,7 +517,7 @@ describe("Chinese Needs-you queue", () => {
     expect(queue.getByRole("button", { name: "First work item · first" })).toBeInTheDocument();
     expect(
       within(queue.getByRole("article", { name: "权限请求：Check project request" })).getByText(
-        /工单 1 · Stint/,
+        /工单 01 · Stint/,
       ),
     ).toHaveTextContent("stint");
     expect(queue.getAllByText(/^已等待/).length).toBeGreaterThan(0);

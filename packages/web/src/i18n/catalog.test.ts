@@ -292,3 +292,16 @@ test("GitHub gate identity refusal is available in both catalogs", () => {
     "GitHub 账号或仓库与 Stintwork 的记录不再一致。请检查 gh 登录的是哪个账号，以及仓库是否已重命名或转移，然后刷新 GitHub 证据。",
   );
 });
+
+test("merge confirmation names each method naturally", () => {
+  expect(["merge", "squash", "rebase"].map(en.review.ship.confirmMethod)).toEqual([
+    "Confirm merge",
+    "Confirm squash merge",
+    "Confirm rebase merge",
+  ]);
+  expect(["merge", "squash", "rebase"].map(zhCN.review.ship.confirmMethod)).toEqual([
+    "确认合并",
+    "确认以 squash 方式合并",
+    "确认以 rebase 方式合并",
+  ]);
+});

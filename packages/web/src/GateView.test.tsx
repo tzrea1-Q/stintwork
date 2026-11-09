@@ -326,7 +326,7 @@ test("gate evidence shows tickets, last checkpoint, handoff and open warnings in
   );
   const gate = within(screen.getByRole("region", { name: "Implement gate" }));
   expect(gate.getByText("1/1 tickets resolved")).toBeInTheDocument();
-  expect(gate.getByText("1 · First ticket · Resolved")).toBeInTheDocument();
+  expect(gate.getByText("01 · First ticket · Resolved")).toBeInTheDocument();
   expect(gate.getAllByText("evidence-checkpoint").length).toBeGreaterThan(0);
   expect(gate.getByText("All edits checkpointed")).toBeInTheDocument();
   expect(gate.getByText("Confirm the output")).toBeInTheDocument();
@@ -955,4 +955,20 @@ test("GitHub refresh failure re-enables the action", async () => {
   await userEvent.click(button);
   expect(screen.getByRole("alert")).toHaveTextContent("Network failure");
   expect(button).toBeEnabled();
+});
+
+test("gate ticket numbers distinguish GitHub and Markdown", () => {
+  const item = project().workItems[0];
+  const { rerender } = render(<GateView item={item} />);
+  expect(screen.getByText(/01 · First ticket/)).toBeInTheDocument();
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/a/b/issues/1",
+    complete: true,
+  };
+  rerender(<GateView item={item} />);
+  expect(screen.getByText(/#1 · First ticket/)).toBeInTheDocument();
 });

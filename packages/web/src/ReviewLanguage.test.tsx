@@ -289,7 +289,11 @@ test.each(["merge", "squash", "rebase"])(
     const confirmation = within(await screen.findByRole("dialog", { name: "确认合并拉取请求" }));
     expect(confirmation.getByText(preview.base, { exact: false })).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    await user.click(confirmation.getByRole("button", { name: `确认以 ${mergeMethod} 方式合并` }));
+    await user.click(
+      confirmation.getByRole("button", {
+        name: mergeMethod === "merge" ? "确认合并" : `确认以 ${mergeMethod} 方式合并`,
+      }),
+    );
     expect(await screen.findByRole("status")).toHaveTextContent(
       "已通过拉取请求 #12 交付，提交为 merged-sha。",
     );
