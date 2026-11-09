@@ -14,7 +14,7 @@ After all prerequisites and ADR approval, the coordinator asks the maintainer wh
 - [x] Board discovery, ticket dependencies, brief and real stint are observed; issue changes are made by the agent through its own skill/gh.
 - [x] A real PR for the ticket passes required checks on its current head and is merged; record URLs, commits and check outcomes.
 - [x] A remote edit and refresh demonstrate approval invalidation or a separately authorized disposable issue demonstrates it; failure and recovery are observed.
-- [ ] Record actual timing/request counts, browser evidence, cleanup, failures and limits; no credentials or private content are copied.
+- [x] Record actual timing/request counts, browser evidence, cleanup, failures and limits; no credentials or private content are copied.
 - [ ] Only the maintainer accepted full pass sets M11 shipped; otherwise leave active with concrete blockers.
 
 ## Comments
@@ -70,3 +70,15 @@ After all prerequisites and ADR approval, the coordinator asks the maintainer wh
   - The gate's ticket list shows `6 ·` instead of `#6`.
   - The Ship previews are slow because their `gh` reads run serially and repeat.
 - **Pending.** Cleanup is not done yet: close #1, delete the remote branches `stintwork/github-1` and `stintwork/github-5`, and archive the repository (maintainer decision of 2026-11-08). The local record commits `185c67e` and `671cd14` remain unpushed. The maintainer then decides M11 shipped.
+
+**Coordinator, 2026-11-09:** Ticket 19 is resolved and merged (`f4c4e76`). On the real repository, served from `f4c4e76`, closing #1 and pressing Refresh left both items complete and current within about 3 s, with no attention items and no drawer opened.
+
+Cleanup, as the maintainer decided on 2026-11-08:
+- #1 is closed as completed, with a comment.
+- The remote branches `stintwork/github-1` and `stintwork/github-5` are deleted.
+- The exit server is stopped.
+- `tzrea1-Q/stintwork-m11-exit` is archived and remains private.
+
+The local record commits `185c67e` and `671cd14` stay only in the local clone `/Users/tzrea1/Develop/stintwork-m11-exit`.
+
+Every exit criterion except the maintainer's decision is met. M11 stays active until the maintainer marks it shipped.
