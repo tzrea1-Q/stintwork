@@ -24,6 +24,7 @@ new AgentSideConnection((client) => {
   });
   const restore = async ({ sessionId, cwd }, method) => {
     const stored = JSON.parse(await readFile(join(cwd, `.fake-session-${sessionId}.json`), 'utf8'));
+    if (mode === 'contaminated_resume' && method === 'resume' && !stored.recalled) delete stored.word;
     sessions.set(sessionId, stored);
     if (mode === 'mixed_updates' || mode === 'updates_only') {
       await client.sessionUpdate({ sessionId, update: { sessionUpdate: 'available_commands_update', availableCommands: [] } });
@@ -45,7 +46,7 @@ new AgentSideConnection((client) => {
       assert.equal(request.clientCapabilities.terminal, false);
       const resumeCapabilities = mode === 'no_resume' ? {} : mode === 'list_only'
         ? { sessionCapabilities: { list: {} } } : mode === 'resume_method'
-          ? { sessionCapabilities: { resume: {} } } : { loadSession: true, sessionCapabilities: { list: {}, ...(['both_resume', 'mixed_updates', 'updates_only', 'load_failure', 'recall_failure', 'both_failure'].includes(mode) ? { resume: {}, close: {} } : {}) } };
+          ? { sessionCapabilities: { resume: {} } } : { loadSession: true, sessionCapabilities: { list: {}, ...(['both_resume', 'mixed_updates', 'updates_only', 'load_failure', 'recall_failure', 'both_failure', 'contaminated_resume', 'list_failure'].includes(mode) ? { resume: {}, close: {} } : {}) } };
       return {
         protocolVersion: PROTOCOL_VERSION,
         agentInfo: { name: 'fake-acp-agent', version: '1.0.0' },
@@ -85,6 +86,7 @@ new AgentSideConnection((client) => {
     loadSession: (request) => restore(request, 'load'),
     resumeSession: (request) => restore(request, 'resume'),
     async listSessions({ cwd }) {
+      if (mode === 'list_failure') throw new Error('fake list failure');
       const { readdir } = await import('node:fs/promises');
       const files = await readdir(cwd);
       return { sessions: files.filter((file) => file.startsWith('.fake-session-')).map((file) => ({
@@ -157,7 +159,11 @@ new AgentSideConnection((client) => {
             throw new Error('fake recall failure');
           }
         }
-        await message(sessionId, mode === 'resume_replay_only' ? 'I do not remember' : session.word);
+        if (mode === 'contaminated_resume') {
+          session.recalled = true;
+          await writeFile(join(session.cwd, `.fake-session-${sessionId}.json`), JSON.stringify(session));
+        }
+        await message(sessionId, mode === 'resume_replay_only' ? 'I do not remember' : session.word ?? 'I do not remember');
       }
       return { stopReason: 'end_turn' };
     },

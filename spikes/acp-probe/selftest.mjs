@@ -190,6 +190,19 @@ try {
     const agyRun = await runProbe({ agent: 'antigravity', scenarios: SCENARIOS, root, timeoutSec: 10, cancelAfterMs: 100 });
     assert.deepEqual(agyRun.scenarios.map(({ status }) => status), SCENARIOS.map(() => 'pass'));
     assert.deepEqual(agyRun.scenarios[4].facts.replayedUpdates, { loadSession: 1, resumeSession: 1 });
+    assert.notEqual(agyRun.scenarios[4].facts.restoreAttempts.loadSession.sessionId, agyRun.scenarios[4].facts.restoreAttempts.resumeSession.sessionId);
+    process.env.FAKE_MODE = 'contaminated_resume';
+    const isolated = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.equal(isolated.status, 'fail');
+    assert.equal(isolated.facts.restoreAttempts.loadSession.heronReturned, true);
+    assert.equal(isolated.facts.restoreAttempts.resumeSession.heronReturned, false);
+    assert.notEqual(isolated.facts.restoreAttempts.loadSession.sessionId, isolated.facts.restoreAttempts.resumeSession.sessionId);
+    process.env.FAKE_MODE = 'list_failure';
+    const listFailure = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
+    assert.equal(listFailure.status, 'fail');
+    assert.ok(listFailure.facts.listError);
+    assert.equal(listFailure.facts.restoreAttempts.loadSession.heronReturned, true);
+    assert.equal(listFailure.facts.restoreAttempts.resumeSession.heronReturned, true);
     for (const scenario of agyRun.scenarios) for (const connection of scenario.connections) { assert.ok(connection.cleanup); assertDead(connection); }
     process.env.FAKE_MODE = 'no_replay';
     const noReplay = (await runProbe({ agent: 'antigravity', scenarios: ['resume'], root, timeoutSec: 10 })).scenarios[0];
