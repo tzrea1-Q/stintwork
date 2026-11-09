@@ -107,6 +107,7 @@ export function projectGithubGates(
         .digest("hex")}`;
     };
     let upstream: "current" | "stale" | "unknown" = "current";
+    let localCurrencyVerified = true;
     for (const { id: stage } of stages) {
       const record = item.stages[stage];
       if (!record) {
@@ -170,17 +171,23 @@ export function projectGithubGates(
             checkoutText: worktree ? () => project.files.read(path) : undefined,
           });
         } catch {
+          localCurrencyVerified = false;
           state = "unknown";
         }
       }
       const reopenState = approvalReopenState(item.stages, stages, stage);
       if (reopenState !== "current") state = reopenState;
       if (upstream !== "current" && state === "current") state = upstream;
-      if (headChanged) state = "stale";
-      if (state === "current" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
+      if (headChanged) {
+        localCurrencyVerified = false;
+        state = "stale";
+      }
+      if (state !== "stale" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
         try {
-          if (!("commit" in approval) || typeof approval.commit !== "string") state = "unknown";
-          else {
+          if (!("commit" in approval) || typeof approval.commit !== "string") {
+            localCurrencyVerified = false;
+            state = "unknown";
+          } else {
             const directory =
               (item.github.bound ? project.worktreePaths.get(item.slug) : undefined) ?? root;
             const headCommit = execFileSync("git", ["rev-parse", "HEAD"], {
@@ -201,10 +208,13 @@ export function projectGithubGates(
                 },
                 approval.commit,
               )
-            )
+            ) {
+              localCurrencyVerified = false;
               state = "stale";
+            }
           }
         } catch {
+          localCurrencyVerified = false;
           state = "unknown";
         }
       }
@@ -223,7 +233,9 @@ export function projectGithubGates(
       record.approved = {
         ...approval,
         remoteState: state,
-        ...(state === "unknown" && handoffApprovals.get(handoffKey) === approvalIdentity
+        ...(state === "unknown" &&
+        localCurrencyVerified &&
+        handoffApprovals.get(handoffKey) === approvalIdentity
           ? { handoffRemoteState: "current" }
           : {}),
         ...(headChanged ? { remoteStateReason: "head-changed" } : {}),

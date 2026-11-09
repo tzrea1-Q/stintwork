@@ -253,6 +253,50 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     reviewItem.stage = "ship";
     projectGithubGates(reviewSnapshot, root, project);
     expect(reviewItem.stages.review.approved).toMatchObject({ remoteState: "current" });
+    const handoffCache = new Map<string, string>();
+    const handoffSnapshot = () => {
+      const result = indexProject(files, { name: "Test", github: structuredClone(github) });
+      const item = result.workItems[0];
+      item.stage = "ship";
+      item.stages.spec = { approved: { ...approval, remote: { ...approval.remote, digest } } };
+      item.stages.tickets = { approved: approval };
+      item.stages.implement = { approved: approval };
+      item.stages.review = { approved: approval };
+      item.stints = [
+        {
+          id: "review-stint",
+          workItem: item.slug,
+          stage: "review",
+          ticket: null,
+          agent: "codex",
+          status: "finished",
+          startedAt: "2025-12-31T00:00:00Z",
+          endedAt: "2025-12-31T00:01:00Z",
+          checkpointCommit: null,
+          handoff: {
+            stint: "review-stint",
+            agent: "codex",
+            stoppedAt: "Done",
+            unresolved: "Fix this",
+            nextStep: "Review",
+          },
+        },
+      ];
+      return result;
+    };
+    projectGithubGates(handoffSnapshot(), root, project, handoffCache);
+    const staleHandoffSnapshot = () => {
+      const result = handoffSnapshot();
+      if (!result.github?.items[0].detail) throw new Error("Missing detail");
+      result.github.items[0].detail.stale = true;
+      projectGithubGates(result, root, project, handoffCache);
+      return result;
+    };
+    expect(
+      deriveAttentionItems(staleHandoffSnapshot()).filter(
+        (entry) => entry.kind === "handoff-unresolved",
+      ),
+    ).toEqual([]);
     writeFileSync(join(root, "code.ts"), "code\n");
     execFileSync("git", ["-C", root, "add", "code.ts"]);
     execFileSync("git", [
@@ -268,6 +312,9 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     ]);
     projectGithubGates(reviewSnapshot, root, project);
     expect(reviewItem.stages.review.approved).toMatchObject({ remoteState: "stale" });
+    expect(deriveAttentionItems(staleHandoffSnapshot())).toContainEqual(
+      expect.objectContaining({ kind: "handoff-unresolved", stintId: "review-stint" }),
+    );
     const freshDefault = indexProject(files, {
       name: "Test",
       github: { ...github, items: [{ ...github.items[0], bound: false }] },

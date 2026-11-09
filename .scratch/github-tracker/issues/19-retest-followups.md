@@ -38,3 +38,7 @@ Checks actually run: `pnpm format:check`, `pnpm lint` (11 warnings), `pnpm typec
 **Codex, 2026-11-09, discovery retry follow-up:** Fixed successful discovery to queue stale details even when an earlier detail failure remains in the aggregate GitHub error. Extended the retry-limit regression to exhaust retries for one item, then verify a successful discovery refreshes that item and another stale item.
 
 Checks actually run: `pnpm format:check`, `pnpm lint` (11 warnings, 7 informational notices), `pnpm typecheck`, and `pnpm vitest run packages/server/src/github-snapshot.test.ts packages/server/src/github-detail-refresh.test.ts` (2 files, 24 tests) passed. The regression timed out waiting for recovery before the fix and passed after it. No commit was made.
+
+**Codex, 2026-11-09, local evidence follow-up:** Recheck local evidence currency even when GitHub detail is stale, and preserve a cached handoff clearance only when local currency is verified. A regression confirms the handoff remains cleared without a local change and reappears after a local evidence commit; it failed before the fix.
+
+Checks actually run: `pnpm format:check`, `pnpm lint` (11 warnings, 7 informational notices), `pnpm typecheck`, and `pnpm vitest run packages/server/src/github-snapshot.test.ts packages/server/src/github-detail-refresh.test.ts packages/core/src/attention-handoff-resume.test.ts` (3 files, 27 tests) passed. No commit was made.
