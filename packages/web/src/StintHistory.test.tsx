@@ -15,6 +15,11 @@ import { StintHistory } from "./StintHistory";
 import { HandoffCard } from "./HandoffCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
+test("GitHub history labels tickets with a hash", () => {
+  render(<StintHistory stints={[summarizeStint(stint("github"))]} github />);
+  expect(screen.getByRole("list", { name: "Stint history" })).toHaveTextContent("Ticket #1");
+});
+
 function stint(id: string, status: StintStatus = "finished", ticket: number | null = 1): Stint {
   const entries: StintLogEntry[] = [
     {
@@ -132,7 +137,7 @@ test("the drawer lists every stint in snapshot order with agent, ticket, status,
   expect(rows).toHaveLength(stints.length);
   for (const [index, recorded] of stints.entries()) {
     expect(rows[index]).toHaveTextContent(
-      `codex · ${recorded.ticket === null ? "No ticket" : "Ticket 1"} · ${recorded.status}`,
+      `codex · ${recorded.ticket === null ? "No ticket" : "Ticket 01"} · ${recorded.status}`,
     );
     expect(rows[index].querySelector("time")?.getAttribute("dateTime")).toBe(recorded.startedAt);
     if (recorded.endedAt) {
@@ -274,7 +279,7 @@ test("an open replay refreshes its stream, status and checkpoint when the snapsh
   rerender(<StintHistory stints={[summarizeStint(interrupted)]} />);
   expect(await screen.findByText("Last message before interruption")).toBeInTheDocument();
   expect(screen.getByRole("list", { name: "Stint history" })).toHaveTextContent(
-    "codex · Ticket 1 · interrupted",
+    "codex · Ticket 01 · interrupted",
   );
   expect(screen.getByRole("article", { name: "Handoff" })).toHaveTextContent(
     "Checkpoint commit: checkpoint-changing",

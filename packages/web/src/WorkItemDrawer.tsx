@@ -284,7 +284,7 @@ export function WorkItemDrawer({
                 <p role="status">
                   {activeProfile?.displayName ?? item.activeStint.agent}
                   {item.activeStint.ticket !== null && (
-                    <> · {t.stints.ticket(item.activeStint.ticket)}</>
+                    <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
                   )}{" "}
                   · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
                 </p>
@@ -355,9 +355,10 @@ export function WorkItemDrawer({
               {item.tickets.length ? (
                 <ol className="drawer-tickets">
                   {item.tickets.map((ticket) => {
+                    const blocked = ticket.blocked && ticket.status !== "unknown";
                     const StatusIcon = ticket.resolved
                       ? CheckCircle2
-                      : ticket.blocked
+                      : blocked
                         ? LockKeyhole
                         : Circle;
                     return (
@@ -368,7 +369,7 @@ export function WorkItemDrawer({
                               className={
                                 ticket.resolved
                                   ? "size-icon-sm shrink-0 text-success"
-                                  : ticket.blocked
+                                  : blocked
                                     ? "size-icon-sm shrink-0 text-warning"
                                     : "size-icon-sm shrink-0 text-muted"
                               }
@@ -379,22 +380,16 @@ export function WorkItemDrawer({
                                 {ticketNumber(ticket.number)} · {ticket.title}
                               </strong>
                               <small
-                                className={
-                                  ticket.blocked ? "warning text-warning" : "muted text-muted"
-                                }
+                                className={blocked ? "warning text-warning" : "muted text-muted"}
                               >
                                 <Badge
                                   variant={
-                                    ticket.resolved
-                                      ? "success"
-                                      : ticket.blocked
-                                        ? "warning"
-                                        : "secondary"
+                                    ticket.resolved ? "success" : blocked ? "warning" : "secondary"
                                   }
                                 >
                                   {ticketStatus(ticket.status, t)}
                                 </Badge>
-                                {ticket.blockedBy.length > 0 && (
+                                {ticket.status !== "unknown" && ticket.blockedBy.length > 0 && (
                                   <>
                                     {" "}
                                     {t.stints.blockedBy}{" "}
@@ -432,7 +427,7 @@ export function WorkItemDrawer({
               >
                 {t.stints.history}
               </h3>
-              <StintHistory stints={item.stints} />
+              <StintHistory stints={item.stints} github={!!item.github} />
             </section>
             {item.merged && (
               <>

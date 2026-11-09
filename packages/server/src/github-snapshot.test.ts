@@ -129,7 +129,23 @@ test("projects workflow records and fresh, stale and unknown approval evidence",
     });
     expect(unbound.workItems[0].github?.reviewHead).toBe(worktreeHead);
     const snapshot = indexProject(files, { name: "Test", github });
-    projectGithubGates(snapshot, root, project);
+    const handoffApprovals = new Map<string, string>();
+    projectGithubGates(snapshot, root, project, handoffApprovals);
+    const staleSnapshot = indexProject(files, {
+      name: "Test",
+      github: {
+        ...github,
+        items: [{ ...github.items[0], detail: { ...github.items[0].detail, stale: true } }],
+      },
+    });
+    projectGithubGates(staleSnapshot, root, project, handoffApprovals);
+    expect(staleSnapshot.workItems[0].stages.clarify.approved).toMatchObject({
+      remoteState: "unknown",
+      handoffRemoteState: "current",
+    });
+    expect(staleSnapshot.workItems[0].stages.spec.approved).not.toHaveProperty(
+      "handoffRemoteState",
+    );
     const item = snapshot.workItems[0];
     expect(item).toMatchObject({
       workflow: "feature",

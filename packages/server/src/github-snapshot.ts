@@ -26,6 +26,7 @@ export function projectGithubGates(
   snapshot: ProjectSnapshot,
   root: string,
   project: ReturnType<ProjectFilesReader>,
+  handoffApprovals = new Map<string, string>(),
 ) {
   const labels = new Map(
     ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"].map((role) => [
@@ -72,6 +73,8 @@ export function projectGithubGates(
     );
     const valid =
       triageReadable &&
+      !snapshot.github?.stale &&
+      !snapshot.github?.discoveryFailed &&
       detail &&
       !detail.stale &&
       detail.tickets.every(
@@ -214,9 +217,16 @@ export function projectGithubGates(
         evidence.version !== 3
       )
         state = "unknown";
+      const handoffKey = `${item.github.repository.toLowerCase()}:${item.github.issueId}:${stage}`;
+      const approvalIdentity = JSON.stringify(approval);
+      if (state === "current") handoffApprovals.set(handoffKey, approvalIdentity);
+      else if (state === "stale") handoffApprovals.delete(handoffKey);
       record.approved = {
         ...approval,
         remoteState: state,
+        ...(state === "unknown" && handoffApprovals.get(handoffKey) === approvalIdentity
+          ? { handoffRemoteState: "current" }
+          : {}),
         ...(headChanged ? { remoteStateReason: "head-changed" } : {}),
       };
       upstream = state;

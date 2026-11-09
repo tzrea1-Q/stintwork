@@ -213,7 +213,7 @@ test("Chinese history formats dates with Intl and replays original non-ASCII out
   expect(dates[0]).toHaveAttribute("datetime", recorded.startedAt);
   expect(dates[0]).toHaveTextContent(date.format(new Date(recorded.startedAt)));
   expect(dates[1]).toHaveTextContent(date.format(new Date(recorded.endedAt as string)));
-  expect(history).toHaveTextContent("codex · 工单 1 · 已结束");
+  expect(history).toHaveTextContent("codex · 工单 01 · 已结束");
   expect(within(history).getByRole("article", { name: "交接" })).toHaveTextContent(
     "Handoff 原文 café",
   );

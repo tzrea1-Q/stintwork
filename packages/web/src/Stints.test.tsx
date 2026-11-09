@@ -190,7 +190,7 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
     />,
   );
   const history = screen.getByRole("list", { name: "Stint history" });
-  expect(history).toHaveTextContent("codex · Ticket 1 · finished");
+  expect(history).toHaveTextContent("codex · Ticket 01 · finished");
   expect(history).toHaveTextContent("Started 2026-10-09T10:00:00Z · Ended 2026-10-09T10:01:00Z");
   const handoff = within(history).getByRole("article", { name: "Handoff" });
   expect(handoff).toHaveTextContent("Where I stoppedImplemented code");

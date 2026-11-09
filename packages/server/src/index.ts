@@ -120,6 +120,35 @@ export function createProjectServer(
   }
   let discoveryRunning = false;
   const detailRunning = new Set<number>();
+  const handoffApprovals = new Map<string, string>();
+  const sharedDetails = new Map<number, { read: Promise<number>; generation: number }>();
+  const backgroundDetails = new Set<number>();
+  const backgroundRunning = new Set<number>();
+  let discoveryRequested = false;
+  let backgroundTimer: ReturnType<typeof setTimeout> | undefined;
+  function drainBackgroundDetails() {
+    if (lifetime.signal.aborted || discoveryRunning || discoveryRequested) return;
+    for (const number of backgroundDetails) {
+      if (detailRunning.size >= 2) break;
+      if (!github?.items.some((item) => item.number === number && item.detail?.stale)) {
+        backgroundDetails.delete(number);
+        continue;
+      }
+      if (gateWriteActive(`github-${number}`)) continue;
+      backgroundDetails.delete(number);
+      backgroundRunning.add(number);
+      void refreshGithubDetail(number).finally(() => {
+        backgroundRunning.delete(number);
+        drainBackgroundDetails();
+      });
+    }
+    if (backgroundDetails.size && !backgroundTimer) {
+      backgroundTimer = setTimeout(() => {
+        backgroundTimer = undefined;
+        drainBackgroundDetails();
+      }, 1000);
+    }
+  }
   const pendingStintDetails = new Set<number>();
   const stintDetailTimers = new Map<number, ReturnType<typeof setTimeout>>();
   const stintDetailAttempts = new Map<number, number>();
@@ -294,7 +323,7 @@ export function createProjectServer(
         ...(branch ? { branch } : {}),
       },
     );
-    projectGithubGates(snapshot, root, project);
+    projectGithubGates(snapshot, root, project, handoffApprovals);
     projectLocalApprovals(snapshot, root, project);
     readReviewEvidence(project, snapshot);
     for (const item of snapshot.workItems) item.gateWriteActive = gateWriteActive(item.slug);
@@ -378,6 +407,10 @@ export function createProjectServer(
     cached = undefined;
     knownRepository = undefined;
     knownIssues.clear();
+    handoffApprovals.clear();
+    backgroundDetails.clear();
+    clearTimeout(backgroundTimer);
+    backgroundTimer = undefined;
     pendingStintDetails.clear();
     for (const timer of stintDetailTimers.values()) clearTimeout(timer);
     stintDetailTimers.clear();
@@ -931,6 +964,11 @@ export function createProjectServer(
         void refreshGithub().then(() => refresh());
       for (const number of pendingRecovery.keys()) pendingStintDetails.add(number);
       drainStintDetails();
+      if (!github?.error && generation === trackerGeneration) {
+        for (const item of github?.items ?? [])
+          if (item.detail?.stale) backgroundDetails.add(item.number);
+        drainBackgroundDetails();
+      }
     }
   }
   const pendingRecovery = new Map<number, Array<() => void>>();
@@ -1070,13 +1108,34 @@ export function createProjectServer(
       (action === "load-more" && !github?.cursor && !github?.retryable)
     )
       return context.text("Discovery unavailable", 409);
-    if (discoveryRunning || detailRunning.size) return context.text("Discovery busy", 409);
-    await refreshGithub(action === "load-more");
+    if (discoveryRunning || [...detailRunning].some((number) => !backgroundRunning.has(number)))
+      return context.text("Discovery busy", 409);
+    discoveryRequested = true;
+    try {
+      await Promise.all([...backgroundRunning].map((number) => sharedDetails.get(number)?.read));
+      await refreshGithub(action === "load-more");
+    } finally {
+      discoveryRequested = false;
+      drainBackgroundDetails();
+    }
     refresh();
     return context.json(coreTextWire(publicSnapshot()));
   });
   const beginDetail = createDetailPublisher();
-  async function refreshGithubDetail(number: number) {
+  function refreshGithubDetail(number: number): Promise<number> {
+    const existing = sharedDetails.get(number);
+    if (existing)
+      return existing.generation === trackerGeneration
+        ? existing.read
+        : existing.read.then(() => refreshGithubDetail(number));
+    const read = readGithubDetail(number);
+    sharedDetails.set(number, { read, generation: trackerGeneration });
+    void read.finally(() => {
+      if (sharedDetails.get(number)?.read === read) sharedDetails.delete(number);
+    });
+    return read;
+  }
+  async function readGithubDetail(number: number) {
     if (lifetime.signal.aborted) return 409;
     const item = github?.items.find((entry) => entry.number === number);
     if (
@@ -1472,6 +1531,7 @@ export function createProjectServer(
       clearTimeout(settle);
       clearInterval(metadataPoll);
       clearInterval(viewerPoll);
+      clearTimeout(backgroundTimer);
       for (const timer of stintDetailTimers.values()) clearTimeout(timer);
       stintDetailTimers.clear();
       try {

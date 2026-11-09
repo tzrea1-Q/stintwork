@@ -39,6 +39,8 @@ const scenarios = [
   "cooldown",
   "detail-cooldown",
   "in-flight",
+  "background-sharing",
+  "cleared-handoff",
 ] as const;
 
 test.each(scenarios)(
@@ -176,6 +178,73 @@ test.each(scenarios)(
         ...detailReplies,
       };
       await gh.script(replies);
+      if (scenario === "cleared-handoff") {
+        const workflowPath = join(root, ".stintwork/github/github/gh-aw/1433/workflow.yaml");
+        await mkdir(join(root, ".stintwork/github/github/gh-aw/1433"), { recursive: true });
+        await writeFile(
+          workflowPath,
+          JSON.stringify({
+            workflow: "feature",
+            stage: "clarify",
+            github: {
+              host: "github.com",
+              repositoryId: "R_test",
+              repository: "github/gh-aw",
+              issueId: parent.node_id,
+              number: 1433,
+              url: parent.html_url,
+            },
+            stages: {
+              clarify: {
+                approved: {
+                  at: "2026-10-10T00:00:00Z",
+                  remote: { version: 3, parentId: parent.node_id, digest: "ignored" },
+                },
+              },
+            },
+          }),
+        );
+        await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+        await writeFile(
+          join(root, ".stintwork/local/stints/earlier.jsonl"),
+          [
+            {
+              type: "started",
+              at: "2026-10-09T10:00:00Z",
+              stint: {
+                id: "earlier",
+                workItem: "github-1433",
+                ticket: null,
+                stage: "clarify",
+                agent: "codex",
+                baseCommit: "base",
+                worktree: { path: "/worktree", branch: "branch" },
+                brief: {
+                  prompt: "Work",
+                  skill: null,
+                  pointers: [],
+                  changedPaths: [],
+                  lastHandoff: null,
+                },
+              },
+            },
+            {
+              type: "ended",
+              at: "2026-10-09T10:20:00Z",
+              status: "finished",
+              handoff: {
+                stint: "earlier",
+                agent: "codex",
+                stoppedAt: "Done",
+                unresolved: "Question",
+                nextStep: "Approve",
+              },
+            },
+          ]
+            .map((entry) => JSON.stringify(entry))
+            .join("\n"),
+        );
+      }
       const { createProjectServer } = await import("./index.js");
       const server = createProjectServer(root, join(root, "web"), {
         githubViewerIntervalMs: scenario === "cooldown" ? 100 : undefined,
@@ -201,6 +270,67 @@ test.each(scenarios)(
         ]);
         expect(broadcast?.workItems[0]).toEqual(initial.workItems[0]);
         expect(initial.workItems[0].spec.text).toBe("Recorded body");
+        if (scenario === "cleared-handoff") {
+          expect(initial.workItems[0].stages.clarify.approved.remoteState).toBe("current");
+          expect(initial.workItems[0].stints[0].handoff.unresolved).toBe("Question");
+          expect(
+            initial.attentionItems.filter(
+              (entry: { kind: string }) => entry.kind === "handoff-unresolved",
+            ),
+          ).toHaveLength(0);
+          const stale = await (
+            await server.app.request("/api/github/discovery/refresh", { method: "POST" })
+          ).json();
+          expect(stale.workItems[0].github.stale).toBe(true);
+          expect(stale.workItems[0].stages.clarify.approved.remoteState).toBe("unknown");
+          expect(
+            stale.attentionItems.filter(
+              (entry: { kind: string }) => entry.kind === "handoff-unresolved",
+            ),
+          ).toHaveLength(0);
+          return;
+        }
+        if (scenario === "background-sharing") {
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": {
+              stdout: { ...parent, body: "Changed remotely" },
+              effect: "Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500)",
+            },
+          });
+          const before = (await gh.calls()).length;
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(
+              async () =>
+                (await gh.calls())
+                  .slice(before)
+                  .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433").length,
+            )
+            .toBe(1);
+          const response = await server.app.request("/api/github/items/1433/refresh", {
+            method: "POST",
+          });
+          expect(response.status).toBe(200);
+          expect((await response.json()).workItems[0].spec.text).toBe("Changed remotely");
+          expect(
+            (await gh.calls())
+              .slice(before)
+              .filter(({ args }) => args[1] === "repos/github/gh-aw/issues/1433"),
+          ).toHaveLength(1);
+          await gh.script({
+            ...replies,
+            "api repos/github/gh-aw/issues/1433": { stdout: { ...parent, body: "Changed again" } },
+          });
+          await server.app.request("/api/github/discovery/refresh", { method: "POST" });
+          await expect
+            .poll(
+              async () =>
+                (await (await server.app.request("/api/project")).json()).workItems[0].spec.text,
+            )
+            .toBe("Changed again");
+          return;
+        }
         if (scenario === "cooldown") {
           await server.start();
           live.messages.length = 0;
@@ -380,9 +510,7 @@ test.each(scenarios)(
           ).toEqual([]);
           await post("/api/github/discovery/refresh");
           const oneRefreshed = await post("/api/github/items/1433/refresh");
-          expect(oneRefreshed.github.stale).toBe(true);
           expectKnown(oneRefreshed, 1433);
-          expectUnknown(oneRefreshed, 1533);
           await post("/api/github/items/1533/refresh");
           await gh.script({
             ...replies,

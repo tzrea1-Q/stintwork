@@ -371,6 +371,10 @@ test("GitHub ticket numbers use issue format while local tickets keep Markdown f
   view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
   expect(screen.getByText("#2 · Model")).toBeInTheDocument();
   expect(screen.getByText(/Blocked by #1/)).toBeInTheDocument();
+  item.tickets[0].status = "unknown";
+  view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.getByText("unknown")).toBeInTheDocument();
+  expect(screen.queryByText(/Blocked by #1/)).not.toBeInTheDocument();
 });
 
 test("shipped GitHub drawer does not show empty details until known", () => {

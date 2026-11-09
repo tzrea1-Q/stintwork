@@ -117,6 +117,17 @@ test.each(["local", "GitHub"])("an upstream reopen restores a later %s handoff",
   const open = () =>
     deriveAttentionItems(snapshot).filter((entry) => entry.kind === "handoff-unresolved");
   expect(open()).toHaveLength(0);
+  if (item.github) {
+    item.stages.tickets.approved = {
+      ...approval,
+      remoteState: "unknown",
+      handoffRemoteState: "current",
+    };
+    expect(open()).toHaveLength(0);
+    item.stages.tickets.approved = { ...approval, remoteState: "unknown" };
+    expect(open()).toHaveLength(1);
+    item.stages.tickets.approved = approval;
+  }
   item.stages.spec = { reopened: { at: "2026-10-09T10:26:00Z" } };
   expect(open()).toHaveLength(1);
   item.stages.tickets.approved = { ...approval, at: "2026-10-09T10:27:00Z" };
