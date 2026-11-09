@@ -543,6 +543,7 @@ export function addShipRoutes(
                 throw new LocalMergeRefusal({ code: "ship.methodChanged" });
               const requested = { ...pr, mergeMethod: method };
               pr = requested;
+              await verifyGithubWrite();
               await saveWorkflow(
                 checkout,
                 item,
@@ -606,8 +607,7 @@ export function addShipRoutes(
           });
         }
         if (action !== "merge-local") ({ github, remote: githubRemote } = await validateGithub());
-        else if (initial.item.github && github && !(await githubSource?.verifyIdentity(github)))
-          throw new LocalMergeRefusal({ code: "gate.identityAmbiguous" });
+        else await verifyGithubWrite();
         if (action === "merge-local") {
           const { workflows, item } = locate();
           const commit = await mergeLocalWorkItem(
@@ -624,6 +624,7 @@ export function addShipRoutes(
             },
             async () => {
               await validateGithub();
+              await verifyGithubWrite();
               return merged?.commit;
             },
           );
@@ -653,6 +654,7 @@ export function addShipRoutes(
           }
           const at = new Date().toISOString();
           const record = { by, at, commit: report.headCommit };
+          await verifyGithubWrite();
           const commit = await saveWorkItemReview(worktree, slug, [], undefined, {
             workflow: workflowGate(
               item.github

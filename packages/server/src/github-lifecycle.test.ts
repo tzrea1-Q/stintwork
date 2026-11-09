@@ -29,6 +29,99 @@ const page = {
   },
 };
 
+test.each([
+  ["merge local", "/api/work-items/github-1/ship/merge-local", {}],
+  ["send back from Ship", "/api/work-items/github-1/ship/send-back", {}],
+  ["open PR", "/api/work-items/github-1/ship/open-pr", {}],
+  ["merge PR", "/api/work-items/github-1/ship/merge-pr", {}],
+  ["approve gate", "/api/github/items/1/gates/approve", {}],
+  ["reopen gate", "/api/github/items/1/gates/reopen", {}],
+  ["accept memory", "/api/work-items/github-1/memory-proposals/decision", { status: "accepted" }],
+  ["reject memory", "/api/work-items/github-1/memory-proposals/decision", { status: "rejected" }],
+  ["finding decision", "/api/work-items/github-1/findings/decision", {}],
+  ["finding send back", "/api/work-items/github-1/findings/send-back", {}],
+  ["accept risk", "/api/work-items/github-1/risky-paths/accept", {}],
+  ["stage agent", "/api/work-items/github-1/stages/review/agent", {}],
+  ["local gate", "/api/work-items/github-1/gates/review/approve", {}],
+  ["local gate reopen", "/api/work-items/github-1/gates/review/reopen", {}],
+  ["start checks", "/api/work-items/github-1/checks", {}],
+  ["cancel checks", "/api/work-items/github-1/checks/cancel", {}],
+  ["start stint", "/api/stints", { workItem: "github-1" }],
+  ["move roadmap item", "/api/roadmap", { kind: "move", workItem: "github-1" }],
+  ["resolve handoff", "/api/stints/s1/resolve-handoff", {}],
+  ["answer handoff", "/api/stints/s1/handoff-answer", {}],
+  ["stop stint", "/api/stints/s1/stop", {}],
+  ["confirm agent", "/api/stints/s1/confirm-agent", {}],
+  ["answer permission", "/api/stints/s1/permissions/p1", {}],
+])("%s verifies the viewer inside the cache TTL", async (_name, path, body) => {
+  const root = await mkdtemp(join(tmpdir(), "github-write-viewer-"));
+  const oldPath = process.env.PATH;
+  let server: ReturnType<typeof createProjectServer> | undefined;
+  try {
+    execFileSync("git", ["init", "-q", root]);
+    execFileSync("git", [
+      "-C",
+      root,
+      "remote",
+      "add",
+      "origin",
+      "https://github.com/example/project.git",
+    ]);
+    await mkdir(join(root, "docs/agents"), { recursive: true });
+    await mkdir(join(root, ".stintwork/local/stints"), { recursive: true });
+    await mkdir(join(root, "web"));
+    await writeFile(join(root, "web/index.html"), "<!doctype html>");
+    await writeFile(join(root, "docs/agents/issue-tracker.md"), "# Issue tracker: GitHub\n");
+    await writeFile(
+      join(root, ".stintwork/local/stints/s1.jsonl"),
+      `${JSON.stringify({
+        type: "started",
+        at: "2026-01-01T00:00:00Z",
+        stint: {
+          id: "s1",
+          workItem: "github-1",
+          stage: "review",
+          ticket: null,
+          agent: "codex",
+          worktree: { path: root, branch: "stintwork/github-1" },
+          baseCommit: "abc",
+          brief: { prompt: "", skill: null, lastHandoff: null, changedPaths: [], pointers: [] },
+        },
+      })}\n${JSON.stringify({ type: "ended", at: "2026-01-01T00:01:00Z", status: "finished" })}\n`,
+    );
+    const gh = await fakeGh(join(root, "bin"));
+    process.env.PATH = gh.path;
+    const replies = {
+      "auth status": {},
+      "api user": { stdout: { id: 101, login: "101" } },
+      "api repos/example/project": {
+        stdout: {
+          node_id: "R_1",
+          full_name: "example/project",
+          html_url: "https://github.com/example/project",
+        },
+      },
+      "api graphql": { stdout: page },
+    };
+    await gh.script(replies);
+    server = createProjectServer(root, join(root, "web"), { githubViewerNow: () => 100_000 });
+    const initial = await (await server.app.request("/api/project")).json();
+    expect(initial.github.items).toHaveLength(1);
+    await gh.script({ ...replies, "api user": { stdout: { id: 202, login: "202" } } });
+    const response = await server.app.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(response.status).toBe(409);
+    expect((await response.json()).reasonMessage.code).toBe("gate.identityAmbiguous");
+  } finally {
+    await server?.stop();
+    process.env.PATH = oldPath;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("concurrent offline fallback never returns a fresh snapshot", async () => {
   const root = await mkdtemp(join(tmpdir(), "github-offline-race-"));
   const oldPath = process.env.PATH;

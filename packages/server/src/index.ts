@@ -5,6 +5,7 @@ import {
   coreTextWire,
   type Health,
   indexProject,
+  indexStints,
   type Warning,
 } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
@@ -1124,6 +1125,42 @@ export function createProjectServer(
       (path === "/api/stints" || path.includes("/brief-preview") || path.includes("/gates/"))
     ) {
       if (!(await verifyOfflineViewer())) return context.json(coreTextWire(publicSnapshot()), 503);
+    }
+    await next();
+  });
+  app.use("/api/*", async (context, next) => {
+    if (context.req.method !== "POST") return next();
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin) return next();
+    const path = new URL(context.req.url).pathname;
+    const workItem = /^\/api\/work-items\/(github-\d+)\//.exec(path)?.[1];
+    const gate = /^\/api\/github\/items\/(\d+)\/gates\//.exec(path)?.[1];
+    const stint = /^\/api\/stints\/([^/]+)\//.exec(path)?.[1];
+    let slug = workItem ?? (gate ? `github-${gate}` : undefined);
+    if (stint) slug = indexStints(files).stints.find((entry) => entry.id === stint)?.workItem;
+    if (path === "/api/stints" || path === "/api/roadmap") {
+      const body = await context.req.raw
+        .clone()
+        .json()
+        .catch(() => undefined);
+      if (body && typeof body.workItem === "string") slug = body.workItem;
+    }
+    const readOnlyShip = /\/ship\/(?:preview-pr|preview-merge-pr|pr-checks)$/.test(path);
+    if (slug?.match(/^github-\d+$/) && !readOnlyShip) {
+      const current = github;
+      // Stopping a pending recovery must remain possible before discovery has established an identity.
+      if (!current && /^\/api\/stints\/[^/]+\/stop$/.test(path)) return next();
+      let valid = false;
+      try {
+        valid = !!current && (await githubBriefSource.verifyIdentity(current, true));
+      } catch {
+        // An unverified identity cannot authorize a write.
+      }
+      if (!valid)
+        return context.json(
+          coreTextWire({ reason: coreText({ code: "gate.identityAmbiguous" }), code: "identity" }),
+          409,
+        );
     }
     await next();
   });
