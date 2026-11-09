@@ -2,6 +2,17 @@
 
 All notable changes to Stintwork are recorded here, in Keep a Changelog style.
 
+## Unreleased — 0.2.0
+
+- Project setup preserves existing tracker guides by default and previews an explicit switch to local Markdown.
+- English and Simplified Chinese UI, responsive layouts and shared controls across the application.
+- Faster first run: prepare only the selected Claude Code or Codex adapter at first stint, using a compatible Installed source or a pinned Bundled fallback.
+- Automatically attempt to recover eligible Claude Code and Codex stints after a server restart; failed recovery falls back to a checkpoint and a new stint.
+- Read GitHub Issues as project memory, with work items, tickets and revision-bound gate evidence; agents write issues through their own skills and `gh`.
+- Generate a parent-closing keyword for new GitHub-tracked Ship pull requests. GitHub closes the parent when merged into the default branch.
+
+See the [draft release notes](docs/release-notes/0.2.0.md) for verification, pending milestone exits and limitations.
+
 ## 0.1.1 — 2026-10-12
 
 ### Local data and checkpoints
