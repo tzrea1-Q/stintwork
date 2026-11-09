@@ -43,10 +43,10 @@ jobs:
       - run: pnpm --filter @stintwork/web... build
       - run: pnpm test:e2e --shard=${{ matrix.shard }}/2
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: browser-layout-evidence-${{ matrix.shard }}
-          retention-days: 7
+          retention-days: 3
           path: |
             packages/web/coverage/e2e/test-results/
             packages/web/coverage/e2e/report/
