@@ -397,10 +397,11 @@ export function addShipRoutes(
                   : undefined;
               if (parent) details.body += `\n\nCloses #${parent}`;
               if (
-                existing &&
+                (existing || parent) &&
                 (typeof repository.defaultBranch !== "string" || !repository.defaultBranch)
               )
                 throw new LocalMergeRefusal({ code: "ship.githubRepository" });
+              const closure = { parentWillNotClose: !!parent && base !== repository.defaultBranch };
               const adoption = existing
                 ? {
                     title: existing.title,
@@ -409,18 +410,16 @@ export function addShipRoutes(
                     existingPrNumber: existing.number,
                     existingPrUrl: existing.url,
                     parentNumber: parent,
-                    parentWillNotClose:
-                      !!parent && existing.baseRefName !== repository.defaultBranch,
                   }
                 : {};
               if (action === "preview-pr") {
-                const preview = { ...details, ...adoption, confirmation: randomUUID() };
+                const preview = { ...details, ...closure, ...adoption, confirmation: randomUUID() };
                 previews.set(slug, { preview, expires: Date.now() + 10 * 60_000 });
                 return context.json(coreTextWire({ preview }));
               }
               const saved = previews.get(slug);
               const expected = saved
-                ? { ...details, ...adoption, confirmation: saved.preview.confirmation }
+                ? { ...details, ...closure, ...adoption, confirmation: saved.preview.confirmation }
                 : undefined;
               if (
                 !saved ||

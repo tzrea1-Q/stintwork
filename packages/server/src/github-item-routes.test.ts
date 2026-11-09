@@ -604,12 +604,29 @@ test("GitHub pull request ship records the merged workflow", async () => {
       parentWillNotClose: warning,
     });
   }
+  for (const [defaultBranch, warning] of [
+    ["main", false],
+    ["release", true],
+  ] as const) {
+    await gh.script({
+      "repo view": { stdout: { ...repo.stdout, defaultBranchRef: { name: defaultBranch } } },
+      "pr view": { code: 1, stdout: "no pull requests found for branch" },
+    });
+    const response = await post("/api/work-items/github-1/ship/preview-pr", {});
+    expect(response.status, await response.clone().text()).toBe(200);
+    expect((await response.json()).preview).toMatchObject({
+      base: "main",
+      parentWillNotClose: warning,
+      body: expect.stringContaining("Closes #1"),
+    });
+  }
   await gh.script({
     "repo view": {
       stdout: {
         nameWithOwner: "Example/Project",
         url: "https://github.com/Example/Project",
         mergeCommitAllowed: true,
+        defaultBranchRef: { name: "main" },
       },
     },
     "api repos/Example/Project/branches/main/protection": {
@@ -675,6 +692,7 @@ test("GitHub pull request ship retries cleanup after recording the merge", async
         nameWithOwner: "Example/Project",
         url: "https://github.com/Example/Project",
         mergeCommitAllowed: true,
+        defaultBranchRef: { name: "main" },
       },
     },
     "api repos/Example/Project/branches/main/protection": {
