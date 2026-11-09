@@ -683,6 +683,8 @@ function BriefPreviewSheet({
                   <ul>
                     {brief.changedPaths.map((path) => (
                       <li key={path}>
+                        {path.endsWith("/workflow.yaml") && `${t.stints.changedWorkflow}: `}
+                        {path.endsWith("/review.yaml") && `${t.stints.changedReview}: `}
                         <code>{path}</code>
                       </li>
                     ))}

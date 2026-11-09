@@ -30,7 +30,7 @@ test.each([
   { ticket: 1, live: true },
   { ticket: null, live: true },
 ])(
-  "resuming $ticket removes the source handoff, keeps new questions, and survives restart (WebSocket: $live)",
+  "resuming $ticket retains the source handoff and new questions, and survives restart (WebSocket: $live)",
   async ({ ticket, live }) => {
     const parent = await mkdtemp(join(tmpdir(), "stintwork-superseded-handoffs-"));
     const tracked = {
@@ -144,7 +144,7 @@ test.each([
     const resumed = await start();
     expect(resumed.brief.lastHandoff?.stint).toBe(first.id);
     await expect.poll(async () => (await latest())?.workItems[0].activeStint?.id).toBe(resumed.id);
-    expect((await latest())?.attentionItems).toEqual([]);
+    expect((await latest())?.attentionItems.map((item) => item.stintId)).toEqual([first.id]);
     expect(
       (await project.app.request(`/api/stints/${resumed.id}/stop`, { method: "POST" })).status,
     ).toBe(202);
@@ -154,6 +154,7 @@ test.each([
         (await latest())?.attentionItems.filter((item) => item.kind === "handoff-unresolved"),
       )
       .toMatchObject([
+        { kind: "handoff-unresolved", stintId: first.id },
         { kind: "handoff-unresolved", stintId: resumed.id, details: "A new question." },
       ]);
     tracked.socket?.terminate();
@@ -164,19 +165,21 @@ test.each([
       (await snapshot()).attentionItems
         .filter((item) => item.kind === "handoff-unresolved")
         .map((item) => item.stintId),
-    ).toEqual([resumed.id]);
+    ).toEqual([first.id, resumed.id]);
     work = [{ type: "expect-prompt", includes: `Last handoff (${resumed.id}, codex):` }];
     unresolved = "None";
     const finished = await start();
     await ended(finished.id);
     expect(
       (await snapshot()).attentionItems.filter((item) => item.kind === "handoff-unresolved"),
-    ).toEqual([]);
+    ).toMatchObject([{ stintId: first.id }, { stintId: resumed.id }]);
     await project.stop();
     project = createProjectServer(root, join(root, "web"), options);
     tracked.projects.push(project);
     const rebuilt = await snapshot();
-    expect(rebuilt.attentionItems.filter((item) => item.kind === "handoff-unresolved")).toEqual([]);
+    expect(
+      rebuilt.attentionItems.filter((item) => item.kind === "handoff-unresolved"),
+    ).toMatchObject([{ stintId: first.id }, { stintId: resumed.id }]);
     expect(rebuilt.attentionItems.filter((item) => item.kind === "gate-ready")).toHaveLength(
       ticket === null ? 1 : 0,
     );

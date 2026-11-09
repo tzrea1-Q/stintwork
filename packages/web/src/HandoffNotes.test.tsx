@@ -81,6 +81,42 @@ test.each(["note", "dismiss"])(
   },
 );
 
+test("cancel keeps the handoff; confirming records its resolution and returns focus", async () => {
+  const user = userEvent.setup();
+  const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetch);
+  const snapshot = handoffSnapshot();
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  const trigger = screen.getByRole("button", { name: "Mark resolved" });
+  await user.click(trigger);
+  await user.keyboard("{Escape}");
+  expect(trigger).toHaveFocus();
+  expect(screen.getByText("Handoff · Test Agent")).toBeInTheDocument();
+  expect(fetch).not.toHaveBeenCalled();
+  await user.click(trigger);
+  await user.click(
+    within(screen.getByRole("dialog", { name: "Confirm resolution" })).getByRole("button", {
+      name: "Cancel",
+    }),
+  );
+  expect(trigger).toHaveFocus();
+  expect(fetch).not.toHaveBeenCalled();
+  await user.click(trigger);
+  await user.click(
+    within(screen.getByRole("dialog", { name: "Confirm resolution" })).getByRole("button", {
+      name: "Confirm resolution",
+    }),
+  );
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/stints/stint/resolve-handoff",
+    expect.objectContaining({ method: "POST" }),
+  );
+  expect(await screen.findByText("Handoff answered.")).toHaveFocus();
+  rerender(<Board snapshot={{ ...snapshot, attentionItems: [] }} />);
+  expect(screen.getByText("Nothing needs you right now.")).toBeInTheDocument();
+});
+
 test("failed handoff answers keep the note editable and allow retry without claiming it was saved", async () => {
   const user = userEvent.setup();
   const fetch = vi
@@ -103,6 +139,30 @@ test("failed handoff answers keep the note editable and allow retry without clai
   await user.click(screen.getByRole("button", { name: "Save developer note" }));
   expect(await screen.findByText("Handoff answered.")).toBeInTheDocument();
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+test("a failed resolution closes the confirmation, exposes the error and allows retry", async () => {
+  const user = userEvent.setup();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ reason: "Could not persist the resolution." }), {
+        status: 503,
+      }),
+    ),
+  );
+  render(<Board snapshot={handoffSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  const trigger = screen.getByRole("button", { name: "Mark resolved" });
+  await user.click(trigger);
+  await user.click(
+    within(screen.getByRole("dialog", { name: "Confirm resolution" })).getByRole("button", {
+      name: "Confirm resolution",
+    }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Could not persist the resolution.");
+  expect(trigger).toHaveFocus();
+  expect(trigger).toBeEnabled();
 });
 
 test("whitespace-only notes cannot be submitted, while dismiss stays available", async () => {

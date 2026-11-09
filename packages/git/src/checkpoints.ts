@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CoreTextError, githubWorkflowPath } from "@stintwork/core";
+import { CoreTextError, githubWorkflowPath, isProjectMemoryPath } from "@stintwork/core";
 import { execFile } from "node:child_process";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
@@ -150,7 +150,18 @@ export async function changedSince(
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(workItem))
     throw new CoreTextError({ code: "git.invalidSlug" });
   const prefix = `.scratch/${workItem}/`;
-  const paths = [`${prefix}spec.md`, `${prefix}issues/`];
+  const paths = [
+    `${prefix}spec.md`,
+    `${prefix}issues/`,
+    `${prefix}workflow.yaml`,
+    `${prefix}review.yaml`,
+    ".stintwork/github/",
+    "GLOSSARY.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "docs/adr/",
+    "docs/agents/",
+  ];
   const outputs = await Promise.all(
     [
       ["diff", "--name-only", "--no-renames", "-z", checkpointCommit, "--", ...paths],
@@ -160,7 +171,14 @@ export async function changedSince(
   return [...new Set(outputs.flatMap(({ stdout }) => stdout.split("\0")))]
     .filter(
       (path) =>
+        isProjectMemoryPath(path) ||
         path === `${prefix}spec.md` ||
+        path === `${prefix}workflow.yaml` ||
+        path === `${prefix}review.yaml` ||
+        (/^github-\d+$/.test(workItem) &&
+          new RegExp(`^\\.stintwork/github/[^/]+/[^/]+/${workItem.slice(7)}/workflow\\.yaml$`).test(
+            path,
+          )) ||
         (path.startsWith(`${prefix}issues/`) &&
           /^\d{2,}-[^/]+\.md$/.test(path.slice(`${prefix}issues/`.length))),
     )

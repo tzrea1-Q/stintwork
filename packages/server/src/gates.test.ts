@@ -352,7 +352,10 @@ test("gate writes serialize with stage agent choices and stint starts", async ()
   const approving = action(project);
   try {
     await expect.poll(() => write.mock.calls.length).toBe(1);
-    expect((await action(project)).status).toBe(409);
+    expect((await snapshot(project)).workItems[0].gateWriteActive).toBe(true);
+    const blocked = await action(project);
+    expect(blocked.status).toBe(409);
+    expect(await blocked.json()).toMatchObject({ reasonMessage: { code: "gate.activeWrite" } });
     const choose = await project.app.request("/api/work-items/first/stages/review/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -371,6 +374,7 @@ test("gate writes serialize with stage agent choices and stint starts", async ()
     release(null);
     await approving;
   }
+  expect((await snapshot(project)).workItems[0].gateWriteActive).toBe(false);
 });
 
 test("a gate change during brief preparation refuses the stale stint start", async () => {

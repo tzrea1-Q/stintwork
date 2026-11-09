@@ -373,6 +373,11 @@ export const en = {
     developerNote: "Developer note",
     noteHelp:
       "Included in the next brief for this work item, then consumed when that stint starts.",
+    markResolved: "Mark resolved",
+    confirmResolve: "Confirm resolution",
+    resolveWarning:
+      "This records a resolution and removes the handoff from attention. This cannot be undone.",
+    cancelResolve: "Cancel",
     saveNote: "Save developer note",
     dismiss: "Dismiss",
     handoffAnswered: "Handoff answered.",
@@ -783,6 +788,8 @@ export const en = {
     firstHandoff: "None — start from the project conventions and work item scope.",
     developerNotes: "Developer notes",
     changedPaths: "Changed since the last handoff",
+    changedWorkflow: "Gate and workflow decisions",
+    changedReview: "Review and memory proposal decisions",
     none: "None.",
     filesWin: "Where the handoff and the files disagree, the files win.",
     fullPrompt: "Full prompt",

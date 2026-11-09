@@ -48,6 +48,86 @@ afterEach(() => {
   window.history.replaceState({}, "", "/");
 });
 
+test("reopen uses its own evidence when dependency detail prevents approval", async () => {
+  const item = project("implement").workItems[0];
+  item.stages.tickets = { approved: { remoteState: "unknown" } };
+  item.github = {
+    repository: "a/b",
+    repositoryId: "R",
+    issueId: "I",
+    number: 1,
+    url: "https://github.com/a/b/issues/1",
+    complete: false,
+    dependenciesUnknown: true,
+    reopenDigest: "incomplete-digest",
+    reviewHead: "head",
+  };
+  const fetcher = vi
+    .fn()
+    .mockResolvedValue(new Response(JSON.stringify({ approval: "unknown" }), { status: 200 }));
+  vi.stubGlobal("fetch", fetcher);
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("button", { name: "Approve Implement" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Reopen Tickets" }));
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/github/items/1/gates/reopen",
+    expect.objectContaining({
+      body: JSON.stringify({
+        stage: "tickets",
+        reviewedDigest: "incomplete-digest",
+        reviewedHead: "head",
+      }),
+    }),
+  );
+});
+
+test.each([
+  ["en", "A stint, check or workflow write is active for this work item."],
+  ["zh-CN", "此工作项有活跃的 Stint、检查或工作流写入。"],
+])("gate reports a busy write in %s", (language, reason) => {
+  localStorage.setItem(languageStorageKey, language);
+  const item = project().workItems[0];
+  item.gateWriteActive = true;
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(reason);
+});
+
+test.each([
+  ["en", "A stint, check or workflow write is active for this work item."],
+  ["zh-CN", "此工作项有活跃的 Stint、检查或工作流写入。"],
+])("gate displays a coded refusal in %s", async (language, reason) => {
+  localStorage.setItem(languageStorageKey, language);
+  const item = project().workItems[0];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          reasonMessage: { code: "gate.activeWrite" },
+        }),
+        { status: 409 },
+      ),
+    ),
+  );
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  await userEvent.click(
+    screen.getByRole("button", { name: language === "en" ? "Approve Implement" : "批准实现" }),
+  );
+  expect(await screen.findByRole("alert")).toHaveTextContent(reason);
+});
+
 test.each([
   [false, "所有工单都必须解决后才能批准。"],
   [true, "此工作项有正在运行的 Stint。请先结束或停止，再批准。"],
@@ -252,6 +332,62 @@ test("gate evidence shows tickets, last checkpoint, handoff and open warnings in
   expect(gate.getByText("Confirm the output")).toBeInTheDocument();
   expect(gate.getByText("Spec needs attention")).toBeInTheDocument();
   expect(gate.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+});
+
+test.each([
+  ["en", "Mark resolved", "Confirm resolution"],
+  ["zh-CN", "标记为已解决", "确认解决"],
+])("last handoff offers resolution in %s", async (language, label, confirmation) => {
+  localStorage.setItem(languageStorageKey, language);
+  const fetch = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetch);
+  const item = project().workItems[0];
+  item.stints = [stint];
+  render(
+    <LanguageProvider>
+      <GateView item={item} />
+    </LanguageProvider>,
+  );
+  await userEvent.click(screen.getByRole("button", { name: label }));
+  expect(fetch).not.toHaveBeenCalled();
+  await userEvent.click(
+    within(screen.getByRole("dialog", { name: confirmation })).getByRole("button", {
+      name: confirmation,
+    }),
+  );
+  expect(fetch).toHaveBeenCalledWith(
+    "/api/stints/finished-stint/resolve-handoff",
+    expect.objectContaining({ method: "POST" }),
+  );
+});
+
+test("changing the last handoff resets its draft and resolution confirmation", async () => {
+  const user = userEvent.setup();
+  const fetcher = vi.fn().mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetcher);
+  const item = project().workItems[0];
+  item.stints = [stint];
+  const { rerender } = render(<GateView item={item} />);
+  await user.type(screen.getByRole("textbox", { name: /developer note/i }), "Earlier note");
+  await user.click(screen.getByRole("button", { name: "Mark resolved" }));
+  expect(screen.getByRole("dialog", { name: "Confirm resolution" })).toBeInTheDocument();
+
+  const later = {
+    ...stint,
+    id: "later-stint",
+    handoff: stint.handoff && { ...stint.handoff, stint: "later-stint" },
+  };
+  rerender(<GateView item={{ ...item, stints: [later, stint] }} />);
+  expect(screen.queryByRole("dialog", { name: "Confirm resolution" })).not.toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: /developer note/i })).toHaveValue("");
+  expect(screen.getByRole("button", { name: "Save developer note" })).toBeDisabled();
+  expect(fetcher).not.toHaveBeenCalled();
+  await user.type(screen.getByRole("textbox", { name: /developer note/i }), "New note");
+  await user.click(screen.getByRole("button", { name: "Save developer note" }));
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/stints/later-stint/handoff-answer",
+    expect.objectContaining({ body: JSON.stringify({ note: "New note" }) }),
+  );
 });
 
 test("approving sends the action once and waits for acknowledgement", async () => {

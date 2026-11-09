@@ -98,6 +98,7 @@ export function createProjectServer(
   );
   const readReviewEvidence = createReviewEvidenceReader(root, checks);
   let hasPermissionBinding = (_stintId: string, _requestId: string, _attemptId?: string) => false;
+  let gateWriteActive = (_slug: string) => false;
   let watchedPaths = new Set<string>();
   let github: GithubDiscovery | undefined;
   let githubSource: { viewer: { id: number; login: string }; origin: string } | undefined;
@@ -296,6 +297,10 @@ export function createProjectServer(
     projectGithubGates(snapshot, root, project);
     projectLocalApprovals(snapshot, root, project);
     readReviewEvidence(project, snapshot);
+    for (const item of snapshot.workItems) item.gateWriteActive = gateWriteActive(item.slug);
+    snapshot.attentionItems = snapshot.attentionItems.filter(
+      (item) => item.kind !== "gate-ready" || !gateWriteActive(item.workItem),
+    );
     for (const item of snapshot.workItems)
       if (item.activeStint)
         item.activeStint = projectStintPermissions(item.activeStint, hasPermissionBinding);
@@ -1316,7 +1321,6 @@ export function createProjectServer(
   };
   addBriefPreviewRoute(app, readProjectFiles, root, agentRegistry, refresh, githubBriefSource);
   addStintHistoryRoute(app, files, (...args) => hasPermissionBinding(...args));
-  addHandoffAnswerRoute(app, root, readProjectFiles, refresh);
   addWorkItemDiffRoute(app, root, readProjectFiles, () => snapshot);
   addRoadmapRoute(app, root, readProjectFiles, refresh, () => snapshot);
   addWorkItemCreationRoutes(app, root, readProjectFiles, refresh);
@@ -1341,6 +1345,16 @@ export function createProjectServer(
       pendingStintDetails.add(number);
       drainStintDetails();
     },
+  );
+  gateWriteActive = (slug) => stopStints.workflowWrites.has(slug) || checks.isActive(slug);
+  addHandoffAnswerRoute(
+    app,
+    root,
+    readProjectFiles,
+    refresh,
+    (slug) => stopStints.isActive(slug) || checks.isActive(slug),
+    stopStints.workflowWrites,
+    () => snapshot,
   );
   addGithubGateRoutes(
     app,

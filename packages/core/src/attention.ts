@@ -4,8 +4,12 @@ import { riskyPathAccepted } from "./review-evidence.js";
 import type { ProjectSnapshot } from "./project.js";
 import type { CheckpointWarning, StintEvent } from "./stints.js";
 import { hasUnresolvedHandoff } from "./developer-notes.js";
-import type { StageId } from "./workflows.js";
-import { deriveGateAttentionItems, deriveStaleApprovalAttentionItems } from "./gates.js";
+import { builtInWorkflows, type StageId, type WorkflowDefinitions } from "./workflows.js";
+import {
+  approvalReopenState,
+  deriveGateAttentionItems,
+  deriveStaleApprovalAttentionItems,
+} from "./gates.js";
 import type { MemoryProposalAttentionItem } from "./memory-proposals.js";
 
 export type AttentionItemSource = {
@@ -81,33 +85,43 @@ export function deriveAttentionItems(
   snapshot: Pick<ProjectSnapshot, "workItems"> &
     Partial<Pick<ProjectSnapshot, "agents" | "workflows">>,
 ): AttentionItem[] {
+  const workflows: WorkflowDefinitions = snapshot.workflows ?? builtInWorkflows;
   const workItemAttention = snapshot.workItems.flatMap<AttentionItem>((item) => {
     if (item.merged) return [];
-    // An unresolved handoff is answered by a later stint that started from it (same ticket,
-    // or same stage for stage-level stints); that later stint raises its own item if needed.
-    const stintsById = new Map(item.stints.map((stint) => [stint.id, stint]));
-    const supersededHandoffs = new Set(
-      item.stints.flatMap((later) => {
-        const earlier = later.lastHandoffStintId && stintsById.get(later.lastHandoffStintId);
-        return earlier &&
-          later.status !== "preparation-failed" &&
-          later.id !== earlier.id &&
-          later.workItem === earlier.workItem &&
-          later.ticket === earlier.ticket &&
-          (earlier.ticket !== null || later.stage === earlier.stage) &&
-          Date.parse(later.startedAt) >= Date.parse(earlier.endedAt ?? earlier.startedAt)
-          ? [earlier.id]
-          : [];
-      }),
-    );
     const handoffs: HandoffUnresolvedAttentionItem[] = item.stints
       .filter(
         (stint) =>
           stint.status !== "running" &&
           !stint.handoffAnswer &&
-          !supersededHandoffs.has(stint.id) &&
+          !item.reviewDecisions?.some(
+            (decision) =>
+              decision.kind === "handoff-unresolved" &&
+              decision.id === stint.id &&
+              decision.status === "resolved",
+          ) &&
           stint.handoff &&
-          hasUnresolvedHandoff(stint.handoff.unresolved),
+          hasUnresolvedHandoff(stint.handoff.unresolved) &&
+          !(() => {
+            const stage = item.stages[stint.stage];
+            const approval = stage?.approved;
+            if (
+              !approval ||
+              typeof approval !== "object" ||
+              !("at" in approval) ||
+              typeof approval.at !== "string"
+            )
+              return false;
+            const at = Date.parse(approval.at);
+            return (
+              at > Date.parse(stint.endedAt ?? stint.startedAt) &&
+              approvalReopenState(item.stages, workflows[item.workflow].stages, stint.stage) ===
+                "current" &&
+              (!("state" in approval) || approval.state === "current") &&
+              (item.github
+                ? "remoteState" in approval && approval.remoteState === "current"
+                : !("remoteState" in approval) || approval.remoteState === "current")
+            );
+          })(),
       )
       .map((stint) => ({
         kind: "handoff-unresolved",

@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { deriveAttentionItems } from "./attention.js";
 import type { BriefHandoff } from "./brief.js";
 import { indexProject } from "./project.js";
-import { summarizeStint, type StintLogEntry, type StintStatus } from "./stints.js";
+import { type StintLogEntry } from "./stints.js";
 import { createMemoryRepoFiles } from "./work-items.js";
 
 const handoff: BriefHandoff = {
@@ -63,127 +63,62 @@ function project(earlier = started("earlier"), later: StintLogEntry[] = []) {
   );
 }
 
-test.each([
-  { ticket: 11, stage: "implement", laterStage: "implement" },
-  { ticket: 11, stage: "implement", laterStage: "review" },
-  { ticket: null, stage: "clarify", laterStage: "clarify" },
-])(
-  "a started brief supersedes its source handoff for $ticket / $stage → $laterStage",
-  ({ ticket, stage, laterStage }) => {
-    const earlier = started("earlier", ticket, stage);
-    const later = started("later", ticket, laterStage, handoff);
-    const snapshot = project(earlier, [later]);
-    expect(snapshot.warnings).toEqual([]);
-    expect(snapshot.attentionItems).toEqual([]);
-    expect(snapshot.workItems[0].stints[0].lastHandoffStintId).toBe(handoff.stint);
-    expect(
-      deriveAttentionItems({
-        workItems: snapshot.workItems.map((item) => ({
-          ...item,
-          stints: [...item.stints].reverse(),
-        })),
-      }),
-    ).toEqual([]);
-    expect(project(earlier, [later]).attentionItems).toEqual([]);
-  },
-);
-
-test.each<StintStatus>(["running", "finished", "stopped", "failed", "interrupted"])(
-  "consumption survives a later stint being %s, and its own unresolved handoff still needs attention",
-  (status) => {
-    const later = started("later", 11, "implement", handoff);
-    const entries: StintLogEntry[] = [later];
-    if (status !== "running")
-      entries.push({
-        type: "ended",
-        at: "2026-10-09T10:40:00Z",
-        status,
-        handoff: { ...handoff, stint: "later", unresolved: "A new question." },
-      });
-    const snapshot = project(started("earlier"), entries);
-    expect(snapshot.attentionItems.map((item) => item.stintId)).toEqual(
-      status === "running" ? [] : ["later"],
-    );
-    expect(project(started("earlier"), entries).attentionItems).toEqual(snapshot.attentionItems);
-    if (status === "running") {
-      const active = snapshot.workItems[0].activeStint;
-      if (!active) throw new Error("Expected an active stint.");
-      expect(summarizeStint(active).lastHandoffStintId).toBe("earlier");
-    }
-  },
-);
-
-test.each([
-  { name: "no later stint", later: [] },
-  { name: "no handoff in the started brief", later: [started("later")] },
-  {
-    name: "another source handoff",
-    later: [started("later", 11, "implement", { ...handoff, stint: "other" })],
-  },
-  { name: "a different ticket", later: [started("later", 12, "implement", handoff)] },
-  {
-    name: "a stage-level successor to a ticket",
-    later: [started("later", null, "implement", handoff)],
-  },
-  {
-    name: "a different work item",
-    later: [
-      {
-        ...started("later", 11, "implement", handoff),
-        stint: { ...started("later", 11, "implement", handoff).stint, workItem: "other" },
-      },
-    ],
-  },
-  {
-    name: "a start before the source handoff",
-    later: [{ ...started("later", 11, "implement", handoff), at: "2026-10-09T10:10:00Z" }],
-  },
-])("$name does not supersede an unresolved handoff", ({ later }) => {
-  expect(project(started("earlier"), later).attentionItems.map((item) => item.stintId)).toEqual([
-    "earlier",
-  ]);
-});
-
-test.each([
-  { ticket: null, stage: "spec" },
-  { ticket: 11, stage: "clarify" },
-])(
-  "stage-level handoffs require another stage-level stint on the same stage ($ticket / $stage)",
-  ({ ticket, stage }) => {
-    expect(
-      project(started("earlier", null, "clarify"), [
-        started("later", ticket, stage, handoff),
-      ]).attentionItems.map((item) => item.stintId),
-    ).toEqual(["earlier"]);
-  },
-);
-
-test("a start at the handoff's timestamp consumes it, including equivalent timezone offsets", () => {
-  expect(
-    project(started("earlier"), [
-      { ...started("later", 11, "implement", handoff), at: "2026-10-09T03:20:00-07:00" },
-    ]).attentionItems,
-  ).toEqual([]);
-});
-
-test("a stint cannot consume its own handoff", () => {
-  expect(
-    project({ ...started("earlier", 11, "implement", handoff), at: ended.at }).attentionItems.map(
-      (item) => item.stintId,
-    ),
-  ).toEqual(["earlier"]);
-});
-
-test("finishing the ticket from the handoff leaves no stale attention after rebuilding the logs", () => {
-  const entries: StintLogEntry[] = [
-    started("later", 11, "implement", handoff),
+test("handoffs remain until a current later approval of their own stage", () => {
+  const snapshot = project(started("earlier", 11, "tickets"), [
+    started("later", 11, "tickets", handoff),
     {
-      type: "ended",
+      ...ended,
       at: "2026-10-09T10:40:00Z",
       status: "finished",
-      handoff: { ...handoff, stint: "later", unresolved: "None" },
+      handoff: { ...handoff, unresolved: "None" },
+    },
+  ]);
+  const item = snapshot.workItems[0];
+  const open = () =>
+    deriveAttentionItems(snapshot).filter((entry) => entry.kind === "handoff-unresolved");
+  expect(open()).toHaveLength(1);
+  const approval = { by: "Developer", at: "2026-10-09T10:25:00Z", commit: "head" };
+  item.stages.spec = { approved: approval };
+  expect(open()).toHaveLength(1);
+  item.stages.tickets = { approved: { ...approval, at: "2026-10-09T10:19:00Z" } };
+  expect(open()).toHaveLength(1);
+  item.stages.tickets = { approved: { ...approval, state: "stale" } };
+  expect(open()).toHaveLength(1);
+  item.stages.tickets = { approved: { ...approval, remoteState: "unknown" } };
+  expect(open()).toHaveLength(1);
+  item.stages.tickets = { approved: approval };
+  expect(open()).toHaveLength(0);
+  item.stages.tickets.reopened = { at: "2026-10-09T10:26:00Z" };
+  expect(open()).toHaveLength(1);
+  item.reviewDecisions = [
+    {
+      id: "earlier",
+      kind: "handoff-unresolved",
+      status: "resolved",
+      at: approval.at,
+      by: "Developer",
+      reason: "",
     },
   ];
-  expect(project(started("earlier"), entries).attentionItems).toEqual([]);
-  expect(project(started("earlier"), entries).attentionItems).toEqual([]);
+  expect(open()).toHaveLength(0);
+});
+
+test.each(["local", "GitHub"])("an upstream reopen restores a later %s handoff", (tracker) => {
+  const snapshot = project(started("earlier", 11, "tickets"));
+  const item = snapshot.workItems[0];
+  if (tracker === "GitHub") item.github = {} as NonNullable<typeof item.github>;
+  const approval = {
+    by: "Developer",
+    at: "2026-10-09T10:25:00Z",
+    commit: "head",
+    ...(item.github ? { remoteState: "current" } : {}),
+  };
+  item.stages.tickets = { approved: approval };
+  const open = () =>
+    deriveAttentionItems(snapshot).filter((entry) => entry.kind === "handoff-unresolved");
+  expect(open()).toHaveLength(0);
+  item.stages.spec = { reopened: { at: "2026-10-09T10:26:00Z" } };
+  expect(open()).toHaveLength(1);
+  item.stages.tickets.approved = { ...approval, at: "2026-10-09T10:27:00Z" };
+  expect(open()).toHaveLength(0);
 });

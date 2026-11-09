@@ -17,7 +17,10 @@ import {
   type StintLogEntry,
 } from "@stintwork/core";
 import { afterEach, expect, test } from "vitest";
+import { Hono } from "hono";
 import { createProjectServer } from "./index.js";
+import { addHandoffAnswerRoute } from "./handoff-answers.js";
+import { createProjectFiles } from "./work-item-files.js";
 
 const note = "Use CSV.\nKeep the header and use UTC.";
 const fixtures: { parent: string; projects: ReturnType<typeof createProjectServer>[] }[] = [];
@@ -164,6 +167,7 @@ test.each([
 ])(
   "a $stage handoff's note survives restart, reaches the next brief and fake agent, and is consumed on start (ticket $nextTicket)",
   async ({ stage, ticket, nextTicket }) => {
+    const note = "  Use CSV.\nKeep the header and use UTC.  ";
     const state = await fixture(stage);
     const remainingAttention =
       stage === "clarify" ? [{ kind: "gate-ready", id: 'gate-ready:["first","clarify"]' }] : [];
@@ -180,7 +184,7 @@ test.each([
         ticket,
       },
     ]);
-    const response = await answer(state.project, first.id, `  ${note}  `);
+    const response = await answer(state.project, first.id, note);
     expect(response.status).toBe(200);
     const receipt = await response.json();
     expect(receipt.answer).toEqual({ at: expect.any(String), note });
@@ -262,6 +266,82 @@ test("a pre-ready disconnect preserves gate evidence and developer notes", async
   expect(item.stints[0].status).toBe("preparation-failed");
   expect(gateReadiness(item).ready).toBe(true);
   expect((await preview(state.project, null)).developerNotes).toEqual(before.developerNotes);
+});
+
+test("mark resolved commits the decision and survives restart", async () => {
+  const state = await fixture();
+  const stint = await start(state.project);
+  await ended(state.project, stint.id);
+  const response = await state.project.app.request(`/api/stints/${stint.id}/resolve-handoff`, {
+    method: "POST",
+  });
+  expect(response.status).toBe(200);
+  const result = await response.json();
+  expect(result.decision).toMatchObject({
+    id: stint.id,
+    kind: "handoff-unresolved",
+    status: "resolved",
+  });
+  expect(git(stint.worktree.path, "show", "--format=", "--name-only", result.commit)).toBe(
+    ".scratch/first/review.yaml",
+  );
+  expect(
+    (await snapshot(state.project)).attentionItems.filter(
+      (entry) => entry.kind === "handoff-unresolved",
+    ),
+  ).toEqual([]);
+  await state.restart();
+  expect(
+    (await snapshot(state.project)).attentionItems.filter(
+      (entry) => entry.kind === "handoff-unresolved",
+    ),
+  ).toEqual([]);
+});
+
+test("mark resolved refuses a shipped work item without changing its branch", async () => {
+  const state = await fixture();
+  const stint = await start(state.project);
+  await ended(state.project, stint.id);
+  const workflow = join(stint.worktree.path, ".scratch/first/workflow.yaml");
+  await writeFile(
+    workflow,
+    `${await readFile(workflow, "utf8")}merged: {at: "2026-11-08T00:00:00Z", commit: "${"a".repeat(40)}"}\n`,
+  );
+  git(stint.worktree.path, "add", ".scratch/first/workflow.yaml");
+  git(stint.worktree.path, "commit", "-m", "Ship fixture");
+  const head = git(stint.worktree.path, "rev-parse", "HEAD");
+  const response = await state.project.app.request(`/api/stints/${stint.id}/resolve-handoff`, {
+    method: "POST",
+  });
+  expect(response.status).toBe(409);
+  expect((await response.json()).reasonMessage).toEqual({ code: "workItem.shipped" });
+  expect(git(stint.worktree.path, "rev-parse", "HEAD")).toBe(head);
+});
+
+test("mark resolved refuses when branch discovery fails", async () => {
+  const state = await fixture();
+  const stint = await start(state.project);
+  await ended(state.project, stint.id);
+  const read = createProjectFiles(state.root);
+  const app = new Hono();
+  addHandoffAnswerRoute(
+    app,
+    state.root,
+    Object.assign(() => ({ ...read(), warnings: [{ path: ".git", message: "unavailable" }] }), {
+      metadataChanged: read.metadataChanged,
+    }),
+    () => {},
+    () => false,
+    new Set(),
+    () => {
+      throw new Error("snapshot should not be read");
+    },
+  );
+  const head = git(stint.worktree.path, "rev-parse", "HEAD");
+  const response = await app.request(`/api/stints/${stint.id}/resolve-handoff`, { method: "POST" });
+  expect(response.status).toBe(503);
+  expect((await response.json()).reasonMessage).toEqual({ code: "server.branchesUnavailable" });
+  expect(git(stint.worktree.path, "rev-parse", "HEAD")).toBe(head);
 });
 
 test("dismissing a handoff removes it across restarts without creating a developer note", async () => {

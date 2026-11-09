@@ -1197,6 +1197,18 @@ test("detail refresh exposes Spec readiness to the approval route", async () => 
     });
     expect(tickets.status).toBe(409);
     expect(JSON.stringify(await tickets.json())).toContain("Issue #2: text blockers unknown.");
+    expect(next.workItems[0].github.reviewDigest).toBeUndefined();
+    expect(next.workItems[0].github.reopenDigest).toEqual(expect.any(String));
+    const reopen = await server.app.request("/api/github/items/1/gates/reopen", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        stage: "spec",
+        reviewedDigest: next.workItems[0].github.reopenDigest,
+        reviewedHead: next.workItems[0].github.reviewHead,
+      }),
+    });
+    expect(reopen.status, await reopen.clone().text()).toBe(200);
   } finally {
     await server.stop();
   }

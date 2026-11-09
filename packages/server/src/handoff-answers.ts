@@ -14,6 +14,9 @@ import { join } from "node:path";
 
 import type { Hono } from "hono";
 import type { ProjectFilesReader } from "./work-item-files.js";
+import { saveWorkItemReview } from "./review-writes.js";
+import { resolveProjectSnapshot } from "./project-snapshot.js";
+import type { ProjectSnapshot } from "@stintwork/core";
 import { ensureLocalIgnore } from "./stint-repo-writes.js";
 
 export function addHandoffAnswerRoute(
@@ -21,7 +24,86 @@ export function addHandoffAnswerRoute(
   root: string,
   readProjectFiles: ProjectFilesReader,
   refresh: () => void,
+  isActive: (slug: string) => boolean,
+  writing: Set<string>,
+  getSnapshot: () => ProjectSnapshot,
 ) {
+  app.post("/api/stints/:stintId/resolve-handoff", async (context) => {
+    const origin = context.req.header("origin");
+    if (origin && origin !== new URL(context.req.url).origin)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.originMismatch" }) }),
+        403,
+      );
+    const project = readProjectFiles();
+    if (project.warnings.some(({ path }) => path === ".git"))
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.branchesUnavailable" }) }),
+        503,
+      );
+    const snapshot = resolveProjectSnapshot(project, getSnapshot);
+    const item = snapshot.workItems.find((entry) =>
+      entry.stints.some((stint) => stint.id === context.req.param("stintId")),
+    );
+    if (!item)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.stintNotFound" }) }),
+        404,
+      );
+    if (item.merged)
+      return context.json(coreTextWire({ reason: coreText({ code: "workItem.shipped" }) }), 409);
+    const stint = item.stints.find((entry) => entry.id === context.req.param("stintId"));
+    if (!stint)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.stintNotFound" }) }),
+        404,
+      );
+    const previous = item.reviewDecisions?.find(
+      (entry) => entry.kind === "handoff-unresolved" && entry.id === stint.id,
+    );
+    if (previous) return context.json(coreTextWire({ decision: previous }));
+    if (
+      stint.status === "running" ||
+      !stint.handoff ||
+      !hasUnresolvedHandoff(stint.handoff.unresolved)
+    )
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "handoff.noneUnresolved" }) }),
+        409,
+      );
+    if (item.activeStint || isActive(item.slug) || writing.has(item.slug))
+      return context.json(coreTextWire({ reason: coreText({ code: "memory.activeWrite" }) }), 409);
+    if (snapshot.warnings.some(({ path }) => path === `.scratch/${item.slug}/review.yaml`))
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "memory.validReviewRequired" }) }),
+        409,
+      );
+    const worktree = project.worktreePaths.get(item.slug);
+    if (!worktree)
+      return context.json(
+        coreTextWire({ reason: coreText({ code: "server.worktreeUnavailable" }) }),
+        409,
+      );
+    writing.add(item.slug);
+    try {
+      const decision = {
+        id: stint.id,
+        kind: "handoff-unresolved" as const,
+        status: "resolved" as const,
+        reason: "",
+        by: "Developer",
+        at: new Date().toISOString(),
+      };
+      const commit = await saveWorkItemReview(worktree, item.slug, decision);
+      refresh();
+      return context.json(coreTextWire({ decision, commit }));
+    } catch (error) {
+      refresh();
+      return context.json(coreTextWire({ reason: errorText(error, true) }), 409);
+    } finally {
+      writing.delete(item.slug);
+    }
+  });
   app.post("/api/stints/:stintId/handoff-answer", async (context) => {
     const origin = context.req.header("origin");
     if (origin && origin !== new URL(context.req.url).origin)
@@ -46,7 +128,7 @@ export function addHandoffAnswerRoute(
       (body.note !== null && (typeof body.note !== "string" || !body.note.trim()))
     )
       return context.json(coreTextWire({ reason: coreText({ code: "handoff.writeNote" }) }), 400);
-    const note = typeof body.note === "string" ? body.note.trim() : null;
+    const note = typeof body.note === "string" ? body.note : null;
     try {
       const files = readProjectFiles().files;
       for (const path of files

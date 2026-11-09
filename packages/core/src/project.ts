@@ -86,6 +86,7 @@ export type ProjectSnapshot = {
     milestone?: string;
     stints: StintSummary[];
     activeStint: Stint | null;
+    gateWriteActive?: boolean;
     worktreePath?: string;
     reviewDecisions?: ReviewDecision[];
     memoryProposals?: MemoryProposalAttentionItem[];
@@ -112,6 +113,7 @@ export type ProjectSnapshot = {
       bound?: boolean;
       stale?: boolean;
       reviewDigest?: string;
+      reopenDigest?: string;
       reviewHead?: string;
     };
   })[];

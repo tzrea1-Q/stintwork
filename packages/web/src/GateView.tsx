@@ -12,12 +12,14 @@ import {
 
 import {
   builtInWorkflows,
+  deriveAttentionItems,
   gateReadiness,
   type WorkflowDefinitions,
   type StageId,
   type Warning,
 } from "@stintwork/core";
 import { useState } from "react";
+import { HandoffAnswer } from "./HandoffAnswer";
 import { HandoffCard } from "./HandoffCard";
 import type { BoardWorkItem } from "./WorkItemCard";
 
@@ -28,9 +30,11 @@ export function GateView({
   warnings = [],
   workflows = builtInWorkflows,
   githubReadOnly = false,
+  showHandoffAnswer = true,
 }: {
   item: BoardWorkItem;
   githubReadOnly?: boolean;
+  showHandoffAnswer?: boolean;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
@@ -41,6 +45,7 @@ export function GateView({
   const [refreshNeeded, setRefreshNeeded] = useState(false);
   const github = item.github;
   const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
+  const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
   const gate = gateReadiness(item, workflows);
   const emptyGithubSpec =
     !!github &&
@@ -52,6 +57,9 @@ export function GateView({
   if (!current) return null;
   const checkpoint = item.stints.find(({ checkpointCommit }) => checkpointCommit)?.checkpointCommit;
   const lastHandoff = item.stints.find(({ handoff }) => handoff);
+  const unresolved = deriveAttentionItems({ workItems: [item], workflows }).find(
+    (entry) => entry.kind === "handoff-unresolved" && entry.stintId === lastHandoff?.id,
+  );
   const earlier = stages.slice(0, position).filter(({ id }) => item.stages[id]?.approved);
 
   async function act(stage: StageId, action: "approve" | "reopen") {
@@ -68,7 +76,14 @@ export function GateView({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             github
-              ? { stage, reviewedDigest: github.reviewDigest, reviewedHead: github.reviewHead }
+              ? {
+                  stage,
+                  reviewedDigest:
+                    action === "reopen"
+                      ? (github.reviewDigest ?? github.reopenDigest)
+                      : github.reviewDigest,
+                  reviewedHead: github.reviewHead,
+                }
               : {},
           ),
         },
@@ -146,6 +161,14 @@ export function GateView({
       </p>
       <h4>{t.stints.lastHandoff}</h4>
       {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
+      {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
+        <HandoffAnswer
+          key={unresolved.stintId}
+          item={unresolved}
+          onError={setError}
+          showDetails={false}
+        />
+      )}
       <h4>{t.stints.openWarnings}</h4>
       {warnings.length ? (
         <ul>
@@ -230,7 +253,7 @@ export function GateView({
             saving ||
             !!message ||
             !!item.activeStint ||
-            (!!github && (!reviewAvailable || refreshNeeded))
+            (!!github && (!reopenAvailable || refreshNeeded))
           }
           onClick={() => void act(stage.id, "reopen")}
         >

@@ -6,6 +6,7 @@ import {
   githubEvidenceJsonV2,
   githubEvidenceJsonV3,
   evidenceStale,
+  approvalReopenState,
   type GithubEvidenceInput,
   type ProjectSnapshot,
 } from "@stintwork/core";
@@ -80,10 +81,10 @@ export function projectGithubGates(
           Array.isArray(ticket.commentRecords),
       );
     const stages = snapshot.workflows[item.workflow].stages;
-    const digest = (stage: string, version: 1 | 2 | 3) => {
+    const digest = (stage: string, version: 1 | 2 | 3, reopen = false) => {
       if (!valid || !remote) return undefined;
       const includeTickets = githubGateIncludesTickets(stages, stage);
-      if (!detail.complete && (includeTickets || !dependencyOnlyIncomplete(detail)))
+      if (!detail.complete && ((!reopen && includeTickets) || !dependencyOnlyIncomplete(detail)))
         return undefined;
       return `sha256:${createHash("sha256")
         .update(
@@ -104,17 +105,8 @@ export function projectGithubGates(
         .digest("hex")}`;
     };
     let upstream: "current" | "stale" | "unknown" = "current";
-    let latestReopen: number | undefined;
     for (const { id: stage } of stages) {
       const record = item.stages[stage];
-      const reopened = record?.reopened;
-      if (reopened) {
-        const at =
-          typeof reopened === "object" && "at" in reopened && typeof reopened.at === "string"
-            ? Date.parse(reopened.at)
-            : NaN;
-        latestReopen = Math.max(latestReopen ?? -Infinity, at);
-      }
       if (!record) {
         if (
           stages.findIndex((entry) => entry.id === stage) <
@@ -179,12 +171,8 @@ export function projectGithubGates(
           state = "unknown";
         }
       }
-      if (latestReopen !== undefined) {
-        const at =
-          "at" in approval && typeof approval.at === "string" ? Date.parse(approval.at) : NaN;
-        if (!Number.isFinite(at) || !Number.isFinite(latestReopen)) state = "unknown";
-        else if (at <= latestReopen) state = "stale";
-      }
+      const reopenState = approvalReopenState(item.stages, stages, stage);
+      if (reopenState !== "current") state = reopenState;
       if (upstream !== "current" && state === "current") state = upstream;
       if (headChanged) state = "stale";
       if (state === "current" && stages.find((entry) => entry.id === stage)?.gate === "evidence") {
@@ -234,7 +222,9 @@ export function projectGithubGates(
       upstream = state;
     }
     const reviewDigest = item.stage ? digest(item.stage, 3) : undefined;
-    if (reviewDigest) {
+    const reopenDigest =
+      item.stage && item.github.dependenciesUnknown ? digest(item.stage, 3, true) : undefined;
+    if (reviewDigest || reopenDigest) {
       try {
         const candidate = project.worktreePaths.get(item.slug);
         const path = `.stintwork/github/${item.github.repository.toLowerCase()}/${item.github.number}/workflow.yaml`;
@@ -248,7 +238,8 @@ export function projectGithubGates(
           encoding: "utf8",
           stdio: ["ignore", "pipe", "pipe"],
         }).trim();
-        item.github.reviewDigest = reviewDigest;
+        if (reviewDigest) item.github.reviewDigest = reviewDigest;
+        if (reopenDigest) item.github.reopenDigest = reopenDigest;
         item.github.reviewHead = reviewHead;
       } catch {
         /* Approval requires a readable HEAD. */

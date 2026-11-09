@@ -5,7 +5,7 @@ import type { DeveloperNote } from "./developer-notes.js";
 
 export type ReviewDecision = {
   id: string;
-  kind: "finding" | "memory-proposal" | "risky-path";
+  kind: "finding" | "memory-proposal" | "risky-path" | "handoff-unresolved";
   status: "open" | "resolved" | "accepted" | "rejected" | "sent-back";
   reason: string;
   by: string;
@@ -19,13 +19,18 @@ function isReviewDecision(value: unknown): value is ReviewDecision {
   return (
     typeof entry.id === "string" &&
     !!entry.id.trim() &&
-    (entry.kind === "finding" || entry.kind === "memory-proposal" || entry.kind === "risky-path") &&
+    (entry.kind === "finding" ||
+      entry.kind === "memory-proposal" ||
+      entry.kind === "risky-path" ||
+      entry.kind === "handoff-unresolved") &&
     typeof entry.status === "string" &&
-    (entry.kind === "risky-path"
-      ? entry.status === "accepted"
-      : entry.kind === "memory-proposal"
-        ? ["open", "accepted", "rejected"].includes(entry.status)
-        : ["open", "resolved", "accepted", "sent-back"].includes(entry.status)) &&
+    (entry.kind === "handoff-unresolved"
+      ? entry.status === "resolved"
+      : entry.kind === "risky-path"
+        ? entry.status === "accepted"
+        : entry.kind === "memory-proposal"
+          ? ["open", "accepted", "rejected"].includes(entry.status)
+          : ["open", "resolved", "accepted", "sent-back"].includes(entry.status)) &&
     typeof entry.reason === "string" &&
     (entry.kind !== "finding" || entry.status !== "accepted" || !!entry.reason.trim()) &&
     (entry.kind !== "risky-path" ||

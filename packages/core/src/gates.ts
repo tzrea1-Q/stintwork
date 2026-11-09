@@ -21,6 +21,33 @@ export type GateRecord = {
 };
 export type GateWorkItem = ProjectSnapshot["workItems"][number];
 
+export function approvalReopenState(
+  records: GateWorkItem["stages"],
+  stages: readonly WorkflowStage[],
+  stage: string,
+): "current" | "stale" | "unknown" {
+  const position = stages.findIndex(({ id }) => id === stage);
+  if (position < 0) return "unknown";
+  const reopens = stages.slice(0, position + 1).flatMap(({ id }) => {
+    const reopened = records[id]?.reopened;
+    if (!reopened) return [];
+    return [
+      typeof reopened === "object" && "at" in reopened && typeof reopened.at === "string"
+        ? Date.parse(reopened.at)
+        : NaN,
+    ];
+  });
+  if (!reopens.length) return "current";
+  const approval = records[stage]?.approved;
+  const at =
+    approval && typeof approval === "object" && "at" in approval && typeof approval.at === "string"
+      ? Date.parse(approval.at)
+      : NaN;
+  const latestReopen = Math.max(...reopens);
+  if (!Number.isFinite(at) || !Number.isFinite(latestReopen)) return "unknown";
+  return at <= latestReopen ? "stale" : "current";
+}
+
 export function githubGateIncludesTickets(
   stages: readonly WorkflowStage[],
   stage: string,
@@ -41,6 +68,7 @@ export function gateReadiness(
   );
   let reason: CoreText | null = null;
   if (item.merged) reason = coreText({ code: "workItem.shipped" });
+  else if (item.gateWriteActive) reason = coreText({ code: "gate.activeWrite" });
   else if (position < 0 || !nextStage || stages[position].gate === "merge")
     reason = coreText({ code: "gate.noApproval" });
   else if (

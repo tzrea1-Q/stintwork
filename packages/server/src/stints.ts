@@ -146,6 +146,18 @@ export function addStintRoutes(
   const active = new Map<string, ActiveStint>();
   const confirmedSources = new Set<string>();
   const workflowWrites = new Set<string>();
+  const addWrite = workflowWrites.add.bind(workflowWrites);
+  const deleteWrite = workflowWrites.delete.bind(workflowWrites);
+  workflowWrites.add = (slug) => {
+    const added = addWrite(slug);
+    refresh();
+    return added;
+  };
+  workflowWrites.delete = (slug) => {
+    const deleted = deleteWrite(slug);
+    if (deleted) refresh();
+    return deleted;
+  };
   addStageAgentRoute(
     app,
     readProjectFiles,
