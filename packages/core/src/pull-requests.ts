@@ -28,6 +28,8 @@ export type PullRequestPreview = Omit<PullRequest, "number" | "url"> & {
   body: string;
   confirmation: string;
   existingPrNumber?: number;
+  existingPrUrl?: string;
+  parentNumber?: number;
   parentWillNotClose?: boolean;
 };
 

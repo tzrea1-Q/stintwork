@@ -608,7 +608,10 @@ export const zhCN: Catalog = {
       confirmPublishing: "确认发布拉取请求",
       confirmPushTitle: "确认推送并创建拉取请求",
       pushWarning: "发布会将此代码推送到下方远程仓库。只有明确确认后才会推送。",
-      parentWillNotClose: "现有拉取请求未使用关闭关键词引用父议题，合并时父议题不会自动关闭。",
+      adoptionNotice: (number: number | undefined) =>
+        `现有拉取请求将原样接管；Stintwork 不会编辑它。如果希望合并时关闭父议题，请检查它是否关闭${number === undefined ? "父议题" : ` #${number}`}，并以默认分支为目标。`,
+      parentWillNotClose: "此拉取请求的目标不是默认分支，合并后不会关闭父议题。",
+      confirmAdoption: "确认接管",
       confirmPush: "确认推送并创建拉取请求",
       conflicts: "合并冲突",
       sendBack: "退回",

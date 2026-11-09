@@ -602,8 +602,11 @@ export const en = {
       confirmPublishing: "Confirm publishing pull request",
       confirmPushTitle: "Confirm push and pull request",
       pushWarning: "Publishing sends this code to the remote. Nothing is pushed until you confirm.",
+      adoptionNotice: (number: number | undefined) =>
+        `The existing pull request is adopted unchanged; Stintwork does not edit it. If the parent should close on merge, check that it closes ${number === undefined ? "the parent issue" : `#${number}`} and targets the default branch.`,
       parentWillNotClose:
-        "This existing pull request does not reference the parent with a closing keyword. The parent will not close automatically on merge.",
+        "This pull request targets a non-default branch. Merging it will not close the parent issue.",
+      confirmAdoption: "Confirm adoption",
       confirmPush: "Confirm push and open pull request",
       conflicts: "Merge conflicts",
       sendBack: "Send back",

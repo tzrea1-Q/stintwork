@@ -77,6 +77,7 @@ async function fixture(method = "merge") {
     mergeCommit: null,
     mergedAt: null,
     isCrossRepository: false,
+    title: "Existing title",
     body: "Existing body",
   };
   const script = {
@@ -85,6 +86,7 @@ async function fixture(method = "merge") {
     },
     "repo view": {
       stdout: {
+        defaultBranchRef: { name: "main" },
         nameWithOwner: "example/project",
         url: "https://github.com/example/project",
         mergeCommitAllowed: method === "merge",
@@ -316,13 +318,45 @@ test("a confirmed existing pull request is adopted without creating or pushing",
   const { fake, script, preview, post, bare } = await fixture();
   await fake.script(script);
   const details = await preview();
-  expect(details.body).toBe("Existing body");
+  expect(details).toMatchObject({
+    title: "Existing title",
+    body: "Existing body",
+    base: "main",
+    existingPrUrl: script["pr view"].stdout.url,
+  });
   expect(details.existingPrNumber).toBe(12);
   const response = await post("open-pr", { confirmation: details.confirmation });
   expect(response.status, await response.clone().text()).toBe(200);
   expect((await fake.calls()).some(({ args }) => args[1] === "create")).toBe(false);
   expect(git(bare, "branch", "--list", "stintwork/first")).toBe("");
 });
+
+test("adoption records the existing PR base", async () => {
+  const { fake, script, preview, post } = await fixture();
+  await fake.script({
+    ...script,
+    "pr view": { stdout: { ...script["pr view"].stdout, baseRefName: "release" } },
+  });
+  const details = await preview();
+  expect(details.base).toBe("release");
+  const response = await post("open-pr", { confirmation: details.confirmation });
+  expect(response.status, await response.clone().text()).toBe(200);
+  expect((await response.json()).pullRequest.base).toBe("release");
+});
+
+test.each(["title", "body", "baseRefName"] as const)(
+  "a changed existing PR %s requires confirmation again",
+  async (field) => {
+    const { fake, script, preview, post } = await fixture();
+    await fake.script(script);
+    const { confirmation } = await preview();
+    await fake.script({
+      ...script,
+      "pr view": { stdout: { ...script["pr view"].stdout, [field]: "changed" } },
+    });
+    expect((await post("open-pr", { confirmation })).status).toBe(409);
+  },
+);
 
 test.each(["head", "remote", "body"])(
   "a changed %s invalidates push confirmation",

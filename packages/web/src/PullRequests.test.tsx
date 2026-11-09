@@ -144,29 +144,48 @@ test("Open pull request previews publishing; cancel does not publish, and confir
   expect(screen.queryByRole("button", { name: "Merge locally" })).not.toBeInTheDocument();
 });
 
-test("adopted pull request preview shows its body and closing warning", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          preview: {
-            ...preview,
-            body: "Existing pull request body",
-            parentWillNotClose: true,
-          },
-        }),
+test.each([false, true])(
+  "adoption preview shows actual details and notice (non-default: %s)",
+  async (warning) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            preview: {
+              ...preview,
+              title: "Existing title",
+              body: "Existing pull request body",
+              base: "release",
+              existingPrUrl: pr.url,
+              existingPrNumber: 12,
+              parentNumber: 1,
+              parentWillNotClose: warning,
+            },
+          }),
+        ),
       ),
-    ),
-  );
-  render(<ShipActions item={item()} />);
-  await userEvent.setup().click(screen.getByRole("button", { name: "Open pull request" }));
-  const dialog = await screen.findByRole("dialog", { name: "Confirm publishing pull request" });
-  expect(dialog).toHaveTextContent("Existing pull request body");
-  expect(within(dialog).getByRole("alert")).toHaveTextContent(
-    "The parent will not close automatically on merge.",
-  );
-});
+    );
+    render(<ShipActions item={item()} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Open pull request" }));
+    const dialog = await screen.findByRole("dialog", { name: "Confirm publishing pull request" });
+    for (const text of [
+      "Existing title",
+      "Existing pull request body",
+      "release",
+      "adopted unchanged",
+      "#1",
+      "default branch",
+    ])
+      expect(dialog).toHaveTextContent(text);
+    expect(within(dialog).getByRole("link", { name: pr.url })).toHaveAttribute("href", pr.url);
+    if (warning)
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(
+        "Merging it will not close the parent issue.",
+      );
+    else expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument();
+  },
+);
 
 test("merge refusal is visible; retry reports the PR merge commit", async () => {
   const user = userEvent.setup();

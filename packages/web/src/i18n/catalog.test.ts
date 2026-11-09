@@ -97,6 +97,7 @@ const samples: Record<string, unknown[][]> = {
   "review.checks.output": [["npm test 原文"]],
   "review.pr.heading": [[1], [23]],
   "review.memory.diff": [["GLOSSARY.md"]],
+  "review.ship.adoptionNotice": [[undefined], [1]],
   "review.ship.shippedAt": [
     [undefined, "head"],
     [12, "head"],

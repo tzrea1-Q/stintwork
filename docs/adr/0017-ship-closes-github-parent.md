@@ -8,4 +8,4 @@ When Stintwork opens a pull request for a GitHub-tracked work item in the same r
 
 GitHub closes the parent only when the pull request merges into the default branch; merging elsewhere does not close it. Agents close tickets during their stints, not through the pull request. This adds no issue write path to Stintwork.
 
-When adopting an existing pull request, the preview shows its actual body and warns if it lacks a closing reference to the parent; Stintwork does not edit that body.
+When adopting an existing pull request, the preview shows its actual title, body, base and URL; Stintwork does not edit it. The developer checks whether it closes the parent and targets the default branch, and the preview warns when its base is not the default branch.

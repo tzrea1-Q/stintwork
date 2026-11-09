@@ -377,7 +377,6 @@ export function addShipRoutes(
                 existing &&
                 (existing.headRefOid !== head ||
                   existing.headRefName !== branch ||
-                  existing.baseRefName !== base ||
                   existing.state !== "OPEN")
               )
                 throw new LocalMergeRefusal({ code: "ship.existingPrMismatch" });
@@ -395,16 +394,21 @@ export function addShipRoutes(
                   ? item.github.number
                   : undefined;
               if (parent) details.body += `\n\nCloses #${parent}`;
+              if (
+                existing &&
+                (typeof repository.defaultBranch !== "string" || !repository.defaultBranch)
+              )
+                throw new LocalMergeRefusal({ code: "ship.githubRepository" });
               const adoption = existing
                 ? {
+                    title: existing.title,
                     body: existing.body,
+                    base: existing.baseRefName,
                     existingPrNumber: existing.number,
+                    existingPrUrl: existing.url,
+                    parentNumber: parent,
                     parentWillNotClose:
-                      !!parent &&
-                      !new RegExp(
-                        `\\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\\s+#${parent}(?!\\d)`,
-                        "i",
-                      ).test(existing.body),
+                      !!parent && existing.baseRefName !== repository.defaultBranch,
                   }
                 : {};
               if (action === "preview-pr") {
@@ -437,12 +441,17 @@ export function addShipRoutes(
               if (
                 opened.headRefOid !== head ||
                 opened.headRefName !== branch ||
-                opened.baseRefName !== base ||
+                opened.baseRefName !== (existing?.baseRefName ?? base) ||
                 opened.state !== "OPEN"
               )
                 throw new LocalMergeRefusal({ code: "ship.createdPrMismatch" });
               const { title: _title, body: _body, ...identity } = details;
-              const pullRequest = { ...identity, number: opened.number, url: opened.url };
+              const pullRequest = {
+                ...identity,
+                base: opened.baseRefName,
+                number: opened.number,
+                url: opened.url,
+              };
               await saveWorkflow(
                 checkout,
                 item,

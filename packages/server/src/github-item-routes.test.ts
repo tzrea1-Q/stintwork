@@ -574,35 +574,36 @@ test("GitHub pull request ship records the merged workflow", async () => {
     mergeCommit: null,
     mergedAt: null,
     isCrossRepository: false,
+    title: "Existing title",
   };
   const repo = {
     stdout: {
+      defaultBranchRef: { name: "main" },
       nameWithOwner: "Example/Project",
       url: "https://github.com/Example/Project",
       mergeCommitAllowed: true,
     },
   };
-  for (const [body, warning] of [
-    ["Existing body without a closing reference", true],
-    ["Existing body: FiXeS #1", false],
-    ["Existing body: closes #10", true],
+  for (const [baseRefName, warning] of [
+    ["main", false],
+    ["release", true],
   ] as const) {
-    await gh.script({ "repo view": repo, "pr view": { stdout: { ...view, body } } });
+    await gh.script({
+      "repo view": repo,
+      "pr view": { stdout: { ...view, baseRefName, body: "Existing body" } },
+    });
     const response = await post("/api/work-items/github-1/ship/preview-pr", {});
     expect(response.status, await response.clone().text()).toBe(200);
     expect((await response.json()).preview).toMatchObject({
-      body,
+      title: "Existing title",
+      body: "Existing body",
+      base: baseRefName,
       existingPrNumber: 12,
+      existingPrUrl: view.url,
+      parentNumber: 1,
       parentWillNotClose: warning,
     });
   }
-  await gh.script({ "repo view": repo, "pr view": { stdout: { ...view, body: "changed" } } });
-  const oldPreview = await post("/api/work-items/github-1/ship/preview-pr", {});
-  const { confirmation: oldConfirmation } = (await oldPreview.json()).preview;
-  await gh.script({ "repo view": repo, "pr view": { stdout: { ...view, body: "changed again" } } });
-  expect(
-    (await post("/api/work-items/github-1/ship/open-pr", { confirmation: oldConfirmation })).status,
-  ).toBe(409);
   await gh.script({
     "repo view": {
       stdout: {
