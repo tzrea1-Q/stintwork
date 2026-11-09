@@ -1,6 +1,6 @@
 # 19 — M11 retest follow-ups
 
-Status: needs-review
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -13,7 +13,7 @@ Fix the four defects found in the 2026-11-09 M11 exit retest: stale discovery mu
 - [x] Merge confirmation copy is natural for merge, squash and rebase in English and Chinese, with a test.
 - [x] GitHub tickets use #N consistently in ticket lists; local Markdown tickets keep NN, with a test.
 - [x] Ship previews overlap independent reads, avoid duplicate reads and reuse fresh identity checks; fake-gh tests cover calls or concurrency and existing refusal and freshness rules remain intact.
-- [ ] format:check, lint, typecheck and unit tests for touched packages pass (sandbox-only socket EPERM failures may be recorded).
+- [x] format:check, lint, typecheck and unit tests for touched packages pass (sandbox-only socket EPERM failures may be recorded).
 
 ## Comments
 
@@ -62,3 +62,14 @@ Checks actually run: `pnpm vitest run packages/server/src/github-item-routes.tes
 **Codex, 2026-11-09, local check cancellation review:** Added a documented local safety allowlist for stint stop (including preparation and recovery), permission answers, and check cancellation. The write boundary also covers DELETE. Added a registered POST/DELETE route inventory with explicit project/read-only, local safety, and fresh-viewer classifications. Fake GitHub tests start and cancel a real check after offline, HTTP 429, expired authentication and account change; the existing stop/permission tests and fresh-viewer cases cover the other boundary paths.
 
 Checks actually run: `pnpm format:check`, `pnpm lint` (11 warnings, 7 informational notices), and `pnpm typecheck` passed. `pnpm vitest run packages/server/src/github-lifecycle.test.ts -t 'local stop and permission|every registered|verifies the viewer inside'` passed (25 tests); `pnpm vitest run packages/server/src/checks.test.ts -t 'cancellation terminates'` passed (1 test); and `pnpm vitest run packages/server/src/github-item-routes.test.ts -t 'cancels GitHub agent preparation|stop-offline|stop-rate-limited|stop-expired'` passed (6 tests). `pnpm test` did not pass: it reported four bundled agent-launch/handshake failures and then produced no further output before being interrupted. The full-suite acceptance criterion remains open. No commit was made.
+
+**Coordinator, 2026-11-09:** Verified and resolved. Outside the sandbox the full suite passed on the final commit: format, lint, typecheck, build, 3328 unit tests, 432 browser tests and the package smoke. The Codex sandbox failures in agent-launch and recovery tests were sandbox-only. Review rounds found and fixed these:
+- one item's stale detail made every item's approvals unknown;
+- background detail reads had no retry;
+- a concurrent Refresh got a false success while discovery waited;
+- discovery stopped converging after an item exhausted its retries;
+- a cleared handoff stayed hidden after a local change while detail was stale;
+- Ship and then every GitHub-backed write route reused a cached viewer;
+- Stop, permission answers, preparation cancel, recovery stop and check cancel were blocked when GitHub was unavailable.
+
+Local stop, cancel and deny routes are now one allowlist, and a route-inventory test classifies every write route. The final review found no defects.
