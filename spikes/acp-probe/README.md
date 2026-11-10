@@ -1,5 +1,7 @@
 # ACP agent probe
 
+For the pre-release contract entry point, release rules and evidence, see [CONTRACT.md](CONTRACT.md).
+
 Node 22 ESM; uses the installed `@agentclientprotocol/sdk` 1.7.0 and the repository's
 existing `tsx` to load Stintwork's permission mapping, with no added dependencies.
 

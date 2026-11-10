@@ -428,7 +428,10 @@ async function scenarioBody(context, spec, cancelAfterMs) {
   const initialization = await client.initialize();
   const capabilities = initialization.agentCapabilities ?? {};
   if (scenario === 'resume' && !capabilities.loadSession && capabilities.sessionCapabilities?.resume == null && capabilities.sessionCapabilities?.list == null) {
-    return { status: 'unsupported', facts: { reason: 'No loadSession, resume, or list capability advertised' } };
+    await client.stop('restart for resume capability check');
+    const replacement = makeConnection(context, spec, 'b');
+    await replacement.initialize();
+    return { status: 'unsupported', facts: { reason: 'No loadSession, resume, or list capability advertised by the first process' } };
   }
   const sessionId = await client.newSession();
   if (scenario === 'basic') {
@@ -585,7 +588,7 @@ async function runScenario({ agent, scenario, fixture, runDir, timeoutSec, spawn
   return result;
 }
 
-export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120, root = join(here, 'runs'), spawnSpec, adapterPrefix, executable, cancelAfterMs = 8000, permissionMode = 'ask' }) {
+export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120, root = join(here, 'runs'), spawnSpec, adapterPrefix, executable, cancelAfterMs = 8000, permissionMode = 'ask', prepared }) {
   if (!['claude', 'codex', 'grok', 'antigravity'].includes(agent)) throw new Error('agent must be claude, codex, grok, or antigravity');
   if (agent === 'antigravity' && adapterPrefix) throw new Error('Adapter prefix is only supported for Claude and Codex');
   if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) throw new Error('timeout-sec must be a positive number');
@@ -599,6 +602,12 @@ export async function runProbe({ agent, scenarios = SCENARIOS, timeoutSec = 120,
   const summary = { agent, sdkVersion: '1.7.0', timestamp, runDir, fixture, timeoutSec, permissionMode, invocation: { adapterPrefix: adapterPrefix ? resolve(adapterPrefix) : null, executable: executable ? resolve(executable) : null }, scenarios: [] };
   let launchError;
   if (spawnSpec) summary.runtime = { testOverride: true, environment: environment() };
+  else if (prepared) {
+    summary.runtime = { ...prepared, environment: environment(), testOverride: false };
+    spawnSpec = agent === 'claude' || agent === 'codex'
+      ? { command: process.execPath, args: [prepared.adapterEntry], env: { CLAUDE_CODE_EXECUTABLE: agent === 'claude' ? prepared.executable.path : '', CODEX_PATH: agent === 'codex' ? prepared.executable.path : '' } }
+      : { command: prepared.executable.path, args: agent === 'grok' ? ['agent', 'stdio'] : ['acp'] };
+  }
   else {
     summary.runtime = {};
     try {
