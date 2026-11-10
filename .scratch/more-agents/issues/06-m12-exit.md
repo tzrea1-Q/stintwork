@@ -24,6 +24,6 @@ The maintainer installs Antigravity CLI and signs in to it and Grok Build. The c
   - *Next step:* review, commit, approve the gate.
 - **Verification.** `npm test` in the worktree passes.
 - **Permissions.** The in-worktree file write needed no request. Every shell command went to Needs you, because Antigravity sends the command as `rawInput.CommandLine`, which Stintwork's safe-command check does not read yet; the fix is in the ticket 04 run. The coordinator reviewed each request: read-only git, `ls` and `npm test` were allowed once, and `ls -la ..` (outside the worktree) was denied. The agent continued after the denial.
-- **UI.** The brief preview showed "Uses your installed Grok CLI and login." for Antigravity, and no Experimental label appeared on its readiness card. Both are being fixed in the ticket 04 run.
+- **UI.** The brief preview's readiness card showed "Uses your installed Grok CLI and login." for Antigravity, without the Experimental label. The agent selector itself does label both agents "(Experimental)". Both are being fixed in the ticket 04 run.
 
-**Still open.** Grok Build: three real stints were rate limited (see agent-polish 04). Criterion 2 waits on that.
+**Still open.** Grok Build: four real stints were rate limited (see agent-polish 04). Criterion 2 waits on that.
