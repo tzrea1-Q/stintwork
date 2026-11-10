@@ -90,7 +90,7 @@ try {
   );
   const manifest = JSON.parse(manifestText);
   assert.equal(manifest.name, "stintwork");
-  assert.equal(manifest.version, "0.1.1");
+  assert.equal(manifest.version, "0.2.0");
   assert.equal(manifest.private, undefined);
   assert.equal(manifest.engines.node, ">=22.12.0");
   assert.equal(manifest.bin.stintwork, "dist/bin.js");
@@ -174,7 +174,7 @@ try {
   }
   const executable = join(consumer, "node_modules/.bin/stintwork");
   const version = await execute(executable, ["--version"], { ...options, cwd: consumer });
-  assert.equal(version.stdout, "0.1.1\n");
+  assert.equal(version.stdout, "0.2.0\n");
   assert.equal(version.stderr, "");
   const help = await execute(executable, ["--help"], { ...options, cwd: consumer });
   assert.equal(help.stderr, "");

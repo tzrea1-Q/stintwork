@@ -6,10 +6,10 @@ import { checkNodeVersion } from "./cli.js";
 const root = new URL("../../../", import.meta.url);
 const manifest = JSON.parse(readFileSync(new URL("package.json", root), "utf8"));
 
-test("only the root stintwork package is publishable, at 0.1.1 on Node 22.12 or newer", () => {
+test("only the root stintwork package is publishable, at 0.2.0 on Node 22.12 or newer", () => {
   expect(manifest).toMatchObject({
     name: "stintwork",
-    version: "0.1.1",
+    version: "0.2.0",
     license: "Apache-2.0",
     type: "module",
     engines: { node: ">=22.12.0" },
