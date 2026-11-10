@@ -36,3 +36,5 @@ Ask-mode permissions for Grok therefore remain untested. They are not required b
 - **Stint `6d39eadc`.** Started 6 minutes later, it ended `failed` with "Rate limited" after 7 s, on the same checkpoint.
 
 Stintwork handled both correctly: preparation showed the source, executable and version, the always-approve warning was shown, and each failure was visible in stint history with a checkpoint and no handoff. The probe a few minutes earlier passed, so the limit applies to sustained use on the maintainer's account. Criterion 2 is still open. Ways forward: retry later, use an account or plan with a higher limit, or record Grok as rate-limited for the M12 exit (the plan allows "subject to its API rate limits"). That decision is the maintainer's.
+
+**Coordinator, 2026-11-10 (later):** A third stint, `c666d08a`, started at 02:47 UTC, about an hour after the second. It also ended `failed` with "Rate limited", after 6 s, on the same fixture and Grok 1.0.77. The account's limit has persisted for over an hour. Criterion 2 is still open, pending the maintainer's decision.
