@@ -1,6 +1,6 @@
 # 04 — Antigravity resume and cancel
 
-Status: needs-review
+Status: resolved
 Blocked by: 01, 02, 03
 
 ## What to build
@@ -28,3 +28,5 @@ Use the M10 restart path and its ownership and permission safeguards for Antigra
 Checks: `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `git diff --check` passed. Focused Antigravity stop, SIGKILL and recovery cases passed. The combined agents/core/web/server unit run was interrupted after sandbox-denied tests stalled; sandbox-denied process inspection causes the nine `packages/agents/src/adapter-cache.test.ts` failures, and tests requiring `ps` or TCP listen must be rerun outside the sandbox by the coordinator. The complete focused run `pnpm exec vitest run packages/server/src/stop-and-failure.test.ts packages/agents/src/antigravity.test.ts` passed 25 tests and failed the existing WebSocket Stop case on `listen EPERM: 127.0.0.1`; rerun both files outside the sandbox.
 
 **Unit rerun, 2026-11-09:** `pnpm exec vitest run packages/agents/src packages/core/src packages/web/src` completed: 2,214 passed and 9 failed, all in `packages/agents/src/adapter-cache.test.ts` because native process inspection was denied. Coordinator: rerun this command and `pnpm exec vitest run packages/server/src` outside the sandbox; also rerun the focused server cases and WebSocket Stop test there.
+
+**Coordinator, 2026-11-10:** Verified outside the sandbox: format, lint, typecheck, build, 3,357 unit tests (including the adapter-cache and listen tests that the sandbox blocked), package smoke and 432 browser tests pass. The Codex review found no defects. Native resume is deferred to ticket 07 under the scope decision above. Merged.
