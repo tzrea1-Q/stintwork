@@ -48,7 +48,28 @@ try {
   const unsupported = recovery('grok', 'unsupported');
   run.agents.grok.results['acp-recovery'] = unsupported;
   assert.ok(releasePass(run));
-  assert.equal(verdict({ agent: 'grok', scenarios: [{ scenario: 'permission', status: 'fail', facts: { allow: { requests: [] }, reject: { requests: [] } } }] }, true).permission.status, 'untested');
+  const scenarioResult = (agent, item) => verdict({ agent, scenarios: [item] }, true)[item.scenario === 'resume' ? 'acp-recovery' : item.scenario];
+  const noRequests = { scenario: 'permission', status: 'fail', facts: { allow: { requests: [] }, reject: { requests: [] } } };
+  const permission = scenarioResult('grok', noRequests);
+  assert.equal(permission.status, 'unsupported-accepted');
+  assert.match(permission.reason, /2026-11-10.*agent-polish 04.*not permission support/);
+  assert.equal(scenarioResult('antigravity', noRequests).status, 'fail');
+  assert.equal(scenarioResult('grok', { ...noRequests, facts: { allow: { requests: [{}] }, reject: { requests: [] } } }).status, 'fail');
+  const limited = { scenario: 'basic', status: 'error', error: { name: 'Error', message: 'RATE LIMITED' } };
+  const rateLimit = scenarioResult('grok', limited);
+  assert.equal(rateLimit.status, 'unsupported-accepted');
+  assert.match(rateLimit.reason, /2026-11-10/);
+  assert.equal(scenarioResult('grok', { scenario: 'commands', status: 'fail', facts: { attempts: [{ stopReason: 'rate_limited' }] } }).status, 'unsupported-accepted');
+  assert.equal(scenarioResult('grok', { scenario: 'basic', status: 'fail', facts: { prompt: { stopReason: 'Rate limited' } } }).status, 'unsupported-accepted');
+  assert.equal(scenarioResult('grok', { ...limited, error: { name: 'Error', message: 'other failure' } }).status, 'fail');
+  assert.equal(scenarioResult('grok', { ...limited, status: 'timeout' }).status, 'timeout');
+  assert.equal(scenarioResult('codex', limited).status, 'fail');
+  run.agents.grok.results = { ...run.agents.grok.results, permission, basic: rateLimit };
+  assert.ok(releasePass(run));
+  const allLimited = Object.fromEntries(Object.keys(run.agents.grok.results).map((name) => [name, name === 'checkpoint-fallback' ? { status: 'pass' } : rateLimit]));
+  assert.ok(releasePass({ ...run, agents: { ...run.agents, grok: { ...run.agents.grok, results: allLimited } } }));
+  assert.ok(!releasePass({ ...run, agents: { ...run.agents, grok: { ...run.agents.grok, results: { ...run.agents.grok.results, basic: { status: 'untested' } } } } }));
+  assert.ok(!releasePass({ ...run, agents: { ...run.agents, grok: { ...run.agents.grok, version: '' } } }));
   run.agents.codex.fake = true;
   assert.ok(!releasePass(run));
   run.agents.codex.fake = false;
@@ -70,6 +91,10 @@ try {
   assert.match(await checkRelease(run, checkout), /dirty/i);
   run.agents.codex.fake = true;
   await writeFile(join(root, 'verdict.json'), JSON.stringify(run));
-  await assert.rejects(promisify(execFile)(process.execPath, [join(here, 'contract.mjs'), '--check', root]));
+  await assert.rejects(promisify(execFile)(process.execPath, [join(here, 'contract.mjs'), '--check', root]), (error) => {
+    assert.match(error.stdout, /accepted limitation.*grok basic:.*2026-11-10/i);
+    assert.match(error.stdout, /accepted limitation.*grok permission:.*agent-polish 04/i);
+    return true;
+  });
   console.log('PASS: fake scenarios, verdict dispositions, fallback, and fake release rejection');
 } finally { await rm(root, { recursive: true, force: true }); }

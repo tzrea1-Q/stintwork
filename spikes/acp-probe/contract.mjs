@@ -10,6 +10,22 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
 export const agents = ['claude', 'codex', 'grok', 'antigravity'];
 const accepted = new Set(['pass', 'unsupported-accepted']);
+const grokPermission = 'Grok Ask was not exercised: no permission requests observed; accepted by maintainer decision 2026-11-10 and agent-polish 04, not permission support';
+const grokRateLimit = 'Grok reported rate limiting; accepted as a known limitation by maintainer decision 2026-11-10';
+
+function rateLimited(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.entries(value).some(([key, entry]) =>
+    ((key === 'stopReason' || (key === 'message' && value.name)) && typeof entry === 'string' && /rate[ _-]limit/i.test(entry)) || rateLimited(entry));
+}
+
+function printLimitations(run) {
+  for (const [agent, entry] of Object.entries(run.agents ?? {})) {
+    for (const [scenario, result] of Object.entries(entry.results ?? {})) {
+      if (result.status === 'unsupported-accepted') console.log(`Warning: accepted limitation — ${agent} ${scenario}: ${result.reason}`);
+    }
+  }
+}
 
 export async function createRunDirectory(dir) {
   await mkdir(dir, { recursive: true, mode: 0o700 });
@@ -24,9 +40,12 @@ export function verdict(summary, fallback) {
     let reason = item?.facts?.reason ?? item?.error?.message ?? '';
     if (status === 'error') status = 'fail';
     if (status === 'unsupported') status = 'unsupported-unexplained';
-    if (scenario === 'permission' && summary.agent === 'grok' && item?.facts?.allow?.requests?.length === 0 && item?.facts?.reject?.requests?.length === 0) {
-      status = 'untested';
-      reason = 'blocked: untested required behaviour; no permission requests observed (always-approve is one possible cause)';
+    if (summary.agent === 'grok' && status === 'fail' && rateLimited({ error: item?.error, facts: item?.facts })) {
+      status = 'unsupported-accepted';
+      reason = grokRateLimit;
+    } else if (scenario === 'permission' && summary.agent === 'grok' && ['fail', 'unsupported-unexplained'].includes(status) && item?.facts?.allow?.requests?.length === 0 && item?.facts?.reject?.requests?.length === 0) {
+      status = 'unsupported-accepted';
+      reason = grokPermission;
     }
     if (scenario === 'resume' && ['grok', 'antigravity'].includes(summary.agent) && status === 'unsupported-unexplained') {
       const observations = item.connections?.slice(0, 2).map((connection) => connection.initialization);
@@ -57,7 +76,7 @@ export function releasePass(run) {
     const names = [...SCENARIOS.map((name) => name === 'resume' ? 'acp-recovery' : name), ...(['grok', 'antigravity'].includes(agent) ? ['checkpoint-fallback'] : [])];
     return entry?.source && entry?.version && entry?.fake === false && names.every((name) => {
       const result = entry.results?.[name];
-      return accepted.has(result?.status) && (result.status !== 'unsupported-accepted' || (name === 'acp-recovery' && ['grok', 'antigravity'].includes(agent) && result.reason?.includes('ADR 0012')));
+      return accepted.has(result?.status) && (result.status !== 'unsupported-accepted' || (name === 'acp-recovery' && ['grok', 'antigravity'].includes(agent) && result.reason?.includes('ADR 0012')) || (agent === 'grok' && (result.reason === grokRateLimit || (name === 'permission' && result.reason === grokPermission))));
     });
   });
 }
@@ -73,6 +92,7 @@ async function main() {
   if (process.argv[2] === '--check' && process.argv.length === 4) {
     const run = JSON.parse(await readFile(join(resolve(process.argv[3]), 'verdict.json'), 'utf8'));
     const failure = await checkRelease(run);
+    printLimitations(run);
     console.log(failure ?? 'Release contract passed');
     if (failure) process.exitCode = 1;
     return;
@@ -110,6 +130,7 @@ async function main() {
   run.clean = clean && finalRevision === revision && !(await git('status', '--porcelain'));
   await save();
   console.log(`Verdict: ${dir}`);
+  printLimitations(run);
   if (!releasePass(run)) process.exitCode = 1;
 }
 
