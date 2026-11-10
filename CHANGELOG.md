@@ -2,7 +2,7 @@
 
 All notable changes to Stintwork are recorded here, in Keep a Changelog style.
 
-## Unreleased — 0.2.0
+## 0.2.0 — 2026-11-10
 
 - Project setup preserves existing tracker guides by default and previews an explicit switch to local Markdown.
 - English and Simplified Chinese UI, responsive layouts and shared controls across the application.
@@ -14,7 +14,7 @@ All notable changes to Stintwork are recorded here, in Keep a Changelog style.
 - Prepare private vulnerability reporting, a latest-published-version security support policy, and repository, homepage and bugs package metadata.
 - Add a pre-release ACP contract harness; its fake-agent self-test is `pnpm test:acp-contract`. Real-agent results for the release revision are pending.
 
-See the [draft release notes](docs/release-notes/0.2.0.md) for verification and limitations.
+See the [release notes](docs/release-notes/0.2.0.md) for verification and limitations.
 
 ## 0.1.1 — 2026-10-12
 

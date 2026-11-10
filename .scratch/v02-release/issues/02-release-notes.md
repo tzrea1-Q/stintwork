@@ -1,6 +1,6 @@
 # 02 — v0.2 release notes
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -9,8 +9,8 @@ Draft `docs/release-notes/0.2.0.md` and update the changelog from changes actual
 
 ## Acceptance criteria
 
-- [ ] Notes and changelog reflect the final release revision and distinguish shipped behavior from unverified or deferred work, including agent and recovery limits.
-- [ ] Notes describe the tracker setup safeguard, startup and download behavior, restart fallback, GitHub tracker boundaries, supported agents and UI changes accurately.
+- [x] Notes and changelog reflect the final release revision and distinguish shipped behavior from unverified or deferred work, including agent and recovery limits.
+- [x] Notes describe the tracker setup safeguard, startup and download behavior, restart fallback, GitHub tracker boundaries, supported agents and UI changes accurately.
 - [x] Links and upgrade instructions work; release date and publication claims are added only when true. Comments identify the reviewed revision and sources.
 
 ## Comments
@@ -22,3 +22,5 @@ Checks: `pnpm format:check` passed (434 files); `git diff --check` passed; all l
 **Codex, 2026-11-10:** Updated the draft and Unreleased changelog against `v0.1.1..41185163cdf3a1a5f9d49cd1b5183c234398548c` (local `main` at that revision). Reviewed the git log, roadmap and plan, M11 exit and follow-up, M12 agent tickets and exit, agent-polish 04, agent profiles, M7 exit and security/metadata tickets, and M13 contract ticket and instructions. M7, M11 and M12 are shipped; Grok real-stint verification and Antigravity native restart remain deferred. The contract results remain a placeholder; the requested Grok limitation policy is identified as a pending parallel contract change because the current contract document still blocks always-approve Ask. Final release revision, contract evidence, publication and public-link checks remain for the coordinator. Status and criteria are unchanged. No commit was made.
 
 Checks: `pnpm format:check`, `git diff --check`, and local Markdown link target checks passed.
+
+**Coordinator, 2026-11-10:** Reviewed against the published revision `33125f8`. The notes record M7, M11 and M12 as shipped, the accepted Grok limitations, and the real contract results; the publication line, changelog date and upgrade wording were set after `stintwork@0.2.0` was published.

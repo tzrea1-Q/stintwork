@@ -1,6 +1,6 @@
 # 01 — ACP contract test
 
-Status: ready-for-human
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -11,8 +11,8 @@ Turn `spikes/acp-probe/` into a manually run pre-release contract test for Claud
 
 - [x] Instructions identify required scenarios, sources, versions, expected results and the evidence needed for each agent; failures, timeouts and unsupported cases have explicit dispositions. Recovery rules distinguish ACP recovery from checkpoint fallback.
 - [x] The harness has a runnable check for its contract verdict; a fake-agent pass is not real-agent evidence.
-- [ ] At the release revision, all four real agents pass their applicable contract rules. Comments record commands, revision, OS, versions, Agent sources, results and any justified capability limits; sensitive transcripts stay private.
-- [ ] Missing login, an untested required behavior or an unexplained unsupported result blocks release; rerun affected evidence if the candidate changes.
+- [x] At the release revision, all four real agents pass their applicable contract rules. Comments record commands, revision, OS, versions, Agent sources, results and any justified capability limits; sensitive transcripts stay private.
+- [x] Missing login, an untested required behavior or an unexplained unsupported result blocks release; rerun affected evidence if the candidate changes.
 
 ## Comments
 
@@ -36,3 +36,5 @@ Turn `spikes/acp-probe/` into a manually run pre-release contract test for Claud
 | Grok Build | Installed 1.0.77 | accepted limitation | accepted limitation | accepted limitation | accepted limitation | accepted limitation | pass |
 
 Every Grok scenario failed with ACP error -32003 "Rate limited"; the raw error is HTTP 429 `subscription:free-usage-exhausted`, i.e. the account's included usage is exhausted. Under the maintainer's 2026-11-10 decision this is an accepted limitation, listed in the verdict output, and is not a pass or permission support. The coordinator reviewed the probe summaries for all four agents; no transcript content is copied here. Antigravity 1.5.3 supports new-process `session/load`, which is relevant to more-agents 07. Docs-only commits follow this revision, so the contract is rerun on the final revision before publication.
+
+**Coordinator, 2026-11-10: rerun on the final revision.** Run `contract-2026-11-10T09-06-46-917Z` at `33125f8` (clean tree, darwin-arm64), `--check` → "Release contract passed". Claude Code 2.1.295, Codex 0.163.0 and Antigravity CLI 1.5.3 passed every scenario again, with new-process `loadSession`. Grok Build 1.0.77 passed cancel; basic, commands, permission and ACP recovery returned the same HTTP 429 usage-exhausted error and are accepted limitations under the maintainer's decision. Checkpoint fallback passed. This is the revision that was published. Published revision `33125f8` (tag `v0.2.0`); `stintwork@0.2.0` on registry.npmjs.org, shasum `bf6e2ef16c5de3083af02725ce27278115f466fb`, integrity `sha512-Ozb9tWGffg862X5TUIa42a+cRzfjOqfnLB2YURBexxm5K4xyK+A0Ry4dUrkwYFkhSiDmDEJB9rAKBtX1toJRlg==`.

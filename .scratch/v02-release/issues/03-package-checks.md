@@ -1,6 +1,6 @@
 # 03 — Package and release dry run
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 02
 
 ## What to build
@@ -11,8 +11,8 @@ Prepare the 0.2.0 version and package from the release candidate. Run the reposi
 
 - [x] Version and lockfile changes are consistent; full checks and packed-tarball smoke pass on the final candidate, with macOS and Linux evidence and CI links.
 - [x] With isolated empty npm and agent caches on a typical home connection, the packed candidate reaches a usable board within 60 seconds, with at most 10 MiB of registry response bodies and at most 10% of a comparable baseline. Comments record revision, platform, connection, cache state, elapsed time, bytes and baseline; first-stint downloads are separate. Do not clear the developer's cache.
-- [ ] The dry run reports 0.2.0 and the intended package contents and metadata; Comments record commands, revision, artifact identity and results. No publication occurs.
-- [ ] If the candidate changes, affected checks and the dry run are repeated against the final revision and artifact.
+- [x] The dry run reports 0.2.0 and the intended package contents and metadata; Comments record commands, revision, artifact identity and results. No publication occurs.
+- [x] If the candidate changes, affected checks and the dry run are repeated against the final revision and artifact.
 
 ## Comments
 
@@ -31,3 +31,5 @@ Prepare the 0.2.0 version and package from the release candidate. Run the reposi
 `--compare` against the baseline: 3/3 PASS. Every candidate is within 60 s, under 10 MiB and about 1.5% of the baseline. The agent cache stayed empty, with no adapter or native package request before the board was usable. First-stint downloads were not measured here.
 
 The candidate changes only with docs-only commits before publication; the dry run is repeated on the final revision.
+
+**Coordinator, 2026-11-10: final revision.** `33125f8` changed only docs and tickets after `2b782f4`. CI [run 42787956629](https://github.com/tzrea1-Q/stintwork/actions/runs/42787956629) succeeded on it (checks, browser shards, package-smoke on ubuntu-latest and macos-latest). `npm publish --dry-run --registry https://registry.npmjs.org` on the clean `33125f8` reported 0.2.0, 46 files and the same shasum `bf6e2ef16c5de3083af02725ce27278115f466fb`, so the measured artifact's contents are unchanged. No publication occurred during these checks.
