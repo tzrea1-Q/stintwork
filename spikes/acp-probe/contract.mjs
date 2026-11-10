@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -10,6 +10,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../..');
 export const agents = ['claude', 'codex', 'grok', 'antigravity'];
 const accepted = new Set(['pass', 'unsupported-accepted']);
+
+export async function createRunDirectory(dir) {
+  await mkdir(dir, { recursive: true, mode: 0o700 });
+  await chmod(dir, 0o700);
+}
 
 export function verdict(summary, fallback) {
   const results = {};
@@ -80,7 +85,7 @@ async function main() {
   const revision = await git('rev-parse', 'HEAD');
   const clean = !(await git('status', '--porcelain'));
   const dir = join(here, 'runs', `contract-${new Date().toISOString().replace(/[:.]/g, '-')}`);
-  await mkdir(dir, { recursive: true });
+  await createRunDirectory(dir);
   const run = { revision, clean, os: `${process.platform}-${process.arch}`, node: process.version, fake: false, agents: {} };
   const save = () => writeFile(join(dir, 'verdict.json'), `${JSON.stringify(run, null, 2)}\n`);
   await save();

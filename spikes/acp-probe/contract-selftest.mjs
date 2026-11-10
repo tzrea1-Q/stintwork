@@ -1,16 +1,24 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { agents, checkRelease, releasePass, verdict } from './contract.mjs';
+import { agents, checkRelease, createRunDirectory, releasePass, verdict } from './contract.mjs';
 import { runProbe } from './probe.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = await mkdtemp(join(tmpdir(), 'acp-contract-'));
 try {
+  const runDir = join(root, 'contract-run');
+  await createRunDirectory(runDir);
+  if (process.platform !== 'win32') {
+    assert.equal((await stat(runDir)).mode & 0o777, 0o700);
+    await chmod(runDir, 0o755);
+    await createRunDirectory(runDir);
+    assert.equal((await stat(runDir)).mode & 0o777, 0o700);
+  }
   await writeFile(join(root, 'outside'), 'outside-original');
   const summary = await runProbe({ agent: 'codex', root, timeoutSec: 10, cancelAfterMs: 100, spawnSpec: { command: process.execPath, args: [join(here, 'lib/fake-agent.mjs')], env: { FAKE_OUTSIDE_FILE: join(root, 'outside') } } });
   assert.ok(summary.runtime.testOverride);
