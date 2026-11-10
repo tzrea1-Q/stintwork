@@ -1,6 +1,6 @@
 # 06 — M12 exit
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 01, 02, 03, 04, 05
 
 ## What to build
@@ -11,7 +11,7 @@ The maintainer installs Antigravity CLI and signs in to it and Grok Build. The c
 
 - [x] Maintainer action: both agents are installed and signed in; agents never sign in or read credentials.
 - [ ] Coordinator action: agent-polish 04 is resolved and both real stints end in parsed handoffs, with evidence recorded here.
-- [ ] Maintainer action: review the evidence and mark M12 shipped.
+- [x] Maintainer action: review the evidence and mark M12 shipped.
 
 ## Comments
 
@@ -44,3 +44,5 @@ The maintainer installs Antigravity CLI and signs in to it and Grok Build. The c
   The coordinator allowed each of these once. It denied `git log stintwork/clamp`, which belongs to another work item's branch. After that denial the agent wrote its handoff and stopped, rather than continuing.
 
 Antigravity's half of criterion 2 is met by stint `ad8d39fe` (implementation complete) and confirmed by `0dbaff46` on the merged code. Grok's half remains blocked by rate limiting (agent-polish 04).
+
+**Coordinator, 2026-11-10: M12 shipped with Grok as a known limitation.** The maintainer reviewed the evidence and decided to record Grok Build's rate limiting as a known limitation rather than retry or switch accounts. Grok Build stays experimental; its probe passed (1.0.77), but no real Grok stint has ended in a parsed handoff, so criterion 2 is met for Antigravity CLI only and is left unticked for Grok. At the maintainer's instruction, the coordinator set M12 to `shipped` in `.stintwork/roadmap.md`. Native restart for Antigravity remains in ticket 07, outside M12.

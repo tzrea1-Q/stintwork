@@ -180,6 +180,8 @@ Verify Grok Build and add Antigravity CLI over ACP ([ADR 0018](adr/0018-antigrav
 
 **Exit test:** one real stint each with Grok Build and Antigravity CLI, each ending in a parsed handoff.
 
+Shipped 2026-11-10. Antigravity CLI passed. Grok Build's real stints were all rate limited on the maintainer's account; the maintainer accepted this as a known limitation, so Grok Build stays experimental and agent-polish 04 is deferred.
+
 ### M13 · v0.2 release and going public · S
 
 Publish the release after its milestones pass.

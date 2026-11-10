@@ -1,6 +1,6 @@
 # 04 — Grok Build end to end
 
-Status: ready-for-human
+Status: deferred
 Blocked by: none
 
 ## What to build
@@ -40,3 +40,5 @@ Stintwork handled both correctly: preparation showed the source, executable and 
 **Coordinator, 2026-11-10 (later):** A third stint, `c666d08a`, started at 02:47 UTC, about an hour after the second. It also ended `failed` with "Rate limited", after 6 s, on the same fixture and Grok 1.0.77. The account's limit has persisted for over an hour. Criterion 2 is still open, pending the maintainer's decision.
 
 **Coordinator, 2026-11-10 (03:20 UTC):** A fourth stint, `78a8aa33`, ran on a fresh work item, `clamp`, in the same fixture. It ended `failed` with "Rate limited" after 3 s, with checkpoint `70b2ba7`. Grok has now been rate limited for about 1 h 45 min (since 01:37) on the maintainer's account. By comparison, a real Antigravity stint at 03:14 on the same fixture and server finished with a parsed handoff (more-agents 06).
+
+**Coordinator, 2026-11-10 (decision):** The maintainer accepted Grok's rate limiting as a known limitation for M12 and chose not to retry or switch accounts now. Grok Build stays registered and experimental, and the README's unverified, rate-limited note stands. Deferred; reopen when the account's limit allows a real stint.

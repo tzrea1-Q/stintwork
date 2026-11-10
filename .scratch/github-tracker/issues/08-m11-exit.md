@@ -1,6 +1,6 @@
 # 08 — M11 exit
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 01, 02, 03, 04, 05, 06, 07, 13, 14, 15, 16, 18
 
 ## What to build
@@ -15,7 +15,7 @@ After all prerequisites and ADR approval, the coordinator asks the maintainer wh
 - [x] A real PR for the ticket passes required checks on its current head and is merged; record URLs, commits and check outcomes.
 - [x] A remote edit and refresh demonstrate approval invalidation or a separately authorized disposable issue demonstrates it; failure and recovery are observed.
 - [x] Record actual timing/request counts, browser evidence, cleanup, failures and limits; no credentials or private content are copied.
-- [ ] Only the maintainer accepted full pass sets M11 shipped; otherwise leave active with concrete blockers.
+- [x] Only the maintainer accepted full pass sets M11 shipped; otherwise leave active with concrete blockers.
 
 ## Comments
 
@@ -82,3 +82,5 @@ Cleanup, as the maintainer decided on 2026-11-08:
 The local record commits `185c67e` and `671cd14` stay only in the local clone `/Users/tzrea1/Develop/stintwork-m11-exit`.
 
 Every exit criterion except the maintainer's decision is met. M11 stays active until the maintainer marks it shipped.
+
+**Coordinator, 2026-11-10:** The maintainer reviewed the evidence above and accepted the full pass. At the maintainer's instruction, the coordinator set M11 to `shipped` in `.stintwork/roadmap.md`.
