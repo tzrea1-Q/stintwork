@@ -46,7 +46,10 @@ export function createAntigravityAgent(
       const reason = antigravityVersionReason(detected);
       if (installedAgentIdentity("antigravity", env)?.identity !== executable.identity)
         return inspectAgentAvailability("antigravity", env);
-      if (reason === "compatible") return availability;
+      if (reason === "compatible")
+        return availability.kind === "incompatible"
+          ? inspectAgentAvailability("antigravity", env)
+          : availability;
       return {
         ...availability,
         canStart: false,

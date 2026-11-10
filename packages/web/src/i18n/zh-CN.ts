@@ -791,6 +791,7 @@ export const zhCN: Catalog = {
     briefTicket: (number, github = false) =>
       joinChinese("工单", github ? `#${number}` : String(number).padStart(2, "0")),
     agent: "Agent",
+    experimental: "实验性",
     chooseAgent: "为此 Stint 选择 Agent。",
     noAgents: "没有已注册的 Agent。",
     permissionLevel: "权限级别",

@@ -57,6 +57,26 @@ test.each([
   });
 });
 
+test("a compatible version clears a transient failure without changing the executable", async () => {
+  const { cwd, executable, agent } = await fixture();
+  const marker = join(cwd, "checked");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nif [ ! -f '${marker}' ]; then : > '${marker}'; exit 1; fi\necho 1.5.3\n`,
+  );
+  await refreshAgentAvailability(agent);
+  expect(agent.availability).toMatchObject({ canStart: false, kind: "incompatible" });
+  const identity = agent.availability?.installedIdentity;
+  await refreshAgentAvailability(agent, true);
+  expect(agent.availability).toMatchObject({
+    canStart: true,
+    kind: "not-prepared",
+    installedIdentity: identity,
+    selection: { reason: "native" },
+  });
+  expect(agent.availability?.reason).toBeUndefined();
+});
+
 test("detects missing agy, prepares installed agy without prompting, and kills an uncooperative server", async () => {
   const { cwd, executable, env } = await fixture("1.5.3", { ignoreSigterm: true });
   let child: ChildProcessWithoutNullStreams | undefined;

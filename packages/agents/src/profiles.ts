@@ -68,6 +68,7 @@ export const claudeProfile: AgentProfile = {
 export const grokProfile: AgentProfile = {
   id: "grok",
   displayName: "Grok Build",
+  experimental: true,
   skillLocations: [],
   installationHint: "Install Grok Build and sign in with grok login.",
   capabilities: {
@@ -87,6 +88,9 @@ export const grokProfile: AgentProfile = {
 export const antigravityProfile: AgentProfile = {
   id: "antigravity",
   displayName: "Antigravity CLI",
+  experimental: true,
+  loginMessageCode: "agent.antigravityLogin",
+  permissionModes: { ask: "default", other: "accept-edits" },
   skillLocations: [],
   installationHint: "Install Antigravity CLI, run agy once and sign in yourself.",
   capabilities: {

@@ -415,7 +415,7 @@ function BriefPreviewSheet({
                     return {
                       value: candidate.id,
                       disabled: !!reason,
-                      label: `${candidate.displayName}${reason ? ` — ${reason}` : ""}`,
+                      label: `${candidate.displayName}${candidate.experimental ? ` (${t.stints.experimental})` : ""}${reason ? ` — ${reason}` : ""}`,
                     };
                   }),
                 ]}
@@ -447,6 +447,9 @@ function BriefPreviewSheet({
                 return (
                   <div className="mt-3 space-y-2 rounded-md border border-border bg-surface p-3">
                     <div className="flex flex-wrap items-center gap-2">
+                      {selectedAgent.experimental && (
+                        <Badge variant="secondary">{t.stints.experimental}</Badge>
+                      )}
                       {selection && selection.source !== "pending" && (
                         <Badge variant="secondary">
                           {copy.source}: {copy[selection.source]}

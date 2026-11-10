@@ -11,7 +11,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { en } from "./i18n/en";
 import { zhCN } from "./i18n/zh-CN";
 import { WorkItemDrawer } from "./WorkItemDrawer";
-import { codexProfile } from "../../agents/src/profiles";
+import { antigravityProfile, codexProfile, grokProfile } from "../../agents/src/profiles";
 import { TicketBriefPreview } from "./BriefPreview";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
@@ -795,3 +795,39 @@ test("retry retains the bundled selection version, size and executable until res
   await user.keyboard("{Escape}");
   await act(async () => controller.close());
 });
+
+test.each([
+  ["en", "Start stint", "Agent", "Experimental"],
+  ["zh-CN", "开始 Stint", "Agent", "实验性"],
+])(
+  "%s brief marks experimental agents in the selector and readiness",
+  async (language, start, agentLabel, label) => {
+    localStorage.setItem(languageStorageKey, language);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              url === "/api/agents"
+                ? { agents: [codexProfile, grokProfile, antigravityProfile] }
+                : brief,
+            ),
+          ),
+      ),
+    );
+    const user = userEvent.setup();
+    render(
+      <LanguageProvider>
+        <TicketBriefPreview item={item} ticket={ticket} />
+      </LanguageProvider>,
+    );
+    await user.click(screen.getByRole("button", { name: start }));
+    const picker = await screen.findByRole("combobox", { name: agentLabel });
+    await user.click(picker);
+    expect(screen.getByRole("option", { name: `Grok Build (${label})` })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: `Antigravity CLI (${label})` }));
+    expect(picker).toHaveTextContent(`Antigravity CLI (${label})`);
+    expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+  },
+);

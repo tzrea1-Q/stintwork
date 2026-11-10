@@ -777,6 +777,7 @@ export const en = {
     briefTicket: (number: number, github = false) =>
       `Ticket ${github ? `#${number}` : String(number).padStart(2, "0")}`,
     agent: "Agent",
+    experimental: "Experimental",
     chooseAgent: "Choose an agent for this stint.",
     noAgents: "No agents are registered.",
     permissionLevel: "Permission level",

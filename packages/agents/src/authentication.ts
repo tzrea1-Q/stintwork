@@ -3,8 +3,8 @@ import { CoreTextError, type AgentProfile } from "@stintwork/core";
 export class AgentAuthenticationError extends CoreTextError {
   constructor(profile: AgentProfile) {
     super(
-      profile.id === "antigravity"
-        ? { code: "agent.antigravityLogin" }
+      profile.loginMessageCode
+        ? { code: profile.loginMessageCode }
         : {
             code: "agent.loginRequired",
             params: {
