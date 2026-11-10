@@ -20,18 +20,19 @@ export function createAntigravityAgent(
       antigravityProfile,
       env,
     );
-  async function version(path: string, signal?: AbortSignal) {
+  async function version(path: string, signal?: AbortSignal, timeout = 60_000) {
     try {
       const { stdout } = await promisify(execFile)(path, ["--version"], {
         signal,
         env,
-        timeout: 60_000,
+        timeout,
         killSignal: "SIGKILL",
         maxBuffer: 65536,
       });
       return stdout.trim();
     } catch (error) {
       signal?.throwIfAborted();
+      if (error && typeof error === "object" && "killed" in error && error.killed) return undefined;
       return "";
     }
   }
@@ -42,23 +43,26 @@ export function createAntigravityAgent(
       const availability = inspectAgentAvailability("antigravity", env, this.availability);
       const executable = installedAgentIdentity("antigravity", env);
       if (!executable || availability.available) return availability;
-      const detected = await version(executable.path);
-      const reason = antigravityVersionReason(detected);
+      const detected = await version(executable.path, undefined, 5_000);
+      const reason = detected === undefined ? "timeout" : antigravityVersionReason(detected);
       if (installedAgentIdentity("antigravity", env)?.identity !== executable.identity)
         return inspectAgentAvailability("antigravity", env);
       if (reason === "compatible")
-        return availability.kind === "incompatible"
+        return availability.kind === "incompatible" || availability.kind === "check-failed"
           ? inspectAgentAvailability("antigravity", env)
           : availability;
       return {
         ...availability,
         canStart: false,
-        kind: "incompatible",
-        reason: coreText({ code: "agent.antigravityVersion", params: { reason } }),
+        kind: reason === "timeout" ? "check-failed" : "incompatible",
+        reason:
+          reason === "timeout"
+            ? coreText({ code: "agent.antigravityVersionTimeout" })
+            : coreText({ code: "agent.antigravityVersion", params: { reason } }),
         selection: {
           source: "installed",
-          reason,
-          executable: { ...executable, version: detected },
+          reason: reason === "timeout" ? "unverified" : reason,
+          executable: { ...executable, version: detected ?? "" },
         },
       };
     },
@@ -66,7 +70,7 @@ export function createAntigravityAgent(
       const executable = installedAgentIdentity("antigravity", env);
       if (!executable) throw new CoreTextError({ code: "agent.antigravityMissing" });
       const detected = await version(executable.path, signal);
-      const reason = antigravityVersionReason(detected);
+      const reason = antigravityVersionReason(detected ?? "");
       if (reason !== "compatible")
         throw new CoreTextError({ code: "agent.antigravityVersion", params: { reason } });
       if (installedAgentIdentity("antigravity", env)?.identity !== executable.identity)
@@ -99,7 +103,7 @@ export function createAntigravityAgent(
       return {
         source: "installed",
         reason: "native",
-        executable: { ...executable, version: detected },
+        executable: { ...executable, version: detected ?? "" },
       };
     },
   };

@@ -77,6 +77,23 @@ test("a compatible version clears a transient failure without changing the execu
   expect(agent.availability?.reason).toBeUndefined();
 });
 
+test("a hung version check times out and a later refresh clears it", async () => {
+  const { cwd, executable, agent } = await fixture();
+  const marker = join(cwd, "checked");
+  await writeFile(
+    executable,
+    `#!/bin/sh\nif [ ! -f '${marker}' ]; then : > '${marker}'; exec /bin/sleep 30; fi\necho 1.5.3\n`,
+  );
+  await refreshAgentAvailability(agent);
+  expect(agent.availability).toMatchObject({
+    canStart: false,
+    kind: "check-failed",
+    reason: { code: "agent.antigravityVersionTimeout" },
+  });
+  await refreshAgentAvailability(agent, true);
+  expect(agent.availability).toMatchObject({ canStart: true, kind: "not-prepared" });
+}, 10_000);
+
 test("detects missing agy, prepares installed agy without prompting, and kills an uncooperative server", async () => {
   const { cwd, executable, env } = await fixture("1.5.3", { ignoreSigterm: true });
   let child: ChildProcessWithoutNullStreams | undefined;
@@ -197,18 +214,25 @@ test("unanswered permission can be cancelled and unexpected options are refused"
   const waiting = new Promise<void>((resolve) => {
     pending = resolve;
   });
+  const events: import("@stintwork/core").StintLogEvent[] = [];
   const stint = createFakeAgentLauncher([request], [], { profile: "antigravity" })({
     agent: "antigravity",
     cwd,
     prompt: "Work",
     permissionLevel: "ask",
     onEvent: (event) => {
+      events.push(event);
       if (event.type === "permission_request") pending();
     },
   });
   await waiting;
   await stint.cancel();
   expect((await stint.done).stopReason).toBe("cancelled");
+  expect(events.filter((event) => event.type === "permission")).not.toContainEqual(
+    expect.objectContaining({
+      decision: expect.objectContaining({ outcome: "selected", optionId: "allow" }),
+    }),
+  );
   const unexpected = createFakeAgentLauncher(
     [{ ...request, options: [{ optionId: "surprise", name: "Surprise", kind: "allow_once" }] }],
     [],

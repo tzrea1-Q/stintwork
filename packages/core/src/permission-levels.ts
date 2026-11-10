@@ -92,6 +92,7 @@ export function permissionPaths(
       ? (tool.rawInput as Record<string, unknown>)
       : {};
   const kind = tool.kind ?? (input.name === "Bash" ? "execute" : undefined);
+  if (input.CommandLine !== undefined && input.command !== undefined) return null;
   if (kind !== "edit" && kind !== "execute") return null;
   if (
     input.url !== undefined ||
@@ -116,7 +117,7 @@ export function permissionPaths(
   if (kind === "execute" && level === "edit-freely") {
     // Claude keeps its shell inside the project; relative paths safe from the worktree root stay inside from any subdirectory.
     if (input.sandbox_permissions === "require_escalated" || input.network === true) return null;
-    const targets = safeCommandPaths(input.command);
+    const targets = safeCommandPaths(input.command ?? input.CommandLine);
     if (targets === null) return null;
     paths.push(...targets);
   } else if (kind === "execute") {
@@ -125,7 +126,7 @@ export function permissionPaths(
     const command =
       Array.isArray(input.command) && input.command.every((part) => typeof part === "string")
         ? input.command.join(" ")
-        : input.command;
+        : (input.command ?? input.CommandLine);
     if (
       typeof command !== "string" ||
       !command.trim() ||

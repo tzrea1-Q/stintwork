@@ -14,6 +14,7 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "stints.preparation.reasons.native": [["Antigravity CLI"]],
   "board.githubStatus.incompleteItems": [[0], [1], [2]],
   "coreText.agent.antigravityVersion": [[{ reason: "unparseable" }]],
   "coreText.github.labelledChildExcluded": [[{ issue: "12" }]],

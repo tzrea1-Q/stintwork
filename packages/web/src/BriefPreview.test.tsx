@@ -810,7 +810,18 @@ test.each([
           new Response(
             JSON.stringify(
               url === "/api/agents"
-                ? { agents: [codexProfile, grokProfile, antigravityProfile] }
+                ? {
+                    agents: [
+                      codexProfile,
+                      ...[grokProfile, antigravityProfile].map((profile) => ({
+                        ...profile,
+                        availability: {
+                          available: true,
+                          selection: { source: "installed", reason: "native" },
+                        },
+                      })),
+                    ],
+                  }
                 : brief,
             ),
           ),
@@ -825,9 +836,26 @@ test.each([
     await user.click(screen.getByRole("button", { name: start }));
     const picker = await screen.findByRole("combobox", { name: agentLabel });
     await user.click(picker);
-    expect(screen.getByRole("option", { name: `Grok Build (${label})` })).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: `Grok Build (${label})` }));
+    expect(picker).toHaveTextContent(`Grok Build (${label})`);
+    expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        language === "en"
+          ? "Uses your installed Grok Build and login."
+          : "使用你已安装的 Grok Build 和登录状态。",
+      ),
+    ).toBeInTheDocument();
+    await user.click(picker);
     await user.click(screen.getByRole("option", { name: `Antigravity CLI (${label})` }));
     expect(picker).toHaveTextContent(`Antigravity CLI (${label})`);
     expect(screen.getByText(label, { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        language === "en"
+          ? "Uses your installed Antigravity CLI and login."
+          : "使用你已安装的 Antigravity CLI 和登录状态。",
+      ),
+    ).toBeInTheDocument();
   },
 );

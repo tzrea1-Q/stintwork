@@ -755,7 +755,7 @@ export const zhCN: Catalog = {
         incompatible: "已安装的 CLI 不兼容。",
         "handshake failed": "已安装的 CLI 握手失败。",
         unverified: "已找到已安装的 CLI，开始 Stint 时检查",
-        native: "使用你已安装的 Agent CLI 和登录状态。",
+        native: (agent: string) => `使用你已安装的 ${agent} 和登录状态。`,
       },
       phases: {
         selected: "已选择来源",
@@ -943,6 +943,8 @@ export const zhCN: Catalog = {
     "agent.antigravityLogin":
       "Antigravity CLI 需要身份验证。请自行运行一次 agy 并登录，然后开始新的 Stint。",
     "agent.antigravityMissing": "未找到 Antigravity CLI。请安装后自行运行 agy 并登录。",
+    "agent.antigravityVersionTimeout":
+      "Antigravity CLI 版本检查在 5 秒后超时。请刷新 Agent 可用性重试。",
     "agent.antigravityVersion": ({ reason }) =>
       `Antigravity CLI 版本不可用或不兼容（${({ missing: "未提供版本", unparseable: "无法解析", "below-tested-range": "低于测试版本", incompatible: "不兼容" } as Record<string, string>)[reason] ?? reason}）；请安装 1.5.3 至 2.0.0 之前的稳定版本。`,
     "recovery.grok": "Grok Build 为实验性支持；重启后将通过检查点和新的 Stint 继续。",
