@@ -8,10 +8,13 @@ All notable changes to Stintwork are recorded here, in Keep a Changelog style.
 - English and Simplified Chinese UI, responsive layouts and shared controls across the application.
 - Faster first run: prepare only the selected Claude Code or Codex adapter at first stint, using a compatible Installed source or a pinned Bundled fallback.
 - Automatically attempt to recover eligible Claude Code and Codex stints after a server restart; failed recovery falls back to a checkpoint and a new stint.
-- Read GitHub Issues as project memory, with work items, tickets and revision-bound gate evidence; agents write issues through their own skills and `gh`.
+- Read GitHub Issues as project memory through `gh`, with work items, tickets and revision-bound gate evidence; apart from its pull request flow, Stintwork only reads GitHub, while agents write issues through their own skills and `gh`.
 - Generate a parent-closing keyword for new GitHub-tracked Ship pull requests. GitHub closes the parent when merged into the default branch.
+- Add experimental Antigravity CLI via installed `agy` (1.5.3 or newer, excluding 2.x), with Stintwork permission decisions and checkpoint fallback after restart. Grok Build remains experimental and real-stint verification is deferred due to rate limiting on the maintainer's account.
+- Prepare private vulnerability reporting, a latest-published-version security support policy, and repository, homepage and bugs package metadata.
+- Add a pre-release ACP contract harness; its fake-agent self-test is `pnpm test:acp-contract`. Real-agent results for the release revision are pending.
 
-See the [draft release notes](docs/release-notes/0.2.0.md) for verification, pending milestone exits and limitations.
+See the [draft release notes](docs/release-notes/0.2.0.md) for verification and limitations.
 
 ## 0.1.1 — 2026-10-12
 
