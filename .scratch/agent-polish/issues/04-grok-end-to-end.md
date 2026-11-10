@@ -29,3 +29,10 @@ Grok Build's registration, warnings and handoff parsing were fixed with real-con
 This matches the 2026-10-09 finding that the maintainer's own Grok config sets `permission_mode = "always-approve"`, which Stintwork already reports as a warning. The coordinator did not read or change that config.
 
 Ask-mode permissions for Grok therefore remain untested. They are not required by this ticket. The real stint follows under the M12 exit.
+
+**Coordinator, 2026-11-10:** Two real stints were rate limited. Fixture: local repository `/Users/tzrea1/Develop/stintwork-m12-exit` (no remote), work item `countdown`, quick workflow. Served from main `94a9bba`'s built `dist`, with Grok Build 1.0.77 from the Installed source.
+
+- **Stint `18fb717b`.** It read the skill and spec, checked the branch, and wrote `test/countdown.test.js`. After 35 s it ended `failed` with "Rate limited", leaving checkpoint `f3a996e`.
+- **Stint `6d39eadc`.** Started 6 minutes later, it ended `failed` with "Rate limited" after 7 s, on the same checkpoint.
+
+Stintwork handled both correctly: preparation showed the source, executable and version, the always-approve warning was shown, and each failure was visible in stint history with a checkpoint and no handoff. The probe a few minutes earlier passed, so the limit applies to sustained use on the maintainer's account. Criterion 2 is still open. Ways forward: retry later, use an account or plan with a higher limit, or record Grok as rate-limited for the M12 exit (the plan allows "subject to its API rate limits"). That decision is the maintainer's.
