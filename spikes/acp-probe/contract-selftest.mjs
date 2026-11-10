@@ -49,11 +49,13 @@ try {
   run.agents.grok.results['acp-recovery'] = unsupported;
   assert.ok(releasePass(run));
   const scenarioResult = (agent, item) => verdict({ agent, scenarios: [item] }, true)[item.scenario === 'resume' ? 'acp-recovery' : item.scenario];
-  const noRequests = { scenario: 'permission', status: 'fail', facts: { allow: { requests: [] }, reject: { requests: [] } } };
+  const noRequests = { scenario: 'permission', status: 'fail', facts: { allow: { requests: [] }, reject: { requests: [], fileExists: false } } };
   const permission = scenarioResult('grok', noRequests);
   assert.equal(permission.status, 'unsupported-accepted');
   assert.match(permission.reason, /2026-11-10.*agent-polish 04.*not permission support/);
   assert.equal(scenarioResult('antigravity', noRequests).status, 'fail');
+  assert.equal(scenarioResult('grok', { ...noRequests, facts: { ...noRequests.facts, reject: { requests: [], fileExists: true } } }).status, 'fail');
+  assert.equal(scenarioResult('grok', { ...noRequests, facts: { ...noRequests.facts, reject: { requests: [] } } }).status, 'fail');
   assert.equal(scenarioResult('grok', { ...noRequests, facts: { allow: { requests: [{}] }, reject: { requests: [] } } }).status, 'fail');
   const limited = { scenario: 'basic', status: 'error', error: { name: 'Error', message: 'RATE LIMITED' } };
   const rateLimit = scenarioResult('grok', limited);
@@ -61,6 +63,12 @@ try {
   assert.match(rateLimit.reason, /2026-11-10/);
   assert.equal(scenarioResult('grok', { scenario: 'commands', status: 'fail', facts: { attempts: [{ stopReason: 'rate_limited' }] } }).status, 'unsupported-accepted');
   assert.equal(scenarioResult('grok', { scenario: 'basic', status: 'fail', facts: { prompt: { stopReason: 'Rate limited' } } }).status, 'unsupported-accepted');
+  for (const facts of [{ prompt: { reply: 'Rate limited' } }, { attempts: [{ reply: 'ratelimited' }] }]) {
+    assert.equal(scenarioResult('grok', { scenario: 'basic', status: 'fail', facts }).status, 'unsupported-accepted');
+    assert.equal(scenarioResult('grok', { scenario: 'basic', status: 'pass', facts }).status, 'pass');
+    assert.equal(scenarioResult('codex', { scenario: 'basic', status: 'fail', facts }).status, 'fail');
+  }
+  assert.equal(scenarioResult('grok', { scenario: 'basic', status: 'fail', facts: { prompt: { reply: 'other failure' } } }).status, 'fail');
   assert.equal(scenarioResult('grok', { ...limited, error: { name: 'Error', message: 'other failure' } }).status, 'fail');
   assert.equal(scenarioResult('grok', { ...limited, status: 'timeout' }).status, 'timeout');
   assert.equal(scenarioResult('codex', limited).status, 'fail');

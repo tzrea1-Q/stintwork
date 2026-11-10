@@ -16,7 +16,7 @@ const grokRateLimit = 'Grok reported rate limiting; accepted as a known limitati
 function rateLimited(value) {
   if (!value || typeof value !== 'object') return false;
   return Object.entries(value).some(([key, entry]) =>
-    ((key === 'stopReason' || (key === 'message' && value.name)) && typeof entry === 'string' && /rate[ _-]limit/i.test(entry)) || rateLimited(entry));
+    ((key === 'reply' || key === 'stopReason' || (key === 'message' && value.name)) && typeof entry === 'string' && /rate[ _-]?limit/i.test(entry)) || rateLimited(entry));
 }
 
 function printLimitations(run) {
@@ -40,10 +40,10 @@ export function verdict(summary, fallback) {
     let reason = item?.facts?.reason ?? item?.error?.message ?? '';
     if (status === 'error') status = 'fail';
     if (status === 'unsupported') status = 'unsupported-unexplained';
-    if (summary.agent === 'grok' && status === 'fail' && rateLimited({ error: item?.error, facts: item?.facts })) {
+    if (summary.agent === 'grok' && status === 'fail' && rateLimited({ error: item?.error, facts: item?.facts }) && item?.facts?.reject?.fileExists !== true) {
       status = 'unsupported-accepted';
       reason = grokRateLimit;
-    } else if (scenario === 'permission' && summary.agent === 'grok' && ['fail', 'unsupported-unexplained'].includes(status) && item?.facts?.allow?.requests?.length === 0 && item?.facts?.reject?.requests?.length === 0) {
+    } else if (scenario === 'permission' && summary.agent === 'grok' && ['fail', 'unsupported-unexplained'].includes(status) && item?.facts?.allow?.requests?.length === 0 && item?.facts?.reject?.requests?.length === 0 && item?.facts?.reject?.fileExists === false) {
       status = 'unsupported-accepted';
       reason = grokPermission;
     }
