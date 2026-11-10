@@ -36,7 +36,8 @@
     "format:check": "biome format .",
     "build": "pnpm --config.verify-deps-before-run=false -r build && node scripts/build-package.mjs",
     "prepack": "pnpm --config.verify-deps-before-run=false build",
-    "smoke:package": "node scripts/package-smoke.mjs"
+    "smoke:package": "node scripts/package-smoke.mjs",
+    "test:acp-contract": "node spikes/acp-probe/contract-selftest.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.7.0",
