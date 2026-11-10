@@ -1,6 +1,6 @@
 # 01 — ACP contract test
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: none
 
 ## What to build
@@ -21,3 +21,5 @@ Turn `spikes/acp-probe/` into a manually run pre-release contract test for Claud
 **Codex, 2026-11-09:** Implemented the manual contract entry point and release verdict checker in `spikes/acp-probe/contract.mjs`, reusing `probe.mjs` with the product's prepared source and executable. Added fake-agent coverage in `contract-selftest.mjs`, the `pnpm test:acp-contract` script in `package.json`, and [contract instructions and evidence rules](../../../spikes/acp-probe/CONTRACT.md), linked from `spikes/acp-probe/README.md`. This ticket records the implementation evidence. Checks: `pnpm test:acp-contract`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm exec vitest run packages/server/src/stint-history.test.ts -t "startup eligibility"` (15 tests) passed. The self-test is fake evidence only. No real agent was run, no login or agent config was accessed, and release-revision criteria 3 and 4 remain open.
 
 **Codex, 2026-11-09:** Restricted contract run directories to owner-only mode `0o700` before writing evidence; POSIX self-test covers new and existing directories. `pnpm test:acp-contract`, `pnpm format:check`, and `pnpm lint` passed (lint reported existing warnings).
+
+**Coordinator, 2026-11-10:** The harness and pass rules (criteria 1–2) are merged in `9e5f53e` after three review rounds. Rounds 2 and 3 added rejection of stale or dirty revisions, a recovery exception that needs both processes to show no load/resume, and owner-only run directories. The self-test passes. Criteria 3–4 wait for the release revision, which in turn waits for the M11/M12 exits and the M7 confirmations. Under these rules Grok is blocked by its always-approve config: Ask cannot be exercised while it is set, and only the maintainer can change it.
