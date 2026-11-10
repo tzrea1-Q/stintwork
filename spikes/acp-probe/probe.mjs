@@ -428,7 +428,10 @@ async function scenarioBody(context, spec, cancelAfterMs) {
   const initialization = await client.initialize();
   const capabilities = initialization.agentCapabilities ?? {};
   if (scenario === 'resume' && !capabilities.loadSession && capabilities.sessionCapabilities?.resume == null && capabilities.sessionCapabilities?.list == null) {
-    return { status: 'unsupported', facts: { reason: 'No loadSession, resume, or list capability advertised' } };
+    await client.stop('restart for resume capability check');
+    const replacement = makeConnection(context, spec, 'b');
+    await replacement.initialize();
+    return { status: 'unsupported', facts: { reason: 'No loadSession, resume, or list capability advertised by the first process' } };
   }
   const sessionId = await client.newSession();
   if (scenario === 'basic') {

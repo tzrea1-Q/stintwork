@@ -24,8 +24,14 @@ export function verdict(summary, fallback) {
       reason = 'blocked: untested required behaviour; no permission requests observed (always-approve is one possible cause)';
     }
     if (scenario === 'resume' && ['grok', 'antigravity'].includes(summary.agent) && status === 'unsupported-unexplained') {
-      status = 'unsupported-accepted';
-      reason = 'ACP recovery is not used by the product: ADR 0012 and more-agents 04/07; checkpoint fallback is checked separately';
+      const observations = item.connections?.slice(0, 2).map((connection) => connection.initialization);
+      if (observations?.length === 2 && observations.every((initialization) => initialization && !initialization.agentCapabilities?.loadSession && initialization.agentCapabilities?.sessionCapabilities?.resume == null) && !item.facts?.listError && !Object.keys(item.facts?.restoreAttempts ?? {}).length) {
+        status = 'unsupported-accepted';
+        reason = 'ACP recovery is not used by the product: ADR 0012 and more-agents 04/07; checkpoint fallback is checked separately';
+      } else {
+        status = 'fail';
+        reason = 'Recovery unsupported by both processes was not established, or an attempt failed';
+      }
     }
     if (scenario === 'resume' && ['claude', 'codex'].includes(summary.agent) && status === 'pass' && !item.facts?.restoreAttempts?.loadSession?.heronReturned) {
       status = 'fail';
@@ -51,12 +57,19 @@ export function releasePass(run) {
   });
 }
 
+export async function checkRelease(run, cwd = repo) {
+  const git = async (...args) => (await execute('git', args, { cwd })).stdout.trim();
+  if (run?.revision !== await git('rev-parse', 'HEAD')) return 'Recorded revision does not match current HEAD';
+  if (await git('status', '--porcelain')) return 'Current working tree is dirty';
+  return releasePass(run) ? null : 'Release contract blocked';
+}
+
 async function main() {
   if (process.argv[2] === '--check' && process.argv.length === 4) {
     const run = JSON.parse(await readFile(join(resolve(process.argv[3]), 'verdict.json'), 'utf8'));
-    const pass = !!releasePass(run);
-    console.log(pass ? 'Release contract passed' : 'Release contract blocked');
-    if (!pass) process.exitCode = 1;
+    const failure = await checkRelease(run);
+    console.log(failure ?? 'Release contract passed');
+    if (failure) process.exitCode = 1;
     return;
   }
   if (process.argv.length !== 3 || process.argv[2] !== '--run') throw new Error('Usage: node --conditions=development --import tsx spikes/acp-probe/contract.mjs --run | --check RUN_DIR');

@@ -16,4 +16,6 @@ Turn `spikes/acp-probe/` into a manually run pre-release contract test for Claud
 
 ## Comments
 
+**Codex, 2026-11-09:** Tightened `--check` to reject stale revisions and dirty working trees, and require both process observations to establish unsupported recovery; added regression self-tests. Real-agent release evidence remains outstanding.
+
 **Codex, 2026-11-09:** Implemented the manual contract entry point and release verdict checker in `spikes/acp-probe/contract.mjs`, reusing `probe.mjs` with the product's prepared source and executable. Added fake-agent coverage in `contract-selftest.mjs`, the `pnpm test:acp-contract` script in `package.json`, and [contract instructions and evidence rules](../../../spikes/acp-probe/CONTRACT.md), linked from `spikes/acp-probe/README.md`. This ticket records the implementation evidence. Checks: `pnpm test:acp-contract`, `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, and `pnpm exec vitest run packages/server/src/stint-history.test.ts -t "startup eligibility"` (15 tests) passed. The self-test is fake evidence only. No real agent was run, no login or agent config was accessed, and release-revision criteria 3 and 4 remain open.
