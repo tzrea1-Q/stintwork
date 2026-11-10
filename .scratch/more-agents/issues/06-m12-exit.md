@@ -17,7 +17,7 @@ The maintainer installs Antigravity CLI and signs in to it and Grok Build. The c
 
 **Coordinator, 2026-11-10: Antigravity real stint passed.**
 
-- **Setup.** Fixture: local repo `/Users/tzrea1/Develop/stintwork-m12-exit` (no remote), work item `countdown`, quick workflow, Do stage. Served from main `30635ad`'s built `dist` (more-agents 02+03 merged), with Antigravity CLI 1.5.3 from Installed and the permission level Edit freely. The maintainer installed agy and signed in themselves; agents never signed in or read credentials.
+- **Setup.** Fixture: local repo `~/Develop/stintwork-m12-exit` (no remote), work item `countdown`, quick workflow, Do stage. Served from main `30635ad`'s built `dist` (more-agents 02+03 merged), with Antigravity CLI 1.5.3 from Installed and the permission level Edit freely. The maintainer installed agy and signed in themselves; agents never signed in or read credentials.
 - **Stint `ad8d39fe`.** It ran 03:14:08–03:19:35 UTC and ended `finished`, with checkpoint `5a777f6` and a parsed handoff:
   - *Stopped at:* `countdown(n)` implemented in `src/countdown.js`, spec criteria ticked, `npm test` passing (3 tests).
   - *Unresolved:* none.

@@ -46,7 +46,7 @@ node spikes/acp-probe/prepare-prefix.mjs --agent claude --profile installed \
   --dir "$matrix/claude-installed" --cache "$matrix/npm-cache/claude-installed" \
   --registry https://registry.npmjs.org
 node spikes/acp-probe/probe.mjs --agent claude --scenario all \
-  --adapter-prefix "$matrix/claude-installed" --executable /Users/tzrea1/.local/bin/claude
+  --adapter-prefix "$matrix/claude-installed" --executable ~/.local/bin/claude
 ```
 
 `prepare-prefix.mjs` requires `--agent claude|codex`, `--profile installed|bundled`,

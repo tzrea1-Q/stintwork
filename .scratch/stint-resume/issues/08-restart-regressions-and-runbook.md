@@ -24,7 +24,7 @@ Run available full affected checks and package smoke if feasible. The runbook mu
 
 **Codex, 2026-10-26:** Unit/fake-process checks use disposable local fixtures. Socket lifecycle, real agents/logins, registry/provider network and browser checks are coordinator-run. Retain successful and failed runs with reasons; do not delete the developer's caches or claim untested platforms.
 
-**Codex, 2026-10-26 — crash-boundary coverage and ticket 09 coordinator runbook:** Uncommitted on `codex/m10-08`, based on `49bccfcfe2e23472fac5ad46c69e18436a10ab23`. All `Status:` lines and acceptance checkboxes remain unchanged. Read ADR 0012, the spec, tickets 02–09 with their Comments, and the read-only host reference `/private/tmp/claude-501/-Users-tzrea1-Develop-stintwork/0d1280a0-b570-4b1d-a4c5-a8b3a4f0f455/scratchpad/codex-m10-08/perm-restart.reference.sh`; the reference was not executed.
+**Codex, 2026-10-26 — crash-boundary coverage and ticket 09 coordinator runbook:** Uncommitted on `codex/m10-08`, based on `49bccfcfe2e23472fac5ad46c69e18436a10ab23`. All `Status:` lines and acceptance checkboxes remain unchanged. Read ADR 0012, the spec, tickets 02–09 with their Comments, and the read-only host reference `/private/tmp/claude-<uid>/-Users-<user>-Develop-stintwork/0d1280a0-b570-4b1d-a4c5-a8b3a4f0f455/scratchpad/codex-m10-08/perm-restart.reference.sh`; the reference was not executed.
 
 #### Inventory before adding tests
 

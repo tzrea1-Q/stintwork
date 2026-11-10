@@ -36,7 +36,7 @@ matrix=$(mktemp -d "${TMPDIR:-/tmp}/stintwork-cli-probes.XXXXXX")
 
 # Claude Installed: no native optional packages, explicit developer CLI.
 node spikes/acp-probe/prepare-prefix.mjs --agent claude --profile installed --dir "$matrix/claude-installed" --cache "$matrix/npm-cache/claude-installed" --registry https://registry.npmjs.org
-node spikes/acp-probe/probe.mjs --agent claude --adapter-prefix "$matrix/claude-installed" --executable /Users/tzrea1/.local/bin/claude --scenario all
+node spikes/acp-probe/probe.mjs --agent claude --adapter-prefix "$matrix/claude-installed" --executable ~/.local/bin/claude --scenario all
 
 # Claude Bundled: only the pinned host-native SDK package, no override/PATH CLI.
 node spikes/acp-probe/prepare-prefix.mjs --agent claude --profile bundled --dir "$matrix/claude-bundled" --cache "$matrix/npm-cache/claude-bundled" --registry https://registry.npmjs.org
@@ -44,7 +44,7 @@ node spikes/acp-probe/probe.mjs --agent claude --adapter-prefix "$matrix/claude-
 
 # Codex Installed: no native optional packages, explicit developer CLI.
 node spikes/acp-probe/prepare-prefix.mjs --agent codex --profile installed --dir "$matrix/codex-installed" --cache "$matrix/npm-cache/codex-installed" --registry https://registry.npmjs.org
-node spikes/acp-probe/probe.mjs --agent codex --adapter-prefix "$matrix/codex-installed" --executable /Users/tzrea1/.local/bin/codex --scenario all
+node spikes/acp-probe/probe.mjs --agent codex --adapter-prefix "$matrix/codex-installed" --executable ~/.local/bin/codex --scenario all
 
 # Codex Bundled: only the pinned host-native npm alias, no override/PATH CLI.
 node spikes/acp-probe/prepare-prefix.mjs --agent codex --profile bundled --dir "$matrix/codex-bundled" --cache "$matrix/npm-cache/codex-bundled" --registry https://registry.npmjs.org
@@ -65,7 +65,7 @@ Any `fail`, `error`, `timeout`, unexpected `unsupported`, missing identity/lock/
 
 Agent-side validation: `pnpm --config.verify-deps-before-run=false format:check` passed after correcting one new test's formatting; `pnpm --config.verify-deps-before-run=false lint` passed (existing informational `biome.json:24` deprecation only); `pnpm --config.verify-deps-before-run=false typecheck` passed across all workspace packages. The requested `pnpm --config.verify-deps-before-run=false vitest run packages/agents` was blocked before tests by EPERM writing through the read-only `node_modules/.vite-temp` symlink. Retried without changing repository configuration using `pnpm --config.verify-deps-before-run=false vitest run packages/agents --configLoader native`: 18 files / 157 tests passed, including the new policy tests. `node spikes/acp-probe/selftest.mjs` passed with fake preparation and all existing ACP scenarios; `node --check` on the four changed/new `.mjs` files and `git diff --check` passed. No real-agent compatibility, network installation or release-lock evidence is claimed by these checks.
 
-**Codex, 2026-10-17:** Read the coordinator's six retained summaries and verified their SHA-256 digests against the prepared prefix locks. Evidence provenance is worktree HEAD `72c311d` plus the then-uncommitted probe changes, Node 22.22.3 on darwin-arm64. Installed Claude run `2026-10-17T09-02-55-717Z-claude` records `/Users/tzrea1/.local/bin/claude` 2.1.295, adapter 0.88.0, SDK 0.3.293, no native packages, and all five scenarios passing (one real approval request each for allow/reject). Its lock digest is `9d24ce937c66b8f114ecbe67eac80b72c88177120477a93f82aee044848963e7`. Added this exact installed pair to the policy. Claude bundled rerun `2026-10-17T09-10-49-274Z-claude` also passes all five with CLI 2.1.293. This supersedes the earlier empty-table/unproven-Claude note; it does not establish other-platform evidence.
+**Codex, 2026-10-17:** Read the coordinator's six retained summaries and verified their SHA-256 digests against the prepared prefix locks. Evidence provenance is worktree HEAD `72c311d` plus the then-uncommitted probe changes, Node 22.22.3 on darwin-arm64. Installed Claude run `2026-10-17T09-02-55-717Z-claude` records `~/.local/bin/claude` 2.1.295, adapter 0.88.0, SDK 0.3.293, no native packages, and all five scenarios passing (one real approval request each for allow/reject). Its lock digest is `9d24ce937c66b8f114ecbe67eac80b72c88177120477a93f82aee044848963e7`. Added this exact installed pair to the policy. Claude bundled rerun `2026-10-17T09-10-49-274Z-claude` also passes all five with CLI 2.1.293. This supersedes the earlier empty-table/unproven-Claude note; it does not establish other-platform evidence.
 
 Installed Codex run `2026-10-17T09-05-55-103Z-codex` (0.148.0) and bundled rerun `2026-10-17T09-11-57-214Z-codex` (0.159.3) each pass basic/commands/cancel/resume but fail permission: zero requests and a file created in both sessions. Their advertised current mode is `agent`; default auto-approval does not prove rejection, and the identical outcome is not evidence that 0.148.0 alone is incompatible. Codex remains unproven. The initial bundled runs `2026-10-17T09-05-38-505Z-claude` and `2026-10-17T09-10-04-367Z-codex` fail before scenarios at the old five-second version check; the coordinator reports macOS first-launch scanning, with subsequent version checks succeeding.
 
@@ -76,8 +76,8 @@ Executable version checks now allow 60 seconds and retain `versionTimeoutMs` and
 Coordinator permission reruns, reusing the already prepared prefixes (no npm preparation or configuration change needed):
 
 ```sh
-probe_prefixes='/private/tmp/claude-501/-Users-tzrea1-Develop-stintwork/0d1280a0-b570-4b1d-a4c5-a8b3a4f0f455/scratchpad/cli-probes'
-node spikes/acp-probe/probe.mjs --agent codex --adapter-prefix "$probe_prefixes/codex-installed" --executable /Users/tzrea1/.local/bin/codex --scenario permission --permission-mode ask --timeout-sec 180
+probe_prefixes='/private/tmp/claude-<uid>/-Users-<user>-Develop-stintwork/0d1280a0-b570-4b1d-a4c5-a8b3a4f0f455/scratchpad/cli-probes'
+node spikes/acp-probe/probe.mjs --agent codex --adapter-prefix "$probe_prefixes/codex-installed" --executable ~/.local/bin/codex --scenario permission --permission-mode ask --timeout-sec 180
 node spikes/acp-probe/probe.mjs --agent codex --adapter-prefix "$probe_prefixes/codex-bundled" --scenario permission --permission-mode ask --timeout-sec 180
 ```
 
@@ -85,7 +85,7 @@ Require `permissionMode: ask`, both sessions' requested/chosen modes `read-only`
 
 Validation after these fixes: `pnpm --config.verify-deps-before-run=false format:check`, `pnpm --config.verify-deps-before-run=false lint`, `pnpm --config.verify-deps-before-run=false typecheck`, and `pnpm --config.verify-deps-before-run=false vitest run packages/agents --configLoader native` all passed (18 test files / 157 tests). Lint retains only the pre-existing informational `biome.json:24` deprecation. `node spikes/acp-probe/selftest.mjs` passed, including Ask/default-mode regression checks, fake Windows npm resolution/invocation and a first-launch version check exceeding five seconds. Real Codex permission reruns remain coordinator work, not a sandbox pass.
 
-**Codex, 2026-10-17:** Evidence table from the retained coordinator summaries, all on darwin-arm64 / Node 22.22.3. Recomputed SHA-256 digests match the prepared prefix locks for all eight runs. Codex's bundled Ask rerun passes, but the installed rerun records `codex-cli 0.163.0` and realpath `/Users/tzrea1/.codex/packages/standalone/releases/0.163.0-aarch64-apple-darwin/bin/codex`, contrary to the coordinator's reported 0.148.0. These versions cannot be combined into one proven installed pair; 0.148.0 and 0.163.0 remain unproven until their missing scenarios are recorded for the same executable version. The additional installed row makes that distinction explicit rather than claiming an unsupported pass.
+**Codex, 2026-10-17:** Evidence table from the retained coordinator summaries, all on darwin-arm64 / Node 22.22.3. Recomputed SHA-256 digests match the prepared prefix locks for all eight runs. Codex's bundled Ask rerun passes, but the installed rerun records `codex-cli 0.163.0` and realpath `~/.codex/packages/standalone/releases/0.163.0-aarch64-apple-darwin/bin/codex`, contrary to the coordinator's reported 0.148.0. These versions cannot be combined into one proven installed pair; 0.148.0 and 0.163.0 remain unproven until their missing scenarios are recorded for the same executable version. The additional installed row makes that distinction explicit rather than claiming an unsupported pass.
 
 | Agent | Source | Executable version | Adapter | Natives present | Per-scenario result | Run id |
 | --- | --- | --- | --- | --- | --- | --- |

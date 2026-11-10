@@ -30,7 +30,7 @@ This matches the 2026-10-09 finding that the maintainer's own Grok config sets `
 
 Ask-mode permissions for Grok therefore remain untested. They are not required by this ticket. The real stint follows under the M12 exit.
 
-**Coordinator, 2026-11-10:** Two real stints were rate limited. Fixture: local repository `/Users/tzrea1/Develop/stintwork-m12-exit` (no remote), work item `countdown`, quick workflow. Served from main `94a9bba`'s built `dist`, with Grok Build 1.0.77 from the Installed source.
+**Coordinator, 2026-11-10:** Two real stints were rate limited. Fixture: local repository `~/Develop/stintwork-m12-exit` (no remote), work item `countdown`, quick workflow. Served from main `94a9bba`'s built `dist`, with Grok Build 1.0.77 from the Installed source.
 
 - **Stint `18fb717b`.** It read the skill and spec, checked the branch, and wrote `test/countdown.test.js`. After 35 s it ended `failed` with "Rate limited", leaving checkpoint `f3a996e`.
 - **Stint `6d39eadc`.** Started 6 minutes later, it ended `failed` with "Rate limited" after 7 s, on the same checkpoint.

@@ -79,7 +79,7 @@ Cleanup, as the maintainer decided on 2026-11-08:
 - The exit server is stopped.
 - `tzrea1-Q/stintwork-m11-exit` is archived and remains private.
 
-The local record commits `185c67e` and `671cd14` stay only in the local clone `/Users/tzrea1/Develop/stintwork-m11-exit`.
+The local record commits `185c67e` and `671cd14` stay only in the local clone `~/Develop/stintwork-m11-exit`.
 
 Every exit criterion except the maintainer's decision is met. M11 stays active until the maintainer marks it shipped.
 
