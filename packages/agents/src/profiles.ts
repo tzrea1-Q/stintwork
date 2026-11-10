@@ -84,8 +84,32 @@ export const grokProfile: AgentProfile = {
   },
 };
 
-export const fakeAgentProfiles: Record<"codex" | "claude" | "grok", AgentProfile> = {
-  codex: codexProfile,
-  claude: claudeProfile,
-  grok: grokProfile,
+export const antigravityProfile: AgentProfile = {
+  id: "antigravity",
+  displayName: "Antigravity CLI",
+  skillLocations: [],
+  installationHint: "Install Antigravity CLI, run agy once and sign in yourself.",
+  capabilities: {
+    modes: ["default", "accept-edits", "plan"],
+    defaultMode: "default",
+    additionalDirectories: false,
+    permissionOptions: [
+      { optionId: "allow", name: "Allow", kind: "allow_once" },
+      { optionId: "deny", name: "Deny", kind: "reject_once" },
+    ],
+    declineEndsTurn: false,
+    authenticationRequired: {
+      message: coreText({ code: "agent.authenticationRequired" }).text,
+      loginCommand: "agy",
+    },
+    configOptions: ["model", "thought_level", "mode"],
+  },
 };
+
+export const fakeAgentProfiles: Record<"codex" | "claude" | "grok" | "antigravity", AgentProfile> =
+  {
+    codex: codexProfile,
+    claude: claudeProfile,
+    grok: grokProfile,
+    antigravity: antigravityProfile,
+  };

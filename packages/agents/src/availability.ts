@@ -10,7 +10,9 @@ export function installedAgentIdentity(agent: string, env: NodeJS.ProcessEnv = p
       ? env.CLAUDE_CODE_EXECUTABLE || "claude"
       : agent === "codex"
         ? env.CODEX_PATH || "codex"
-        : "grok";
+        : agent === "antigravity"
+          ? "agy"
+          : "grok";
   const found = findExecutable(command, env);
   return found ? readExecutableIdentity(found) : undefined;
 }
@@ -29,7 +31,7 @@ export function readExecutableIdentity(executable: string) {
 }
 
 export function inspectAgentAvailability(
-  agent: "claude" | "codex" | "grok",
+  agent: "claude" | "codex" | "grok" | "antigravity",
   env: NodeJS.ProcessEnv,
   previous?: AgentAvailability,
 ): AgentAvailability {
@@ -41,19 +43,24 @@ export function inspectAgentAvailability(
     selected.identity === readExecutableIdentity(selected.path)?.identity;
   if (previous && previous.installedIdentity === installed?.identity && selectedUnchanged)
     return previous;
+  const native = agent === "grok" || agent === "antigravity";
   return {
     available: false,
-    canStart: agent !== "grok" || !!installed,
+    canStart: !native || !!installed,
     kind: installed ? "not-prepared" : "missing-executable",
-    ...(agent === "grok" && !installed ? { reason: coreText({ code: "agent.grokMissing" }) } : {}),
+    ...(!installed && native
+      ? {
+          reason: coreText({
+            code: agent === "grok" ? "agent.grokMissing" : "agent.antigravityMissing",
+          }),
+        }
+      : {}),
     installedIdentity: installed?.identity,
     checkedAt: new Date().toISOString(),
     selection: {
-      source: agent === "grok" ? "installed" : installed ? "pending" : "bundled",
-      reason: agent === "grok" ? "native" : installed ? "unverified" : "missing",
-      ...(agent === "grok"
-        ? { executable: installed }
-        : { adapterVersion: adapterPins[agent].version }),
+      source: native ? "installed" : installed ? "pending" : "bundled",
+      reason: native ? "native" : installed ? "unverified" : "missing",
+      ...(native ? { executable: installed } : { adapterVersion: adapterPins[agent].version }),
     },
   };
 }

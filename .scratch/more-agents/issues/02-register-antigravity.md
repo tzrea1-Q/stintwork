@@ -1,6 +1,6 @@
 # 02 — Register Antigravity CLI
 
-Status: ready-for-agent
+Status: needs-review
 Blocked by: 01
 
 ## What to build
@@ -9,9 +9,13 @@ Register Antigravity CLI using installed `agy` on PATH and the version floor pro
 
 ## Acceptance criteria
 
-- [ ] Missing, unparseable and below-floor versions are clearly unavailable; a compatible installed executable is selected and launched without a bundled adapter.
-- [ ] Fake-process tests cover detection, version floor, launch arguments, authentication and localized readiness messages. No credentials are read.
+- [x] Missing, unparseable and below-floor versions are clearly unavailable; a compatible installed executable is selected and launched without a bundled adapter.
+- [x] Fake-process tests cover detection, version floor, launch arguments, authentication and localized readiness messages. No credentials are read.
 
 ## Comments
 
-None yet.
+### Implementation evidence — 2026-11-09
+
+- Registered PATH-only `agy acp` with stable 1.5.3 floor and 2.x rejection, prompt-free readiness, developer-owned login guidance, and experimental checkpoint fallback. `antigravity.test.ts` exercises missing, invalid, prerelease, below-floor and next-major versions, launch arguments, authentication, and an ignored SIGTERM followed by SIGKILL. Catalog tests cover English and Chinese guidance. No credentials are read.
+- Files changed: `packages/agents/src/{antigravity.ts,antigravity.test.ts,authentication.ts,availability.ts,executable.ts,fake-agent.ts,index.ts,profiles.ts,profiles.test.ts,registry.ts}`, `packages/core/src/core-text.ts`, `packages/server/src/stints.ts`, `packages/web/src/{BriefPreview.tsx,StintRecovery.tsx,i18n/en.ts,i18n/zh-CN.ts,i18n/catalog.test.ts}`.
+- Checks run: `pnpm format:check`, `pnpm lint`, `pnpm typecheck` passed; focused Antigravity tests 13/13 and profile/catalog tests 73/73 passed. Core and web unit suites passed 1,753 tests. Agent package suite: 449 passed, 9 adapter-cache tests failed: sandbox denies native process-table inspection (independently reproduced); the combined run was interrupted after stalling; a separate server suite produced no file results for over three minutes and was interrupted. `pnpm test:e2e` after building core and web could not start its server: `listen EPERM 127.0.0.1:4178`. Coordinator must rerun outside the sandbox, including browser review at the frontend guide's required sizes and languages.

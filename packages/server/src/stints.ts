@@ -1623,6 +1623,9 @@ export function addStintRoutes(
     if (!valid) reason = "Invalid or torn recovery log; readable history has been preserved.";
     if (stint.agent === "grok")
       reason = "Grok Build is experimental; restart recovery uses a checkpoint and a new stint.";
+    else if (stint.agent === "antigravity")
+      reason =
+        "Antigravity CLI is experimental; restart recovery uses a checkpoint and a new stint.";
     else if (
       !reason &&
       recovery.state !== "fallback" &&

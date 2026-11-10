@@ -24,7 +24,11 @@ export function permissionPolicy(profile: AgentProfile, level: PermissionLevel) 
           level === "ask"
           ? "default"
           : "acceptEdits"
-        : profile.capabilities.defaultMode;
+        : profile.id === "antigravity"
+          ? level === "ask"
+            ? "default"
+            : "accept-edits"
+          : profile.capabilities.defaultMode;
   const supported = mode === null || profile.capabilities.modes.includes(mode);
   const warnings = [...(profile.warnings ?? [])];
   if (!supported) {

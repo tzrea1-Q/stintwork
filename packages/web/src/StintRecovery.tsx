@@ -7,7 +7,12 @@ import { Disclosure } from "./ui/Disclosure";
 
 // Older logs carry plain reasons; match only Stintwork's known copy, never agent text.
 function recoveryReason(reason: string, t: Catalog) {
-  for (const code of ["recovery.legacy", "recovery.grok", "recovery.ownershipMetadata"] as const) {
+  for (const code of [
+    "recovery.legacy",
+    "recovery.grok",
+    "recovery.antigravity",
+    "recovery.ownershipMetadata",
+  ] as const) {
     const message = coreText({ code });
     if (reason === message.text) return translateCoreText(message, t);
   }

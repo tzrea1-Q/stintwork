@@ -740,7 +740,7 @@ export const en = {
         incompatible: "Installed CLI is incompatible.",
         "handshake failed": "Installed CLI handshake failed.",
         unverified: "Installed CLI found, checked at stint start",
-        native: "Uses your installed Grok CLI and login.",
+        native: "Uses your installed agent CLI and login.",
       },
       phases: {
         selected: "Source selected",

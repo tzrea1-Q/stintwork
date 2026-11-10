@@ -17,6 +17,17 @@ export const coreTextEnglish = {
     "Missing process ownership metadata in the recorded attempt; restart recovery uses a checkpoint and a new stint.",
   "recovery.blocked": template({ detail: "string" }, ({ detail }) => detail),
   "agent.cliChanged": "Agent CLI changed during inspection. Retry preparation.",
+  "recovery.antigravity":
+    "Antigravity CLI is experimental; restart recovery uses a checkpoint and a new stint.",
+  "agent.antigravityLogin":
+    "Antigravity CLI requires authentication. Run agy once and sign in yourself, then start another stint.",
+  "agent.antigravityMissing":
+    "Antigravity CLI not found. Install it, run agy once and sign in yourself.",
+  "agent.antigravityVersion": template(
+    { reason: "string" },
+    ({ reason }) =>
+      `Antigravity CLI version is unavailable or incompatible (${({ missing: "version missing", unparseable: "version unparseable", "below-tested-range": "below tested range", incompatible: "incompatible major version" } as Record<string, string>)[reason] ?? reason}); install a stable version from 1.5.3 up to 2.0.0.`,
+  ),
   "agent.grokMissing": "Grok Build not found. Install Grok Build and sign in with grok login.",
   "agent.source.installed": "Agent source: Installed",
   "agent.source.bundled": "Agent source: Bundled",
@@ -31,7 +42,7 @@ export const coreTextEnglish = {
     "Installed CLI handshake failed. Use the pinned bundled agent for this stint.",
   "agent.reason.unverified":
     "Source is provisional until stint start checks the installed CLI version.",
-  "agent.reason.native": "Uses your separately installed Grok CLI and login.",
+  "agent.reason.native": "Uses your separately installed agent CLI and login.",
   "agent.preparation.selected": "Selected executable source",
   "agent.preparation.confirm": "Review Agent source before preparation",
   "agent.preparation.waiting": "Waiting for the selected adapter cache",

@@ -486,17 +486,19 @@ function BriefPreviewSheet({
                           </p>
                         )}
                         <p className="text-muted">{copy.reasons[selection.reason]}</p>
-                        {selection.reason !== "native" && selection.source !== "pending" && (
-                          <p className="text-muted">
-                            {selection.source === "bundled"
-                              ? selection.downloadBytes
-                                ? copy.bundledNotice(
-                                    Math.round(selection.downloadBytes / 1_000_000),
-                                  )
-                                : copy.bundledSizePending
-                              : copy.installedNotice}
-                          </p>
-                        )}
+                        {selectedAgent.id !== "antigravity" &&
+                          selection.reason !== "native" &&
+                          selection.source !== "pending" && (
+                            <p className="text-muted">
+                              {selection.source === "bundled"
+                                ? selection.downloadBytes
+                                  ? copy.bundledNotice(
+                                      Math.round(selection.downloadBytes / 1_000_000),
+                                    )
+                                  : copy.bundledSizePending
+                                : copy.installedNotice}
+                            </p>
+                          )}
                         {selection.executable?.path && (
                           <Disclosure label={copy.details}>
                             <span className="text-muted">{copy.executable}</span>

@@ -23,12 +23,13 @@ afterEach(async () => {
   vi.unstubAllEnvs();
 });
 
-test("the production registry offers Codex, Claude Code and Grok without private launch or detection hooks", () => {
+test("the production registry offers Codex, Claude Code, Grok and Antigravity without private launch or detection hooks", () => {
   const descriptions = describeAgents(createAgentRegistry());
   expect(descriptions).toMatchObject([
     fakeAgentProfiles.codex,
     fakeAgentProfiles.claude,
     fakeAgentProfiles.grok,
+    fakeAgentProfiles.antigravity,
   ]);
   for (const profile of descriptions) {
     expect(profile).not.toHaveProperty("launch");

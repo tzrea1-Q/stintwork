@@ -755,7 +755,7 @@ export const zhCN: Catalog = {
         incompatible: "已安装的 CLI 不兼容。",
         "handshake failed": "已安装的 CLI 握手失败。",
         unverified: "已找到已安装的 CLI，开始 Stint 时检查",
-        native: "使用你已安装的 Grok CLI 和登录状态。",
+        native: "使用你已安装的 Agent CLI 和登录状态。",
       },
       phases: {
         selected: "已选择来源",
@@ -938,6 +938,12 @@ export const zhCN: Catalog = {
   },
   coreText: {
     "recovery.legacy": "缺少恢复元数据（旧版或不完整的 Stint 日志）。",
+    "recovery.antigravity": "Antigravity CLI 为实验性支持；重启后将通过检查点和新的 Stint 继续。",
+    "agent.antigravityLogin":
+      "Antigravity CLI 需要身份验证。请自行运行一次 agy 并登录，然后开始新的 Stint。",
+    "agent.antigravityMissing": "未找到 Antigravity CLI。请安装后自行运行 agy 并登录。",
+    "agent.antigravityVersion": ({ reason }) =>
+      `Antigravity CLI 版本不可用或不兼容（${({ missing: "未提供版本", unparseable: "无法解析", "below-tested-range": "低于测试版本", incompatible: "不兼容" } as Record<string, string>)[reason] ?? reason}）；请安装 1.5.3 至 2.0.0 之前的稳定版本。`,
     "recovery.grok": "Grok Build 为实验性支持；重启后将通过检查点和新的 Stint 继续。",
     "recovery.ownershipMetadata":
       "已记录的尝试缺少进程所有权元数据；重启后将通过检查点和新的 Stint 继续。",
@@ -956,7 +962,7 @@ export const zhCN: Catalog = {
     "agent.reason.incompatible": "已安装的 CLI 不兼容。使用固定版本的内置 Agent。",
     "agent.reason.handshake failed": "已安装的 CLI 握手失败。本轮 Stint 使用固定版本的内置 Agent。",
     "agent.reason.unverified": "Agent 来源暂定；开始 Stint 时检查已安装的 CLI 版本。",
-    "agent.reason.native": "使用你自行安装的 Grok CLI 和登录状态。",
+    "agent.reason.native": "使用你自行安装的 Agent CLI 和登录状态。",
     "agent.preparation.selected": "已选择可执行文件来源",
     "agent.preparation.confirm": "准备前请查看 Agent 来源",
     "agent.preparation.waiting": "正在等待所选适配器缓存",

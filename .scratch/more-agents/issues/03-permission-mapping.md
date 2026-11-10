@@ -1,6 +1,6 @@
 # 03 — Antigravity permission levels
 
-Status: ready-for-agent
+Status: needs-review
 Blocked by: 01, 02
 
 ## What to build
@@ -9,9 +9,13 @@ Map Ask, Edit freely and Autonomous to the probe-confirmed Antigravity session m
 
 ## Acceptance criteria
 
-- [ ] Each permission level and unsupported or unknown option is handled safely, with manual requests reaching Needs you when needed.
-- [ ] Fake-agent tests cover mode selection, allow and reject, and unanswered or unexpected options.
+- [x] Each permission level and unsupported or unknown option is handled safely, with manual requests reaching Needs you when needed.
+- [x] Fake-agent tests cover mode selection, allow and reject, and unanswered or unexpected options.
 
 ## Comments
 
-None yet.
+### Implementation evidence — 2026-11-09
+
+- Ask selects `default`; Edit freely and Autonomous select `accept-edits`, matching the existing Claude mapping. `plan` is never selected. Stintwork continues to forward requests through Needs you and applies its existing automatic-answer policy to requests the agent sends. Antigravity's `allow`/`allow_once` and `deny`/`reject_once` are recognized; any unexpected option or kind cancels the request safely. The live probe offered no always option.
+- Files changed: `packages/core/src/permission-levels.ts`, `packages/agents/src/{index.ts,profiles.ts,fake-agent.ts,antigravity.test.ts}`; registration and readiness files are listed in ticket 02.
+- Checks run: focused Antigravity tests passed 13/13, covering all modes, allow, deny, unanswered cancellation, unexpected options and process teardown. `pnpm exec vitest run packages/server/src/permission-levels.test.ts` passed 9/9, including Antigravity for all levels and manual requests. `pnpm format:check`, `pnpm lint`, `pnpm typecheck` passed. Core and web unit suites passed 1,753 tests. The agent package suite passed 449 tests and failed 9 adapter-cache tests because sandbox process-table inspection is denied; the combined run stalled and was interrupted, as was a separate server suite after over three minutes without file results; coordinator must rerun outside the sandbox. Browser suite blocked on `listen EPERM` as recorded in ticket 02.
