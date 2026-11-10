@@ -1,6 +1,6 @@
 # 02 — Register Antigravity CLI
 
-Status: needs-review
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -25,3 +25,5 @@ Register Antigravity CLI using installed `agy` on PATH and the version floor pro
 
 - A successful compatible `agy --version` refresh now clears cached incompatibility without changing the executable. Antigravity and Grok profiles carry an experimental flag, shown in the stage agent selector and brief readiness in English and Chinese. Antigravity login guidance comes from profile data. Package smoke now supplies a compatible `agy` and verifies all four agents without launching them.
 - Checks: `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. Focused Antigravity and selector/brief tests passed 58/58. Core unit tests passed 1,001/1,001; web unit tests passed 756/756. Combined agents/core/web run passed 2,208 and failed 9 adapter-cache tests because native process-table inspection is denied (`ps` returns EPERM). `pnpm test:e2e` could not bind 127.0.0.1:4178 (listen EPERM). Coordinator must run browser layout/review at the frontend guide's sizes and languages and `pnpm smoke:package` outside the sandbox.
+
+**Coordinator, 2026-11-10:** Verified outside the sandbox: format, lint, typecheck, build, 3,349 unit tests, package smoke and 432 browser tests pass. Three Codex review rounds covered stale incompatibility, the experimental label, the four-agent smoke test and default mode at every level. One open P2, the detection-time version probe taking up to 60 s (shared with Grok), moves to the ticket 04 run. Merged.

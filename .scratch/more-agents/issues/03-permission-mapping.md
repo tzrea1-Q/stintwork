@@ -1,6 +1,6 @@
 # 03 — Antigravity permission levels
 
-Status: needs-review
+Status: resolved
 Blocked by: 01, 02
 
 ## What to build
@@ -28,3 +28,5 @@ Map Ask, Edit freely and Autonomous to the probe-confirmed Antigravity session m
 ### Review fixes — 2026-11-09
 
 - Moved Antigravity's unchanged Ask/other permission mode mapping to its typed agent profile. Focused Antigravity tests passed 14/14; the combined agents/core/web run passed 2,208 tests and failed 9 adapter-cache tests because native process-table inspection is denied in the sandbox. `pnpm format:check`, `pnpm lint`, and `pnpm typecheck` passed. Core unit tests passed 1,001/1,001 and web unit tests passed 756/756.
+
+**Coordinator, 2026-11-10:** Verified outside the sandbox: format, lint, typecheck, build, 3,349 unit tests, package smoke and 432 browser tests pass. Three Codex review rounds covered stale incompatibility, the experimental label, the four-agent smoke test and default mode at every level. One open P2, the detection-time version probe taking up to 60 s (shared with Grok), moves to the ticket 04 run. Merged.
