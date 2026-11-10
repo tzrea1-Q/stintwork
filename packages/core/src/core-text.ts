@@ -23,6 +23,8 @@ export const coreTextEnglish = {
     "Antigravity CLI requires authentication. Run agy once and sign in yourself, then start another stint.",
   "agent.antigravityMissing":
     "Antigravity CLI not found. Install it, run agy once and sign in yourself.",
+  "agent.antigravityVersionTimeout":
+    "Antigravity CLI version check timed out after 5 seconds. Refresh agent availability to retry.",
   "agent.antigravityVersion": template(
     { reason: "string" },
     ({ reason }) =>

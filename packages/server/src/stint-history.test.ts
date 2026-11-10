@@ -1541,6 +1541,14 @@ test.each([
   ["torn", "Invalid or torn recovery log; readable history has been preserved."],
   ["unsupported", "Invalid or torn recovery log; readable history has been preserved."],
   ["grok", "Grok Build is experimental; restart recovery uses a checkpoint and a new stint."],
+  [
+    "antigravity",
+    "Antigravity CLI is experimental; restart recovery uses a checkpoint and a new stint.",
+  ],
+  [
+    "antigravity-failed",
+    "Antigravity CLI is experimental; restart recovery uses a checkpoint and a new stint.",
+  ],
 ] as const)(
   "startup eligibility %s preserves readable history and uses checkpoint fallback",
   async (fault, expectedReason) => {
@@ -1572,10 +1580,19 @@ test.each([
         attemptId: session.attemptId,
         progress: { phase: "work" },
       });
-    if (fault === "grok") {
+    if (fault === "grok" || fault.startsWith("antigravity")) {
       const start = entries[0];
       if (start.type !== "started") throw new Error("Expected start");
-      start.stint.agent = "grok";
+      start.stint.agent = fault === "grok" ? "grok" : "antigravity";
+      if (fault === "antigravity-failed")
+        entries.push({
+          type: "recovery",
+          version: 1,
+          at: session.at,
+          kind: "resume",
+          state: "fallback",
+          reason: "Previous recovery failed",
+        });
     }
     await writeFile(
       logged.path,
@@ -1586,13 +1603,12 @@ test.each([
     await writeFile(join(logged.worktree.path, "partial.txt"), "Preserved");
     const launchSpy = vi.spyOn(registered, "launch");
     const prepareSpy = vi.spyOn(registered, "prepare");
-    const grokLaunch = vi.fn(() => {
-      throw new Error("Grok must never load");
-    });
+    const grokLaunch = vi.fn(createFakeAgentLauncher([], [], { profile: "antigravity" }));
     const server = project({
       agentRegistry: createAgentRegistry([
         registered,
         { ...fakeAgentProfiles.grok, launch: grokLaunch },
+        { ...fakeAgentProfiles.antigravity, launch: grokLaunch },
       ]),
     });
     await server.app.request("/api/health");
@@ -1610,6 +1626,14 @@ test.each([
     expect(launchSpy).not.toHaveBeenCalled();
     expect(prepareSpy).not.toHaveBeenCalled();
     expect(grokLaunch).not.toHaveBeenCalled();
+    if (fault.startsWith("antigravity")) {
+      const response = await server.app.request("/api/stints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workItem: "first", ticket: 1, agent: "antigravity" }),
+      });
+      expect(response.status).toBe(201);
+    }
     if (fault === "torn" || fault === "unsupported") {
       const snapshot: ProjectSnapshot = await (await server.app.request("/api/project")).json();
       expect(snapshot.warnings.some((warning) => warning.path.endsWith("saved-phase.jsonl"))).toBe(

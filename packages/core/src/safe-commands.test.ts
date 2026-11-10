@@ -313,3 +313,22 @@ test("safe command targets retain cwd, operand and tool-location boundaries for 
     ),
   ).toBeNull();
 });
+
+test.each([
+  ["git status", true],
+  ["rm -rf /", false],
+  ["unknown-command", false],
+])("Antigravity CommandLine %s is allowed only when safe", (command, allowed) => {
+  const tool = { kind: "execute", rawInput: { CommandLine: command, WaitMsBeforeAsync: 5000 } };
+  expect(permissionPaths("edit-freely", tool, "/worktree") !== null).toBe(allowed);
+});
+
+test("conflicting command fields require a decision", () => {
+  expect(
+    permissionPaths(
+      "edit-freely",
+      { kind: "execute", rawInput: { command: "git status", CommandLine: "rm -rf /" } },
+      "/worktree",
+    ),
+  ).toBeNull();
+});

@@ -488,7 +488,11 @@ function BriefPreviewSheet({
                             {copy.version}: {copy.unchecked}
                           </p>
                         )}
-                        <p className="text-muted">{copy.reasons[selection.reason]}</p>
+                        <p className="text-muted">
+                          {selection.reason === "native"
+                            ? copy.reasons.native(selectedAgent.displayName)
+                            : copy.reasons[selection.reason]}
+                        </p>
                         {selectedAgent.id !== "antigravity" &&
                           selection.reason !== "native" &&
                           selection.source !== "pending" && (

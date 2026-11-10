@@ -26,6 +26,9 @@ Stintwork uses your own installed agent CLIs and logins: for each agent you want
 | Claude Code | `claude` | `claude auth login` | Verified over ACP |
 | Codex | `codex` | `codex login` | Verified over ACP |
 | Grok Build | `grok` | `grok login` | Experimental; not verified end to end |
+| Antigravity CLI | [`agy`](https://antigravity.google/cli) 1.5.3 or newer, below 2.0.0 | Run `agy` once and sign in yourself | Experimental |
+
+Grok Build 1.0.77 passed the basic, commands, cancel and resume probes, but real stints on the maintainer's account were rate limited; ask-mode permissions and end-to-end behavior remain unverified. Antigravity stays in its default mode; Stintwork approves eligible in-worktree edits and safe in-worktree shell commands according to the permission level and asks about requests it cannot prove safe. After a server restart, an interrupted Antigravity stint currently falls back to a checkpoint; start a new stint yourself. Native resume is planned. Stintwork never signs in or changes agent configuration.
 
 Stintwork includes the Claude Code and Codex ACP adapters, not their CLIs or logins; it does not handle your credentials. Set up at least one agent to start; you can set up several, choose one per stage or stint, and switch between stints.
 

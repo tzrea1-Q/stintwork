@@ -3,8 +3,9 @@
 Each directory ships an exact `package.json` and reviewed npm v3
 `package-lock.json`. Missing locks or integrity data are hard errors, never a
 request to resolve versions at runtime. Test locks are synthetic fixtures, not
-release evidence. Neither board startup nor availability refresh executes a CLI,
-prepares packages or starts ACP. Only an explicit stint start invokes preparation.
+release evidence. Board startup and availability refresh do not prepare packages
+or start ACP; Antigravity detection runs a bounded `agy --version` probe. Only an
+explicit stint start invokes preparation.
 
 Claude: adapter 0.88.0, SDK/native 0.3.293 (CLI 2.1.293). Codex: adapter 2.1.1,
 launcher 0.159.3, required native alias `@openai/codex-<os>-<arch>` resolving to
@@ -154,3 +155,11 @@ owns broader adversarial coverage; 07 owns real-agent/platform, network and timi
 evidence. Offline npx needs the root package cached. Warm package readiness proves
 neither login nor offline provider inference. Stintwork never invokes login or
 reads, stores or proxies credentials.
+
+Antigravity CLI is experimental. Install [`agy`](https://antigravity.google/cli)
+version 1.5.3 or newer (below 2.0.0) and sign in yourself. It uses default mode;
+Stintwork applies per-level approvals, including auto-allowing eligible in-worktree
+edits and safe in-worktree shell commands. After interruption or server restart,
+it falls back to a checkpoint and the developer starts a new stint; native resume
+is planned. Grok Build remains experimental and unverified end to end: real
+stints on the maintainer account were rate limited.

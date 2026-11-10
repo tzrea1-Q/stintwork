@@ -15,7 +15,7 @@ Run this in your own project's git repository, not the Stintwork repository; npx
 
 It starts a local server, prints its address and opens the browser. Work item worktrees are created next to the project at `<project>-worktrees/<slug>`.
 
-**Status:** v0.1, local-only. Claude Code and Codex are verified over ACP. Grok Build is experimental and not verified end to end.
+**Status:** v0.1, local-only. Claude Code and Codex are verified over ACP. Grok Build and Antigravity CLI are experimental. Grok is not verified end to end: its 1.0.77 basic, commands, cancel and resume probes passed, but real stints on the maintainer's account were rate limited; ask-mode permissions remain untested.
 
 Stintwork is published on npm. See the [getting-started guide](docs/getting-started.md) for the first work item through Shipped.
 
@@ -25,15 +25,18 @@ Stintwork is published on npm. See the [getting-started guide](docs/getting-star
 
 ### Set up your agents
 
-Stintwork uses your existing agent logins. Compatible installed CLIs are preferred; Claude Code and Codex can also use a pinned bundled fallback at explicit stint start. Grok Build requires your separately installed CLI.
+Stintwork uses your existing agent logins. Compatible installed CLIs are preferred; Claude Code and Codex can also use a pinned bundled fallback at explicit stint start. Grok Build and Antigravity CLI require separately installed CLIs.
 
 | Agent | CLI | Sign in | Status |
 |---|---|---|---|
 | Claude Code | `claude` | `claude auth login` | Verified over ACP |
 | Codex | `codex` | `codex login` | Verified over ACP |
 | Grok Build | `grok` | `grok login` | Experimental; not verified end to end |
+| Antigravity CLI | [`agy`](https://antigravity.google/cli) 1.5.3 or newer, below 2.0.0 | Run `agy` once and sign in yourself | Experimental |
 
-Board startup and availability refresh only read local files; they never download or launch agents. Untested agents show **Not prepared**. At explicit stint start, review **Agent source (Installed / Bundled)**, executable path/version, adapter version and selection reason. Confirm before downloading, cancel preparation or retry failures. Missing, incompatible or unverified Claude/Codex CLIs can use the pinned bundled fallback. Only the selected agent is prepared in a cache outside the project; global CLIs are unchanged.
+Antigravity stays in its default permission mode. Stintwork approves eligible in-worktree edits and safe in-worktree shell commands according to the selected permission level; requests it cannot prove safe need your decision. Currently, after a server restart, an interrupted Antigravity stint uses a checkpoint and you start a new stint. Native resume is planned.
+
+Board startup and availability refresh do not download agents or start ACP sessions; Antigravity's availability check runs `agy --version`. Untested agents show **Not prepared**. At explicit stint start, review **Agent source (Installed / Bundled)**, executable path/version, adapter version and selection reason. Confirm before downloading, cancel preparation or retry failures. Missing, incompatible or unverified Claude/Codex CLIs can use the pinned bundled fallback. Only the selected agent is prepared in a cache outside the project; global CLIs are unchanged.
 
 When login is required, run your own login command above and retry; Stintwork never invokes login or reads, stores or proxies credentials. Offline npx requires the root Stintwork package already cached. Uncached agent preparation needs a connection; prepared packages prove neither login readiness nor offline provider inference. See [agent preparation](packages/agents/profiles/README.md) for cache paths and overrides.
 

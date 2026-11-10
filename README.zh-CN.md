@@ -15,7 +15,7 @@ npx stintwork
 
 Stintwork 会启动本地服务器，在终端显示地址并打开浏览器。工作项的工作树创建在项目目录旁的 `<project>-worktrees/<slug>` 中。
 
-**状态：** v0.1，仅限本地使用。Claude Code 和 Codex 已通过 ACP 验证。Grok Build 为实验性支持，尚未完成端到端验证。
+**状态：** v0.1，仅限本地使用。Claude Code 和 Codex 已通过 ACP 验证。Grok Build 和 Antigravity CLI 为实验性支持。Grok 1.0.77 的基本、命令、取消和恢复探测通过，但维护者账号的真实 Stint 遭到速率限制，问询模式权限尚未测试，端到端验证尚未完成。
 
 Stintwork 已发布到 npm。[入门指南](docs/getting-started.md)（英文）带你从创建第一个工作项开始，一直做到合并。
 
@@ -25,15 +25,18 @@ Stintwork 已发布到 npm。[入门指南](docs/getting-started.md)（英文）
 
 ### 配置智能体
 
-Stintwork 使用你已有的 Agent 登录状态。兼容的已安装 CLI 优先；Claude Code 和 Codex 也可在明确开始 Stint 时使用固定版本的内置备用程序。Grok Build 需要你自行安装其 CLI。
+Stintwork 使用你已有的 Agent 登录状态。兼容的已安装 CLI 优先；Claude Code 和 Codex 也可在明确开始 Stint 时使用固定版本的内置备用程序。Grok Build 和 Antigravity CLI 需要你自行安装。
 
 | 智能体 | CLI | 登录命令 | 状态 |
 |---|---|---|---|
 | Claude Code | `claude` | `claude auth login` | 已通过 ACP 验证 |
 | Codex | `codex` | `codex login` | 已通过 ACP 验证 |
 | Grok Build | `grok` | `grok login` | 实验性支持，尚未完成端到端验证 |
+| Antigravity CLI | [`agy`](https://antigravity.google/cli) 1.5.3 或更新版本，且低于 2.0.0 | 自行运行一次 `agy` 并登录 | 实验性支持 |
 
-打开看板和刷新 Agent 可用性只读取本地文件，不下载或启动 Agent。未经测试的 Agent 显示“尚未准备”。明确开始 Stint 后，界面显示 **Agent 来源（已安装 / 内置）**、可执行文件路径和版本、适配器版本及选择原因；确认下载前可以取消，失败后可以重试。不兼容、缺失或未经验证的 Claude/Codex CLI 可选择固定版本的内置备用程序。只准备选中的 Agent，缓存位于项目之外；不会升级全局 CLI。
+Antigravity 始终使用默认权限模式。Stintwork 根据所选权限级别自动批准符合条件的工作树内编辑和安全的工作树内 shell 命令；无法确认安全的请求由你决定。目前服务器重启后，中断的 Antigravity Stint 使用检查点，由你开始新的 Stint。原生恢复已列入计划。
+
+打开看板和刷新 Agent 可用性时不会下载 Agent 或启动 ACP 会话；Antigravity 的可用性检查会运行 `agy --version`。未经测试的 Agent 显示“尚未准备”。明确开始 Stint 后，界面显示 **Agent 来源（已安装 / 内置）**、可执行文件路径和版本、适配器版本及选择原因；确认下载前可以取消，失败后可以重试。不兼容、缺失或未经验证的 Claude/Codex CLI 可选择固定版本的内置备用程序。只准备选中的 Agent，缓存位于项目之外；不会升级全局 CLI。
 
 需要登录时，请自行运行表中的登录命令后重试；Stintwork 从不自动登录，也不读取、存储或代理凭据。离线打开需要 npm 已缓存 Stintwork 根包；未缓存的 Agent 准备需要联网。包准备成功不代表已登录，也不代表提供商推理可离线进行。缓存路径与覆盖设置见 [Agent 准备说明](packages/agents/profiles/README.md)。
 

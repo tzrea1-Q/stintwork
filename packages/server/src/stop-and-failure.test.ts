@@ -4,7 +4,12 @@ import { once } from "node:events";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createFakeAgentLauncher, type FakeAgentStep } from "@stintwork/agents/testing";
+import { createAgentRegistry } from "@stintwork/agents";
+import {
+  createFakeAgentLauncher,
+  fakeAgentProfiles,
+  type FakeAgentStep,
+} from "@stintwork/agents/testing";
 import {
   foldStintLog,
   type ProjectSnapshot,
@@ -44,6 +49,7 @@ function git(root: string, ...args: string[]) {
 async function fixture(
   work: readonly FakeAgentStep[],
   handoff: readonly FakeAgentStep[] = [{ type: "message", text: handoffText }],
+  agent: "codex" | "antigravity" = "codex",
 ) {
   const parent = await mkdtemp(join(tmpdir(), "stintwork-stop-"));
   const root = join(parent, "project");
@@ -65,7 +71,17 @@ async function fixture(
   git(root, "add", "--all");
   git(root, "commit", "--quiet", "-m", "Fixture");
   const project = createProjectServer(root, join(root, "web"), {
-    launchAgent: createFakeAgentLauncher(work, handoff),
+    launchAgent: createFakeAgentLauncher(work, handoff, { profile: agent }),
+    ...(agent === "antigravity"
+      ? {
+          agentRegistry: createAgentRegistry([
+            {
+              ...fakeAgentProfiles.antigravity,
+              launch: createFakeAgentLauncher(work, handoff, { profile: agent }),
+            },
+          ]),
+        }
+      : {}),
     handoffTimeoutMs: 1000,
   });
   const tracked = { parent, project, socket: undefined as WebSocket | undefined };
@@ -81,11 +97,11 @@ afterEach(async () => {
   }
 });
 
-async function start(project: ReturnType<typeof createProjectServer>) {
+async function start(project: ReturnType<typeof createProjectServer>, agent = "codex") {
   const response = await project.app.request("/api/stints", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workItem: "first", ticket: 5, agent: "codex" }),
+    body: JSON.stringify({ workItem: "first", ticket: 5, agent }),
   });
   expect(response.status).toBe(201);
   return ((await response.json()) as { stint: Stint }).stint;
@@ -255,6 +271,42 @@ test.each(["HTTP", "WebSocket"])(
     expect((await project.app.request(path, { method: "POST" })).status).toBe(409);
   },
 );
+
+test("Stop clears a pending Antigravity permission without allowing it", async () => {
+  const { root, project } = await fixture(
+    [{ type: "permission", toolCall: { toolCallId: "work", kind: "execute" } }],
+    [{ type: "message", text: handoffText }],
+    "antigravity",
+  );
+  const started = await start(project, "antigravity");
+  await waitForEvent(root, started.id, "permission_request");
+  const request = foldStintLog(await entries(root, started.id))?.events.find(
+    (event) => event.type === "permission_request",
+  );
+  if (request?.type !== "permission_request") throw new Error("Expected permission");
+  expect(
+    (await project.app.request(`/api/stints/${started.id}/stop`, { method: "POST" })).status,
+  ).toBe(202);
+  expect((await answer(project, started.id, request.requestId, "allow")).status).toBe(409);
+  expect(await ended(project, started.id)).toMatchObject({
+    status: "stopped",
+    checkpointCommit: expect.any(String),
+  });
+  const events = foldStintLog(await entries(root, started.id))?.events ?? [];
+  expect(events).toContainEqual(
+    expect.objectContaining({
+      type: "permission",
+      requestId: request.requestId,
+      decision: { outcome: "cancelled" },
+    }),
+  );
+  const snapshot: ProjectSnapshot = await (await project.app.request("/api/project")).json();
+  expect(
+    snapshot.attentionItems.some(
+      (item) => item.kind === "permission" && item.requestId === request.requestId,
+    ),
+  ).toBe(false);
+});
 
 test("Stop settles a pending work permission but still allows a handoff permission", async () => {
   const { root, project } = await fixture(
