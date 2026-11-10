@@ -740,7 +740,7 @@ export const en = {
         incompatible: "Installed CLI is incompatible.",
         "handshake failed": "Installed CLI handshake failed.",
         unverified: "Installed CLI found, checked at stint start",
-        native: "Uses your installed Grok CLI and login.",
+        native: "Uses your installed agent CLI and login.",
       },
       phases: {
         selected: "Source selected",
@@ -777,6 +777,7 @@ export const en = {
     briefTicket: (number: number, github = false) =>
       `Ticket ${github ? `#${number}` : String(number).padStart(2, "0")}`,
     agent: "Agent",
+    experimental: "Experimental",
     chooseAgent: "Choose an agent for this stint.",
     noAgents: "No agents are registered.",
     permissionLevel: "Permission level",

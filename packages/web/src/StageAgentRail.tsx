@@ -121,7 +121,7 @@ export function StageAgentRail({
                     return {
                       value: agent.id,
                       disabled: !!reason,
-                      label: `${agent.displayName}${reason ? ` — ${reason}` : ""}`,
+                      label: `${agent.displayName}${agent.experimental ? ` (${t.stints.experimental})` : ""}${reason ? ` — ${reason}` : ""}`,
                     };
                   }),
                 ]}

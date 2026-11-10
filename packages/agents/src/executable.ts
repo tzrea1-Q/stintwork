@@ -116,3 +116,13 @@ export function selectAgentSource(
   if (version[0] !== floor[0]) return { source: "bundled", reason: "incompatible" };
   return { source: "installed", reason: "compatible" };
 }
+
+export function antigravityVersionReason(
+  version: string,
+): "compatible" | "missing" | "unparseable" | "below-tested-range" | "incompatible" {
+  if (!version) return "missing";
+  const parsed = parseCliVersion(version);
+  if (!parsed) return "unparseable";
+  if (compareCliVersions(parsed, [1, 5, 3]) < 0) return "below-tested-range";
+  return parsed[0] === 1 ? "compatible" : "incompatible";
+}

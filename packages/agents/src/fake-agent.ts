@@ -19,6 +19,10 @@ import { fakeAgentProfiles } from "./profiles.js";
 const script: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_SCRIPT ?? "[]");
 const handoff: FakeAgentStep[] = JSON.parse(process.env.STINTWORK_FAKE_HANDOFF ?? "[]");
 const options = JSON.parse(process.env.STINTWORK_FAKE_OPTIONS ?? "{}");
+if (options.ignoreSigterm) {
+  process.on("SIGTERM", () => {});
+  setInterval(() => {}, 1000);
+}
 const profile = fakeAgentProfiles[(options.profile ?? "codex") as keyof typeof fakeAgentProfiles];
 const briefs = new Map<string, { cwd: string; prompts: number; mode: string | null }>();
 const turns = new Map<string, AbortController>();

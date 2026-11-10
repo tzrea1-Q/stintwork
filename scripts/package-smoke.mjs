@@ -231,6 +231,11 @@ try {
     );
     await chmod(path, 0o755);
   }
+  await writeFile(
+    join(browserDirectory, "agy"),
+    `#!${process.execPath}\nif (process.argv[2] === "--version") process.stdout.write("1.5.3\\n"); else require("node:fs").writeFileSync(${JSON.stringify(agentLaunched)}, "launched");\n`,
+  );
+  await chmod(join(browserDirectory, "agy"), 0o755);
   child = spawn(executable, ["--no-open"], {
     cwd: project,
     env: {
@@ -295,11 +300,21 @@ try {
   });
   assert.equal(availability.status, 200);
   const agents = (await availability.json()).agents;
-  assert.equal(agents.length, 3);
+  assert.deepEqual(agents.map((agent) => agent.id).sort(), [
+    "antigravity",
+    "claude",
+    "codex",
+    "grok",
+  ]);
   assert(
     agents.every(
       (agent) => !agent.availability.available && agent.availability.kind === "not-prepared",
     ),
+  );
+  assert(agents.every((agent) => agent.availability.canStart));
+  assert.equal(
+    agents.find((agent) => agent.id === "antigravity").availability.selection.reason,
+    "native",
   );
   assert(!existsSync(agentLaunched), "Board/refresh launched an agent.");
   assert(!existsSync(join(temporary, "agent-cache")), "Board/refresh prepared an adapter.");

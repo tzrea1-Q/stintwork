@@ -20,6 +20,9 @@ export type AgentCapabilityProfile = {
 export type AgentProfile = {
   id: string;
   displayName: string;
+  experimental?: boolean;
+  loginMessageCode?: "agent.antigravityLogin";
+  permissionModes?: { ask: string; other: string };
   capabilities: AgentCapabilityProfile;
   installationHint: string;
   warnings?: readonly CoreText[];

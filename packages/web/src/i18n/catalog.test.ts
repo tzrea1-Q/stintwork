@@ -15,6 +15,7 @@ const unchanged = new Set([
 ]);
 const samples: Record<string, unknown[][]> = {
   "board.githubStatus.incompleteItems": [[0], [1], [2]],
+  "coreText.agent.antigravityVersion": [[{ reason: "unparseable" }]],
   "coreText.github.labelledChildExcluded": [[{ issue: "12" }]],
   "coreText.github.childrenExcluded": [[{ issue: "12" }]],
   "coreText.github.relationshipCap": [[{ issue: "12" }]],
@@ -304,4 +305,17 @@ test("merge confirmation names each method naturally", () => {
     "确认以 squash 方式合并",
     "确认以 rebase 方式合并",
   ]);
+});
+
+test("Antigravity readiness and login guidance is localized", () => {
+  expect(en.coreText["agent.antigravityMissing"]).toContain("agy");
+  expect(zhCN.coreText["agent.antigravityMissing"]).toContain("自行运行 agy");
+  expect(en.coreText["agent.antigravityLogin"]).toContain("Run agy once");
+  expect(zhCN.coreText["agent.antigravityLogin"]).toContain("自行运行一次 agy");
+  const params = { agent: "Antigravity CLI", command: "agy" };
+  expect(en.coreText["agent.loginRequired"](params)).toContain("agy");
+  expect(zhCN.coreText["agent.loginRequired"](params)).toContain("运行 agy");
+  expect(zhCN.coreText["agent.antigravityVersion"]({ reason: "below-tested-range" })).toContain(
+    "低于测试版本",
+  );
 });

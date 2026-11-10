@@ -4,6 +4,7 @@ import type { AgentPreparationOptions, PreparedAgent } from "./adapter-cache.js"
 import type { AgentLauncher } from "./index.js";
 import { createCodexAgent } from "./codex.js";
 import { createClaudeCodeAgent } from "./claude-code.js";
+import { createAntigravityAgent } from "./antigravity.js";
 import { createGrokAgent } from "./grok.js";
 
 export type RegisteredAgent = AgentProfile & {
@@ -36,7 +37,12 @@ export async function refreshAgentAvailability(
 }
 
 function defaultAgents(): RegisteredAgent[] {
-  const agents = [createCodexAgent(), createClaudeCodeAgent(), createGrokAgent()];
+  const agents = [
+    createCodexAgent(),
+    createClaudeCodeAgent(),
+    createGrokAgent(),
+    createAntigravityAgent(),
+  ];
   // Test runs set this so the default registry never probes the agents installed on the machine.
   // Tests of detection itself build registries with their own detectors.
   if (process.env.STINTWORK_SKIP_AGENT_DETECTION !== "1") return agents;

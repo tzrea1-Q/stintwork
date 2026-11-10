@@ -11,7 +11,12 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { StageAgentRail } from "./StageAgentRail";
 import { WorkItemDrawer } from "./WorkItemDrawer";
-import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
+import {
+  codexProfile,
+  claudeProfile,
+  grokProfile,
+  antigravityProfile,
+} from "../../agents/src/profiles";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
@@ -297,4 +302,29 @@ test("an unavailable default cannot start a stint and explains how to log in", a
   await sheet.findByRole("heading", { name: "Full prompt" });
   expect(sheet.getByRole("button", { name: "Start" })).toBeDisabled();
   expect(sheet.getByText("Authentication required. Use grok login.")).toBeVisible();
+});
+
+test.each([
+  ["en", "Implement agent", "Experimental"],
+  ["zh-CN", "实现 Agent", "实验性"],
+])("%s stage picker marks experimental agents", async (language, name, label) => {
+  localStorage.setItem(languageStorageKey, language);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ agents: [codexProfile, grokProfile, antigravityProfile] })),
+    ),
+  );
+  render(
+    <LanguageProvider>
+      <StageAgentRail item={item} />
+    </LanguageProvider>,
+  );
+  const picker = screen.getByRole("combobox", { name });
+  await waitFor(() => expect(picker).toBeEnabled());
+  await userEvent.setup().click(picker);
+  expect(screen.getByRole("option", { name: `Grok Build (${label})` })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: `Antigravity CLI (${label})` })).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "Codex" })).toBeInTheDocument();
 });

@@ -56,6 +56,8 @@ export {
   refreshAgentAvailability,
 } from "./registry.js";
 export { createGrokAgent } from "./grok.js";
+export { createAntigravityAgent } from "./antigravity.js";
+export { antigravityProfile } from "./profiles.js";
 export { grokProfile } from "./profiles.js";
 export type { AfterTurnRequest } from "./after-turn.js";
 export { handoffRequest } from "./handoff.js";
@@ -388,6 +390,22 @@ export function createAgentLauncher(
             };
             let response: RequestPermissionResponse;
             try {
+              if (
+                profile.id === "antigravity" &&
+                request.options.some(
+                  (option) =>
+                    !(
+                      (option.optionId === "allow" && option.kind === "allow_once") ||
+                      (option.optionId === "deny" && option.kind === "reject_once")
+                    ),
+                )
+              ) {
+                response = { outcome: { outcome: "cancelled" } };
+                event.decision = { outcome: "cancelled" };
+                onEvent(event);
+                receipt.respond(response);
+                return response;
+              }
               const targets = permissionPaths(policy.autoAnswer, request.toolCall, cwd);
               const inside =
                 targets &&
