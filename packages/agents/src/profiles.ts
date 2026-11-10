@@ -90,7 +90,7 @@ export const antigravityProfile: AgentProfile = {
   displayName: "Antigravity CLI",
   experimental: true,
   loginMessageCode: "agent.antigravityLogin",
-  permissionModes: { ask: "default", other: "accept-edits" },
+  permissionModes: { ask: "default", other: "default" },
   skillLocations: [],
   installationHint: "Install Antigravity CLI, run agy once and sign in yourself.",
   capabilities: {

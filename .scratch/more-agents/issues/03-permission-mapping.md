@@ -14,6 +14,10 @@ Map Ask, Edit freely and Autonomous to the probe-confirmed Antigravity session m
 
 ## Comments
 
+### Permission mapping correction — 2026-11-09
+
+- Superseding the earlier mapping note: Ask, Edit freely and Autonomous all select `default`; neither `accept-edits` nor `plan` is selected. Antigravity's `accept-edits` can approve edits before Stintwork checks whether their paths are in the worktree. In `default`, Stintwork auto-allows proven in-worktree edits and safe commands according to the permission level; requests it cannot prove safe go to Needs you.
+
 ### Implementation evidence — 2026-11-09
 
 - Ask selects `default`; Edit freely and Autonomous select `accept-edits`, matching the existing Claude mapping. `plan` is never selected. Stintwork continues to forward requests through Needs you and applies its existing automatic-answer policy to requests the agent sends. Antigravity's `allow`/`allow_once` and `deny`/`reject_once` are recognized; any unexpected option or kind cancels the request safely. The live probe offered no always option.

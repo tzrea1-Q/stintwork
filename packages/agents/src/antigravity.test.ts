@@ -122,14 +122,44 @@ test("authentication failure directs the developer to agy", async () => {
 
 test.each([
   ["ask", "default"],
-  ["edit-freely", "accept-edits"],
-  ["autonomous", "accept-edits"],
+  ["edit-freely", "default"],
+  ["autonomous", "default"],
 ] as const)("%s selects %s", async (permissionLevel, mode) => {
   const { cwd } = await fixture();
   const stint = createFakeAgentLauncher([{ type: "expect-mode", mode }], [], {
     profile: "antigravity",
   })({ agent: "antigravity", cwd, prompt: "Work", permissionLevel, onEvent() {} });
   expect(await stint.done).toEqual({ stopReason: "end_turn" });
+});
+
+test("Edit freely auto-allows worktree edits and asks about outside edits", async () => {
+  const { cwd } = await fixture();
+  const requests: string[] = [];
+  const decisions: boolean[] = [];
+  const stint = createFakeAgentLauncher(
+    ["file.txt", join(cwd, "../outside.txt")].map((path, index) => ({
+      type: "permission" as const,
+      toolCall: { toolCallId: String(index), kind: "edit" as const, rawInput: { path } },
+      expectedOptionId: "allow",
+    })),
+    [],
+    { profile: "antigravity" },
+  )({
+    agent: "antigravity",
+    cwd,
+    prompt: "Work",
+    permissionLevel: "edit-freely",
+    onEvent: (event) => {
+      if (event.type === "permission") decisions.push(event.automatic);
+    },
+    onPermission: async (request) => {
+      requests.push(request.toolCall.toolCallId);
+      return { outcome: { outcome: "selected", optionId: "allow" } };
+    },
+  });
+  expect(await stint.done).toEqual({ stopReason: "end_turn" });
+  expect(requests).toEqual(["1"]);
+  expect(decisions).toEqual([true, false]);
 });
 
 test.each(["allow", "deny"])("forwards %s to the developer", async (optionId) => {
