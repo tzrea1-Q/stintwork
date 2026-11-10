@@ -18,3 +18,5 @@ After 01 and 02 merge, the maintainer confirms and changes `tzrea1-Q/stintwork` 
 ## Comments
 
 **Coordinator, 2026-10-17:** This work happens in M13 · v0.2 release and going public, not M7. The repo stays private until then. The maintainer changes visibility; the coordinator records the public CI, README, issue-template and private-reporting checks here.
+
+**Coordinator, 2026-11-10: author email.** Every existing commit's author and committer email is the maintainer's personal address, which becomes public with the repo. The maintainer decided to keep existing history unchanged and use the GitHub noreply address for future commits. The coordinator set the noreply address in this checkout's local Git config; the maintainer's global Git config and GitHub email settings are unchanged.

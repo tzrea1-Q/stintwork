@@ -1,6 +1,6 @@
 # 01 — Repo ready to open
 
-Status: ready-for-human
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -11,11 +11,11 @@ Scan tracked files and reachable Git history for secrets and private paths befor
 
 ## Acceptance criteria
 
-- [ ] Both issue templates ask for enough information to triage a report or idea.
-- [ ] CONTRIBUTING explains the existing build process and how to report a problem in plain, short sentences.
-- [ ] SECURITY points to a private reporting route confirmed by the maintainer.
-- [ ] Comments record the scan tool, tracked-file and history scope, findings and disposition. No unresolved secrets or private paths remain in that scope.
-- [ ] Preparation is merged before ticket 03. Visibility stays private until the maintainer changes it.
+- [x] Both issue templates ask for enough information to triage a report or idea.
+- [x] CONTRIBUTING explains the existing build process and how to report a problem in plain, short sentences.
+- [x] SECURITY points to a private reporting route confirmed by the maintainer.
+- [x] Comments record the scan tool, tracked-file and history scope, findings and disposition. No unresolved secrets or private paths remain in that scope.
+- [x] Preparation is merged before ticket 03. Visibility stays private until the maintainer changes it.
 
 ## Comments
 
@@ -49,3 +49,5 @@ Open risks: regex scanning is not proof that no secret exists. The maintainer st
 **Coordinator, 2026-10-13:** Built by Codex and verified on `go-public`. Codex's scan stopped at `4dfcc1a`. My own scan used `git grep` on HEAD and `git log -p --all` for absolute user paths, the machine username (other than the `tzrea1-Q` handle), GitHub, npm and `sk-` token prefixes and private-key blocks. It covered the later commits from this ticket, 02 and the CI fix, and found nothing. `spikes/acp-probe/runs/` (probe transcripts) is gitignored and untracked. Every commit's author and committer email is the maintainer's personal address, which becomes public with the repo; the maintainer decides this at ticket 03. On `go-public` with no `packages/*/dist`, in CI order: `format:check`, `lint`, `typecheck`, `test` (2100 passed), `build` and `smoke:package` passed. That includes the core tests that parse this repo's tickets. Code review: no hard violations. SECURITY's "Supported versions" section (latest published version only) goes beyond the ticket and needs the maintainer's agreement. Waiting on the maintainer to confirm GitHub private vulnerability reporting as the route; it is enabled at ticket 03.
 
 **Coordinator, 2026-10-17:** Built and merged; Status stays ready-for-human pending the maintainer's confirmation of the SECURITY route and latest-published-version support policy. The repo stays private until M13, when ticket 03 enables and checks the public reporting route. M7 now covers preparation only and can exit after 01 and 02 are resolved on the maintainer's confirmation.
+
+**Coordinator, 2026-11-10: maintainer confirmation.** The maintainer confirmed GitHub private vulnerability reporting as SECURITY's reporting route, and the support policy that only the latest published version receives security fixes. The route is enabled and checked on the public repo in ticket 03 (M13). Visibility stays private until then.

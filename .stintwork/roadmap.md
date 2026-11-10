@@ -40,7 +40,7 @@ Status: shipped
 
 ## M7 · Ready to go public
 Id: m7
-Status: active
+Status: shipped
 
 - go-public
 
