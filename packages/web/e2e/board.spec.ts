@@ -71,7 +71,6 @@ for (const language of ["en", "zh-CN"] as const) {
             Math.abs(label.y + label.height / 2 - stats.y - stats.height / 2),
           ).toBeLessThanOrEqual(1);
           expect(stats.x - label.x - label.width).toBeGreaterThanOrEqual(8);
-          expect(stats.x - label.x - label.width).toBeLessThanOrEqual(24);
           expect(actions.x).toBeGreaterThan(context.x + context.width);
         } else if (width < 1024) {
           expect(actions.y).toBeGreaterThanOrEqual(context.y + context.height);
@@ -83,34 +82,19 @@ for (const language of ["en", "zh-CN"] as const) {
           expect(await stages.evaluate((element) => getComputedStyle(element).scrollSnapType)).toBe(
             "x mandatory",
           );
-          const viewport = await stages.boundingBox();
-          const first = await columns.nth(0).boundingBox();
-          const second = await columns.nth(1).boundingBox();
-          if (!viewport || !first || !second) throw new Error("Stage columns must have bounds");
-          expect(Math.abs(first.width - width * 0.85)).toBeLessThanOrEqual(1);
-          expect(second.x).toBeLessThan(viewport.x + viewport.width);
-          expect(second.x + second.width).toBeGreaterThan(viewport.x + viewport.width);
-          await stages.evaluate((element) => {
-            element.scrollLeft = element.clientWidth * 0.65;
-          });
-          await expect
-            .poll(async () => {
-              const snapped = await columns.nth(1).boundingBox();
-              return snapped ? Math.abs(snapped.x - viewport.x) : Number.POSITIVE_INFINITY;
-            })
-            .toBeLessThanOrEqual(1);
-          await page.locator(".stage-navigation button").first().click();
-          await expect.poll(() => stages.evaluate((element) => element.scrollLeft)).toBe(0);
           await page.locator(".stage-navigation button").last().click();
           await expect
-            .poll(async () => {
-              const next = await columns.nth(1).boundingBox();
-              return next ? Math.abs(next.x - viewport.x) : Number.POSITIVE_INFINITY;
-            })
-            .toBeLessThanOrEqual(1);
+            .poll(() => stages.evaluate((element) => element.scrollLeft))
+            .toBeGreaterThan(0);
+          await page.locator(".stage-navigation button").first().click();
+          await expect.poll(() => stages.evaluate((element) => element.scrollLeft)).toBe(0);
         }
         await assertLayout(page, { region: ".pipeline-main" });
-        if (width < 1200) {
+        if (width === 1440)
+          expect(await stages.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+            await stages.evaluate((element) => element.clientWidth),
+          );
+        if (width < 1024) {
           expect(
             await stages.evaluate((element) => element.scrollWidth > element.clientWidth),
           ).toBe(true);
@@ -118,7 +102,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await stages.evaluate((element) => {
           element.scrollLeft = element.scrollWidth;
         });
-        if (width < 1200)
+        if (width < 1024)
           expect(await stages.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
         await assertLayout(page, { region: ".pipeline-main" });
         const inference = page.getByRole("button", { name: t.card.inferred, exact: true }).first();

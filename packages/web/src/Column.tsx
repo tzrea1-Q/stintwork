@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { AttentionItem, BoardColumn, Milestone, WorkflowDefinitions } from "@stintwork/core";
+import type {
+  AgentProfile,
+  AttentionItem,
+  BoardColumn,
+  Milestone,
+  WorkflowDefinitions,
+} from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
 import { useLanguage } from "./i18n/language";
+import { IconChip } from "./ui/IconChip";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";
 
 const presentation = {
@@ -21,6 +28,8 @@ export function Column({
   workflows,
   onOpen,
   attentionItems = [],
+  agents,
+  selectedSlug,
 }: {
   id: BoardColumn;
   name: string;
@@ -29,29 +38,37 @@ export function Column({
   workflows: WorkflowDefinitions;
   onOpen: (slug: string) => void;
   attentionItems?: AttentionItem[];
+  agents: AgentProfile[];
+  selectedSlug: string | null;
 }) {
   const { t } = useLanguage();
   const Icon = presentation[id];
+  const running = items.filter((item) => item.activeStint?.status === "running").length;
+  const waiting = items.filter((item) =>
+    attentionItems.some((entry) => entry.workItem === item.slug),
+  ).length;
+  const stats = [
+    running && `${running} ${t.pipelineBoard.running}`,
+    waiting && `${waiting} ${t.pipelineBoard.waiting}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   return (
-    <section className="stage-column min-w-0" data-card-column={id} aria-labelledby={`stage-${id}`}>
-      <header className="stage-header sticky top-0 z-10 bg-background px-1 pb-4 pt-5">
-        <div className="flex items-center gap-2">
-          <Icon
-            className={
-              id === "implement"
-                ? "size-icon-sm accent text-accent-foreground"
-                : "size-icon-sm muted text-muted-foreground"
-            }
-            aria-hidden="true"
-          />
-          <h2 id={`stage-${id}`} className="text-xs font-medium">
+    <section
+      className={`stage-column min-w-0 snap-start ${items.length ? "flex-[1_1_0] min-w-[150px]" : "group flex-[0_0_56px] min-w-14 transition-[flex-basis] hover:basis-[150px] focus-within:basis-[150px]"}`}
+      data-card-column={id}
+      aria-labelledby={`stage-${id}`}
+      tabIndex={items.length ? undefined : 0}
+    >
+      <header className="stage-header px-1 pb-4 pt-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
+          <h2 id={`stage-${id}`} className="min-w-0 break-words text-xs font-medium">
             {name}
           </h2>
-          <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
-            {items.length}
-          </span>
+          <span className="count text-xs text-muted-foreground">{items.length}</span>
         </div>
-        <p className="mt-2 text-xs muted text-muted-foreground">{t.column.hints[id]}</p>
+        {stats && <p className="mt-2 text-xs text-muted-foreground">{stats}</p>}
       </header>
       <div className="flex flex-col gap-3">
         {items.length ? (
@@ -59,6 +76,8 @@ export function Column({
             <WorkItemCard
               key={item.slug}
               item={item}
+              agents={agents}
+              selected={selectedSlug === item.slug}
               workflow={workflows[item.workflow]}
               attentionCount={attentionItems.filter((entry) => entry.workItem === item.slug).length}
               milestone={milestones.find((milestone) => milestone.id === item.milestone)}
@@ -66,9 +85,7 @@ export function Column({
             />
           ))
         ) : (
-          <p className="empty-column rounded-md border border-dashed border-border px-2 py-5 text-center text-xs text-muted-foreground">
-            {t.column.empty(name)}
-          </p>
+          <span className="sr-only">{t.column.empty(name)}</span>
         )}
       </div>
     </section>

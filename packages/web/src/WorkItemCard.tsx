@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Milestone, ProjectSnapshot, WorkflowDefinition } from "@stintwork/core";
-import { Bug, Info, Layers3, LockKeyhole, Sparkles, Zap } from "lucide-react";
+import {
+  stageAgent,
+  type AgentProfile,
+  type Milestone,
+  type ProjectSnapshot,
+  type WorkflowDefinition,
+} from "@stintwork/core";
+import { Bug, Info, Layers3, Sparkles, Zap } from "lucide-react";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
 import { recoveryStatus } from "./StintRecovery";
-import { Badge } from "./ui/Badge";
+import { AgentAvatar } from "./ui/AgentAvatar";
+import { SegmentedProgress } from "./ui/SegmentedProgress";
+import { StatusChip } from "./ui/StatusChip";
 import { Button } from "./ui/Button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
@@ -17,18 +25,37 @@ export function WorkItemCard({
   onOpen,
   attentionCount = 0,
   workflow,
+  agents = [],
+  selected = false,
 }: {
   item: BoardWorkItem;
   milestone?: Milestone;
   onOpen: (slug: string) => void;
   attentionCount?: number;
   workflow?: WorkflowDefinition;
+  agents?: AgentProfile[];
+  selected?: boolean;
 }) {
   const { t } = useLanguage();
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
   const open = item.tickets.filter((ticket) => !ticket.resolved);
   const blocked =
     !item.github?.ticketsStale && open.length > 0 && open.every((ticket) => ticket.blocked);
+  const running = item.activeStint?.status === "running";
+  const status = running
+    ? "running"
+    : attentionCount > 0
+      ? "attention"
+      : blocked
+        ? "blocked"
+        : item.merged
+          ? "success"
+          : "stopped";
+  const agentId =
+    item.stage && workflow
+      ? stageAgent(item, item.stage, agents, { [workflow.id]: workflow })
+      : undefined;
+  const agent = agents.find((entry) => entry.id === agentId);
   const type = item.type === "effort" ? "effort" : item.workflow;
   const icons: Record<string, typeof Sparkles> = {
     feature: Sparkles,
@@ -61,7 +88,7 @@ export function WorkItemCard({
 
   return (
     <article
-      className="work-item relative min-w-0 rounded-md border border-input bg-card p-3 shadow-card hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring"
+      className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring ${running ? "bg-running-soft" : attentionCount > 0 ? "bg-attention-soft" : blocked ? "bg-blocked-soft" : "bg-muted"} ${selected ? "ring-2 ring-ring" : ""}`}
       aria-label={`${item.slug}: ${item.title}`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -82,42 +109,50 @@ export function WorkItemCard({
           </span>
         )}
       </div>
-      <h3 className="my-3 text-base leading-5 font-medium break-words">
+      <h3 className="my-3 text-sm leading-5 font-medium break-words">
         <Button
           variant="link"
           type="button"
-          className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left after:absolute after:inset-0 after:rounded-md"
+          className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left after:absolute after:inset-0 after:rounded-2xl"
           data-work-item={item.slug}
           aria-label={t.card.open(item.slug, item.title)}
           aria-haspopup="dialog"
           onClick={() => onOpen(item.slug)}
         >
-          {item.title}
+          <span className="line-clamp-3 break-words" data-truncate title={item.title}>
+            {item.title}
+          </span>
         </Button>
       </h3>
-      {item.activeStint?.status === "running" && (
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the label is only present with the status role. */}
         <span
-          className="stint-running mb-3 flex items-center gap-2 text-xs text-accent-foreground"
-          role="status"
+          role={running || attentionCount > 0 ? "status" : undefined}
+          aria-label={!running && attentionCount > 0 ? t.card.attention(attentionCount) : undefined}
         >
-          <span className="stint-running-dot size-1 rounded-full bg-current" aria-hidden="true" />
-          {recoveryStatus(item.activeStint, t) ?? t.card.running}
+          <StatusChip status={status} pulse={running}>
+            {running
+              ? ((item.activeStint && recoveryStatus(item.activeStint, t)) ?? t.card.running)
+              : attentionCount > 0
+                ? t.card.needsYou(attentionCount)
+                : blocked
+                  ? t.card.blocked
+                  : item.merged
+                    ? t.card.shipped
+                    : t.pipelineBoard.idle}
+          </StatusChip>
         </span>
-      )}
-      {item.merged && <Badge variant="success">{t.card.shipped}</Badge>}
+        {running && attentionCount > 0 && (
+          <span role="status" aria-label={t.card.attention(attentionCount)}>
+            {t.card.needsYou(attentionCount)}
+          </span>
+        )}
+        {agent && (
+          <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
+        )}
+      </div>
       {(blocked || item.inferred || attentionCount > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          {attentionCount > 0 && (
-            <Badge role="status" variant="warning" aria-label={t.card.attention(attentionCount)}>
-              {t.card.needsYou(attentionCount)}
-            </Badge>
-          )}
-          {blocked && (
-            <Badge variant="warning">
-              <LockKeyhole className="size-icon-sm shrink-0" aria-hidden="true" />
-              {t.card.blocked}
-            </Badge>
-          )}
           {item.inferred && (
             <TooltipProvider>
               <Tooltip>
@@ -146,12 +181,13 @@ export function WorkItemCard({
               {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
               {t.card.tickets}
             </span>
-            <progress
-              className="h-1 w-11 appearance-none overflow-hidden rounded-sm border-0 bg-secondary [&::-webkit-progress-bar]:bg-secondary [&::-webkit-progress-value]:bg-accent-foreground [&::-moz-progress-bar]:bg-accent-foreground"
-              aria-label={t.card.progress(item.slug)}
-              max={Math.max(1, item.tickets.length)}
-              value={resolved}
-            />
+            <div className="w-11 shrink-0">
+              <SegmentedProgress
+                label={t.card.progress(item.slug)}
+                total={item.tickets.length}
+                value={resolved}
+              />
+            </div>
           </>
         )}
       </div>

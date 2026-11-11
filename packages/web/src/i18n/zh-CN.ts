@@ -63,6 +63,14 @@ export const zhCN: Catalog = {
     missing: "缺失",
     readOnly: "只读 · 不会更改任何文件。",
   },
+  pipelineBoard: {
+    idle: "没有运行中的 Stint",
+    workflow: "工作流",
+    allWorkflows: "全部工作流",
+    running: "运行中",
+    waiting: "待你处理",
+    milestoneProgress: "已交付",
+  },
   board: {
     workbench: "Stintwork · 项目工作台",
     pipeline: "流水线",
