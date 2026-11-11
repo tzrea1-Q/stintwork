@@ -2,7 +2,7 @@
 import { createMemoryRepoFiles, indexProject, type StintSummary } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -38,6 +38,10 @@ const stint: StintSummary = {
     nextStep: "Ship locally",
   },
 };
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
+
 afterEach(() => {
   localStorage.removeItem(languageStorageKey);
   vi.unstubAllGlobals();

@@ -9,7 +9,7 @@ import {
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -64,6 +64,10 @@ test("customisation traps Tab and dismisses on an outside click", async () => {
   fireEvent.pointerDown(document.body);
   expect(close).toHaveBeenCalledOnce();
 });
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
+
 afterEach(() => {
   localStorage.clear();
   document.documentElement.lang = "en";

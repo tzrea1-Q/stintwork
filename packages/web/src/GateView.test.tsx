@@ -497,6 +497,7 @@ test("the Needs-you gate item contains evidence and an approval action", async (
 });
 
 test("approval and reopen snapshots move the board card between Implement and Review", () => {
+  window.history.replaceState(null, "", "/?view=pipeline");
   const snapshot = project();
   const { rerender } = render(<Board snapshot={snapshot} />);
   const card = () => screen.getByRole("article", { name: "first: First work item" });

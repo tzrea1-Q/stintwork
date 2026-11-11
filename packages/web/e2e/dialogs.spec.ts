@@ -89,7 +89,7 @@ for (const language of ["en", "zh-CN"] as const) {
               warnings: [],
             },
           };
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await expect(page.getByText(t.board.githubCreation)).toBeVisible();
           await expect(page.getByRole("link", { name: t.board.githubIssues })).toHaveAttribute(
             "href",
@@ -128,7 +128,7 @@ for (const language of ["en", "zh-CN"] as const) {
             requested = true;
             return route.fulfill({ json: snapshot });
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await expect(page.getByText(t.board.githubStatus.errors.incomplete)).toBeVisible();
           await page.getByRole("button", { name: t.board.githubStatus.loadMore }).click();
           expect(requested).toBe(true);
@@ -161,7 +161,7 @@ for (const language of ["en", "zh-CN"] as const) {
               json: { reason: "Fixture save refusal. No files changed." },
             });
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await page.getByRole("button", { name: t.planning.create.title, exact: true }).click();
           const dialog = page.getByRole("dialog", { name: t.planning.create.title });
           const confirm = dialog.getByRole("button", {
@@ -257,7 +257,7 @@ for (const language of ["en", "zh-CN"] as const) {
                 : { json: { milestones: snapshot.milestones, commit: "d".repeat(40) } },
             );
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           const trigger = page.getByRole("button", { name: t.planning.roadmap.title });
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
@@ -345,7 +345,7 @@ for (const language of ["en", "zh-CN"] as const) {
               json: { reason: "Fixture customisation refusal." },
             });
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           const open = async () => {
             await page.locator("#command-palette-trigger").focus();
             await expect(page.locator("#command-palette-trigger")).toBeFocused();
@@ -883,7 +883,7 @@ for (const language of ["en", "zh-CN"] as const) {
         test("palette: long names, empty search, keyboard navigation and focus return", async ({
           page,
         }, testInfo) => {
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           const trigger = page.locator("#command-palette-trigger");
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.planning.palette.title });

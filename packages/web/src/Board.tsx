@@ -10,7 +10,8 @@ import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { GithubStatus } from "./GithubStatus";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
-import { OverviewPlaceholder } from "./OverviewPlaceholder";
+import { Overview } from "./Overview";
+import { viewFromSearch } from "./overview-data";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
@@ -40,7 +41,7 @@ export function Board({
     new URL(window.location.href).searchParams.get("item"),
   );
   const [view, setView] = useState<"overview" | "pipeline">(() =>
-    new URL(window.location.href).searchParams.get("view") === "overview" ? "overview" : "pipeline",
+    viewFromSearch(window.location.search),
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -178,12 +179,7 @@ export function Board({
   }
 
   useEffect(() => {
-    const restoreView = () =>
-      setView(
-        new URL(window.location.href).searchParams.get("view") === "overview"
-          ? "overview"
-          : "pipeline",
-      );
+    const restoreView = () => setView(viewFromSearch(window.location.search));
     window.addEventListener("popstate", restoreView);
     return () => window.removeEventListener("popstate", restoreView);
   }, []);
@@ -207,10 +203,21 @@ export function Board({
         </button>
       )}
       {view === "overview" && (
-        <OverviewPlaceholder
+        <Overview
+          snapshot={snapshot}
           connection={connection}
           error={error}
           onPipeline={() => changeView("pipeline")}
+          onOpenItem={(slug) => {
+            changeView("pipeline");
+            openWorkItem(slug);
+          }}
+          onNeedsYou={() => setNeedsYouOpen(true)}
+          onCreate={() => setCreateOpen(true)}
+          onMilestone={(id) => {
+            setSelectedMilestone(id);
+            changeView("pipeline");
+          }}
         />
       )}
       <main

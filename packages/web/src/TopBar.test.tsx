@@ -167,7 +167,7 @@ test("the top bar exposes only the three actions and announces warnings without 
 });
 
 test("view navigation preserves URL parameters and restores history", async () => {
-  window.history.replaceState({}, "", "/?milestone=m1");
+  window.history.replaceState({}, "", "/?milestone=m1&view=pipeline");
   const user = userEvent.setup();
   render(
     <LanguageProvider>
@@ -181,7 +181,8 @@ test("view navigation preserves URL parameters and restores history", async () =
   overview.focus();
   await user.keyboard("{Enter}");
   expect(overview).toHaveAttribute("aria-current", "page");
-  expect(screen.getByText(en.viewNavigation.description)).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: en.viewNavigation.overview, level: 1 })).toBeVisible();
+  expect(within(screen.getByRole("main")).getByText(en.board.empty)).toBeVisible();
   expect(window.location.search).toContain("milestone=m1");
   expect(window.location.search).toContain("view=overview");
   await user.click(

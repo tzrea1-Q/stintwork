@@ -79,7 +79,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await agentsReady;
           await route.fulfill({ status: 503, json: { reason: t.stints.loadAgentsFailed } });
         });
-        await page.goto("/");
+        await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         const trigger = page.locator('.board-scroll [data-work-item="long-title"]');
         await trigger.focus();
@@ -240,7 +240,7 @@ for (const language of ["en", "zh-CN"] as const) {
             raisedAt: "2026-10-29T12:00:00Z",
           },
         ];
-        await page.goto("/");
+        await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         await page.locator("#needs-you-trigger").click();
         const sheet = page.locator(".needs-you-queue");
@@ -328,7 +328,7 @@ for (const language of ["en", "zh-CN"] as const) {
             await route.fulfill({ status: 503, json: { reason: t.needsYou.permissionFailed } });
           } else await route.fulfill({ json: {} });
         });
-        await page.goto("/");
+        await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         const trigger = page.locator("#needs-you-trigger");
         await expect(

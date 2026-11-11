@@ -1,0 +1,57 @@
+// SPDX-License-Identifier: Apache-2.0
+import type { ProjectSnapshot } from "@stintwork/core";
+
+export function viewFromSearch(search: string): "overview" | "pipeline" {
+  const params = new URLSearchParams(search);
+  const view = params.get("view");
+  return view === "pipeline" || (view === null && params.has("item")) ? "pipeline" : "overview";
+}
+
+export function overviewData(snapshot: ProjectSnapshot) {
+  const active = snapshot.workItems.filter((item) => !item.merged);
+  const milestones = snapshot.milestones
+    .map((milestone) => {
+      const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
+      return {
+        milestone,
+        total: items.length,
+        shipped: items.filter((item) => item.merged).length,
+      };
+    })
+    .filter(({ total }) => total > 0);
+  const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const)
+    .map((column) => ({ column, count: active.filter((item) => item.column === column).length }))
+    .filter(({ count }) => count > 0);
+  // Choose the first untouched, unblocked item in roadmap order, then snapshot order.
+  const ordered = [...snapshot.workItems].sort((a, b) => {
+    const rank = (id: string | undefined) => {
+      const index = snapshot.milestones.findIndex((milestone) => milestone.id === id);
+      return index < 0 ? snapshot.milestones.length : index;
+    };
+    return rank(a.milestone) - rank(b.milestone);
+  });
+  const next = ordered.find(
+    (item) =>
+      !item.merged &&
+      !item.activeStint &&
+      item.stints.length === 0 &&
+      !snapshot.attentionItems.some((attention) => attention.workItem === item.slug) &&
+      !item.tickets.some((ticket) => !ticket.resolved && ticket.blocked),
+  );
+  const running = active.filter((item) => item.activeStint);
+  const activity = snapshot.workItems
+    .flatMap((item) =>
+      item.stints.map((stint) => ({ item, stint, at: stint.endedAt || stint.startedAt })),
+    )
+    .filter(({ at }) => at && Number.isFinite(Date.parse(at)))
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
+    .slice(0, 5);
+  return {
+    milestones,
+    columns,
+    next,
+    running,
+    activity,
+    attention: snapshot.attentionItems.slice(0, 3),
+  };
+}

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 
 function project(id = "team", stage = "design", tickets = false) {
@@ -26,6 +26,10 @@ function project(id = "team", stage = "design", tickets = false) {
     { name: "Fixture" },
   );
 }
+
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
 
 afterEach(() => {
   window.history.replaceState({}, "", "/");

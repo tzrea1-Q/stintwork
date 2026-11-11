@@ -74,7 +74,7 @@ async function fixture(page: Page, language: "en" | "zh-CN", risky = false) {
     snapshot.attentionItems = deriveAttentionItems(snapshot);
     send();
   }
-  await page.goto("/");
+  await page.goto("/?view=pipeline");
   await expect(page.locator("html")).toHaveAttribute("lang", language);
   await expect.poll(() => connections).toBe(1);
   return {
