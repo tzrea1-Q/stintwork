@@ -695,6 +695,7 @@ export const en = {
       },
     },
   },
+  detailPanel: { stage: "Stage", branch: "Branch", pullRequest: "Pull request" },
   stints: {
     copied: "Copied",
     copyPathFailed: "Could not copy. Select the path to copy it manually.",

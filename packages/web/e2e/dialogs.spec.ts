@@ -17,13 +17,14 @@ import { assertLayout } from "./layout-check";
 
 async function capture(page: Page, dialog: Locator, testInfo: TestInfo, state: string) {
   await expect(dialog).toBeVisible();
-  await expect(dialog).toHaveAttribute("data-state", "open");
+  const docked = (await dialog.evaluate((element) => element.tagName)) === "ASIDE";
+  if (!docked) await expect(dialog).toHaveAttribute("data-state", "open");
   if (await dialog.getAttribute("class").then((value) => value?.includes("command-palette"))) {
     for (const region of [".command-search", "[cmdk-list]", ".command-footer"])
       await assertLayout(page, { region });
   } else {
     const id = await dialog.getAttribute("id");
-    await assertLayout(page, { region: `[id="${id}"]` });
+    await assertLayout(page, { region: docked ? ".work-item-drawer" : `[id="${id}"]` });
   }
   await dialog.screenshot({ path: testInfo.outputPath(`${state}.png`) });
 }
@@ -448,7 +449,10 @@ for (const language of ["en", "zh-CN"] as const) {
             );
           });
           await page.goto("/?item=dialog-item");
-          const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const parent = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const trigger = parent.getByRole("button", { name: t.stints.startStint, exact: true });
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });
@@ -572,7 +576,10 @@ for (const language of ["en", "zh-CN"] as const) {
             );
           });
           await page.goto("/?item=dialog-item");
-          const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const parent = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const trigger = parent.getByRole("button", { name: t.stints.openReview });
           await trigger.click();
           const dialog = page.locator(".review-overlay");
@@ -755,8 +762,11 @@ for (const language of ["en", "zh-CN"] as const) {
               });
           });
           await page.goto("/?item=dialog-item");
-          const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
-          await expect(parent).toHaveAttribute("data-state", "open");
+          const parent = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
+          await expect(parent).toBeVisible();
           const trigger = parent.getByRole("button", { name: t.stints.openReview, exact: true });
           await trigger.click();
           const dialog = page.locator(".review-overlay");
@@ -825,7 +835,7 @@ for (const language of ["en", "zh-CN"] as const) {
             ],
           };
           await page.reload();
-          await expect(parent).toHaveAttribute("data-state", "open");
+          await expect(parent).toBeVisible();
           await trigger.click();
           await expect(dialog.getByRole("button", { name: t.review.diff.close })).toBeFocused();
           if (width < 768) {
@@ -856,7 +866,7 @@ for (const language of ["en", "zh-CN"] as const) {
             ],
           };
           await page.reload();
-          await expect(parent).toHaveAttribute("data-state", "open");
+          await expect(parent).toBeVisible();
           await trigger.click();
           await expect(dialog.getByRole("button", { name: t.review.diff.close })).toBeFocused();
           if (width < 768) {

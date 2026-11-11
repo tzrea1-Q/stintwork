@@ -90,23 +90,34 @@ test("the drawer is portalled, contains keyboard focus and returns it after dism
   await waitFor(() => expect(trigger).toHaveFocus());
 });
 
-test("dismissing a nested review leaves the drawer open and restores the review opener", async () => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(() => new Promise<Response>(() => {})),
-  );
-  const user = userEvent.setup();
-  render(<DrawerExample worktree />);
-  await user.click(screen.getByRole("button", { name: "Inspect First" }));
-  const reviewTrigger = screen.getByRole("button", { name: "Open review" });
-  reviewTrigger.focus();
-  await user.keyboard("{Enter}");
-  expect(screen.getByRole("button", { name: "Close review" })).toHaveFocus();
-  await user.keyboard("{Escape}");
-  await waitFor(() => expect(reviewTrigger).toHaveFocus());
-  expect(screen.getByRole("dialog", { name: "First" })).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Close review" })).not.toBeInTheDocument();
-});
+test.each([false, true])(
+  "dismissing a nested review leaves the drawer open (docked=%s)",
+  async (docked) => {
+    if (docked)
+      vi.stubGlobal("matchMedia", () => ({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const user = userEvent.setup();
+    render(<DrawerExample worktree />);
+    await user.click(screen.getByRole("button", { name: "Inspect First" }));
+    const reviewTrigger = screen.getByRole("button", { name: "Open review" });
+    reviewTrigger.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("button", { name: "Close review" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(reviewTrigger).toHaveFocus());
+    expect(
+      screen.getByRole(docked ? "complementary" : "dialog", { name: "First" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close review" })).not.toBeInTheDocument();
+  },
+);
 
 test("Escape immediately after the close tooltip disappears dismisses the drawer", async () => {
   vi.stubGlobal(
@@ -404,3 +415,75 @@ test("shipped GitHub drawer does not show empty details until known", () => {
   expect(screen.getByText("No spec yet.")).toBeInTheDocument();
   expect(screen.getByText("No tickets yet.")).toBeInTheDocument();
 });
+
+test("wide screens dock the detail, focus its close button and restore the opener on Escape", async () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  render(<DrawerExample />);
+  const trigger = screen.getByRole("button", { name: "Inspect First" });
+  await user.click(trigger);
+  const panel = screen.getByRole("complementary", { name: "First" });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(within(panel).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(screen.queryByRole("complementary", { name: "First" })).not.toBeInTheDocument();
+  await user.click(trigger);
+  await user.click(
+    within(screen.getByRole("complementary", { name: "First" })).getByRole("button", {
+      name: "Close work item",
+    }),
+  );
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await user.click(trigger);
+  trigger.focus();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("complementary", { name: "First" })).not.toBeInTheDocument();
+});
+
+test.each([
+  ["stage", "spec", false, false, false, "Start stint", 1],
+  ["ticket", "implement", true, false, false, "Start stint", 1],
+  ["review", "ship", false, false, true, "Open review", 1],
+  ["read-only", "spec", false, true, true, "Open review", 0],
+  ["shipped", "spec", false, false, true, "Open review", 0],
+] as const)(
+  "footer primary action follows available %s state",
+  (state, stage, ticket, readOnly, worktree, action, count) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const item = indexProject(
+      createMemoryRepoFiles({
+        ".scratch/first/spec.md": "# First",
+        ".scratch/first/workflow.yaml": `workflow: feature\nstage: ${stage}\n`,
+        ...(ticket
+          ? {
+              ".scratch/first/issues/01-first.md":
+                "# First ticket\nStatus: ready-for-agent\nBlocked by: none",
+            }
+          : {}),
+      }),
+      { name: "Project" },
+    ).workItems[0];
+    if (worktree) item.worktreePath = "/tree";
+    if (state === "shipped") item.merged = { at: "2026-10-10T10:00:00Z", commit: "b".repeat(40) };
+    const { container } = render(
+      <WorkItemDrawer item={item} githubReadOnly={readOnly} onClose={() => {}} />,
+    );
+    const footer = container.ownerDocument.querySelector(".drawer-footer");
+    expect(footer).not.toBeNull();
+    if (!footer) throw new Error("Expected footer");
+    const primary = footer.querySelectorAll(
+      "button.bg-primary:not(:disabled), .footer-primary .brief-action > button:not(:disabled), .footer-primary > div > button:not(:disabled)",
+    );
+    expect(primary).toHaveLength(count);
+    if (count) expect(primary[0]).toHaveAccessibleName(action);
+    if (state === "ticket") expect(footer).toHaveTextContent("01 · First ticket");
+  },
+);

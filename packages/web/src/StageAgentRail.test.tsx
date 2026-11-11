@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  applyStintLogEntry,
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
+  type Stint,
 } from "@stintwork/core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -328,4 +330,74 @@ test.each([
   expect(screen.getByRole("option", { name: `Grok Build (${label})` })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: `Antigravity CLI (${label})` })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "Codex" })).toBeInTheDocument();
+});
+
+test("the detail renders each stage picker once in its property list and marks the current stage", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents }))),
+  );
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  const rail = screen.getByRole("list", { name: "Feature workflow stages" });
+  expect(rail.closest("dl")).not.toBeNull();
+  expect(within(rail).getAllByRole("combobox")).toHaveLength(
+    builtInWorkflows.feature.stages.length,
+  );
+  expect(rail.querySelector('[aria-current="step"]')).toContainElement(
+    screen.getByRole("combobox", { name: "Implement agent" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Implement agent" })).toBeEnabled(),
+  );
+});
+
+test("a starting ticket preview stays mounted when its active stint arrives", async () => {
+  const brief = {
+    ...compileBrief({
+      files: createMemoryRepoFiles({}),
+      workItem: item,
+      stage: builtInWorkflows.feature.stages[3],
+      ticket: item.tickets[0],
+    }),
+    agent: "claude",
+  };
+  let signal: AbortSignal | undefined;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, options?: RequestInit) => {
+      if (url === "/api/stints") {
+        signal = options?.signal ?? undefined;
+        return new Promise<Response>(() => {});
+      }
+      return Promise.resolve(
+        new Response(JSON.stringify(url === "/api/agents" ? { agents } : brief)),
+      );
+    }),
+  );
+  const user = userEvent.setup();
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  await user.click(screen.getByRole("button", { name: "Start stint" }));
+  const preview = within(screen.getByRole("dialog", { name: "Brief preview" }));
+  await waitFor(() => expect(preview.getByRole("button", { name: "Start" })).toBeEnabled());
+  await user.click(preview.getByRole("button", { name: "Start" }));
+  expect(signal?.aborted).toBe(false);
+  const activeStint = applyStintLogEntry(null, {
+    type: "started",
+    at: "2026-10-09T10:00:00Z",
+    stint: {
+      id: "pending",
+      workItem: item.slug,
+      stage: "implement",
+      ticket: item.tickets[0].number,
+      agent: "claude",
+      worktree: { path: "/tree", branch: "first" },
+      baseCommit: "base",
+      brief: { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Brief" },
+    },
+  }) as Stint;
+  view.rerender(<WorkItemDrawer item={{ ...item, activeStint }} onClose={() => {}} />);
+  expect(screen.getByRole("dialog", { name: "Brief preview" })).toBeInTheDocument();
+  expect(signal?.aborted).toBe(false);
+  view.unmount();
+  expect(signal?.aborted).toBe(true);
 });
