@@ -59,3 +59,18 @@ test("composes item parts in a list", () => {
   ])
     expect(container.querySelector(`[data-slot="${slot}"]`)).toBeInTheDocument();
 });
+
+test("groups items as list items without changing link semantics", () => {
+  render(
+    <ItemGroup>
+      <Item>First</Item>
+      <ItemSeparator />
+      <Item asChild>
+        <a href="#details">Details</a>
+      </Item>
+    </ItemGroup>,
+  );
+  const items = screen.getAllByRole("listitem");
+  expect(items).toHaveLength(2);
+  expect(items[1]).toContainElement(screen.getByRole("link", { name: "Details" }));
+});

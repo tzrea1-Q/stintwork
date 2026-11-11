@@ -14,3 +14,28 @@ test("uses definition semantics and exposes full value", () => {
   expect(container.querySelector("dl dd")).toHaveAttribute("title", "Long value");
   expect(screen.getByRole("group").querySelector("svg")).toHaveAttribute("aria-hidden", "true");
 });
+
+test("truncates node values only when their full text is supplied", () => {
+  const { rerender } = render(
+    <PropertyList>
+      <PropertyRow
+        icon={Search}
+        label="Name"
+        value={<strong>Long value</strong>}
+        fullText="Complete value"
+      />
+    </PropertyList>,
+  );
+  let value = screen.getByText("Long value").closest("dd");
+  expect(value).toHaveAttribute("title", "Complete value");
+  expect(value).toHaveClass("truncate");
+  rerender(
+    <PropertyList>
+      <PropertyRow icon={Search} label="Name" value={<strong>Long value</strong>} />
+    </PropertyList>,
+  );
+  value = screen.getByText("Long value").closest("dd");
+  expect(value).not.toHaveAttribute("title");
+  expect(value).not.toHaveClass("truncate");
+  expect(value).toHaveClass("[overflow-wrap:anywhere]");
+});

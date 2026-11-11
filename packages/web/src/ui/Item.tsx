@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import type * as React from "react";
+import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./cn";
 import { Slot } from "radix-ui";
 
 import { Separator } from "./Separator";
 
-function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
+function ItemGroup({ className, children, ...props }: React.ComponentProps<"ul">) {
   return (
-    // biome-ignore lint/a11y/useSemanticElements: registry composition accepts arbitrary div children.
-    <div
+    <ul
+      // biome-ignore lint/a11y/noRedundantRoles: retain list semantics when styles remove markers.
       role="list"
       data-slot="item-group"
       className={cn(
@@ -17,7 +17,22 @@ function ItemGroup({ className, ...props }: React.ComponentProps<"div">) {
         className,
       )}
       {...props}
-    />
+    >
+      {React.Children.map(children, (child) =>
+        child == null || typeof child === "boolean" ? null : (
+          <li
+            className="contents"
+            role={
+              React.isValidElement(child) && child.type === ItemSeparator
+                ? "presentation"
+                : undefined
+            }
+          >
+            {child}
+          </li>
+        ),
+      )}
+    </ul>
   );
 }
 

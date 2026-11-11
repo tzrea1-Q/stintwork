@@ -28,17 +28,25 @@ export function SegmentedProgress({
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={current}
-      className="flex h-2 gap-1 overflow-hidden rounded-full bg-muted"
+      className="flex h-2 gap-0.5 overflow-hidden rounded-full"
     >
-      {max > 12 ? (
-        <span
-          className={cn("h-full", colors[tone])}
-          style={{ width: `${(current / max) * 100}%` }}
-        />
+      {max > 40 ? (
+        <span className="h-full flex-1 bg-foreground/10">
+          <span
+            className={cn("block h-full", colors[tone])}
+            style={{ width: `${(current / max) * 100}%` }}
+          />
+        </span>
       ) : (
         Array.from({ length: max }, (_, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: fixed, stateless visual segments.
-          <span key={i} className={cn("h-full flex-1", i < current ? colors[tone] : "bg-muted")} />
+          <span
+            // biome-ignore lint/suspicious/noArrayIndexKey: fixed, stateless visual segments.
+            key={i}
+            className={cn(
+              "h-full min-w-0.5 flex-1",
+              i < current ? colors[tone] : "bg-foreground/10",
+            )}
+          />
         ))
       )}
     </div>

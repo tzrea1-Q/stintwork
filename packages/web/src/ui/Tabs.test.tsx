@@ -30,3 +30,19 @@ test("exposes line list variant", () => {
   );
   expect(screen.getByRole("tablist")).toHaveAttribute("data-variant", "line");
 });
+
+test("moves focus down in vertical tabs", async () => {
+  const user = userEvent.setup();
+  render(
+    <Tabs orientation="vertical" defaultValue="a">
+      <TabsList>
+        <TabsTrigger value="a">A</TabsTrigger>
+        <TabsTrigger value="b">B</TabsTrigger>
+      </TabsList>
+    </Tabs>,
+  );
+  await user.tab();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("tab", { name: "B" })).toHaveFocus();
+  expect(screen.getByRole("tab", { name: "B" })).toHaveAttribute("aria-selected", "true");
+});
