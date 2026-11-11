@@ -36,6 +36,12 @@ export const zhCN: Catalog = {
       invalidWorkflowId: "项目工作流标识无效。",
     },
   },
+  viewNavigation: {
+    label: "导航",
+    overview: "概览",
+    pipeline: "流水线",
+    description: "概览正在建设中，请先使用流水线。",
+  },
   topBar: {
     language: "语言",
     languages: { en: "English", "zh-CN": "简体中文" },

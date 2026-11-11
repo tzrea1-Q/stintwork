@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
-import { GitBranch, Inbox, Search, Settings } from "lucide-react";
+import { Asterisk, GitBranch, Inbox, Search, Settings } from "lucide-react";
 import { useRef, useState } from "react";
 import { LanguageMenu } from "./i18n/LanguageMenu";
 import { useLanguage } from "./i18n/language";
 import { SetupGuide } from "./SetupGuide";
 import { Button } from "./ui/Button";
+import { Kbd } from "./ui/Kbd";
 import { Dialog } from "./ui/Dialog";
 import {
   DropdownMenu,
@@ -18,10 +19,14 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/T
 
 export function TopBar({
   snapshot,
+  view = "pipeline",
+  onViewChange = () => {},
   onOpenPalette,
   onOpenNeedsYou,
 }: {
   snapshot: ProjectSnapshot;
+  view?: "overview" | "pipeline";
+  onViewChange?: (view: "overview" | "pipeline") => void;
   onOpenPalette: () => void;
   onOpenNeedsYou: () => void;
 }) {
@@ -40,8 +45,9 @@ export function TopBar({
   const warnings = snapshot.warnings.length;
 
   return (
-    <header className="top-bar flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-3 sm:gap-4 xl:px-6">
-      <div className="top-project flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+    <header className="top-bar flex min-h-16 shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 xl:px-6">
+      <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
+        <Asterisk className="size-5 shrink-0 text-foreground" aria-hidden="true" />
         <strong
           className="min-w-0 truncate text-sm tracking-tight"
           data-truncate
@@ -51,7 +57,7 @@ export function TopBar({
         </strong>
         {snapshot.branch && (
           <span
-            className="flex min-w-0 max-w-[40%] shrink-0 items-center gap-1 border-l border-input pl-2 font-mono text-xs text-muted-foreground sm:pl-3"
+            className="flex min-w-0 max-w-[40%] items-center gap-1 rounded-full bg-card px-2 py-1 font-mono text-xs text-muted-foreground"
             data-truncate
             title={snapshot.branch}
           >
@@ -60,49 +66,70 @@ export function TopBar({
           </span>
         )}
       </div>
-      <div className="top-actions flex shrink-0 items-center gap-1 sm:gap-2">
-        <Button
-          id="needs-you-trigger"
-          variant="secondary"
-          size="sm"
-          className="whitespace-nowrap"
-          aria-label={`${t.topBar.needsYou} ${snapshot.attentionItems.length}${warnings ? ` · ${t.warningCallout.title(warnings)}` : ""}`}
-          aria-haspopup="dialog"
-          onClick={onOpenNeedsYou}
-        >
-          <Inbox aria-hidden="true" />
-          {t.topBar.needsYou}
-          <span
-            className={`rounded-sm bg-muted px-1 text-xs ${snapshot.attentionItems.length ? "text-attention-foreground" : "text-muted-foreground"}`}
+      <nav
+        aria-label={t.viewNavigation.label}
+        className="flex shrink-0 items-center rounded-full border border-border bg-card p-1"
+      >
+        {(["overview", "pipeline"] as const).map((entry) => (
+          <Button
+            key={entry}
+            size="sm"
+            variant={view === entry ? "primary" : "ghost"}
+            aria-current={view === entry ? "page" : undefined}
+            onClick={() => onViewChange(entry)}
           >
-            {snapshot.attentionItems.length}
-          </span>
-          {warnings > 0 && (
-            <span
-              data-warning-dot
-              className="size-1 shrink-0 rounded-full bg-attention"
-              aria-hidden="true"
-            />
-          )}
-        </Button>
+            {t.viewNavigation[entry]}
+          </Button>
+        ))}
+      </nav>
+      <div className="top-actions flex shrink-0 items-center gap-0 sm:flex-1 sm:justify-end sm:gap-2">
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 id="command-palette-trigger"
-                variant="ghost"
+                variant="secondary"
                 size="icon"
-                className="sm:w-auto sm:px-2"
+                className="lg:w-auto lg:px-3"
                 aria-label={t.topBar.openPalette}
                 aria-haspopup="dialog"
                 onClick={onOpenPalette}
               >
                 <Search aria-hidden="true" />
-                <span className="hidden sm:inline">{t.topBar.jumpTo}</span>
-                <kbd className="hidden text-xs lg:inline">⌘K / Ctrl+K</kbd>
+                <span className="hidden lg:inline">{t.topBar.jumpTo}</span>
+                <Kbd className="hidden lg:inline-flex">⌘K</Kbd>
               </Button>
             </TooltipTrigger>
             <TooltipContent>{t.topBar.openPalette}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                id="needs-you-trigger"
+                variant="secondary"
+                size="icon"
+                className="relative"
+                aria-label={`${t.topBar.needsYou} ${snapshot.attentionItems.length}${warnings ? ` · ${t.warningCallout.title(warnings)}` : ""}`}
+                aria-haspopup="dialog"
+                onClick={onOpenNeedsYou}
+              >
+                <Inbox aria-hidden="true" />
+                <span
+                  className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-attention-soft px-1 text-xs text-attention-foreground"
+                  aria-hidden="true"
+                >
+                  {snapshot.attentionItems.length}
+                </span>
+                {warnings > 0 && (
+                  <span
+                    data-warning-dot
+                    className="absolute bottom-0 right-0 size-1 rounded-full bg-attention"
+                    aria-hidden="true"
+                  />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t.topBar.needsYou}</TooltipContent>
           </Tooltip>
           <DropdownMenu>
             <Tooltip>
@@ -113,12 +140,11 @@ export function TopBar({
                     ref={settingsTrigger}
                     variant="ghost"
                     size="icon"
-                    className="relative sm:w-auto sm:px-2"
+                    className="relative"
                     aria-label={t.topBar.settings}
                     aria-describedby={ready < checks.length ? "setup-status" : undefined}
                   >
                     <Settings aria-hidden="true" />
-                    <span className="hidden sm:inline">{t.topBar.settings}</span>
                     {ready < checks.length && (
                       <span
                         data-warning-dot

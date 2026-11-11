@@ -3,6 +3,7 @@ import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { Board } from "./Board";
 import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
@@ -22,7 +23,13 @@ function renderTopBar(project = snapshot) {
   return {
     ...render(
       <LanguageProvider>
-        <TopBar snapshot={project} onOpenPalette={onOpenPalette} onOpenNeedsYou={onOpenNeedsYou} />
+        <TopBar
+          snapshot={project}
+          view="pipeline"
+          onViewChange={() => {}}
+          onOpenPalette={onOpenPalette}
+          onOpenNeedsYou={onOpenNeedsYou}
+        />
       </LanguageProvider>,
     ),
     onOpenPalette,
@@ -145,13 +152,45 @@ test("the top bar exposes only the three actions and announces warnings without 
     warnings: [{ path: "spec.md", message: "Unreadable" }],
   });
   const header = screen.getByRole("banner");
-  expect(within(header).getAllByRole("button")).toHaveLength(3);
+  expect(
+    within(header.querySelector(".top-actions") as HTMLElement).getAllByRole("button"),
+  ).toHaveLength(3);
   expect(within(header).queryByRole("combobox")).not.toBeInTheDocument();
   const needsYou = within(header).getByRole("button", { name: "Needs you 0 · 1 warning" });
   expect(needsYou.querySelector("[data-warning-dot]")).toBeInTheDocument();
-  expect(needsYou).toHaveTextContent("Needs you0");
+  expect(needsYou).toHaveTextContent("0");
   await user.click(needsYou);
   expect(onOpenNeedsYou).toHaveBeenCalledOnce();
   await user.click(within(header).getByRole("button", { name: "Open command palette" }));
   expect(onOpenPalette).toHaveBeenCalledOnce();
+});
+
+test("view navigation preserves URL parameters and restores history", async () => {
+  window.history.replaceState({}, "", "/?milestone=m1");
+  const user = userEvent.setup();
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  const nav = screen.getByRole("navigation", { name: en.viewNavigation.label });
+  const overview = within(nav).getByRole("button", { name: en.viewNavigation.overview });
+  const pipeline = within(nav).getByRole("button", { name: en.viewNavigation.pipeline });
+  expect(pipeline).toHaveAttribute("aria-current", "page");
+  overview.focus();
+  await user.keyboard("{Enter}");
+  expect(overview).toHaveAttribute("aria-current", "page");
+  expect(screen.getByText(en.viewNavigation.description)).toBeInTheDocument();
+  expect(window.location.search).toContain("milestone=m1");
+  expect(window.location.search).toContain("view=overview");
+  await user.click(
+    within(screen.getByRole("main")).getByRole("button", { name: en.viewNavigation.pipeline }),
+  );
+  expect(pipeline).toHaveAttribute("aria-current", "page");
+  expect(window.location.search).toContain("view=pipeline");
+  window.history.back();
+  await waitFor(() => expect(overview).toHaveAttribute("aria-current", "page"));
+  window.history.forward();
+  await waitFor(() => expect(pipeline).toHaveAttribute("aria-current", "page"));
+  window.history.replaceState({}, "", "/");
 });

@@ -21,6 +21,12 @@ export const en = {
       invalidWorkflowId: "Invalid project workflow id.",
     },
   },
+  viewNavigation: {
+    label: "Navigation",
+    overview: "Overview",
+    pipeline: "Pipeline",
+    description: "Overview is being built. Use Pipeline for now.",
+  },
   topBar: {
     language: "Language",
     languages: { en: "English", "zh-CN": "简体中文" },

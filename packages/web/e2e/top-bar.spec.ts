@@ -180,7 +180,21 @@ for (const language of ["en", "zh-CN"] as const) {
           branchName,
         );
         await expect(header.locator("select")).toHaveCount(0);
-        await expect(header.getByRole("button")).toHaveCount(3);
+        await expect(header.getByRole("button")).toHaveCount(5);
+        const nav = header.getByRole("navigation", { name: t.viewNavigation.label });
+        await nav.getByRole("button", { name: t.viewNavigation.overview }).click();
+        await expect(nav.getByRole("button", { name: t.viewNavigation.overview })).toHaveAttribute(
+          "aria-current",
+          "page",
+        );
+        await expect(page).toHaveURL(/view=overview/);
+        await assertLayout(page);
+        await page.screenshot({ path: testInfo.outputPath("overview.png"), fullPage: true });
+        await page.goBack();
+        await expect(nav.getByRole("button", { name: t.viewNavigation.pipeline })).toHaveAttribute(
+          "aria-current",
+          "page",
+        );
         await expect(header.getByRole("combobox")).toHaveCount(0);
         const projectBounds = await header.locator(".top-project").boundingBox();
         const actionBounds = await header.locator(".top-actions").boundingBox();
@@ -203,9 +217,7 @@ for (const language of ["en", "zh-CN"] as const) {
             Math.abs(bounds.y + bounds.height / 2 - actionBounds.y - actionBounds.height / 2),
           ).toBeLessThanOrEqual(1);
         }
-        await expect(header.locator("#settings-trigger > span").first()).toBeVisible({
-          visible: width >= 640,
-        });
+        await expect(header.locator("#settings-trigger")).toHaveAccessibleName(t.topBar.settings);
         const capture = async (name: string, overlay?: string) => {
           await assertLayout(page, { region: ".top-bar" });
           if (overlay) {

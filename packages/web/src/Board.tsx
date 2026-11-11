@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+// biome-ignore-all format: Preserve Pipeline markup for ticket 04.
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -9,6 +10,7 @@ import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { GithubStatus } from "./GithubStatus";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
+import { OverviewPlaceholder } from "./OverviewPlaceholder";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
@@ -36,6 +38,9 @@ export function Board({
   const [selectedMilestone, setSelectedMilestone] = useState("");
   const [openSlug, setOpenSlug] = useState<string | null>(() =>
     new URL(window.location.href).searchParams.get("item"),
+  );
+  const [view, setView] = useState<"overview" | "pipeline">(() =>
+    new URL(window.location.href).searchParams.get("view") === "overview" ? "overview" : "pipeline",
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -163,10 +168,31 @@ export function Board({
     };
   }, [openItem, verifyingItem, paletteOpen, needsYouOpen, createOpen, customiseId, githubTracker]);
 
+  function changeView(next: "overview" | "pipeline") {
+    if (next === view) return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next);
+    window.history.pushState(window.history.state, "", url);
+    setView(next);
+  }
+
+  useEffect(() => {
+    const restoreView = () =>
+      setView(
+        new URL(window.location.href).searchParams.get("view") === "overview"
+          ? "overview"
+          : "pipeline",
+      );
+    window.addEventListener("popstate", restoreView);
+    return () => window.removeEventListener("popstate", restoreView);
+  }, []);
+
   return (
     <div className="pipeline-app flex h-dvh min-w-0 flex-col">
       <TopBar
         snapshot={snapshot}
+        view={view}
+        onViewChange={changeView}
         onOpenNeedsYou={() => setNeedsYouOpen(true)}
         onOpenPalette={() => setPaletteOpen(true)}
       />
@@ -179,6 +205,9 @@ export function Board({
           {t.needsYou.pendingPermissions}
         </button>
       )}
+      {view === "overview" ? (
+        <OverviewPlaceholder onPipeline={() => changeView("pipeline")} />
+      ) : (
       <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="pipeline-heading flex flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6">
           <div>
@@ -428,6 +457,7 @@ export function Board({
           </details>
         </section>
       </main>
+      )}
       {needsYouOpen && (
         <NeedsYouQueue
           snapshot={snapshot}
