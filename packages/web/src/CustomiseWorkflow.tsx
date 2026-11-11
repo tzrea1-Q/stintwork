@@ -117,7 +117,9 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
                             <span>{stageName(workflow, stage, t)}</span>
                             <code>{stage.skill ?? "—"}</code>
                           </ItemContent>
-                          <StatusChip status="stopped">{stage.gate}</StatusChip>
+                          <StatusChip status="stopped">
+                            {t.planning.customise.gateKinds[stage.gate]}
+                          </StatusChip>
                           <AgentAvatar agent={agent} name={agent} />
                           <span>{agent}</span>
                         </Item>

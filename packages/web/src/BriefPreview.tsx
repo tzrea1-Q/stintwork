@@ -160,7 +160,6 @@ function BriefPreviewSheet({
 }) {
   const { t, language } = useLanguage();
   const closeButton = useRef<HTMLButtonElement>(null);
-  const [closeTip, setCloseTip] = useState(false);
   const agentAvailabilityId = useId();
   const selectId = useId();
   const [brief, setBrief] = useState<Brief | null>(null);
@@ -374,15 +373,13 @@ function BriefPreviewSheet({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <DialogTitle className="text-xl font-medium">{t.stints.briefPreview}</DialogTitle>
             <TooltipProvider>
-              <Tooltip open={closeTip}>
+              <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
                     ref={closeButton}
                     aria-label={t.stints.closeBrief}
-                    onPointerEnter={() => setCloseTip(true)}
-                    onPointerLeave={() => setCloseTip(false)}
                     onClick={onClose}
                   >
                     <X aria-hidden="true" />

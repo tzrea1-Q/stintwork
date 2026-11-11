@@ -100,6 +100,22 @@ test("Chinese customisation preserves the exact workflow YAML, path and commit m
   success.mockRestore();
 });
 
+test("Chinese stage summaries translate gate kinds", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  fetcher();
+  render(
+    <LanguageProvider>
+      <CustomiseWorkflow id="feature" onClose={vi.fn()} />
+    </LanguageProvider>,
+  );
+  await screen.findByText(".stintwork/workflows/feature.yaml");
+  expect(screen.getAllByText("人工审批").length).toBeGreaterThan(0);
+  expect(screen.getByText("规格审批")).toBeInTheDocument();
+  expect(screen.getByText("工单审批")).toBeInTheDocument();
+  expect(screen.getByText("审查证据")).toBeInTheDocument();
+  expect(screen.getByText("合并")).toBeInTheDocument();
+});
+
 test.each(["drawer", "palette"])(
   "previews and confirms customisation from the %s",
   async (entry) => {

@@ -55,6 +55,9 @@ test("the stage action previews the stage skill, starts with ticket null, and re
     expect.objectContaining({ cache: "no-store" }),
   );
   await user.keyboard("{Escape}");
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "Brief preview" })).toBeInTheDocument();
+  await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
   expect(action).toHaveFocus();
   await user.click(action);

@@ -241,6 +241,13 @@ export const zhCN: Catalog = {
       down: (name: string) => joinChinese("下移", name),
     },
     customise: {
+      gateKinds: {
+        manual: "人工审批",
+        spec: "规格审批",
+        tickets: "工单审批",
+        evidence: "审查证据",
+        merge: "合并",
+      },
       errors: {
         preview: "无法预览工作流。",
         invalidPreview: "工作流预览无效。",

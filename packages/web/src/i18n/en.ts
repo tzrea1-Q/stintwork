@@ -228,6 +228,13 @@ export const en = {
       down: (name: string) => `Move ${name} down`,
     },
     customise: {
+      gateKinds: {
+        manual: "Manual approval",
+        spec: "Spec approval",
+        tickets: "Tickets approval",
+        evidence: "Review evidence",
+        merge: "Merge",
+      },
       errors: {
         preview: "Could not preview the workflow.",
         invalidPreview: "Invalid workflow preview.",

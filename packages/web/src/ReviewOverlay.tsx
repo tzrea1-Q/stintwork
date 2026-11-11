@@ -280,7 +280,7 @@ export function ReviewOverlay({
     decisions,
     {
       slug: item.slug,
-      headCommit: diff?.headCommit ?? item.headCommit,
+      headCommit: item.headCommit ?? diff?.headCommit,
       evidenceChangedPaths: item.evidenceChangedPaths,
     },
     reviewStageId,
@@ -428,10 +428,13 @@ export function ReviewOverlay({
               <DialogTitle className="my-1 text-sm font-medium md:my-2 md:text-xl">
                 {item.title}
               </DialogTitle>
-              {(diff?.headCommit ?? item.headCommit) && (
-                <code className="rounded-full bg-muted px-2 py-1 text-xs">
-                  {diff?.headCommit ?? item.headCommit}
-                </code>
+              {(item.headCommit ?? diff?.headCommit) && (
+                <span className="text-xs text-muted-foreground">
+                  {t.review.diff.branchHead}
+                  <code className="rounded-full bg-muted px-2 py-1 text-xs">
+                    {item.headCommit ?? diff?.headCommit}
+                  </code>
+                </span>
               )}
             </div>
             <Button
