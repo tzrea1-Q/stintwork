@@ -23,7 +23,7 @@ Rebuild the visual language from Variant D of `prototype-visual-v1`, a design re
 
 ## Implementation Decisions
 
-- **Foundation:** ADR 0019 settles the shadcn CLI, Radix migration, `new-york` configuration, repo-owned components, existing `cn`, React 18, OKLCH tokens, bundled Geist fonts and system-selected `.dark` class. The coordinator installs packages; the agent sandbox has no network.
+- **Foundation:** ADR 0019 settles the shadcn CLI, Radix migration, `radix-nova` configuration, repo-owned components, existing `cn`, React 18, OKLCH tokens, bundled Geist fonts and system-selected `.dark` class. The `radix-nova` style is the Radix variant of shadcn’s current default; CLI v4 rejected `new-york` with a separate base key on 2026-11-10. The coordinator installs packages; the agent sandbox has no network.
 - **Visual language:** use the prototype's grey canvas, rounded white cards and soft shadows, near-black pill actions, violet selection and focus, tinted status chips, icon chips, property rows and segmented counts. Use 14px base, 28–32px titles and tabular count numerals. Dark is designed separately.
 - **Navigation:** top bar has project and branch, centred Overview and Pipeline, Jump to, Needs you and Settings. Preserve ui-foundations 09's language, warnings, setup, shortcut and focus behaviour. Keep the current view in the URL. No sidebar.
 - **Overview:** show milestone progress, work by stage, one focal Next up card, Needs you, running stints and recent activity only where existing project snapshot data supplies or derives them. Omit unavailable cards. Add no core or server state (ADR 0006).

@@ -8,7 +8,7 @@ Read `packages/web/package.json` for dependencies and scripts, ADR 0010 and ADR 
 
 ## Components
 
-Use a `src/ui/` component for every menu, popover, dialog, sheet, tooltip and select. Use the shadcn/ui CLI with `packages/web/components.json`: `new-york`, base `radix`, components in `packages/web/src/ui/` and the existing `cn` alias. Stay on React 18 and use the unified `radix-ui` package. Generated source is owned here. Review updates with `shadcn add --diff` or `--dry-run` like any change. Add a behaviour test for each component. Use the shared `cn` helper to combine classes.
+Use a `src/ui/` component for every menu, popover, dialog, sheet, tooltip and select. Use the shadcn/ui CLI with `packages/web/components.json`: `radix-nova`, the Radix variant of shadcn’s current default style, components in `packages/web/src/ui/` and the existing `cn` alias. CLI v4 rejected `new-york` together with a separate base key on 2026-11-10. Stay on React 18 and use the unified `radix-ui` package. Generated source is owned here. Review updates with `shadcn add --diff` or `--dry-run` like any change. Add a behaviour test for each component. Use the shared `cn` helper to combine classes.
 
 Let Radix handle overlay positioning, focus, Escape and outside-click dismissal. Put any feature-specific dismissal condition, such as a pending save, in the primitive's event hooks. Keep nested overlays dismissing only the topmost layer and returning focus to the right trigger.
 
