@@ -39,15 +39,18 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.route("**/api/project", (route) => route.fulfill({ json: current }));
         await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(current)));
         await page.goto("/");
+        const overview = page.getByRole("main").filter({
+          has: page.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
+        });
         await expect(
-          page.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
+          overview.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
         ).toBeVisible();
-        await expect(page.getByText(t.overview.milestones)).toBeVisible();
-        await expect(page.getByText(t.overview.stages)).toBeVisible();
-        await expect(page.getByText(t.overview.next)).toBeVisible();
+        await expect(overview.getByText(t.overview.milestones)).toBeVisible();
+        await expect(overview.getByText(t.overview.stages)).toBeVisible();
+        await expect(overview.getByText(t.overview.next)).toBeVisible();
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("overview.png"), fullPage: true });
-        await page
+        await overview
           .locator('[data-slot="card"]')
           .filter({ hasText: t.overview.next })
           .getByRole("button")
@@ -56,7 +59,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(page.getByRole("dialog", { name: item.title })).toBeVisible();
         current = { ...snapshot, workItems: [], milestones: [], attentionItems: [] };
         await page.goto("/");
-        await expect(page.getByText(t.board.empty)).toBeVisible();
+        await expect(overview.getByText(t.board.empty)).toBeVisible();
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("overview-empty.png"), fullPage: true });
       });

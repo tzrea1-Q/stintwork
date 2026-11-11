@@ -22,7 +22,7 @@ export function overviewData(snapshot: ProjectSnapshot) {
   const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const)
     .map((column) => ({ column, count: active.filter((item) => item.column === column).length }))
     .filter(({ count }) => count > 0);
-  // Choose the first untouched, unblocked item in roadmap order, then snapshot order.
+  // In roadmap then snapshot order, choose the first untouched item with no tickets or a ready ticket.
   const ordered = [...snapshot.workItems].sort((a, b) => {
     const rank = (id: string | undefined) => {
       const index = snapshot.milestones.findIndex((milestone) => milestone.id === id);
@@ -36,7 +36,8 @@ export function overviewData(snapshot: ProjectSnapshot) {
       !item.activeStint &&
       item.stints.length === 0 &&
       !snapshot.attentionItems.some((attention) => attention.workItem === item.slug) &&
-      !item.tickets.some((ticket) => !ticket.resolved && ticket.blocked),
+      (item.tickets.length === 0 ||
+        item.tickets.some((ticket) => !ticket.resolved && !ticket.blocked)),
   );
   const running = active.filter((item) => item.activeStint);
   const activity = snapshot.workItems

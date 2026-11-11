@@ -14,6 +14,7 @@ import { IconChip } from "./ui/IconChip";
 import { AgentAvatar } from "./ui/AgentAvatar";
 import { StatusChip } from "./ui/StatusChip";
 import type { Connection } from "./useProjectSnapshot";
+import { attentionStageName, attentionTitle } from "./useAttentionAlerts";
 
 export function Overview({
   snapshot,
@@ -39,6 +40,7 @@ export function Overview({
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     if (!data.running.length) return;
+    setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 60000);
     return () => window.clearInterval(timer);
   }, [data.running.length]);
@@ -88,192 +90,204 @@ export function Overview({
         </p>
       )}
       <h1 className="mb-6 text-3xl font-medium tracking-tight">{t.viewNavigation.overview}</h1>
-      {!snapshot.workItems.length ? (
-        <Card>
-          <Empty>
-            <EmptyHeader>
-              <EmptyTitle>{t.board.empty}</EmptyTitle>
-            </EmptyHeader>
-            <EmptyContent>
-              {snapshot.setup.tracker !== "github-issues" && (
-                <Button variant="primary" onClick={onCreate}>
-                  {t.overview.newItem}
-                </Button>
-              )}
-              <Button onClick={onPipeline}>{t.viewNavigation.pipeline}</Button>
-            </EmptyContent>
-          </Empty>
-        </Card>
-      ) : (
-        <div className="grid min-w-0 grid-cols-1 gap-4 min-[769px]:grid-cols-2 min-[1280px]:grid-cols-12">
-          {data.milestones.length > 0 && (
-            <Card className="min-w-0 min-[1280px]:col-span-6">
-              <CardHeader>
-                <CardTitle>{t.overview.milestones}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {data.milestones.map(({ milestone, shipped, total }) => (
-                  <Item asChild key={milestone.id}>
-                    <button
-                      type="button"
-                      className="text-left hover:bg-muted"
-                      onClick={() => onMilestone(milestone.id)}
-                    >
-                      <ItemMedia>
-                        <IconChip icon={Layers3} tone="accent" />
-                      </ItemMedia>
-                      <ItemContent className="min-w-0">
-                        <span className="truncate font-medium" data-truncate title={milestone.name}>
-                          {milestone.name}
-                        </span>
-                        <Progress value={shipped} max={total} aria-label={milestone.name} />
-                      </ItemContent>
-                      <span className="tabular-nums">
-                        {shipped}/{total}
-                      </span>
-                    </button>
-                  </Item>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-          {data.columns.length > 0 && (
-            <Card className="min-w-0 min-[1280px]:col-span-6">
-              <CardHeader>
-                <CardTitle>{t.overview.stages}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {data.columns.map(({ column, count }) => (
-                  <div key={column} className="flex items-center gap-3">
-                    <span className="w-24 shrink-0">{t.workflows.feature.stages[column]}</span>
-                    <Progress
-                      value={count}
-                      max={data.columns.reduce((sum, entry) => sum + entry.count, 0)}
-                      aria-label={t.workflows.feature.stages[column]}
-                    />
-                    <span className="tabular-nums">{count}</span>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-          {data.next && (
-            <Card className="min-w-0 min-[1280px]:col-span-4">
-              <CardHeader>
-                <CardTitle>{t.overview.next}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {itemRow(
-                  data.next,
-                  stageLabel(data.next, data.next.stage),
-                  <IconChip icon={ArrowRight} tone="accent" />,
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[769px]:grid-cols-2 min-[1280px]:grid-cols-12">
+        {!snapshot.workItems.length && (
+          <Card className="min-[769px]:col-span-2 min-[1280px]:col-span-12">
+            <Empty>
+              <EmptyHeader>
+                <EmptyTitle>{t.board.empty}</EmptyTitle>
+              </EmptyHeader>
+              <EmptyContent>
+                {snapshot.setup.tracker !== "github-issues" && (
+                  <Button variant="primary" onClick={onCreate}>
+                    {t.overview.newItem}
+                  </Button>
                 )}
-              </CardContent>
-            </Card>
-          )}
-          {data.attention.length > 0 && (
-            <Card className="min-w-0 min-[1280px]:col-span-4">
-              <CardHeader>
-                <CardTitle>{t.topBar.needsYou}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {data.attention.map((item) => (
+                <Button onClick={onPipeline}>{t.viewNavigation.pipeline}</Button>
+              </EmptyContent>
+            </Empty>
+          </Card>
+        )}
+        {data.milestones.length > 0 && (
+          <Card className="min-w-0 min-[1280px]:col-span-6">
+            <CardHeader>
+              <CardTitle>{t.overview.milestones}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.milestones.map(({ milestone, shipped, total }) => (
+                <Item asChild key={milestone.id}>
+                  <button
+                    type="button"
+                    className="text-left hover:bg-muted"
+                    onClick={() => onMilestone(milestone.id)}
+                  >
+                    <ItemMedia>
+                      <IconChip icon={Layers3} tone="accent" />
+                    </ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <span className="truncate font-medium" data-truncate title={milestone.name}>
+                        {milestone.name}
+                      </span>
+                      <Progress value={shipped} max={total} aria-label={milestone.name} />
+                    </ItemContent>
+                    <span className="tabular-nums">
+                      {shipped}/{total}
+                    </span>
+                  </button>
+                </Item>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+        {data.columns.length > 0 && (
+          <Card className="min-w-0 min-[1280px]:col-span-6">
+            <CardHeader>
+              <CardTitle>{t.overview.stages}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {data.columns.map(({ column, count }) => (
+                <div key={column} className="flex items-center gap-3">
+                  <span className="w-24 shrink-0">{t.workflows.feature.stages[column]}</span>
+                  <Progress
+                    value={count}
+                    max={data.columns.reduce((sum, entry) => sum + entry.count, 0)}
+                    aria-label={t.workflows.feature.stages[column]}
+                  />
+                  <span className="tabular-nums">{count}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+        {data.next && (
+          <Card className="min-w-0 min-[1280px]:col-span-4">
+            <CardHeader>
+              <CardTitle>{t.overview.next}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {itemRow(
+                data.next,
+                stageLabel(data.next, data.next.stage),
+                <IconChip icon={ArrowRight} tone="accent" />,
+              )}
+            </CardContent>
+          </Card>
+        )}
+        {data.attention.length > 0 && (
+          <Card className="min-w-0 min-[1280px]:col-span-4">
+            <CardHeader>
+              <CardTitle>{t.topBar.needsYou}</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {data.attention.map((item) => {
+                const name =
+                  snapshot.agents.find((agent) => agent.id === item.agent)?.displayName ??
+                  item.agent ??
+                  "";
+                const title = attentionTitle(
+                  item,
+                  t,
+                  language,
+                  name,
+                  attentionStageName(item, snapshot, t),
+                );
+                return (
                   <Item asChild key={item.id}>
                     <button type="button" className="text-left hover:bg-muted" onClick={onNeedsYou}>
                       <ItemMedia>
                         <IconChip icon={CircleAlert} tone="attention" />
                       </ItemMedia>
                       <ItemContent className="min-w-0">
-                        <span className="truncate" data-truncate title={item.title}>
-                          {item.title}
+                        <span className="truncate" data-truncate title={title}>
+                          {title}
                         </span>
                       </ItemContent>
                     </button>
                   </Item>
-                ))}
-                <Button onClick={onNeedsYou}>{t.overview.openQueue}</Button>
-              </CardContent>
-            </Card>
-          )}
-          {data.running.length > 0 && (
-            <Card className="min-w-0 min-[1280px]:col-span-4">
-              <CardHeader>
-                <CardTitle>{t.overview.running}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {data.running.map((item) => {
-                  const stint = item.activeStint;
-                  if (!stint) return null;
-                  const name =
-                    snapshot.agents.find((agent) => agent.id === stint.agent)?.displayName ??
-                    stint.agent;
-                  return itemRow(
-                    item,
-                    <>
-                      {name} · {stageLabel(item, stint.stage)}{" "}
-                      {stint.startedAt && Number.isFinite(Date.parse(stint.startedAt)) && (
-                        <>
-                          · {Math.max(0, Math.floor((now - Date.parse(stint.startedAt)) / 60000))}{" "}
-                          {t.overview.elapsed}
-                        </>
-                      )}
-                    </>,
-                    <AgentAvatar agent={stint.agent} name={name} active />,
-                  );
-                })}
-              </CardContent>
-            </Card>
-          )}
-          {data.activity.length > 0 && (
-            <Card className="min-w-0 min-[1280px]:col-span-6">
-              <CardHeader>
-                <CardTitle>{t.overview.activity}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {data.activity.map(({ item, stint, at }) => (
-                  <Item asChild key={`${item.slug}-${stint.id}`}>
-                    <button
-                      type="button"
-                      className="text-left hover:bg-muted"
-                      onClick={() => onOpenItem(item.slug)}
-                    >
-                      <ItemMedia>
-                        <AgentAvatar
-                          agent={stint.agent}
-                          name={
-                            snapshot.agents.find((agent) => agent.id === stint.agent)
-                              ?.displayName ?? stint.agent
-                          }
-                        />
-                      </ItemMedia>
-                      <ItemContent className="min-w-0">
-                        <span className="truncate font-medium" data-truncate title={item.title}>
-                          {item.title}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {stageLabel(item, stint.stage)} ·{" "}
-                          <time dateTime={at}>{new Date(at).toLocaleString(language)}</time>
-                        </span>
-                      </ItemContent>
-                      <StatusChip
-                        status={
-                          stint.status === "running"
-                            ? "running"
-                            : stint.status === "finished"
-                              ? "success"
-                              : "stopped"
+                );
+              })}
+              <Button onClick={onNeedsYou}>{t.overview.openQueue}</Button>
+            </CardContent>
+          </Card>
+        )}
+        {data.running.length > 0 && (
+          <Card className="min-w-0 min-[1280px]:col-span-4">
+            <CardHeader>
+              <CardTitle>{t.overview.running}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.running.map((item) => {
+                const stint = item.activeStint;
+                if (!stint) return null;
+                const name =
+                  snapshot.agents.find((agent) => agent.id === stint.agent)?.displayName ??
+                  stint.agent;
+                return itemRow(
+                  item,
+                  <>
+                    {name} · {stageLabel(item, stint.stage)}{" "}
+                    {stint.startedAt && Number.isFinite(Date.parse(stint.startedAt)) && (
+                      <>
+                        · {Math.max(0, Math.floor((now - Date.parse(stint.startedAt)) / 60000))}{" "}
+                        {t.overview.elapsed}
+                      </>
+                    )}
+                  </>,
+                  <AgentAvatar agent={stint.agent} name={name} active />,
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+        {data.activity.length > 0 && (
+          <Card className="min-w-0 min-[1280px]:col-span-6">
+            <CardHeader>
+              <CardTitle>{t.overview.activity}</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {data.activity.map(({ item, stint, at }) => (
+                <Item asChild key={`${item.slug}-${stint.id}`}>
+                  <button
+                    type="button"
+                    className="text-left hover:bg-muted"
+                    onClick={() => onOpenItem(item.slug)}
+                  >
+                    <ItemMedia>
+                      <AgentAvatar
+                        agent={stint.agent}
+                        name={
+                          snapshot.agents.find((agent) => agent.id === stint.agent)?.displayName ??
+                          stint.agent
                         }
-                      >
-                        {t.overview.stintStatus[stint.status]}
-                      </StatusChip>
-                    </button>
-                  </Item>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
+                      />
+                    </ItemMedia>
+                    <ItemContent className="min-w-0">
+                      <span className="truncate font-medium" data-truncate title={item.title}>
+                        {item.title}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {stageLabel(item, stint.stage)} ·{" "}
+                        <time dateTime={at}>{new Date(at).toLocaleString(language)}</time>
+                      </span>
+                    </ItemContent>
+                    <StatusChip
+                      status={
+                        stint.status === "running"
+                          ? "running"
+                          : stint.status === "finished"
+                            ? "success"
+                            : "stopped"
+                      }
+                    >
+                      {t.overview.stintStatus[stint.status]}
+                    </StatusChip>
+                  </button>
+                </Item>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+      </div>
     </main>
   );
 }

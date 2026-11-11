@@ -1026,7 +1026,7 @@ test("card tint, status and segmented progress follow snapshot state", () => {
 test("empty stages remain named, counted and focusable", () => {
   render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
   const column = screen.getByRole("region", { name: "Ship" });
-  expect(column).toHaveClass("min-w-14");
+  expect(column).toHaveClass("flex-[0_0_64px]", "min-w-16");
   expect(column).toHaveAttribute("tabindex", "0");
   expect(within(column).getByText("0")).toBeInTheDocument();
 });

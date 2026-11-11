@@ -78,3 +78,29 @@ test("derives running stints, attention and timestamped activity in newest-first
   expect(data.activity.map(({ stint }) => stint.id)).toEqual(["newer", "older"]);
   expect(data.next).toBeUndefined();
 });
+
+test("Next up accepts ready or no tickets and excludes items with only blocked or resolved tickets", () => {
+  const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/one/spec.md": "# One" }), {
+    name: "Test",
+  });
+  const item = snapshot.workItems[0];
+  const ticket = {
+    number: 1,
+    slug: "blocked",
+    title: "Blocked",
+    status: "open",
+    resolved: false,
+    blockedBy: [2],
+    blocked: true,
+    comments: [],
+    body: "",
+    path: "",
+  };
+  expect(overviewData(snapshot).next?.slug).toBe("one");
+  item.tickets = [ticket];
+  expect(overviewData(snapshot).next).toBeUndefined();
+  item.tickets.push({ ...ticket, number: 2, slug: "ready", blocked: false, blockedBy: [] });
+  expect(overviewData(snapshot).next?.slug).toBe("one");
+  item.tickets[1].resolved = true;
+  expect(overviewData(snapshot).next).toBeUndefined();
+});
