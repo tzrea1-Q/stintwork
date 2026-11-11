@@ -27,6 +27,7 @@ Any change under `packages/web/` follows `docs/agents/frontend.md`.
 
 ## Reference material
 
-- `prototype/` (tag `prototype-ui-v1`): throwaway UI prototype with fake data. Variant B is the chosen Pipeline view. Treat it as a design reference to rebuild from, never as code to import.
+- `prototype/` (tag `prototype-ui-v1`): the earlier throwaway UI prototype with fake data. Its visual language is superseded by `prototype-visual/`.
+- `prototype-visual/` (branch `prototype/visual-direction`, tag `prototype-visual-v1`): Variant D is the chosen visual reference. Rebuild from it; never import its code.
 - `spikes/acp-probe/`: probe of what each agent supports over ACP. Rerun it when adapter versions change.
 - `docs/research/`: dated findings. Each file records what was true on its date.

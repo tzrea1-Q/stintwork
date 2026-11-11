@@ -195,6 +195,20 @@ Publish the release after its milestones pass.
 
 Shipped 2026-11-10: `stintwork@0.2.0` published from `33125f8` (tag `v0.2.0`) and the repo made public. Grok Build's contract counted as an accepted limitation, recorded as an open issue below.
 
+## v0.3
+
+**Goal:** Make the shipped web UI clearer and more comfortable to use.
+
+### M14 · Visual refresh · L
+
+Spec: `.scratch/visual-refresh/spec.md`. Decision: ADR 0019.
+
+- Adopt shadcn/ui with Radix, shared tokens, bundled fonts and a separately designed dark scheme.
+- Rebuild the top bar, Overview, Pipeline and work item detail from Variant D; preserve existing actions and snapshot state.
+- Restyle existing dialogs and overlays, and check every screen in a real browser.
+
+**Exit test:** the browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` and both colour schemes, and the maintainer walks Overview, Pipeline with the detail panel, Needs you and every dialog at 1440, 768 and 390px in both languages and accepts the result.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.

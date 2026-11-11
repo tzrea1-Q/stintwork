@@ -1,3 +1,5 @@
+Partly superseded by ADR 0019.
+
 # The web UI is built on Radix primitives and checked in a real browser
 
 The brief chose Tailwind, Radix primitives and cmdk, but the web UI never adopted Radix. Overlays each handle focus, Escape and outside clicks themselves. Fixed popover positioning clips the top-bar panels when actions wrap. jsdom tests check behaviour but cannot catch layout bugs. Remote font loading also makes a local-first tool depend on an external service.

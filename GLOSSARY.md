@@ -97,8 +97,12 @@ _Avoid_: ADR (fine as the file convention, not as the product word)
 ## Views
 
 **View**:
-One way of presenting the same project: Pipeline (a board of stages), Lists, or Cockpit.
+One way of presenting the same project: Overview, Pipeline (a board of stages), Lists, or Cockpit.
 _Avoid_: Layout, mode, theme
+
+**Overview**:
+The home view of a project, showing its progress, attention items and recent activity.
+_Avoid_: Dashboard, cockpit
 
 ## Chinese terms
 
@@ -129,3 +133,4 @@ Product and agent names stay unchanged. Stint and Agent are also left untranslat
 | Memory proposal | 记忆提案 |
 | Decision record | 决策记录 |
 | View / Pipeline | 视图 / 流水线 |
+| Overview | 概览 |
