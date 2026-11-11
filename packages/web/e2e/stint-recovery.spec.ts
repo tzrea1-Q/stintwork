@@ -106,9 +106,12 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.emulateMedia({ colorScheme });
         const f = await fixture(page, language);
         const opener = page.locator('.board-scroll [data-work-item="recovery"]');
-        await expect(page.locator(".work-item .stint-running")).toContainText(
-          t.stints.recovery.states.resuming,
-        );
+        await expect(
+          page
+            .locator(".work-item")
+            .getByRole("status")
+            .filter({ hasText: t.stints.recovery.states.resuming }),
+        ).toContainText(t.stints.recovery.states.resuming);
         await capture(page, info, "pipeline-resuming", ".board-scroll");
         await opener.focus();
         await page.keyboard.press("Enter");

@@ -54,6 +54,14 @@ export const en = {
     missing: "Missing",
     readOnly: "Read-only · No files are changed.",
   },
+  pipelineBoard: {
+    idle: "No active stint",
+    workflow: "Workflow",
+    allWorkflows: "All workflows",
+    running: "running",
+    waiting: "need you",
+    milestoneProgress: "shipped",
+  },
   board: {
     workbench: "Stintwork · Project workbench",
     pipeline: "Pipeline",

@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { builtInWorkflows, createMemoryRepoFiles, indexProject, planSetup } from "@stintwork/core";
+import {
+  builtInWorkflows,
+  createMemoryRepoFiles,
+  foldStintLog,
+  indexProject,
+  planSetup,
+} from "@stintwork/core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
+import { WorkItemCard } from "./WorkItemCard";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const files = {
@@ -60,11 +67,11 @@ test("renders cards in the column of their stage", () => {
       ).toBeInTheDocument();
   }
   expect(screen.getByRole("progressbar", { name: "board resolved tickets" })).toHaveAttribute(
-    "value",
+    "aria-valuenow",
     "1",
   );
   expect(screen.getByRole("progressbar", { name: "board resolved tickets" })).toHaveAttribute(
-    "max",
+    "aria-valuemax",
     "2",
   );
   expect(screen.getByText("codex/06")).toBeInTheDocument();
@@ -97,7 +104,10 @@ test("milestone filter hides other milestones", async () => {
     within(document.querySelector(".top-bar") as HTMLElement).queryByRole("combobox"),
   ).not.toBeInTheDocument();
   await user.click(screen.getByRole("combobox", { name: "Milestone" }));
-  await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
+  const option = await screen.findByRole("option", { name: "M1 · The board" });
+  expect(option).toHaveAccessibleDescription("0/1 shipped");
+  expect(within(option).getByTitle("M1 · The board")).toHaveTextContent("M1 · The board");
+  await user.click(option);
   expect(screen.getByRole("article", { name: /^board:/ })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^next:/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^clarify:/ })).not.toBeInTheDocument();
@@ -274,7 +284,7 @@ test("updates ticket progress from a new snapshot and resets a removed milestone
     }),
   ).toBeInTheDocument();
   expect(screen.getByRole("progressbar", { name: "board resolved tickets" })).toHaveAttribute(
-    "value",
+    "aria-valuenow",
     "2",
   );
 });
@@ -954,3 +964,64 @@ test.each([
     localStorage.removeItem(languageStorageKey);
   },
 );
+
+test("workflow filter narrows the board without changing the URL", async () => {
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  const url = window.location.href;
+  await user.click(screen.getByRole("combobox", { name: "Workflow" }));
+  await user.click(await screen.findByRole("option", { name: "Bug" }));
+  expect(screen.getByRole("article", { name: /^bug-login:/ })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: /^board:/ })).not.toBeInTheDocument();
+  expect(window.location.href).toBe(url);
+});
+
+test("card tint, status and segmented progress follow snapshot state", () => {
+  const item = project().workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  const stint = foldStintLog([
+    {
+      type: "started",
+      at: "2026-10-09T10:00:00Z",
+      stint: {
+        id: "stint",
+        workItem: item.slug,
+        stage: "implement",
+        ticket: 1,
+        agent: "codex",
+        worktree: { path: "/worktree", branch: "work" },
+        baseCommit: "base",
+        brief: { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Work" },
+      },
+    },
+  ]);
+  const { rerender } = render(
+    <WorkItemCard item={{ ...item, activeStint: stint }} onOpen={() => {}} />,
+  );
+  const card = screen.getByRole("article");
+  expect(card).toHaveClass("bg-running-soft");
+  expect(within(card).getByRole("status")).toHaveTextContent("Stint running");
+  expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+  rerender(<WorkItemCard item={item} attentionCount={1} selected onOpen={() => {}} />);
+  expect(card).toHaveClass("bg-attention-soft", "ring-ring");
+  expect(within(card).getByRole("status")).toHaveTextContent("Needs you");
+  rerender(
+    <WorkItemCard
+      item={{
+        ...item,
+        tickets: item.tickets.map((ticket) => ({ ...ticket, blocked: !ticket.resolved })),
+      }}
+      onOpen={() => {}}
+    />,
+  );
+  expect(card).toHaveClass("bg-blocked-soft");
+  expect(within(card).getByText("Blocked")).toBeInTheDocument();
+});
+
+test("empty stages remain named, counted and focusable", () => {
+  render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
+  const column = screen.getByRole("region", { name: "Ship" });
+  expect(column).toHaveClass("min-w-14");
+  expect(column).toHaveAttribute("tabindex", "0");
+  expect(within(column).getByText("0")).toBeInTheDocument();
+});
