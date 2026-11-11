@@ -7,18 +7,30 @@ export function viewFromSearch(search: string): "overview" | "pipeline" {
   return view === "pipeline" || (view === null && params.has("item")) ? "pipeline" : "overview";
 }
 
+export function ticketsUnavailable(item: ProjectSnapshot["workItems"][number]) {
+  return (
+    item.github?.ticketsKnown === false ||
+    !!item.github?.ticketsStale ||
+    !!item.github?.dependenciesUnknown
+  );
+}
+
 export function overviewData(snapshot: ProjectSnapshot) {
   const active = snapshot.workItems.filter((item) => !item.merged);
   const milestones = snapshot.milestones
     .map((milestone) => {
       const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
-      const tickets = items.flatMap((item) => item.tickets);
       return {
         milestone,
-        total: tickets.length || items.length,
-        resolved: tickets.length
-          ? tickets.filter((ticket) => ticket.resolved).length
-          : items.filter((item) => item.merged).length,
+        total: items.length,
+        resolved: items.filter(
+          (item) =>
+            item.merged ||
+            (!ticketsUnavailable(item) &&
+              item.tickets.length > 0 &&
+              item.tickets.every((ticket) => ticket.resolved)),
+        ).length,
+        incomplete: items.some(ticketsUnavailable),
       };
     })
     .sort((a, b) => {

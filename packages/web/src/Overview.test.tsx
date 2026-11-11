@@ -162,3 +162,51 @@ test("orders cards and discloses shipped milestones", async () => {
   await userEvent.setup().click(summary);
   expect(screen.getByRole("button", { name: "Done milestone" })).toBeVisible();
 });
+
+test.each([
+  { ticketsKnown: false },
+  { ticketsKnown: true, ticketsStale: true },
+  { ticketsKnown: true, dependenciesUnknown: true },
+])("shows unavailable ticket progress and an incomplete milestone hint for %o", (github) => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One" });
+  const item = snapshot.workItems[0];
+  item.slug = "a".repeat(150);
+  item.milestone = "m";
+  item.github = github as NonNullable<typeof item.github>;
+  item.tickets = [
+    {
+      number: 1,
+      slug: "ticket",
+      title: "Ticket",
+      status: "open",
+      resolved: false,
+      blockedBy: [],
+      blocked: false,
+      comments: [],
+      body: "",
+      path: "",
+    },
+  ];
+  const name = "M".repeat(150);
+  snapshot.milestones = [{ id: "m", name, status: "active", workItemSlugs: [item.slug] }];
+  render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const next = screen.getByText("Next up").closest('[data-slot="card"]') as HTMLElement;
+  expect(within(next).getByText("Tickets resolved: Unavailable")).toBeVisible();
+  expect(within(next).queryByRole("progressbar")).not.toBeInTheDocument();
+  expect(within(next).getByText(new RegExp(item.slug)).className).toContain(
+    "[overflow-wrap:anywhere]",
+  );
+  expect(within(next).getByText(new RegExp(name))).toBeVisible();
+  expect(screen.getByText("Progress may be incomplete")).toBeVisible();
+  expect(screen.getByText("0/1 work items")).toBeVisible();
+});

@@ -251,7 +251,7 @@ export function WorkItemDrawer({
           {t.needsYou.pendingPermissions}
         </button>
       )}
-      <header className="drawer-header relative shrink-0 px-4 py-4 sm:px-7">
+      <header className="drawer-header relative max-h-[35%] shrink-0 overflow-y-auto px-4 py-4 sm:px-7">
         <div className="flex min-w-0 items-start gap-3">
           <IconChip icon={Sparkles} tone="accent" />
           <div className="min-w-0 flex-1">
@@ -596,7 +596,7 @@ export function WorkItemDrawer({
           </>
         )}
       </div>
-      <footer className="drawer-footer relative shrink-0 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7">
+      <footer className="drawer-footer relative max-h-[40%] shrink-0 overflow-y-auto border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7">
         <div>
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 [&_.brief-action]:contents [&_.brief-action>p]:order-last [&_.brief-action>p]:min-w-0 [&_.brief-action>p]:basis-full [&_.brief-action>p]:truncate [&_.brief-action>p]:text-xs">
             {showStageAction && (

@@ -4,7 +4,7 @@ import { ArrowRight, CircleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
-import { overviewData } from "./overview-data";
+import { overviewData, ticketsUnavailable } from "./overview-data";
 import { Button } from "./ui/Button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/Card";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "./ui/Empty";
@@ -137,7 +137,7 @@ export function Overview({
                   >
                     {data.next.title}
                   </h2>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
                     {data.next.slug} · {stageLabel(data.next, data.next.stage)}
                     {data.next.milestone &&
                       snapshot.milestones.find(
@@ -156,21 +156,27 @@ export function Overview({
                   </p>
                 </div>
               </div>
-              {data.next.tickets.length > 0 && (
-                <div className="space-y-1">
-                  <div className="flex justify-between gap-4 text-sm">
-                    <span>{t.overview.tickets}</span>
-                    <span className="tabular-nums">
-                      {data.next.tickets.filter((ticket) => ticket.resolved).length}/
-                      {data.next.tickets.length}
-                    </span>
+              {ticketsUnavailable(data.next) ? (
+                <p className="text-sm text-muted-foreground">
+                  {t.overview.tickets}: {t.overview.unavailable}
+                </p>
+              ) : (
+                data.next.tickets.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex justify-between gap-4 text-sm">
+                      <span>{t.overview.tickets}</span>
+                      <span className="tabular-nums">
+                        {data.next.tickets.filter((ticket) => ticket.resolved).length}/
+                        {data.next.tickets.length}
+                      </span>
+                    </div>
+                    <SegmentedProgress
+                      value={data.next.tickets.filter((ticket) => ticket.resolved).length}
+                      total={data.next.tickets.length}
+                      label={t.overview.tickets}
+                    />
                   </div>
-                  <SegmentedProgress
-                    value={data.next.tickets.filter((ticket) => ticket.resolved).length}
-                    total={data.next.tickets.length}
-                    label={t.overview.tickets}
-                  />
-                </div>
+                )
               )}
               <Button
                 variant="primary"
@@ -265,7 +271,7 @@ export function Overview({
             <CardContent>
               {data.milestones
                 .filter(({ milestone }) => milestone.status !== "shipped")
-                .map(({ milestone, resolved, total }) => (
+                .map(({ milestone, resolved, total, incomplete }) => (
                   <div key={milestone.id} className="py-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <button
@@ -281,9 +287,14 @@ export function Overview({
                         {t.planning.roadmap[milestone.status]}
                       </StatusChip>
                       <span className="text-right text-sm tabular-nums">
-                        {resolved}/{total}
+                        {resolved}/{total} {t.overview.workItems}
                       </span>
                     </div>
+                    {incomplete && (
+                      <p className="text-xs text-muted-foreground">
+                        {t.overview.progressIncomplete}
+                      </p>
+                    )}
                     {total > 0 && (
                       <Progress
                         className="mt-1"
@@ -303,21 +314,28 @@ export function Overview({
                       : t.overview.shippedMilestones}
                   </summary>
                   <div className="mt-2 space-y-1">
-                    {shippedMilestones.map(({ milestone, resolved, total }) => (
-                      <div key={milestone.id} className="flex items-center gap-2 py-1">
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 truncate text-left hover:underline"
-                          data-truncate
-                          title={milestone.name}
-                          onClick={() => onMilestone(milestone.id)}
-                        >
-                          {milestone.name}
-                        </button>
-                        <StatusChip status="success">{t.planning.roadmap.shipped}</StatusChip>
-                        <span className="text-right text-sm tabular-nums">
-                          {resolved}/{total}
-                        </span>
+                    {shippedMilestones.map(({ milestone, resolved, total, incomplete }) => (
+                      <div key={milestone.id} className="py-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left hover:underline"
+                            data-truncate
+                            title={milestone.name}
+                            onClick={() => onMilestone(milestone.id)}
+                          >
+                            {milestone.name}
+                          </button>
+                          <StatusChip status="success">{t.planning.roadmap.shipped}</StatusChip>
+                          <span className="text-right text-sm tabular-nums">
+                            {resolved}/{total} {t.overview.workItems}
+                          </span>
+                        </div>
+                        {incomplete && (
+                          <p className="text-xs text-muted-foreground">
+                            {t.overview.progressIncomplete}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>

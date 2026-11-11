@@ -23,6 +23,9 @@ export const en = {
     },
   },
   overview: {
+    workItems: "work items",
+    progressIncomplete: "Progress may be incomplete",
+    unavailable: "Unavailable",
     description: "A view of your project’s work.",
     open: "Open",
     tickets: "Tickets resolved",

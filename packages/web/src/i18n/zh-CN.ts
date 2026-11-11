@@ -38,6 +38,9 @@ export const zhCN: Catalog = {
     },
   },
   overview: {
+    workItems: "个工作项",
+    progressIncomplete: "进度可能不完整",
+    unavailable: "不可用",
     description: "查看项目的工作进展。",
     open: "打开",
     tickets: "已解决的工单",

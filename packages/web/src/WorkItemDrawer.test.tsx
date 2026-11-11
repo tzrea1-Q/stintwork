@@ -561,3 +561,19 @@ test("the disabled stage action retains its full accessible reason beside review
   expect(screen.getByText(reason)).toHaveAttribute("title", reason);
   expect(screen.getByRole("button", { name: "Open review" })).toBeEnabled();
 });
+
+test("the header and footer remain bounded and scrollable in a short Sheet", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>(() => {})),
+  );
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  render(<WorkItemDrawer item={item} onClose={() => {}} pendingPermissions />);
+  const drawer = screen.getByRole("dialog", { name: "First" });
+  const header = drawer.querySelector(".drawer-header");
+  const footer = drawer.querySelector(".drawer-footer");
+  expect(header).toHaveClass("max-h-[35%]", "overflow-y-auto");
+  expect(footer).toHaveClass("max-h-[40%]", "overflow-y-auto");
+});

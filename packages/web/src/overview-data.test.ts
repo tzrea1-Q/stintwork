@@ -105,7 +105,7 @@ test("Next up accepts ready or no tickets and excludes items with only blocked o
   expect(overviewData(snapshot).next).toBeUndefined();
 });
 
-test("derives ticket progress and ranks milestone status before roadmap and snapshot order", () => {
+test("derives work item progress and ranks milestone status before roadmap and snapshot order", () => {
   const snapshot = indexProject(
     createMemoryRepoFiles({
       ".scratch/a/spec.md": "# A",
@@ -143,7 +143,7 @@ test("derives ticket progress and ranks milestone status before roadmap and snap
     "planned",
     "shipped",
   ]);
-  expect(data.milestones[0]).toMatchObject({ resolved: 1, total: 2 });
+  expect(data.milestones[0]).toMatchObject({ resolved: 0, total: 1 });
   expect(data.milestones[1]).toMatchObject({ resolved: 0, total: 1 });
   expect(data.next?.slug).toBe(c.slug);
   c.merged = { at: "2026-01-01", commit: "abc" };
@@ -152,4 +152,67 @@ test("derives ticket progress and ranks milestone status before roadmap and snap
   expect(overviewData(snapshot).next?.slug).toBe(snapshot.workItems[3].slug);
   snapshot.workItems[3].merged = { at: "2026-01-01", commit: "abc" };
   expect(overviewData(snapshot).next?.slug).toBe(a.slug);
+});
+
+test("milestone progress counts work items and flags unavailable tickets", () => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/a/spec.md": "# A",
+      ".scratch/b/spec.md": "# B",
+      ".scratch/c/spec.md": "# C",
+      ".scratch/d/spec.md": "# D",
+      ".scratch/e/spec.md": "# E",
+    }),
+    { name: "Test" },
+  );
+  snapshot.milestones = [
+    {
+      id: "m",
+      name: "Milestone",
+      status: "active",
+      workItemSlugs: snapshot.workItems.map((item) => item.slug),
+    },
+  ];
+  const [a, b, c, d, e] = snapshot.workItems;
+  for (const item of snapshot.workItems) item.milestone = "m";
+  const ticket = {
+    number: 1,
+    slug: "one",
+    title: "One",
+    status: "resolved",
+    resolved: true,
+    blockedBy: [],
+    blocked: false,
+    comments: [],
+    body: "",
+    path: "",
+  };
+  a.tickets = [ticket, { ...ticket, number: 2 }];
+  c.tickets = [ticket];
+  d.tickets = [ticket];
+  e.tickets = [ticket];
+  const github = { ticketsKnown: false } as NonNullable<typeof c.github>;
+  c.github = github;
+  d.github = { ...github, ticketsKnown: true, ticketsStale: true };
+  e.github = { ...github, ticketsKnown: true, dependenciesUnknown: true };
+  expect(overviewData(snapshot).milestones[0]).toMatchObject({
+    resolved: 1,
+    total: 5,
+    incomplete: true,
+  });
+  b.merged = { at: "2026-01-01", commit: "abc" };
+  c.merged = { at: "2026-01-01", commit: "abc" };
+  d.github.ticketsStale = false;
+  e.github.dependenciesUnknown = false;
+  expect(overviewData(snapshot).milestones[0]).toMatchObject({
+    resolved: 5,
+    total: 5,
+    incomplete: true,
+  });
+  c.github.ticketsKnown = true;
+  expect(overviewData(snapshot).milestones[0]).toMatchObject({
+    resolved: 5,
+    total: 5,
+    incomplete: false,
+  });
 });
