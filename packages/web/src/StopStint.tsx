@@ -5,8 +5,6 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
-import { Card, CardContent, CardHeader } from "./ui/Card";
-import { IconChip } from "./ui/IconChip";
 
 export function StopStint({
   stintId,
@@ -39,21 +37,16 @@ export function StopStint({
   }
 
   return (
-    <Card size="sm">
-      <CardHeader className="flex flex-row items-center gap-3">
-        <IconChip icon={Square} tone="attention" />
-        <strong>{t.stints.stopStint}</strong>
-      </CardHeader>
-      <CardContent>
-        <Button variant="primary" type="button" onClick={stop} disabled={requested}>
-          {requested ? t.stints.stopping : recovering ? t.stints.stopStint : t.stints.stop}
-        </Button>
-        {error && (
-          <p role="alert" className="warning text-attention-foreground">
-            {error}
-          </p>
-        )}
-      </CardContent>
-    </Card>
+    <div className="min-w-0">
+      <Button variant="secondary" size="sm" type="button" onClick={stop} disabled={requested}>
+        <Square aria-hidden="true" />
+        {requested ? t.stints.stopping : recovering ? t.stints.stopStint : t.stints.stop}
+      </Button>
+      {error && (
+        <p role="alert" className="warning text-attention-foreground">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

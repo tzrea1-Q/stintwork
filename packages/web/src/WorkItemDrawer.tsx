@@ -282,18 +282,20 @@ export function WorkItemDrawer({
                 >
                   {t.stints.liveStint}
                 </h3>
-                <p role="status">
-                  {activeProfile?.displayName ?? item.activeStint.agent}
-                  {item.activeStint.ticket !== null && (
-                    <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
-                  )}{" "}
-                  · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
-                </p>
-                <StopStint
-                  key={`stop:${item.activeStint.id}`}
-                  stintId={item.activeStint.id}
-                  recovering={!!item.activeStint.recovery?.state}
-                />
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <p role="status">
+                    {activeProfile?.displayName ?? item.activeStint.agent}
+                    {item.activeStint.ticket !== null && (
+                      <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
+                    )}{" "}
+                    · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
+                  </p>
+                  <StopStint
+                    key={`stop:${item.activeStint.id}`}
+                    stintId={item.activeStint.id}
+                    recovering={!!item.activeStint.recovery?.state}
+                  />
+                </div>
                 <StintStream
                   key={`stream:${item.activeStint.id}`}
                   stint={item.activeStint}

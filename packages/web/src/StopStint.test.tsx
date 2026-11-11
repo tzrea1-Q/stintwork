@@ -57,7 +57,14 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
       onClose={() => {}}
     />,
   );
-  await user.click(screen.getByRole("button", { name: "Stop" }));
+  const stop = screen.getByRole("button", { name: "Stop" });
+  const live = document.querySelector('section[aria-labelledby="drawer-live-stint-title"]');
+  expect(stop.closest("[data-slot=card]")).toBeNull();
+  expect(stop.parentElement?.parentElement).toBe(
+    live?.querySelector('[role="status"]')?.parentElement,
+  );
+  expect(stop.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  await user.click(stop);
   expect(fetch).toHaveBeenCalledWith("/api/stints/first/stop", { method: "POST" });
   expect(screen.getByRole("button", { name: "Stopping stint…" })).toBeDisabled();
   expect(success).toHaveBeenCalledWith("Stop requested.");
