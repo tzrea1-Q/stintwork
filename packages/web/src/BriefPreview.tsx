@@ -159,7 +159,7 @@ function BriefPreviewSheet({
   onClose: () => void;
 }) {
   const { t, language } = useLanguage();
-  const closeButton = useRef<HTMLButtonElement>(null);
+  const title = useRef<HTMLHeadingElement>(null);
   const agentAvailabilityId = useId();
   const selectId = useId();
   const [brief, setBrief] = useState<Brief | null>(null);
@@ -366,19 +366,20 @@ function BriefPreviewSheet({
         className="brief-preview-sheet flex h-[calc(100dvh-32px)] w-3xl flex-col p-0"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          closeButton.current?.focus();
+          title.current?.focus();
         }}
       >
         <header className="shrink-0 border-b border-border p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <DialogTitle className="text-xl font-medium">{t.stints.briefPreview}</DialogTitle>
+            <DialogTitle ref={title} tabIndex={-1} className="text-xl font-medium">
+              {t.stints.briefPreview}
+            </DialogTitle>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    ref={closeButton}
                     aria-label={t.stints.closeBrief}
                     onClick={onClose}
                   >

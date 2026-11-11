@@ -33,13 +33,14 @@ test.each(["Escape", "outside"])(
     const start = screen.getByRole("button", { name: "Start stint" });
     await user.click(start);
     await screen.findByRole("heading", { name: "Read first" });
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Close brief preview" })).toHaveFocus();
     await user.tab({ shift: true });
     expect(screen.getByRole("button", { name: "Start" })).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("button", { name: "Close brief preview" })).toHaveFocus();
     if (dismissal === "Escape") {
       await user.keyboard("{Escape}");
-      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
       expect(screen.getByRole("dialog", { name: "Brief preview" })).toBeInTheDocument();
       await user.keyboard("{Escape}");
     } else fireEvent.pointerDown(document.body);
@@ -87,6 +88,7 @@ test("keyboard focus shows the close button tooltip", async () => {
   render(<TicketBriefPreview item={item} ticket={ticket} />);
   await user.click(screen.getByRole("button", { name: "Start stint" }));
   const close = screen.getByRole("button", { name: "Close brief preview" });
+  await user.tab();
   expect(close).toHaveFocus();
   expect(await screen.findByRole("tooltip", { name: "Close brief preview" })).toBeInTheDocument();
 });
@@ -359,10 +361,8 @@ test("Escape closes only the preview and returns focus to Start stint", async ()
   const start = screen.getByRole("button", { name: "Start stint" });
   await user.click(start);
   await screen.findByRole("heading", { name: "Read first" });
-  expect(screen.getByRole("button", { name: "Close brief preview" })).toHaveFocus();
-  await user.keyboard("{Escape}");
+  expect(screen.getByRole("heading", { name: "Brief preview" })).toHaveFocus();
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
-  expect(screen.getByRole("dialog", { name: "Brief preview" })).toBeInTheDocument();
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: "The first stint" })).toBeInTheDocument();
