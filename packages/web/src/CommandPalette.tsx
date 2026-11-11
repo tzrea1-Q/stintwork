@@ -6,6 +6,7 @@ import { useLanguage } from "./i18n/language";
 import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { Kbd } from "./ui/Kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function CommandPalette({
@@ -34,12 +35,15 @@ export function CommandPalette({
         if (!open) onClose();
       }}
     >
-      <DialogContent aria-describedby={undefined} className="command-palette w-xl p-0">
+      <DialogContent
+        aria-describedby={undefined}
+        className="command-palette w-xl rounded-2xl bg-popover text-popover-foreground p-0"
+      >
         <DialogTitle className="sr-only">{t.planning.palette.title}</DialogTitle>
         <Command
           label={t.planning.palette.search}
           vimBindings={false}
-          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-sm [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:ring-1 [&_[cmdk-item][data-selected=true]]:ring-ring [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:text-accent-foreground [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
         >
           <div className="command-search flex items-center gap-3 border-b border-border p-4">
             <Search className="size-icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -48,6 +52,7 @@ export function CommandPalette({
               placeholder={t.planning.palette.placeholder}
               aria-label={t.planning.palette.search}
             />
+            <Kbd>Esc</Kbd>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -140,7 +145,7 @@ export function CommandPalette({
           </Command.List>
           <footer className="command-footer flex flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
             <span>{t.planning.palette.navigation}</span>
-            <kbd>Esc</kbd>
+            <Kbd>Esc</Kbd>
           </footer>
         </Command>
       </DialogContent>
