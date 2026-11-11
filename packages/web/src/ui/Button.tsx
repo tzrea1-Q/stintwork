@@ -6,7 +6,7 @@ import { type ComponentPropsWithoutRef, forwardRef } from "react";
 import { cn } from "./cn";
 
 const buttonVariants = cva(
-  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal rounded-full border text-sm font-medium [overflow-wrap:anywhere] transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
+  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal border text-sm font-medium [overflow-wrap:anywhere] transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
   {
     variants: {
       variant: {
@@ -18,10 +18,10 @@ const buttonVariants = cva(
         danger: "border-transparent bg-destructive text-destructive-foreground hover:opacity-90",
       },
       size: {
-        sm: "min-h-7 px-2 py-1",
-        md: "min-h-8 px-3 py-1",
-        lg: "min-h-10 px-4 py-2",
-        icon: "size-8",
+        sm: "min-h-7 rounded-[14px] px-2 py-1",
+        md: "min-h-8 rounded-[16px] px-3 py-1",
+        lg: "min-h-10 rounded-[20px] px-4 py-2",
+        icon: "size-8 rounded-full",
       },
     },
     defaultVariants: { variant: "secondary", size: "md" },
