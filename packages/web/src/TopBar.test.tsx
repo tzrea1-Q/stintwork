@@ -3,6 +3,7 @@ import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { attentionSnapshot } from "./attention-test-fixtures";
 import { Board } from "./Board";
 import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -158,7 +159,7 @@ test("the top bar exposes only the three actions and announces warnings without 
   expect(within(header).queryByRole("combobox")).not.toBeInTheDocument();
   const needsYou = within(header).getByRole("button", { name: "Needs you 0 · 1 warning" });
   expect(needsYou.querySelector("[data-warning-dot]")).toBeInTheDocument();
-  expect(needsYou).toHaveTextContent("0");
+  expect(needsYou.textContent).toBe("");
   await user.click(needsYou);
   expect(onOpenNeedsYou).toHaveBeenCalledOnce();
   await user.click(within(header).getByRole("button", { name: "Open command palette" }));
@@ -193,4 +194,13 @@ test("view navigation preserves URL parameters and restores history", async () =
   window.history.forward();
   await waitFor(() => expect(pipeline).toHaveAttribute("aria-current", "page"));
   window.history.replaceState({}, "", "/");
+});
+
+test("Needs you displays a badge for attention items", () => {
+  const project = attentionSnapshot();
+  renderTopBar(project);
+  const count = project.attentionItems.length;
+  expect(count).toBeGreaterThan(0);
+  const trigger = screen.getByRole("button", { name: new RegExp(`^Needs you ${count}`) });
+  expect(trigger).toHaveTextContent(String(count));
 });

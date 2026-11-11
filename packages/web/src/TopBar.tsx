@@ -45,7 +45,7 @@ export function TopBar({
   const warnings = snapshot.warnings.length;
 
   return (
-    <header className="top-bar flex min-h-16 shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 xl:px-6">
+    <header className="top-bar flex min-h-16 shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-6">
       <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <Asterisk className="size-5 shrink-0 text-foreground" aria-hidden="true" />
         <strong
@@ -114,12 +114,14 @@ export function TopBar({
                 onClick={onOpenNeedsYou}
               >
                 <Inbox aria-hidden="true" />
-                <span
-                  className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-attention-soft px-1 text-xs text-attention-foreground"
-                  aria-hidden="true"
-                >
-                  {snapshot.attentionItems.length}
-                </span>
+                {snapshot.attentionItems.length > 0 && (
+                  <span
+                    className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-attention-soft px-1 text-xs text-attention-foreground"
+                    aria-hidden="true"
+                  >
+                    {snapshot.attentionItems.length}
+                  </span>
+                )}
                 {warnings > 0 && (
                   <span
                     data-warning-dot

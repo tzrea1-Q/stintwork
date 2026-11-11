@@ -196,6 +196,14 @@ for (const language of ["en", "zh-CN"] as const) {
           "page",
         );
         await expect(header.getByRole("combobox")).toHaveCount(0);
+        if (width >= 1024) {
+          const navBounds = await nav.boundingBox();
+          expect(navBounds).not.toBeNull();
+          expect(
+            Math.abs((navBounds?.x ?? 0) + (navBounds?.width ?? 0) / 2 - width / 2),
+          ).toBeLessThanOrEqual(1);
+        }
+        await expect(header.locator("#needs-you-trigger")).toHaveText("");
         const projectBounds = await header.locator(".top-project").boundingBox();
         const actionBounds = await header.locator(".top-actions").boundingBox();
         if (!projectBounds || !actionBounds) throw new Error("Top-bar groups must be visible");
