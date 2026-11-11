@@ -174,6 +174,7 @@ export function Board({
     url.searchParams.set("view", next);
     window.history.pushState(window.history.state, "", url);
     setView(next);
+    document.getElementById(`${next}-view-trigger`)?.focus();
   }
 
   useEffect(() => {
@@ -205,10 +206,17 @@ export function Board({
           {t.needsYou.pendingPermissions}
         </button>
       )}
-      {view === "overview" ? (
-        <OverviewPlaceholder onPipeline={() => changeView("pipeline")} />
-      ) : (
-      <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
+      {view === "overview" && (
+        <OverviewPlaceholder
+          connection={connection}
+          error={error}
+          onPipeline={() => changeView("pipeline")}
+        />
+      )}
+      <main
+        hidden={view === "overview"}
+        className={`pipeline-main ${view === "overview" ? "hidden" : "flex"} min-h-0 min-w-0 flex-1 flex-col`}
+      >
         <div className="pipeline-heading flex flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6">
           <div>
             <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
@@ -457,7 +465,6 @@ export function Board({
           </details>
         </section>
       </main>
-      )}
       {needsYouOpen && (
         <NeedsYouQueue
           snapshot={snapshot}
@@ -509,7 +516,10 @@ export function Board({
           onCustomiseWorkflow={setCustomiseId}
           snapshot={snapshot}
           milestone={milestone}
-          onMilestoneChange={setSelectedMilestone}
+          onMilestoneChange={(value) => {
+            setSelectedMilestone(value);
+            changeView("pipeline");
+          }}
           onOpenItem={openWorkItem}
           onClose={() => setPaletteOpen(false)}
         />

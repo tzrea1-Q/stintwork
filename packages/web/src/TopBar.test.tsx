@@ -204,3 +204,87 @@ test("Needs you displays a badge for attention items", () => {
   const trigger = screen.getByRole("button", { name: new RegExp(`^Needs you ${count}`) });
   expect(trigger).toHaveTextContent(String(count));
 });
+
+test("roadmap draft survives back to Overview and forward to Pipeline", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const user = userEvent.setup();
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  await user.click(
+    within(screen.getByRole("navigation", { name: en.viewNavigation.label })).getByRole("button", {
+      name: en.viewNavigation.pipeline,
+    }),
+  );
+  await user.click(screen.getByRole("button", { name: en.planning.roadmap.title }));
+  const input = screen.getByRole("textbox", { name: en.planning.roadmap.newName });
+  await user.type(input, "Draft milestone");
+  window.history.back();
+  await waitFor(() => expect(document.querySelector(".pipeline-main")).toHaveAttribute("hidden"));
+  expect(input).toHaveValue("Draft milestone");
+  window.history.forward();
+  await waitFor(() =>
+    expect(document.querySelector(".pipeline-main")).not.toHaveAttribute("hidden"),
+  );
+  expect(screen.getByRole("textbox", { name: en.planning.roadmap.newName })).toHaveValue(
+    "Draft milestone",
+  );
+});
+
+test("selecting a palette milestone from Overview shows Pipeline", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const project = {
+    ...snapshot,
+    milestones: [
+      { id: "m1", name: "First milestone", status: "active" as const, workItemSlugs: [] },
+    ],
+  };
+  const user = userEvent.setup();
+  render(
+    <LanguageProvider>
+      <Board snapshot={project} />
+    </LanguageProvider>,
+  );
+  await user.click(screen.getByRole("button", { name: en.topBar.openPalette }));
+  await user.click(screen.getByRole("option", { name: "First milestone" }));
+  expect(
+    screen
+      .getByRole("navigation", { name: en.viewNavigation.label })
+      .querySelector('[aria-current="page"]'),
+  ).toHaveTextContent(en.viewNavigation.pipeline);
+  expect(screen.getByRole("combobox", { name: en.topBar.milestone })).toHaveTextContent(
+    "First milestone",
+  );
+});
+
+test("Overview shows connection status and last available error", () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} connection="reconnecting" error="Connection lost." />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("status")).toHaveTextContent(en.board.reconnecting);
+  expect(screen.getByRole("alert")).toHaveTextContent(`Connection lost.${en.board.lastAvailable}`);
+});
+
+test("switching views moves focus to the selected navigation pill", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const user = userEvent.setup();
+  render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} />
+    </LanguageProvider>,
+  );
+  const nav = screen.getByRole("navigation", { name: en.viewNavigation.label });
+  const pipeline = within(nav).getByRole("button", { name: en.viewNavigation.pipeline });
+  await user.click(
+    within(screen.getByRole("main")).getByRole("button", { name: en.viewNavigation.pipeline }),
+  );
+  expect(pipeline).toHaveFocus();
+  const overview = within(nav).getByRole("button", { name: en.viewNavigation.overview });
+  await user.click(overview);
+  expect(overview).toHaveFocus();
+});

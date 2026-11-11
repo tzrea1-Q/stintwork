@@ -73,6 +73,7 @@ export function TopBar({
         {(["overview", "pipeline"] as const).map((entry) => (
           <Button
             key={entry}
+            id={`${entry}-view-trigger`}
             size="sm"
             variant={view === entry ? "primary" : "ghost"}
             aria-current={view === entry ? "page" : undefined}
