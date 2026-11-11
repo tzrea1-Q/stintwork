@@ -6,7 +6,7 @@ import {
   indexProject,
   planSetup,
 } from "@stintwork/core";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
@@ -1024,4 +1024,56 @@ test("empty stages remain named, counted and focusable", () => {
   expect(column).toHaveClass("min-w-14");
   expect(column).toHaveAttribute("tabindex", "0");
   expect(within(column).getByText("0")).toBeInTheDocument();
+});
+
+test.each([true, false])("board shortcuts while detail is open (docked=%s)", async (docked) => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: docked,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  render(
+    <Board
+      snapshot={project({
+        ".scratch/alpha/notes.md": "Question",
+        ".scratch/beta/notes.md": "Question",
+      })}
+    />,
+  );
+  const alpha = screen.getByRole("button", { name: "Open alpha: Alpha" });
+  const beta = screen.getByRole("button", { name: "Open beta: Beta" });
+  await user.click(alpha);
+  if (docked) {
+    await user.keyboard("c");
+    expect(screen.queryByRole("dialog", { name: /create work item/i })).not.toBeInTheDocument();
+    alpha.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(beta).toHaveFocus();
+    await user.keyboard("c");
+    expect(screen.getByRole("dialog", { name: /create work item/i })).toBeInTheDocument();
+  } else {
+    fireEvent.keyDown(alpha, { key: "ArrowDown" });
+    fireEvent.keyDown(alpha, { key: "c" });
+    expect(beta).not.toHaveFocus();
+    expect(screen.queryByRole("dialog", { name: /create work item/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Alpha" })).toBeInTheDocument();
+  }
+  vi.unstubAllGlobals();
+});
+
+test("overview hides the pipeline wrapper and its docked detail", async () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  const { container } = render(<Board snapshot={project()} />);
+  await user.click(screen.getByRole("button", { name: "Open board: The live board" }));
+  expect(screen.getByRole("complementary", { name: "The live board" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /^Overview$/ }));
+  expect(screen.queryByRole("complementary", { name: "The live board" })).not.toBeInTheDocument();
+  expect(container.querySelector(".pipeline-main")?.parentElement).not.toBeVisible();
+  vi.unstubAllGlobals();
 });

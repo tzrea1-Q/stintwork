@@ -429,8 +429,6 @@ test("wide screens dock the detail, focus its close button and restore the opene
   const panel = screen.getByRole("complementary", { name: "First" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(within(panel).getByRole("button", { name: "Close work item" })).toHaveFocus();
-  await user.keyboard("{Escape}"); // Dismiss the close button tooltip first.
-  expect(panel).toBeInTheDocument();
   await user.keyboard("{Escape}");
   await waitFor(() => expect(trigger).toHaveFocus());
   expect(screen.queryByRole("complementary", { name: "First" })).not.toBeInTheDocument();

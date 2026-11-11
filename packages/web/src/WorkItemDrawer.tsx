@@ -150,6 +150,7 @@ export function WorkItemDrawer({
   }, [githubNumber, githubRetryAt, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const autoFocusing = useRef(false);
   const panel = useRef<HTMLElement>(null);
   const [docked, setDocked] = useState(
     () =>
@@ -166,7 +167,9 @@ export function WorkItemDrawer({
     if (!docked) return;
     const previous = document.activeElement;
     opener.current = previous instanceof HTMLElement ? previous : null;
+    autoFocusing.current = true;
     closeButton.current?.focus();
+    autoFocusing.current = false;
     return () => {
       if (
         (document.activeElement === document.body ||
@@ -211,12 +214,30 @@ export function WorkItemDrawer({
   const canStart = !githubReadOnly && !item.activeStint && !item.merged;
   const stageAvailable =
     showStageAction && canStart && briefAvailability(item, null, workflows) === null;
-  const nextTicket =
+  const candidateTicket =
     !showStageAction && canStart
       ? item.tickets.find((ticket) => briefAvailability(item, ticket, workflows) === null)
       : undefined;
+  const selectedTicket = useRef<{ slug: string; stage: string | undefined; number: number }>();
+  useEffect(() => {
+    if (!item.activeStint)
+      selectedTicket.current = candidateTicket
+        ? { slug: item.slug, stage: item.stage, number: candidateTicket.number }
+        : undefined;
+  }, [candidateTicket, item.activeStint, item.slug, item.stage]);
+  const nextTicket =
+    candidateTicket ??
+    (item.activeStint &&
+    selectedTicket.current?.slug === item.slug &&
+    selectedTicket.current.stage === item.stage
+      ? item.tickets.find((ticket) => ticket.number === selectedTicket.current?.number)
+      : undefined);
   const reviewPrimary =
-    !!item.worktreePath && !item.merged && !githubReadOnly && !stageAvailable && !nextTicket;
+    !!item.worktreePath &&
+    !item.merged &&
+    !githubReadOnly &&
+    !stageAvailable &&
+    !(canStart && nextTicket);
 
   const content = (
     <>
@@ -240,7 +261,7 @@ export function WorkItemDrawer({
               <TooltipTrigger
                 asChild
                 onFocus={(event) => {
-                  if (!opener.current) event.preventDefault();
+                  if (autoFocusing.current || !opener.current) event.preventDefault();
                 }}
               >
                 <Button
@@ -283,117 +304,117 @@ export function WorkItemDrawer({
           )}
         </p>
       </header>
-      {refreshing && (
-        <p role="status" className="px-4 text-sm text-muted-foreground sm:px-7">
-          {t.board.githubStatus.pending}
-        </p>
-      )}
-      {refreshError && (
-        <div className="px-4 text-sm text-attention-foreground sm:px-7">
-          <p role="alert">{refreshError}</p>
-          <Button variant="secondary" onClick={() => setRefreshAttempt((count) => count + 1)}>
-            {t.board.githubStatus.retry}
-          </Button>
-        </div>
-      )}
-      <PropertyList className="relative max-h-40 shrink-0 overflow-auto px-4 sm:px-7 [&_dd]:overflow-visible [&_dd]:whitespace-normal">
-        {stage && (
-          <PropertyRow
-            icon={LayoutGrid}
-            label={t.detailPanel.stage}
-            value={stageName(workflow, stage, t)}
-          />
+      <div className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 py-6 sm:px-7 [&_section+section]:mt-8 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-6">
+        {refreshing && (
+          <p role="status" className="px-4 text-sm text-muted-foreground sm:px-7">
+            {t.board.githubStatus.pending}
+          </p>
         )}
-        {item.worktreePath && (
-          <PropertyRow
-            icon={FolderGit2}
-            label={t.stints.worktreeFiles}
-            value={<FilePath path={item.worktreePath} />}
-          />
+        {refreshError && (
+          <div className="px-4 text-sm text-attention-foreground sm:px-7">
+            <p role="alert">{refreshError}</p>
+            <Button variant="secondary" onClick={() => setRefreshAttempt((count) => count + 1)}>
+              {t.board.githubStatus.retry}
+            </Button>
+          </div>
         )}
-        {item.pullRequest && (
-          <>
+        <PropertyList className="relative max-h-40 shrink-0 overflow-auto px-4 sm:px-7 [&_dd]:overflow-visible [&_dd]:whitespace-normal">
+          {stage && (
             <PropertyRow
-              icon={GitBranch}
-              label={t.detailPanel.branch}
-              value={
-                <span className="block truncate" data-truncate title={item.pullRequest.branch}>
-                  {item.pullRequest.branch}
-                </span>
-              }
-              fullText={item.pullRequest.branch}
+              icon={LayoutGrid}
+              label={t.detailPanel.stage}
+              value={stageName(workflow, stage, t)}
             />
+          )}
+          {item.worktreePath && (
             <PropertyRow
-              icon={GitPullRequest}
-              label={t.detailPanel.pullRequest}
-              value={
-                <a
-                  className="block truncate"
-                  data-truncate
-                  title={item.pullRequest.url}
-                  href={item.pullRequest.url}
-                >
-                  {item.pullRequest.url}
-                </a>
-              }
-              fullText={item.pullRequest.url}
+              icon={FolderGit2}
+              label={t.stints.worktreeFiles}
+              value={<FilePath path={item.worktreePath} />}
             />
-          </>
-        )}
-        {item.pullRequestChecks && (
-          <PropertyRow
-            icon={CheckCircle2}
-            label={t.stints.checks}
-            value={`${item.pullRequestChecks.checks.filter((check) => check.bucket === "pass").length}/${item.pullRequestChecks.checks.length} ${t.review.visualRefresh07.passing}`}
-          />
-        )}
-        {item.stage && !item.merged && (
-          <StageAgentRail key={item.slug} item={item} workflows={workflows} />
-        )}
-      </PropertyList>
-      <div className="px-4 sm:px-7">
-        <StatusChip
-          status={
-            item.activeStint?.status === "running"
-              ? "running"
+          )}
+          {item.pullRequest && (
+            <>
+              <PropertyRow
+                icon={GitBranch}
+                label={t.detailPanel.branch}
+                value={
+                  <span className="block truncate" data-truncate title={item.pullRequest.branch}>
+                    {item.pullRequest.branch}
+                  </span>
+                }
+                fullText={item.pullRequest.branch}
+              />
+              <PropertyRow
+                icon={GitPullRequest}
+                label={t.detailPanel.pullRequest}
+                value={
+                  <a
+                    className="block truncate"
+                    data-truncate
+                    title={item.pullRequest.url}
+                    href={item.pullRequest.url}
+                  >
+                    {item.pullRequest.url}
+                  </a>
+                }
+                fullText={item.pullRequest.url}
+              />
+            </>
+          )}
+          {item.pullRequestChecks && (
+            <PropertyRow
+              icon={CheckCircle2}
+              label={t.stints.checks}
+              value={`${item.pullRequestChecks.checks.filter((check) => check.bucket === "pass").length}/${item.pullRequestChecks.checks.length} ${t.review.visualRefresh07.passing}`}
+            />
+          )}
+          {item.stage && !item.merged && (
+            <StageAgentRail key={item.slug} item={item} workflows={workflows} />
+          )}
+        </PropertyList>
+        <div className="px-4 sm:px-7">
+          <StatusChip
+            status={
+              item.activeStint?.status === "running"
+                ? "running"
+                : attentionCount
+                  ? "attention"
+                  : blocked
+                    ? "blocked"
+                    : item.merged
+                      ? "success"
+                      : "stopped"
+            }
+          >
+            {item.activeStint?.status === "running"
+              ? (recoveryStatus(item.activeStint, t) ?? t.card.running)
               : attentionCount
-                ? "attention"
+                ? t.card.needsYou(attentionCount)
                 : blocked
-                  ? "blocked"
+                  ? t.card.blocked
                   : item.merged
-                    ? "success"
-                    : "stopped"
-          }
+                    ? t.card.shipped
+                    : t.pipelineBoard.idle}
+          </StatusChip>
+        </div>
+        {!item.stage && !item.merged ? (
+          <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
+            {t.stints.noStage}
+          </p>
+        ) : null}
+        <nav
+          className="drawer-sections flex shrink-0 gap-6 border-b border-border px-4 py-3 text-xs sm:px-7 [&_a:hover]:text-accent-foreground"
+          aria-label={t.stints.sections}
         >
-          {item.activeStint?.status === "running"
-            ? (recoveryStatus(item.activeStint, t) ?? t.card.running)
-            : attentionCount
-              ? t.card.needsYou(attentionCount)
-              : blocked
-                ? t.card.blocked
-                : item.merged
-                  ? t.card.shipped
-                  : t.pipelineBoard.idle}
-        </StatusChip>
-      </div>
-      {!item.stage && !item.merged ? (
-        <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
-          {t.stints.noStage}
-        </p>
-      ) : null}
-      <nav
-        className="drawer-sections flex shrink-0 gap-6 border-b border-border px-4 py-3 text-xs sm:px-7 [&_a:hover]:text-accent-foreground"
-        aria-label={t.stints.sections}
-      >
-        <a href="#drawer-spec">{t.stints.spec}</a>
-        <a href="#drawer-tickets">
-          {t.stints.tickets}{" "}
-          <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
-            {item.tickets.length}
-          </span>
-        </a>
-      </nav>
-      <div className="drawer-content min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 py-6 sm:px-7 [&_section+section]:mt-8 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-6">
+          <a href="#drawer-spec">{t.stints.spec}</a>
+          <a href="#drawer-tickets">
+            {t.stints.tickets}{" "}
+            <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
+              {item.tickets.length}
+            </span>
+          </a>
+        </nav>
         {item.activeStint && (
           <section aria-labelledby="drawer-live-stint-title">
             <h3
@@ -574,7 +595,13 @@ export function WorkItemDrawer({
           </section>
         )}
         {nextTicket && (
-          <div className="footer-primary [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground">
+          <div
+            className={
+              canStart
+                ? "footer-primary [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
+                : "[&_.brief-action]:mb-0"
+            }
+          >
             <span>
               {ticketNumber(nextTicket.number)} · {nextTicket.title}
             </span>
@@ -620,7 +647,7 @@ export function WorkItemDrawer({
         <aside
           ref={panel}
           aria-label={item.title}
-          className="work-item-drawer relative flex min-h-0 w-[clamp(320px,30vw,440px)] shrink-0 flex-col overflow-hidden rounded-2xl bg-card shadow-card"
+          className="work-item-drawer relative flex min-h-0 w-[clamp(320px,30vw,440px)] shrink-0 flex-col rounded-2xl bg-card shadow-card"
           onKeyDown={(event) => {
             if (
               event.key === "Escape" &&
@@ -651,7 +678,9 @@ export function WorkItemDrawer({
             onOpenAutoFocus={(event) => {
               event.preventDefault();
               const previous = document.activeElement;
+              autoFocusing.current = true;
               closeButton.current?.focus();
+              autoFocusing.current = false;
               opener.current = previous instanceof HTMLElement ? previous : null;
             }}
             onCloseAutoFocus={(event) => {
