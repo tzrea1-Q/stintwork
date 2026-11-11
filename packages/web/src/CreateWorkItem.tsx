@@ -31,6 +31,7 @@ export function CreateWorkItem({
   const [intent, setIntent] = useState("");
   const [preview, setPreview] = useState<{ input: string; slug: string } | null>(null);
   const [error, setError] = useErrorText();
+  const [errorField, setErrorField] = useState<"title" | "slug" | "form">("form");
   const [saving, setSaving] = useState(false);
   let derivedSlug = "";
   try {
@@ -53,6 +54,7 @@ export function CreateWorkItem({
 
   useEffect(() => {
     setPreview(null);
+    setErrorField("slug");
     setError("");
     if (!JSON.parse(input).title.trim() || (editedSlug !== null && !validSlug)) return;
     const controller = new AbortController();
@@ -71,7 +73,17 @@ export function CreateWorkItem({
           throw new Error(en.planning.create.errors.invalidPreview);
         if (!disposed) setPreview({ input, slug: result.slug });
       } catch (cause) {
-        if (!disposed) setError(cause instanceof Error ? cause : en.planning.create.errors.preview);
+        if (!disposed) {
+          const message = cause instanceof Error ? cause.message : "";
+          setErrorField(
+            message === "Title must produce a valid ASCII work item slug."
+              ? "title"
+              : /Work item .+ already exists/.test(message)
+                ? "slug"
+                : "form",
+          );
+          setError(cause instanceof Error ? cause : en.planning.create.errors.preview);
+        }
       }
     }, 150);
     return () => {
@@ -84,6 +96,7 @@ export function CreateWorkItem({
   async function create() {
     if (saving || !slug) return;
     setSaving(true);
+    setErrorField("form");
     setError("");
     try {
       const response = await fetch("/api/work-items", {
@@ -96,6 +109,14 @@ export function CreateWorkItem({
       toast.success(t.actionToast.created);
       onCreated();
     } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "";
+      setErrorField(
+        message === "Title must produce a valid ASCII work item slug."
+          ? "title"
+          : /Work item .+ already exists/.test(message)
+            ? "slug"
+            : "form",
+      );
       toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.create.errors.save);
       setSaving(false);
@@ -131,6 +152,17 @@ export function CreateWorkItem({
               {t.planning.create.titleLabel}
               <input required value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
+            {error && errorField === "title" && (
+              <p role="alert" className="warning text-attention-foreground">
+                {Object.entries(en.planning.create.errors).reduce(
+                  (message, [key, original]) =>
+                    message === original
+                      ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
+                      : message,
+                  error,
+                )}
+              </p>
+            )}
             <label>
               {t.slugInput.label}
               <input
@@ -141,6 +173,22 @@ export function CreateWorkItem({
                 onChange={(event) => setEditedSlug(event.target.value)}
               />
             </label>
+            {error && errorField === "slug" && (
+              <p role="alert" className="warning text-attention-foreground">
+                {Object.entries(en.planning.create.errors).reduce(
+                  (message, [key, original]) =>
+                    message === original
+                      ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
+                      : message,
+                  error,
+                )}
+              </p>
+            )}
+            {!validSlug && title.trim() && editedSlug !== null && (
+              <p role="status" className="text-attention-foreground">
+                {t.slugInput.invalid}
+              </p>
+            )}
             {!derivedSlug && (
               <p id={slugHintId} className="muted text-muted-foreground">
                 {t.slugInput.hint}
@@ -201,9 +249,7 @@ export function CreateWorkItem({
                   ))}
                 </>
               ) : !validSlug && title.trim() ? (
-                editedSlug ? (
-                  t.slugInput.invalid
-                ) : (
+                editedSlug ? null : (
                   t.planning.create.unavailable
                 )
               ) : error ? (
@@ -214,7 +260,7 @@ export function CreateWorkItem({
                 t.planning.create.enterTitle
               )}
             </div>
-            {error && (
+            {error && errorField === "form" && (
               <p role="alert" className="warning text-attention-foreground">
                 {Object.entries(en.planning.create.errors).reduce(
                   (message, [key, original]) =>

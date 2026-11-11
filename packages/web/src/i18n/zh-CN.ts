@@ -529,6 +529,16 @@ export const zhCN: Catalog = {
         rejected: "已拒绝",
       },
     },
+    visualRefresh07: {
+      of: "/",
+      passing: "项通过",
+      recovery: "恢复",
+      permission: "权限请求",
+      agent: "代理",
+      stint: "工作段",
+      path: "路径",
+      status: "状态",
+    },
     checks: {
       duration: (milliseconds: number) => joinChinese(milliseconds, "毫秒"),
       readError: "无法读取检查。",

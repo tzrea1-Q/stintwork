@@ -661,6 +661,14 @@ for (const language of ["en", "zh-CN"] as const) {
             await capture(page, dialog, testInfo, "review-findings-pane");
           }
           const checks = dialog.getByRole("region", { name: t.review.diff.checks, exact: true });
+          await expect(
+            checks.getByRole("progressbar", {
+              name: `0 ${t.review.visualRefresh07.of} 1 ${t.review.visualRefresh07.passing}`,
+            }),
+          ).toHaveAttribute("aria-valuenow", "0");
+          await expect(
+            checks.getByRole("img", { name: t.review.checks.statuses.failed }),
+          ).toBeVisible();
           const output = checks.locator("pre");
           await output.scrollIntoViewIfNeeded();
           await expect(output).toHaveCSS("white-space", "pre");

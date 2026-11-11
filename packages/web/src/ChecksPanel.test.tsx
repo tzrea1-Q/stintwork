@@ -173,3 +173,17 @@ test("action failures are visible and leave retry enabled", async () => {
   expect(await screen.findByRole("alert")).toHaveTextContent("Commit worktree changes first");
   expect(screen.getByRole("button", { name: "Run checks" })).toBeEnabled();
 });
+
+test("summarizes passing checks and keeps failed output available", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(reply(evidence([result, { ...result, name: "Lint", status: "failed" }]))),
+  );
+  render(<ChecksPanel item={{ slug: "first" }} />);
+  const progress = await screen.findByRole("progressbar", { name: "1 of 2 passing" });
+  expect(progress).toHaveAttribute("aria-valuenow", "1");
+  expect(screen.getByRole("img", { name: "failed" })).toBeInTheDocument();
+  expect(screen.getByRole("log", { name: "Output: Lint" })).toHaveTextContent("proof");
+});

@@ -83,6 +83,15 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
             : t.needsYou.waitingPermission}
         </p>
       )}
+      <p className="font-medium">{t.review.visualRefresh07.permission}</p>
+      <p className="text-muted-foreground">
+        {profile && (
+          <>
+            {t.review.visualRefresh07.agent}: {profile.displayName} ·{" "}
+          </>
+        )}
+        {t.review.visualRefresh07.stint}: <code>{stintId}</code>
+      </p>
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
         <p className="warning text-attention-foreground">

@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { coreText, type StintSummary } from "@stintwork/core";
+import { FileText, Info, RotateCcw } from "lucide-react";
 import type { Catalog } from "./i18n/en";
 import { renderCoreText, translateCoreText, useLanguage } from "./i18n/language";
 import { Badge } from "./ui/Badge";
+import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Disclosure } from "./ui/Disclosure";
+import { IconChip } from "./ui/IconChip";
+import { PropertyList, PropertyRow } from "./ui/PropertyRow";
 
 // Older logs carry plain reasons; match only Stintwork's known copy, never agent text.
 function recoveryReason(reason: string, t: Catalog) {
@@ -35,83 +39,98 @@ export function StintRecovery({ stint }: { stint: StintSummary }) {
   const fallback = recovery.state === "fallback" && stint.status !== "running";
   const reason = recovery.reason ? recoveryReason(recovery.reason, t) : "";
   return (
-    <div className="stint-recovery my-3 grid min-w-0 gap-3 rounded-md border border-border bg-muted p-3 text-sm [overflow-wrap:anywhere]">
-      {fallback ? (
-        <p role="status" className="text-attention-foreground">
-          {stint.checkpointCommit
-            ? t.stints.recovery.saved(stint.checkpointCommit)
-            : !stint.error?.includes("Checkpoint failed:")
-              ? t.stints.recovery.unchanged
-              : path
-                ? t.stints.recovery.checkpointFailed(
-                    path,
-                    renderCoreText(stint.errorMessage, stint.error ?? reason, t),
-                  )
-                : t.stints.recovery.checkpointFailedUnknown(
-                    renderCoreText(stint.errorMessage, stint.error ?? reason, t),
-                  )}
-        </p>
-      ) : recoveryStatus(stint, t) ? (
-        <div>
-          <Badge variant={recovery.state === "resumed" ? "success" : "accent"}>
-            {recoveryStatus(stint, t)}
-          </Badge>
-        </div>
-      ) : null}
-      <Disclosure label={t.stints.recovery.details}>
-        <dl className="mt-2 space-y-3 px-2 pb-2 [&_dt]:font-medium [&_dd]:mt-1 [&_dd]:whitespace-pre-wrap">
-          {reason && (
-            <div>
-              <dt>{t.stints.recovery.reason}</dt>
-              <dd>{reason}</dd>
-            </div>
-          )}
-          {stint.error && stint.error !== `Could not resume stint: ${recovery.reason}` && (
-            <div>
-              <dt>{t.stints.recovery.diagnostic}</dt>
-              <dd>{renderCoreText(stint.errorMessage, stint.error, t)}</dd>
-            </div>
-          )}
-          {path && (
-            <div>
-              <dt>{t.stints.recovery.worktree}</dt>
-              <dd>{path}</dd>
-            </div>
-          )}
-          {launch && (
-            <>
-              <div>
-                <dt>{t.stints.recovery.recordedSource}</dt>
-                <dd>{translateCoreText(coreText({ code: `agent.source.${launch.source}` }), t)}</dd>
-              </div>
-              <div>
-                <dt>{t.stints.recovery.selectionReason}</dt>
-                <dd>{translateCoreText(coreText({ code: `agent.reason.${launch.reason}` }), t)}</dd>
-              </div>
-              <div>
-                <dt>{t.stints.preparation.executable}</dt>
-                <dd>
-                  <code>{launch.executable.path}</code>
-                </dd>
-              </div>
-              <div>
-                <dt>{t.stints.preparation.version}</dt>
-                <dd>{launch.executable.version}</dd>
-              </div>
-              <div>
-                <dt>{t.stints.preparation.adapterVersion}</dt>
-                <dd>{launch.adapterVersion}</dd>
-              </div>
-              <div>
-                <dt>{t.stints.recovery.adapter}</dt>
-                <dd>
-                  <code>{launch.adapterEntry}</code>
-                </dd>
-              </div>
-            </>
-          )}
-        </dl>
-      </Disclosure>
-    </div>
+    <Card className="stint-recovery my-3 min-w-0 [overflow-wrap:anywhere]">
+      <CardHeader className="flex flex-row items-center gap-3">
+        <IconChip icon={RotateCcw} tone="attention" />
+        <strong>{t.review.visualRefresh07.recovery}</strong>
+      </CardHeader>
+      <CardContent>
+        {fallback ? (
+          <p role="status" className="text-attention-foreground">
+            {stint.checkpointCommit
+              ? t.stints.recovery.saved(stint.checkpointCommit)
+              : !stint.error?.includes("Checkpoint failed:")
+                ? t.stints.recovery.unchanged
+                : path
+                  ? t.stints.recovery.checkpointFailed(
+                      path,
+                      renderCoreText(stint.errorMessage, stint.error ?? reason, t),
+                    )
+                  : t.stints.recovery.checkpointFailedUnknown(
+                      renderCoreText(stint.errorMessage, stint.error ?? reason, t),
+                    )}
+          </p>
+        ) : recoveryStatus(stint, t) ? (
+          <div>
+            <Badge variant={recovery.state === "resumed" ? "success" : "accent"}>
+              {recoveryStatus(stint, t)}
+            </Badge>
+          </div>
+        ) : null}
+        <Disclosure label={t.stints.recovery.details}>
+          <PropertyList className="mt-2 px-2 pb-2">
+            {reason && (
+              <PropertyRow
+                icon={Info}
+                label={t.stints.recovery.reason}
+                value={<span className="whitespace-pre-wrap">{reason}</span>}
+              />
+            )}
+            {stint.error && stint.error !== `Could not resume stint: ${recovery.reason}` && (
+              <PropertyRow
+                icon={Info}
+                label={t.stints.recovery.diagnostic}
+                value={
+                  <span className="whitespace-pre-wrap">
+                    {renderCoreText(stint.errorMessage, stint.error, t)}
+                  </span>
+                }
+              />
+            )}
+            {path && (
+              <PropertyRow
+                icon={FileText}
+                label={t.stints.recovery.worktree}
+                value={<code>{path}</code>}
+              />
+            )}
+            {launch && (
+              <>
+                <PropertyRow
+                  icon={Info}
+                  label={t.stints.recovery.recordedSource}
+                  value={translateCoreText(coreText({ code: `agent.source.${launch.source}` }), t)}
+                />
+                <PropertyRow
+                  icon={Info}
+                  label={t.stints.recovery.selectionReason}
+                  value={translateCoreText(coreText({ code: `agent.reason.${launch.reason}` }), t)}
+                />
+                <PropertyRow
+                  icon={FileText}
+                  label={t.stints.preparation.executable}
+                  value={<code>{launch.executable.path}</code>}
+                />
+                <PropertyRow
+                  icon={Info}
+                  label={t.stints.preparation.version}
+                  value={launch.executable.version}
+                />
+                <PropertyRow
+                  icon={Info}
+                  label={t.stints.preparation.adapterVersion}
+                  value={launch.adapterVersion}
+                />
+                <PropertyRow
+                  icon={FileText}
+                  label={t.stints.recovery.adapter}
+                  value={<code>{launch.adapterEntry}</code>}
+                />
+              </>
+            )}
+          </PropertyList>
+        </Disclosure>
+      </CardContent>
+    </Card>
   );
 }

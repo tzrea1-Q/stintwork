@@ -730,3 +730,17 @@ test("stale previews cannot enable confirmation for a newer title", async () => 
   expect(await dialog.findByText(".scratch/new/")).toBeInTheDocument();
   expect(dialog.getByRole("button", { name: "Create work item" })).toBeEnabled();
 });
+
+test("places a preview refusal immediately after the folder field", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(response({ reason: "Work item idea already exists." }, 409)),
+  );
+  render(<CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Idea" } });
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent("Work item idea already exists.");
+  expect(
+    screen.getByRole("textbox", { name: "Folder name" }).closest("label")?.nextElementSibling,
+  ).toBe(error);
+});

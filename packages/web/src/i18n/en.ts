@@ -521,6 +521,16 @@ export const en = {
         rejected: "rejected",
       },
     },
+    visualRefresh07: {
+      of: "of",
+      passing: "passing",
+      recovery: "Recovery",
+      permission: "Permission request",
+      agent: "Agent",
+      stint: "Stint",
+      path: "Path",
+      status: "Status",
+    },
     checks: {
       duration: (milliseconds: number) => `${milliseconds} ms`,
       readError: "Could not read checks.",

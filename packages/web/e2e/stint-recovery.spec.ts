@@ -145,7 +145,9 @@ for (const language of ["en", "zh-CN"] as const) {
         const details = live.getByText(t.stints.recovery.details, { exact: true });
         await details.focus();
         await page.keyboard.press("Enter");
-        const disclosure = live.locator(".stint-stream > .stint-recovery > details");
+        const disclosure = live.locator(
+          '.stint-stream > .stint-recovery > [data-slot="card-content"] > details',
+        );
         await expect(
           disclosure,
           "Recovery details must be an open disclosure inside the active stint stream",
