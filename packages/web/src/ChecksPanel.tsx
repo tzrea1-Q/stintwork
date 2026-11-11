@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import {
-  evidenceStale,
   type CheckExecution,
+  evidenceStale,
   type ProjectSnapshot,
   type WorkItemChecks,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
-
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
 
 type ChecksItem = Pick<
   ProjectSnapshot["workItems"][number],
@@ -102,7 +102,7 @@ export function ChecksPanel({
   return (
     <div className="checks-panel">
       <PullRequestChecksPanel item={item} paused={shipPaused} />
-      <p className="muted text-muted">
+      <p className="muted text-muted-foreground">
         {item.merged ? t.review.checks.shippedEvidence : t.review.checks.commandsExplanation}
       </p>
       {!item.merged && (
@@ -129,18 +129,18 @@ export function ChecksPanel({
         </div>
       )}
       {error && (
-        <p role="alert" className="warning text-warning">
+        <p role="alert" className="warning text-attention-foreground">
           {error}
         </p>
       )}
       {!data && !error && !item.merged && (
-        <p className="muted text-muted">{t.review.checks.reading}</p>
+        <p className="muted text-muted-foreground">{t.review.checks.reading}</p>
       )}
       {data && !data.commands.length && (
-        <p className="muted text-muted">{t.review.checks.notConfigured}</p>
+        <p className="muted text-muted-foreground">{t.review.checks.notConfigured}</p>
       )}
       {data && !results.length && data.commands.length > 0 && (
-        <p className="muted text-muted">{t.review.checks.noEvidence}</p>
+        <p className="muted text-muted-foreground">{t.review.checks.noEvidence}</p>
       )}
       <ul
         className="check-results list-none p-0 [&>li]:border-t [&>li]:border-border [&>li]:py-3 [&_code]:[overflow-wrap:anywhere] [&_pre]:max-h-60"
@@ -164,7 +164,9 @@ export function ChecksPanel({
                 {t.review.checks.statuses[result.status]}
               </Badge>
               {evidenceStale(evidence, result.commit) && (
-                <strong className="warning text-warning">{t.review.checks.stale}</strong>
+                <strong className="warning text-attention-foreground">
+                  {t.review.checks.stale}
+                </strong>
               )}
             </p>
             <p>

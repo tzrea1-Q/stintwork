@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
-import { StintRecovery } from "./StintRecovery";
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
+
+import type { Stint, StintSummary } from "@stintwork/core";
+import { useEffect, useId, useState } from "react";
+import { HandoffCard } from "./HandoffCard";
 import {
-  readResponseJson,
   CoreTextError,
+  readResponseJson,
   renderCoreText,
   useErrorText,
   useLanguage,
 } from "./i18n/language";
-import type { Stint, StintSummary } from "@stintwork/core";
-import { useEffect, useId, useState } from "react";
-import { HandoffCard } from "./HandoffCard";
+import { StintRecovery } from "./StintRecovery";
 import { StintStream } from "./StintStream";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
 
 function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boolean }) {
   const { t, language } = useLanguage();
@@ -79,7 +80,7 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
           {t.stints.statuses[recorded.status]}
         </Badge>
       </p>
-      <p className="muted text-muted">
+      <p className="muted text-muted-foreground">
         {t.stints.started}{" "}
         <time dateTime={recorded.startedAt}>
           {language === "en" ? recorded.startedAt : date.format(new Date(recorded.startedAt))}
@@ -96,7 +97,7 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
       </p>
       {!(open && replay) && <StintRecovery stint={stint} />}
       {recorded.error && recorded.recovery?.state !== "fallback" && (
-        <p className="warning text-warning" role="alert">
+        <p className="warning text-attention-foreground" role="alert">
           {renderCoreText(recorded.errorMessage, recorded.error, t)}
         </p>
       )}
@@ -114,7 +115,7 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
             : t.stints.openStint(stint.id)}
       </Button>
       {error && (
-        <p className="warning text-warning" role="alert">
+        <p className="warning text-attention-foreground" role="alert">
           {error}
         </p>
       )}
@@ -124,7 +125,7 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
       {recorded.status !== "running" ? (
         <HandoffCard stint={recorded} />
       ) : (
-        <p className="muted text-muted">{t.stints.noCheckpoint}</p>
+        <p className="muted text-muted-foreground">{t.stints.noCheckpoint}</p>
       )}
     </li>
   );
@@ -145,6 +146,6 @@ export function StintHistory({
       ))}
     </ol>
   ) : (
-    <p className="muted text-muted">{t.stints.noStints}</p>
+    <p className="muted text-muted-foreground">{t.stints.noStints}</p>
   );
 }

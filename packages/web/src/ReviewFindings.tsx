@@ -1,19 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
+
 import {
+  type EvidenceContext,
   evidenceStale,
   latestReviewStint,
-  type EvidenceContext,
   type ReviewDecision,
   type ReviewFinding,
   type ReviewFindings,
   type StintSummary,
 } from "@stintwork/core";
-import { SelectField } from "./ui/SelectField";
 import { useId, useState } from "react";
 import { useLanguage } from "./i18n/language";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
+import { SelectField } from "./ui/SelectField";
 
 export type DisplayFinding = ReviewFinding & {
   commit: string;
@@ -112,14 +113,14 @@ export function FindingCard({
           {finding.reason}
         </p>
       )}
-      <p className="muted text-muted">
+      <p className="muted text-muted-foreground">
         {t.review.findings.reviewedCommit}
         <code>{finding.commit}</code>
         {finding.stale && t.review.findings.stale}
         {finding.historical && t.review.findings.history}
       </p>
       {onDecision && !finding.historical && (
-        <div className="review-finding-actions flex flex-wrap gap-2 [&_form]:grid [&_form]:w-full [&_form]:gap-2 [&_label]:grid [&_label]:w-full [&_label]:gap-2 [&_textarea]:min-h-20 [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-bg [&_textarea]:p-2">
+        <div className="review-finding-actions flex flex-wrap gap-2 [&_form]:grid [&_form]:w-full [&_form]:gap-2 [&_label]:grid [&_label]:w-full [&_label]:gap-2 [&_textarea]:min-h-20 [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-background [&_textarea]:p-2">
           {finding.status !== "resolved" && (
             <Button
               type="button"
@@ -247,7 +248,7 @@ export function FindingsRail({
           />
         </label>
       </div>
-      {!reports.length && <p className="muted text-muted">{t.review.findings.empty}</p>}
+      {!reports.length && <p className="muted text-muted-foreground">{t.review.findings.empty}</p>}
       {reports.map((report) =>
         report.error || report.findings?.length === 0 ? (
           <div
@@ -280,7 +281,7 @@ export function FindingsRail({
         ) : null,
       )}
       {!!findings.length && !filtered.length && <p role="status">{t.review.findings.noMatches}</p>}
-      <ul className="review-findings-rail m-0 list-none p-0 [&_li]:border-b [&_li]:border-border [&_li]:py-3 [&_li]:[overflow-wrap:anywhere] [&_a]:text-text">
+      <ul className="review-findings-rail m-0 list-none p-0 [&_li]:border-b [&_li]:border-border [&_li]:py-3 [&_li]:[overflow-wrap:anywhere] [&_a]:text-foreground">
         {filtered.map((finding) => (
           <li key={finding.id}>
             <a href={`#${anchor(finding)}`} onClick={onSelectFinding}>
@@ -310,7 +311,7 @@ export function FindingsRail({
               {t.review.findings.reviewedCommit}
               <code>{finding.commit}</code>
               {finding.stale && (
-                <span className="warning text-warning">{t.review.findings.stale}</span>
+                <span className="warning text-attention-foreground">{t.review.findings.stale}</span>
               )}
               {finding.historical && t.review.findings.history}
             </p>

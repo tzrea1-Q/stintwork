@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
+
+import { type AttentionItem, deriveAttentionItems } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi, beforeEach, describe } from "vitest";
-import { Board } from "./Board";
-import { deriveAttentionItems, type AttentionItem } from "@stintwork/core";
-
-import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   attentionOptions,
   attentionProfile,
   attentionSnapshot,
-  mixedAttentionSnapshot,
   loginAttentionProfile,
+  mixedAttentionSnapshot,
 } from "./attention-test-fixtures";
+import { Board } from "./Board";
 import { en } from "./i18n/en";
+import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
 
 afterEach(() => {

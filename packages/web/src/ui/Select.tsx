@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import * as Primitive from "@radix-ui/react-select";
+
 import { Check, ChevronDown } from "lucide-react";
-import { forwardRef, useState, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { Select as Primitive } from "radix-ui";
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "./Button";
 import { cn } from "./cn";
@@ -65,7 +66,7 @@ export const SelectContent = forwardRef<
         collisionPadding={17}
         avoidCollisions
         className={cn(
-          "z-50 w-[max(280px,var(--radix-select-trigger-width))] min-w-0 max-w-[calc(100vw-34px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
+          "z-50 w-[max(280px,var(--radix-select-trigger-width))] min-w-0 max-w-[calc(100vw-34px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-xl border border-border bg-card p-1 text-sm text-foreground shadow-overlay",
           className,
         )}
       >
@@ -86,7 +87,7 @@ export const SelectItem = forwardRef<
       {...props}
       ref={ref}
       className={cn(
-        "relative flex cursor-default items-center rounded-sm py-1 pl-7 pr-2 [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-surface-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-truncate]]:min-w-0 [&>[data-truncate]]:flex-1 [&>[data-truncate]]:truncate",
+        "relative flex cursor-default items-center rounded-lg py-1 pl-7 pr-2 [overflow-wrap:anywhere] outline-none data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50 [&>[data-truncate]]:min-w-0 [&>[data-truncate]]:flex-1 [&>[data-truncate]]:truncate",
         className,
       )}
     >

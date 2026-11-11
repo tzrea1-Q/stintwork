@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readResponseJson, useLanguage } from "./i18n/language";
-import { en } from "./i18n/en";
+
 import {
   applyStintLogEntry,
-  parseWorkflowDefinition,
-  isStintLogEntry,
+  deriveAttentionItems,
+  isBriefHandoff,
+  isCheckExecution,
   isCheckpointWarnings,
+  isReviewFindings,
   isRiskyPaths,
   isStintEvent,
-  isBriefHandoff,
-  isReviewFindings,
-  summarizeStint,
-  deriveAttentionItems,
-  isCheckExecution,
+  isStintLogEntry,
   type ProjectSnapshot,
+  parseWorkflowDefinition,
   readCoreTextWire,
+  summarizeStint,
   type WorkflowStage,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
+import { en } from "./i18n/en";
+import { readResponseJson, useLanguage } from "./i18n/language";
 
 export type Connection = "connecting" | "live" | "reconnecting";
 

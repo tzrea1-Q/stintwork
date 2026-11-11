@@ -3,12 +3,12 @@ import { createMemoryRepoFiles, indexProject, type StintSummary } from "@stintwo
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { ShipActions } from "./ShipActions";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { ShipActions } from "./ShipActions";
 import { TopBar } from "./TopBar";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 function project() {
   return indexProject(

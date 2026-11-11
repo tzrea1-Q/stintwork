@@ -11,8 +11,8 @@ test("diff preview discloses unified removed and added lines with visible marker
   await user.click(screen.getByText("Preview diff"));
   const diff = screen.getByRole("region", { name: "Code block" });
   expect(diff).toHaveTextContent("@@ -1,1 +1,1 @@");
-  expect(within(diff).getByText("+Proposed 原文")).toHaveClass("text-success");
-  expect(within(diff).getByText("-Original 原文")).toHaveClass("text-danger");
+  expect(within(diff).getByText("+Proposed 原文")).toHaveClass("text-success-foreground");
+  expect(within(diff).getByText("-Original 原文")).toHaveClass("text-destructive");
   expect(diff).toHaveClass("overflow-auto", "max-h-64");
   diff.focus();
   expect(diff).toHaveFocus();

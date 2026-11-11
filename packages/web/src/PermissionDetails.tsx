@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
+
 import { useLanguage } from "./i18n/language";
+import { CodeBlock } from "./ui/CodeBlock";
 
 export function PermissionDetails({ details }: { details?: string }) {
   const { t } = useLanguage();

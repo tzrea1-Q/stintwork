@@ -1,39 +1,38 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
-import { Disclosure } from "./ui/Disclosure";
-import {
-  translateCoreText,
-  readResponseJson,
-  CoreTextError,
-  useErrorText,
-  useLanguage,
-} from "./i18n/language";
 
 import {
-  builtInWorkflows,
-  readCoreTextWire,
   type AgentPreparationProgress,
   type AgentProfile,
   agentUnavailable,
   type Brief,
   briefAvailability,
-  type Ticket,
+  builtInWorkflows,
   defaultPermissionLevel,
   isPermissionLevel,
-  permissionPolicy,
-  permissionLevels,
   type PermissionLevel,
+  permissionLevels,
+  permissionPolicy,
+  readCoreTextWire,
+  type Ticket,
   type WorkflowDefinitions,
 } from "@stintwork/core";
 import { Copy, LoaderCircle, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import type { BoardWorkItem } from "./WorkItemCard";
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
-import { SelectField } from "./ui/SelectField";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
-
+import {
+  CoreTextError,
+  readResponseJson,
+  translateCoreText,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
 import { stageName as translatedStageName } from "./i18n/workflow-names";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
+import { Disclosure } from "./ui/Disclosure";
+import { SelectField } from "./ui/SelectField";
+import type { BoardWorkItem } from "./WorkItemCard";
 
 export function TicketBriefPreview({
   item,
@@ -118,7 +117,7 @@ function StintBriefAction({
           : t.stints.startStint}
       </Button>
       {reason && (
-        <p id={reasonId} className="muted text-muted">
+        <p id={reasonId} className="muted text-muted-foreground">
           {reason}
         </p>
       )}
@@ -376,7 +375,7 @@ function BriefPreviewSheet({
               <X aria-hidden="true" /> {t.stints.closeBrief}
             </Button>
           </div>
-          <DialogDescription className="mt-3 break-words text-muted">
+          <DialogDescription className="mt-3 break-words text-muted-foreground">
             {slug} ·{" "}
             {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber, github)}
           </DialogDescription>
@@ -421,7 +420,7 @@ function BriefPreviewSheet({
                 ]}
               />
             </label>
-            <p id={agentAvailabilityId} className="muted text-muted">
+            <p id={agentAvailabilityId} className="muted text-muted-foreground">
               {brief
                 ? agents.length
                   ? (unavailable ?? t.stints.chooseAgent)
@@ -445,7 +444,7 @@ function BriefPreviewSheet({
                     : preparation?.phase;
                 const activePreparation = starting && !cancelled && state !== "ready";
                 return (
-                  <div className="mt-3 space-y-2 rounded-md border border-border bg-surface p-3">
+                  <div className="mt-3 space-y-2 rounded-md border border-border bg-card p-3">
                     <div className="flex flex-wrap items-center gap-2">
                       {selectedAgent.experimental && (
                         <Badge variant="secondary">{t.stints.experimental}</Badge>
@@ -484,11 +483,11 @@ function BriefPreviewSheet({
                             ` · ${copy.adapter} ${selection.adapterVersion}`}
                         </p>
                         {!selection.executable?.version && (
-                          <p className="text-muted">
+                          <p className="text-muted-foreground">
                             {copy.version}: {copy.unchecked}
                           </p>
                         )}
-                        <p className="text-muted">
+                        <p className="text-muted-foreground">
                           {selection.reason === "native"
                             ? copy.reasons.native(selectedAgent.displayName)
                             : copy.reasons[selection.reason]}
@@ -496,7 +495,7 @@ function BriefPreviewSheet({
                         {selectedAgent.id !== "antigravity" &&
                           selection.reason !== "native" &&
                           selection.source !== "pending" && (
-                            <p className="text-muted">
+                            <p className="text-muted-foreground">
                               {selection.source === "bundled"
                                 ? selection.downloadBytes
                                   ? copy.bundledNotice(
@@ -508,7 +507,7 @@ function BriefPreviewSheet({
                           )}
                         {selection.executable?.path && (
                           <Disclosure label={copy.details}>
-                            <span className="text-muted">{copy.executable}</span>
+                            <span className="text-muted-foreground">{copy.executable}</span>
                             <CodeBlock>{selection.executable.path}</CodeBlock>
                           </Disclosure>
                         )}
@@ -529,7 +528,7 @@ function BriefPreviewSheet({
                               role="progressbar"
                               aria-label={copy.progress}
                               aria-valuetext={copy.phases[phase]}
-                              className="mt-2 inline-flex text-muted"
+                              className="mt-2 inline-flex text-muted-foreground"
                             >
                               <LoaderCircle
                                 aria-hidden="true"
@@ -540,7 +539,7 @@ function BriefPreviewSheet({
                       </div>
                     )}
                     {startError && (
-                      <p role="alert" className="warning text-warning">
+                      <p role="alert" className="warning text-attention-foreground">
                         {startError}
                       </p>
                     )}
@@ -561,7 +560,7 @@ function BriefPreviewSheet({
             {warnings.length > 0 && (
               <div className="mt-4 border-t border-border pt-4">
                 {warnings.map((warning) => (
-                  <p key={warning.text} role="alert" className="warning text-warning">
+                  <p key={warning.text} role="alert" className="warning text-attention-foreground">
                     {translateCoreText(warning, t)}
                   </p>
                 ))}
@@ -586,7 +585,7 @@ function BriefPreviewSheet({
                 }))}
               />
             </label>
-            <p className="muted text-muted">
+            <p className="muted text-muted-foreground">
               {t.stints.projectDefault} {t.stints.permissionLevels[projectDefault]}
             </p>
             <Button
@@ -615,17 +614,17 @@ function BriefPreviewSheet({
               {t.stints.useProjectDefault}
             </Button>
             {defaultError && (
-              <p role="alert" className="warning text-warning">
+              <p role="alert" className="warning text-attention-foreground">
                 {defaultError}
               </p>
             )}
           </section>
           {error ? (
-            <p role="alert" className="warning text-warning">
+            <p role="alert" className="warning text-attention-foreground">
               {error}
             </p>
           ) : !brief ? (
-            <p role="status" className="muted text-muted">
+            <p role="status" className="muted text-muted-foreground">
               {t.stints.readingBrief}
             </p>
           ) : (
@@ -701,7 +700,7 @@ function BriefPreviewSheet({
                 ) : (
                   <p>{t.stints.none}</p>
                 )}
-                <p className="muted text-muted">{t.stints.filesWin}</p>
+                <p className="muted text-muted-foreground">{t.stints.filesWin}</p>
               </section>
               <section>
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -718,7 +717,7 @@ function BriefPreviewSheet({
             </>
           )}
         </div>
-        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border p-4 text-sm text-muted [overflow-wrap:anywhere]">
+        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border p-4 text-sm text-muted-foreground [overflow-wrap:anywhere]">
           {starting && (
             <Button disabled={!stintId || cancelled} onClick={() => void preparationAction("stop")}>
               {t.stints.preparation.cancel}

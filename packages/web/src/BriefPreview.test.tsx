@@ -8,13 +8,13 @@ import {
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { en } from "./i18n/en";
-import { zhCN } from "./i18n/zh-CN";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { antigravityProfile, codexProfile, grokProfile } from "../../agents/src/profiles";
 import { TicketBriefPreview } from "./BriefPreview";
+import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { zhCN } from "./i18n/zh-CN";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 test.each(["Escape", "outside"])(
   "brief preview contains focus and only dismisses itself with %s",

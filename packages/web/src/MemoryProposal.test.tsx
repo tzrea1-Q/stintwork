@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+
+import { deriveAttentionItems, type MemoryProposalAttentionItem } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { deriveAttentionItems, type MemoryProposalAttentionItem } from "@stintwork/core";
-import { Board } from "./Board";
 import { attentionSnapshot } from "./attention-test-fixtures";
+import { Board } from "./Board";
 
 const proposal: MemoryProposalAttentionItem = {
   kind: "memory-proposal",

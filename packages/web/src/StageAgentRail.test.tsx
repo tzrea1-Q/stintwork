@@ -1,24 +1,25 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
+
 import {
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
 } from "@stintwork/core";
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { StageAgentRail } from "./StageAgentRail";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import {
-  codexProfile,
-  claudeProfile,
-  grokProfile,
   antigravityProfile,
+  claudeProfile,
+  codexProfile,
+  grokProfile,
 } from "../../agents/src/profiles";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { StageAgentRail } from "./StageAgentRail";
+import { chooseOption } from "./select-test-helper";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 const item = indexProject(
   createMemoryRepoFiles({

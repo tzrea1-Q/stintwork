@@ -3,16 +3,16 @@ import {
   createMemoryRepoFiles,
   foldStintLog,
   indexProject,
-  summarizeStint,
   type Stint,
   type StintLogEntry,
   type StintStatus,
+  summarizeStint,
 } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { StintHistory } from "./StintHistory";
 import { HandoffCard } from "./HandoffCard";
+import { StintHistory } from "./StintHistory";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 test("GitHub history labels tickets with a hash", () => {

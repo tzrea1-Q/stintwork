@@ -3,10 +3,10 @@ import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { TopBar } from "./TopBar";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { en } from "./i18n/en";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { TopBar } from "./TopBar";
 
 const snapshot = indexProject(createMemoryRepoFiles({}), { name: "Project", branch: "main" });
 

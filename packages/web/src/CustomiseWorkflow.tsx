@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import { builtInWorkflows } from "@stintwork/core";
 import { useEffect, useState } from "react";
-import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
 
 export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => void }) {
@@ -94,11 +95,11 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
                 {t.planning.customise.description}
               </p>
               <section aria-label={t.planning.customise.yaml} className="min-w-0">
-                <CodeBlock className="max-h-[50dvh] overflow-auto rounded-sm border border-border p-3 text-sm focus-visible:outline-accent">
+                <CodeBlock className="max-h-[50dvh] overflow-auto rounded-sm border border-border p-3 text-sm focus-visible:outline-ring">
                   <code>{preview.yaml}</code>
                 </CodeBlock>
               </section>
-              <p className="muted text-muted">{t.planning.customise.commit(id)}</p>
+              <p className="muted text-muted-foreground">{t.planning.customise.commit(id)}</p>
             </>
           ) : (
             <p role="status">
@@ -106,7 +107,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
             </p>
           )}
           {error && (
-            <p role="alert" className="warning text-warning">
+            <p role="alert" className="warning text-attention-foreground">
               {Object.entries(en.planning.customise.errors).reduce(
                 (message, [key, original]) =>
                   message === original

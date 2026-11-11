@@ -2,7 +2,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
-import { Popover, PopoverTrigger, PopoverContent, PopoverClose } from "./Popover";
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from "./Popover";
 
 test("a popover opens by keyboard, closes on Escape or outside press and returns focus", async () => {
   const user = userEvent.setup();

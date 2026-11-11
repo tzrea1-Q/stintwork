@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
+
 import {
   createMemoryRepoFiles,
   indexProject,
@@ -12,11 +12,12 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChecksPanel } from "./ChecksPanel";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { MemoryProposal } from "./MemoryProposal";
 import { ReviewOverlay } from "./ReviewOverlay";
 import { RiskyPaths } from "./RiskyPaths";
 import { ShipActions } from "./ShipActions";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { chooseOption } from "./select-test-helper";
 
 const finding = {
   id: "finding-1",

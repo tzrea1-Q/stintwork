@@ -4,7 +4,10 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
-  resolve: { conditions: ["development"] },
+  resolve: {
+    conditions: ["development"],
+    alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
+  },
   esbuild: { jsx: "automatic" },
   test: {
     name: "web",

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen, within, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { WorkItemDrawer } from "./WorkItemDrawer";
-import { WorkItemCard } from "./WorkItemCard";
-import { StintStream } from "./StintStream";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
-import { recoverySnapshot, recoveryStint, recoveryPath } from "./recovery-test-fixtures";
+import { recoveryPath, recoverySnapshot, recoveryStint } from "./recovery-test-fixtures";
+import { StintStream } from "./StintStream";
+import { WorkItemCard } from "./WorkItemCard";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 afterEach(() => {
   vi.unstubAllGlobals();

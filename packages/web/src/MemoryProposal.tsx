@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
-import { Button } from "./ui/Button";
-import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
+
 import type { MemoryProposalAttentionItem } from "@stintwork/core";
 import { useState } from "react";
+import { CoreTextError, readResponseJson, useLanguage } from "./i18n/language";
+import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
 
 export function MemoryProposal({
   item,
@@ -47,7 +48,7 @@ export function MemoryProposal({
   return (
     <>
       <p>{item.details}</p>
-      <p className="muted text-muted">{t.review.memory.rejectWarning}</p>
+      <p className="muted text-muted-foreground">{t.review.memory.rejectWarning}</p>
       <section aria-label={t.review.memory.diff(item.path)}>
         <CodeBlock className="permission-details">
           <code>{item.diff}</code>

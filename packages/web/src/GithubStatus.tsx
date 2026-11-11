@@ -82,7 +82,7 @@ export function GithubStatus({ github }: { github?: ProjectSnapshot["github"] })
       role="status"
       aria-live="polite"
       aria-label={copy.label}
-      className="min-w-0 space-y-3 px-4 py-3 text-sm text-muted sm:px-6"
+      className="min-w-0 space-y-3 px-4 py-3 text-sm text-muted-foreground sm:px-6"
     >
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">

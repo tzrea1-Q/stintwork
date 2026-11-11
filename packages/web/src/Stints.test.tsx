@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
+
 import {
   applyStintLogEntry,
   createMemoryRepoFiles,
   indexProject,
-  summarizeStint,
   type Stint,
   type StintLogEntry,
+  summarizeStint,
 } from "@stintwork/core";
-import { fireEvent, render, screen, within, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { codexProfile } from "../../agents/src/profiles";
+import { chooseOption } from "./select-test-helper";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 const item = indexProject(
   createMemoryRepoFiles({

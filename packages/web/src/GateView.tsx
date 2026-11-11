@@ -1,29 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Button } from "./ui/Button";
-import { refreshGithubItem } from "./github-refresh";
-import {
-  translateCoreText,
-  readResponseJson,
-  CoreTextError,
-  useErrorText,
-  ticketStatus,
-  useLanguage,
-} from "./i18n/language";
 
 import {
   builtInWorkflows,
   deriveAttentionItems,
   gateReadiness,
-  type WorkflowDefinitions,
   type StageId,
   type Warning,
+  type WorkflowDefinitions,
 } from "@stintwork/core";
 import { useState } from "react";
+import { refreshGithubItem } from "./github-refresh";
 import { HandoffAnswer } from "./HandoffAnswer";
 import { HandoffCard } from "./HandoffCard";
-import type { BoardWorkItem } from "./WorkItemCard";
-
+import {
+  CoreTextError,
+  readResponseJson,
+  ticketStatus,
+  translateCoreText,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
+import { Button } from "./ui/Button";
+import type { BoardWorkItem } from "./WorkItemCard";
 
 export function GateView({
   item,
@@ -126,7 +125,7 @@ export function GateView({
   return (
     <section
       aria-label={t.stints.gate(stageName(workflows[item.workflow], current, t))}
-      className="handoff-card my-3 rounded-sm border border-border bg-surface-raised p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
+      className="handoff-card my-3 rounded-sm border border-border bg-muted p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
     >
       <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {t.stints.gate(stageName(workflows[item.workflow], current, t))}
@@ -284,7 +283,7 @@ export function GateView({
       )}
       {message && <p role="status">{message}</p>}
       {error && (
-        <p role="alert" className="warning text-warning">
+        <p role="alert" className="warning text-attention-foreground">
           {error}
         </p>
       )}

@@ -11,8 +11,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 function project(stage = "implement", approved = false): ProjectSnapshot {
   return indexProject(

@@ -6,9 +6,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "./App";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
-import { RoadmapEditor } from "./RoadmapEditor";
 import { LanguageProvider, languageStorageKey, useErrorText, useLanguage } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { RoadmapEditor } from "./RoadmapEditor";
 
 const files = {
   ".scratch/example/spec.md": "# Repo title 中文",

@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import {
+  type EvidenceContext,
+  evidenceStale,
   type PullRequest,
   type PullRequestChecks,
-  evidenceStale,
-  type EvidenceContext,
 } from "@stintwork/core";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
 
 export function PullRequestChecksPanel({
   item,
@@ -114,11 +115,11 @@ export function PullRequestChecksPanel({
         </Button>
       )}
       {error && (
-        <p role="alert" className="warning text-warning">
+        <p role="alert" className="warning text-attention-foreground">
           {error}
         </p>
       )}
-      {!checks && <p className="muted text-muted">{t.review.pr.noEvidence}</p>}
+      {!checks && <p className="muted text-muted-foreground">{t.review.pr.noEvidence}</p>}
       {checks && (
         <>
           <p>
@@ -128,7 +129,7 @@ export function PullRequestChecksPanel({
             · <code>{checks.headCommit}</code> ·{" "}
             <time dateTime={checks.fetchedAt}>{checks.fetchedAt}</time>
             {evidenceStale(item, checks.headCommit) && (
-              <strong className="warning text-warning">{t.review.pr.stale}</strong>
+              <strong className="warning text-attention-foreground">{t.review.pr.stale}</strong>
             )}
           </p>
           {!checks.checks.length && <p>{t.review.pr.empty}</p>}

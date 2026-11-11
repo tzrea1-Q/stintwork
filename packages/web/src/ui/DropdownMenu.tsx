@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import * as Primitive from "@radix-ui/react-dropdown-menu";
+
 import { Check } from "lucide-react";
-import { forwardRef, type ComponentPropsWithoutRef, type ElementRef } from "react";
+import { DropdownMenu as Primitive } from "radix-ui";
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef } from "react";
 import { cn } from "./cn";
 
 export const DropdownMenu = Primitive.Root;
@@ -24,7 +25,7 @@ export const DropdownMenuContent = forwardRef<
         collisionPadding={17}
         avoidCollisions
         className={cn(
-          "z-50 min-w-32 max-w-[calc(100vw-34px)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-auto rounded-md border border-border bg-surface p-1 text-sm text-text shadow-overlay",
+          "z-50 min-w-32 max-w-[calc(100vw-34px)] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-auto rounded-xl border border-border bg-card p-1 text-sm text-foreground shadow-overlay",
           className,
         )}
       />
@@ -33,7 +34,7 @@ export const DropdownMenuContent = forwardRef<
 });
 
 const itemClass =
-  "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1 break-words outline-none data-[highlighted]:bg-surface-hover data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
+  "relative flex cursor-default items-center gap-2 rounded-lg px-2 py-1 break-words outline-none data-[highlighted]:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50";
 
 export const DropdownMenuItem = forwardRef<
   ElementRef<typeof Primitive.Item>,

@@ -5,12 +5,12 @@ import {
   type PullRequest,
   type PullRequestPreview,
 } from "@stintwork/core";
-import { act, render, screen, within, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { ShipActions } from "./ShipActions";
 import { ChecksPanel } from "./ChecksPanel";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
+import { ShipActions } from "./ShipActions";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
 function item() {

@@ -9,11 +9,11 @@ import {
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { attentionProfile } from "./attention-test-fixtures";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { StintStream } from "./StintStream";
 import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
-import { attentionProfile } from "./attention-test-fixtures";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const request: Extract<StintLogEvent, { type: "permission_request" }> = {
   type: "permission_request",

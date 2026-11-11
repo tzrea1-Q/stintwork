@@ -11,7 +11,7 @@ export function Disclosure({
 }: ComponentPropsWithoutRef<"details"> & { label: ReactNode }) {
   return (
     <details {...props} className={cn("group/disclosure min-w-0", className)}>
-      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm py-2 text-sm focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm py-2 text-sm focus-visible:outline-2 focus-visible:outline-ring [&::-webkit-details-marker]:hidden">
         <ChevronRight
           className="size-icon-sm shrink-0 group-open/disclosure:rotate-90"
           aria-hidden="true"

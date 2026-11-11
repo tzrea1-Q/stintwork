@@ -4,8 +4,8 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 afterEach(() => vi.unstubAllGlobals());
 

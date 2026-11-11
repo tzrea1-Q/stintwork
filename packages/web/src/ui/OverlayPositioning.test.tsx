@@ -16,38 +16,23 @@ const contents = vi.hoisted(() => ({
   select: vi.fn(),
 }));
 
-vi.mock("@radix-ui/react-tooltip", async (original) => ({
-  ...(await original<object>()),
-  Portal: ({ children }: { children: ReactNode }) => children,
-  Content: forwardRef((props, ref) => {
-    contents.tooltip(props, ref);
-    return null;
-  }),
-}));
-vi.mock("@radix-ui/react-popover", async (original) => ({
-  ...(await original<object>()),
-  Portal: ({ children }: { children: ReactNode }) => children,
-  Content: forwardRef((props, ref) => {
-    contents.popover(props, ref);
-    return null;
-  }),
-}));
-vi.mock("@radix-ui/react-dropdown-menu", async (original) => ({
-  ...(await original<object>()),
-  Portal: ({ children }: { children: ReactNode }) => children,
-  Content: forwardRef((props, ref) => {
-    contents.menu(props, ref);
-    return null;
-  }),
-}));
-vi.mock("@radix-ui/react-select", async (original) => ({
-  ...(await original<object>()),
-  Portal: ({ children }: { children: ReactNode }) => children,
-  Content: forwardRef((props, ref) => {
-    contents.select(props, ref);
-    return null;
-  }),
-}));
+vi.mock("radix-ui", async (original) => {
+  const radix = await original<typeof import("radix-ui")>();
+  const mockContent = (name: keyof typeof contents) => ({
+    Portal: ({ children }: { children: ReactNode }) => children,
+    Content: forwardRef((props, ref) => {
+      contents[name](props, ref);
+      return null;
+    }),
+  });
+  return {
+    ...radix,
+    Tooltip: { ...radix.Tooltip, ...mockContent("tooltip") },
+    Popover: { ...radix.Popover, ...mockContent("popover") },
+    DropdownMenu: { ...radix.DropdownMenu, ...mockContent("menu") },
+    Select: { ...radix.Select, ...mockContent("select") },
+  };
+});
 
 test.each([
   ["Tooltip", TooltipContent, contents.tooltip],

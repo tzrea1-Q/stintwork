@@ -4,11 +4,11 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 import {
   Sheet,
-  SheetTrigger,
-  SheetContent,
-  SheetTitle,
-  SheetDescription,
   SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
 } from "./Sheet";
 
 test("a sheet opens from the keyboard and returns focus after close or Escape", async () => {

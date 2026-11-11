@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-import { StintRecovery, recoveryStatus } from "./StintRecovery";
-import { CodeBlock } from "./ui/CodeBlock";
-import { Markdown } from "./ui/Markdown";
-import { Badge } from "./ui/Badge";
+
 import {
-  pendingStintPermissions,
   type AgentProfile,
+  pendingStintPermissions,
   type Stint,
   type StintEvent,
   type StintToolContent,
 } from "@stintwork/core";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
+import type { Catalog } from "./i18n/en";
+import { renderCoreText, stintEventKind, useLanguage } from "./i18n/language";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { PermissionDetails } from "./PermissionDetails";
+import { recoveryStatus, StintRecovery } from "./StintRecovery";
 import { readableToolOutput } from "./tool-output";
-import { renderCoreText, stintEventKind, useLanguage } from "./i18n/language";
-import type { Catalog } from "./i18n/en";
+import { Badge } from "./ui/Badge";
+import { CodeBlock } from "./ui/CodeBlock";
+import { Markdown } from "./ui/Markdown";
 
 function toolOutput(content: StintToolContent, t: Catalog): string {
   if (content.type === "text") return readableToolOutput(content.text);
@@ -73,12 +74,12 @@ function PermissionPrompt({
   }
   return (
     <section
-      className="stint-permission rounded-md border border-warning p-3"
+      className="stint-permission rounded-md border border-attention/30 p-3"
       aria-label={t.stints.permissionTitle(event.title ?? event.toolCallId)}
     >
       <strong>{event.title ?? t.stints.permissionRequested}</strong>
       {event.kind && (
-        <span className="muted text-muted">
+        <span className="muted text-muted-foreground">
           {" "}
           · {stintEventKind(event.kind, t.stints.toolKinds)}
         </span>
@@ -120,13 +121,13 @@ export function StintStream({
             event.type === "plan" && (
               <section
                 key={event.id}
-                className="stint-plan rounded-md border border-border-strong bg-surface-raised p-3 [&_h4]:mb-3 [&_h4]:flex [&_h4]:items-center [&_h4]:gap-2 [&_li]:flex [&_li]:items-center [&_li]:gap-2 [&_li]:py-1 [&_ol]:m-0 [&_ol]:list-none [&_ol]:p-0 [&_small]:ml-auto [&_small]:text-muted"
+                className="stint-plan rounded-md border border-input bg-muted p-3 [&_h4]:mb-3 [&_h4]:flex [&_h4]:items-center [&_h4]:gap-2 [&_li]:flex [&_li]:items-center [&_li]:gap-2 [&_li]:py-1 [&_ol]:m-0 [&_ol]:list-none [&_ol]:p-0 [&_small]:ml-auto [&_small]:text-muted-foreground"
                 aria-label={t.stints.stintPlan}
               >
                 <h4>
                   <ListChecks className="size-icon-sm shrink-0" aria-hidden="true" />
                   {t.stints.plan}{" "}
-                  <span className="muted text-muted">
+                  <span className="muted text-muted-foreground">
                     {event.entries.filter((entry) => entry.status === "completed").length}/
                     {event.entries.length}
                   </span>
@@ -139,7 +140,9 @@ export function StintStream({
                       <li
                         key={`${entry.content}:${occurrence}`}
                         className={
-                          entry.status === "completed" ? "stint-step-completed text-success" : ""
+                          entry.status === "completed"
+                            ? "stint-step-completed text-success-foreground"
+                            : ""
                         }
                       >
                         {entry.status === "completed" && (
@@ -200,7 +203,9 @@ export function StintStream({
               {(event.type === "message" || event.type === "thought") && (
                 <div>
                   {event.type === "thought" && <small>{t.stints.agentThought}</small>}
-                  <Markdown className={event.type === "thought" ? "text-muted" : undefined}>
+                  <Markdown
+                    className={event.type === "thought" ? "text-muted-foreground" : undefined}
+                  >
                     {event.type === "message"
                       ? renderCoreText(event.message, event.text, t)
                       : event.text}
@@ -209,7 +214,7 @@ export function StintStream({
               )}
               {event.type === "tool_call" && (
                 <div>
-                  <div className="stint-tool-heading flex flex-wrap items-start gap-2 [&>span]:ml-auto [&>span]:text-muted">
+                  <div className="stint-tool-heading flex flex-wrap items-start gap-2 [&>span]:ml-auto [&>span]:text-muted-foreground">
                     <Wrench className="size-icon-sm shrink-0" aria-hidden="true" />
                     <strong>{event.title ?? event.toolCallId}</strong>
                     <span>
@@ -238,7 +243,7 @@ export function StintStream({
                     </p>
                   ))}
                   {event.content?.length || event.output ? (
-                    <details className="stint-tool-output [&_summary]:text-muted">
+                    <details className="stint-tool-output [&_summary]:text-muted-foreground">
                       <summary>{t.stints.toolOutput}</summary>
                       {!!event.content?.length && (
                         <CodeBlock>
@@ -251,7 +256,7 @@ export function StintStream({
                 </div>
               )}
               {event.type === "file_edit" && (
-                <div className="stint-file-edit flex flex-wrap items-center gap-2 [&_code]:text-success">
+                <div className="stint-file-edit flex flex-wrap items-center gap-2 [&_code]:text-success-foreground">
                   <FileCode2 className="size-icon-sm shrink-0" aria-hidden="true" />
                   <strong>{t.stints.fileEdit}</strong>
                   <code>{event.path}</code>
@@ -281,12 +286,16 @@ export function StintStream({
           );
         })}
         {stint.error && stint.recovery?.state !== "fallback" && (
-          <p role="alert" className="warning text-warning">
+          <p role="alert" className="warning text-attention-foreground">
             {renderCoreText(stint.errorMessage, stint.error, t)}
           </p>
         )}
       </div>
-      <p className="stint-stream-status text-accent" role="status" aria-label={t.stints.stint}>
+      <p
+        className="stint-stream-status text-accent-foreground"
+        role="status"
+        aria-label={t.stints.stint}
+      >
         {stint.status === "running" && !replay ? (
           stint.recovery?.state && stint.recovery.state !== "resumed" ? (
             recoveryStatus(stint, t)

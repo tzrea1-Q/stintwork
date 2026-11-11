@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CodeBlock } from "./ui/CodeBlock";
-import { Button } from "./ui/Button";
-import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
-import { useEffect, useRef, useState } from "react";
 
 import {
   builtInWorkflows,
   evidenceStale,
-  type WorkflowDefinitions,
   type MergeMethod,
   type PullRequestPreview,
+  type WorkflowDefinitions,
 } from "@stintwork/core";
+import { useEffect, useRef, useState } from "react";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
+import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 export function ShipActions({
@@ -126,7 +126,7 @@ export function ShipActions({
   return (
     <section
       aria-label={t.review.ship.label}
-      className="handoff-card my-3 rounded-sm border border-border bg-surface-raised p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
+      className="handoff-card my-3 rounded-sm border border-border bg-muted p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
     >
       <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {item.merged ? t.review.ship.shipped : t.review.ship.ship}
@@ -336,7 +336,7 @@ export function ShipActions({
         </ul>
       )}
       {error && (
-        <p role="alert" className="warning text-warning">
+        <p role="alert" className="warning text-attention-foreground">
           {error}
         </p>
       )}

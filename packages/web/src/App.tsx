@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Board } from "./Board";
-import { useProjectSnapshot } from "./useProjectSnapshot";
 import { LanguageProvider, useLanguage } from "./i18n/language";
+import { useProjectSnapshot } from "./useProjectSnapshot";
 
 export function App() {
   return (
@@ -19,16 +19,16 @@ function Project() {
 
   return (
     <main className="flex min-h-dvh items-center justify-center p-6">
-      <section className="connection-panel max-w-md rounded-lg border border-border bg-surface p-7">
-        <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+      <section className="connection-panel max-w-md rounded-lg border border-border bg-card p-7">
+        <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
           {t.connection.workbench}
         </p>
         <h1 className="mt-3 text-xl font-semibold">{t.connection.opening}</h1>
-        <p className="mt-3 muted text-muted" role="status">
+        <p className="mt-3 muted text-muted-foreground" role="status">
           {error ? t.connection.unavailable : t.connection.reading}
         </p>
         {error && (
-          <p className="mt-3 warning text-warning" role="alert">
+          <p className="mt-3 warning text-attention-foreground" role="alert">
             {error}
           </p>
         )}

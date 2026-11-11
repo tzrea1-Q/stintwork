@@ -1,12 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Button } from "./ui/Button";
-import { Badge } from "./ui/Badge";
-import { Checkbox } from "./ui/Checkbox";
-import { Disclosure } from "./ui/Disclosure";
-import { DiffPreview } from "./ui/DiffPreview";
-import { WarningCallout } from "./ui/WarningCallout";
-import { DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import type {
   AgentSkillAvailability,
   SetupChange,
@@ -14,10 +7,17 @@ import type {
   SetupPlan,
   WorkflowDefinitions,
 } from "@stintwork/core";
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { en } from "./i18n/en";
-
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import { Checkbox } from "./ui/Checkbox";
+import { DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
+import { DiffPreview } from "./ui/DiffPreview";
+import { Disclosure } from "./ui/Disclosure";
+import { WarningCallout } from "./ui/WarningCallout";
 
 type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
 
@@ -195,7 +195,7 @@ export function SetupGuide({
     >
       <header className="shrink-0 border-b border-border px-4 py-4 sm:px-6">
         <DialogTitle className="text-xl font-medium">{t.planning.setup.title}</DialogTitle>
-        <DialogDescription className="mt-2 text-sm text-muted">
+        <DialogDescription className="mt-2 text-sm text-muted-foreground">
           {message
             ? t.planning.setup.complete
             : guide?.tracker === "github-issues"
@@ -207,7 +207,7 @@ export function SetupGuide({
       </header>
       <div className="setup-body min-h-0 min-w-0 overflow-y-auto px-4 py-4 sm:px-6">
         {error && (
-          <p role="alert" className="mb-4 text-warning">
+          <p role="alert" className="mb-4 text-attention-foreground">
             {Object.entries(en.planning.setup.errors).reduce(
               (message, [key, original]) =>
                 message === original
@@ -225,10 +225,14 @@ export function SetupGuide({
             {confirming ? (
               <section ref={reviewRef} tabIndex={-1} aria-label={t.planning.setup.confirm}>
                 <h3 className="text-base font-medium">{t.planning.setup.confirm}</h3>
-                <p className="my-3 text-muted">{t.planning.setup.write(selected.length)}</p>
+                <p className="my-3 text-muted-foreground">
+                  {t.planning.setup.write(selected.length)}
+                </p>
                 {selectedChanges.some(({ removedLines }) => removedLines > 0) && (
                   <section aria-label={t.planning.setup.removesContent} className="my-4">
-                    <h4 className="font-medium text-danger">{t.planning.setup.removesContent}</h4>
+                    <h4 className="font-medium text-destructive">
+                      {t.planning.setup.removesContent}
+                    </h4>
                     {selectedChanges
                       .filter(({ removedLines }) => removedLines > 0)
                       .map((change) => fileChange(change, true))}
@@ -237,7 +241,7 @@ export function SetupGuide({
                 {selectedChanges
                   .filter(({ removedLines }) => !removedLines)
                   .map((change) => fileChange(change, true))}
-                <p className="mt-3 text-muted">{t.planning.setup.refusal}</p>
+                <p className="mt-3 text-muted-foreground">{t.planning.setup.refusal}</p>
               </section>
             ) : (
               <>
@@ -285,21 +289,21 @@ export function SetupGuide({
                                       {t.planning.setup.statuses[check.status]}
                                     </Badge>
                                   </div>
-                                  <p className="my-2 text-muted">{copy.why}</p>
+                                  <p className="my-2 text-muted-foreground">{copy.why}</p>
                                   {check.id === "tracker" && guide.tracker === "github-issues" && (
-                                    <p className="mb-2 text-sm text-muted">
+                                    <p className="mb-2 text-sm text-muted-foreground">
                                       {t.planning.setup.githubTracker}
                                     </p>
                                   )}
                                   {changes.map((change) => fileChange(change))}
                                   {(check.id === "glossary" || check.id === "adrs") &&
                                     !check.ready && (
-                                      <p className="text-sm text-muted">
+                                      <p className="text-sm text-muted-foreground">
                                         {t.planning.setup.checks[check.id].manual}
                                       </p>
                                     )}
                                   {check.status === "needs-change" && !changes.length && (
-                                    <p className="text-sm text-muted">
+                                    <p className="text-sm text-muted-foreground">
                                       {t.planning.setup.noAutomaticFix}
                                     </p>
                                   )}
@@ -319,7 +323,9 @@ export function SetupGuide({
                 className="mt-6 border-t border-border pt-4"
               >
                 <h3 className="text-base font-medium">{t.planning.setup.skills}</h3>
-                <p className="my-3 text-sm text-muted">{t.planning.setup.skillExplanation}</p>
+                <p className="my-3 text-sm text-muted-foreground">
+                  {t.planning.setup.skillExplanation}
+                </p>
                 {!guide.skills.length && <p>{t.planning.setup.noSkills}</p>}
                 {guide.skills.map((agent) => {
                   const unavailable = agent.skills.filter(({ status }) => status !== "found");
@@ -373,7 +379,7 @@ export function SetupGuide({
                                             : t.planning.setup.missing}
                                         </strong>
                                         {skill.installationHint && (
-                                          <p className="mt-1 text-muted">
+                                          <p className="mt-1 text-muted-foreground">
                                             {installationHint(skill.installationHint)}
                                           </p>
                                         )}
@@ -394,7 +400,7 @@ export function SetupGuide({
           </>
         )}
       </div>
-      <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-surface px-4 py-4 sm:px-6">
+      <footer className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-card px-4 py-4 sm:px-6">
         {finished ? (
           <Button ref={closeRef} onClick={onClose}>
             {t.planning.setup.close}

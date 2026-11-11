@@ -10,7 +10,7 @@ export function LanguageMenu() {
   const { t, language, setLanguage } = useLanguage();
   return (
     <>
-      <DropdownMenuLabel className="px-2 py-1 text-xs text-muted">
+      <DropdownMenuLabel className="px-2 py-1 text-xs text-muted-foreground">
         {t.topBar.language}
       </DropdownMenuLabel>
       <DropdownMenuRadioGroup

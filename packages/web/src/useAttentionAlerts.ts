@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useRef, useState } from "react";
-import { en, type Catalog } from "./i18n/en";
-import { useLanguage, type Language } from "./i18n/language";
+import { type Catalog, en } from "./i18n/en";
+import { type Language, useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 
 const preferenceKey = "stintwork.attention-notifications";

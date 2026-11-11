@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
-import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
+
 import type {
   EvidenceContext,
   ReviewDecision,
-  StintSummary,
   RiskyPath,
   Stint,
+  StintSummary,
 } from "@stintwork/core";
-import { Fragment, useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
 import { X } from "lucide-react";
+import { Fragment, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
+import { CheckpointWarnings } from "./CheckpointWarnings";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
+import { RiskyPaths } from "./RiskyPaths";
 import { Button } from "./ui/Button";
 import { cn } from "./ui/cn";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
-import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
-import { CheckpointWarnings } from "./CheckpointWarnings";
-import { RiskyPaths } from "./RiskyPaths";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 
 type ReviewSlots = {
   findings?: ReactNode;
@@ -31,14 +32,14 @@ function Counts({ file }: { file: DiffFile }) {
   return (
     <span className="review-counts inline-flex gap-2 whitespace-nowrap font-mono">
       {file.binary ? (
-        <span className="muted text-muted">{t.review.diff.binary}</span>
+        <span className="muted text-muted-foreground">{t.review.diff.binary}</span>
       ) : (
         <>
-          <span className="success text-success">
+          <span className="success text-success-foreground">
             <span aria-hidden="true">+{file.additions}</span>
             <span className="sr-only">{t.review.diff.addedLines(file.additions)}</span>
           </span>
-          <span className="review-removed-count text-danger">
+          <span className="review-removed-count text-destructive">
             <span aria-hidden="true">−{file.deletions}</span>
             <span className="sr-only">{t.review.diff.removedLines(file.deletions)}</span>
           </span>
@@ -74,14 +75,14 @@ export function ReviewDiff({
     <>
       <nav
         className={cn(
-          "review-files p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_a]:grid [&_a]:gap-1 [&_a]:border-b [&_a]:border-border [&_a]:px-1 [&_a]:py-3 [&_a]:text-text [&_a]:no-underline [&_a]:[overflow-wrap:anywhere] [&_a:hover]:bg-surface-hover [&_small]:text-muted min-w-0 overflow-auto border-b border-border md:border-b-0 md:border-r",
+          "review-files p-4 [&_h3]:mb-3 [&_h3]:text-sm [&_ul]:m-0 [&_ul]:list-none [&_ul]:p-0 [&_a]:grid [&_a]:gap-1 [&_a]:border-b [&_a]:border-border [&_a]:px-1 [&_a]:py-3 [&_a]:text-foreground [&_a]:no-underline [&_a]:[overflow-wrap:anywhere] [&_a:hover]:bg-secondary [&_small]:text-muted-foreground min-w-0 overflow-auto border-b border-border md:border-b-0 md:border-r",
           pane !== "files" && "hidden md:block",
         )}
         aria-label={t.review.diff.changedFiles}
       >
         <h3>
           {t.review.diff.changedFiles}{" "}
-          <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+          <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
             {diff.files.length}
           </span>
         </h3>
@@ -116,24 +117,28 @@ export function ReviewDiff({
             data-diff-path={file.path}
             tabIndex={-1}
           >
-            <header className="review-file-header flex flex-wrap items-center gap-3 bg-surface-raised p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
+            <header className="review-file-header flex flex-wrap items-center gap-3 bg-muted p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
               <h3>
                 <code>{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</code>
               </h3>
-              <span className="muted text-muted">{t.review.diff.fileStatuses[file.status]}</span>
+              <span className="muted text-muted-foreground">
+                {t.review.diff.fileStatuses[file.status]}
+              </span>
               <Counts file={file} />
             </header>
             {fileFindings?.(file)}
             {file.status === "renamed" && (
-              <p className="review-file-note m-0 px-4 py-5 text-muted">{t.review.diff.renamed}</p>
+              <p className="review-file-note m-0 px-4 py-5 text-muted-foreground">
+                {t.review.diff.renamed}
+              </p>
             )}
             {file.binary && (
-              <p className="review-file-note m-0 px-4 py-5 text-muted">
+              <p className="review-file-note m-0 px-4 py-5 text-muted-foreground">
                 {t.review.diff.binaryHidden}
               </p>
             )}
             {file.contentsHidden && (
-              <p className="review-file-note m-0 px-4 py-5 text-muted">
+              <p className="review-file-note m-0 px-4 py-5 text-muted-foreground">
                 {t.review.diff.riskyHidden}
               </p>
             )}
@@ -141,13 +146,13 @@ export function ReviewDiff({
               !file.binary &&
               file.status !== "renamed" &&
               !file.hunks.length && (
-                <p className="review-file-note m-0 px-4 py-5 text-muted">
+                <p className="review-file-note m-0 px-4 py-5 text-muted-foreground">
                   {t.review.diff.metadataOnly}
                 </p>
               )}
             {file.hunks.map((hunk) => (
               <div
-                className="review-hunk [&_h4]:m-0 [&_h4]:whitespace-pre [&_h4]:py-2 [&_h4]:text-xs [&_h4]:text-muted [&_table]:w-full [&_table]:border-collapse [&_table]:font-mono [&_table]:text-sm [&_table]:leading-relaxed overflow-x-auto focus-visible:outline-accent"
+                className="review-hunk [&_h4]:m-0 [&_h4]:whitespace-pre [&_h4]:py-2 [&_h4]:text-xs [&_h4]:text-muted-foreground [&_table]:w-full [&_table]:border-collapse [&_table]:font-mono [&_table]:text-sm [&_table]:leading-relaxed overflow-x-auto focus-visible:outline-ring"
                 key={`${hunk.oldStart}:${hunk.newStart}`}
               >
                 <table aria-label={`${file.path}: ${hunk.header}`}>
@@ -160,7 +165,7 @@ export function ReviewDiff({
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="bg-accent-soft">
+                    <tr className="bg-accent">
                       <td colSpan={3} />
                       <td className="px-2">
                         <h4>
@@ -173,14 +178,14 @@ export function ReviewDiff({
                       return (
                         <Fragment key={`${line.kind}:${line.oldLine}:${line.newLine}`}>
                           <tr
-                            className={`review-line [&_td]:px-2 [&_td]:py-0 [&_td]:align-top review-line-${line.kind} ${line.kind === "added" ? "bg-success/10" : line.kind === "removed" ? "bg-danger/10" : ""}`}
+                            className={`review-line [&_td]:px-2 [&_td]:py-0 [&_td]:align-top review-line-${line.kind} ${line.kind === "added" ? "bg-success-soft" : line.kind === "removed" ? "bg-destructive/10" : ""}`}
                             data-old-line={line.oldLine ?? undefined}
                             data-new-line={line.newLine ?? undefined}
                           >
-                            <td className="review-line-number w-[4ch] select-none text-right text-muted">
+                            <td className="review-line-number w-[4ch] select-none text-right text-muted-foreground">
                               {line.oldLine}
                             </td>
-                            <td className="review-line-number w-[4ch] select-none text-right text-muted">
+                            <td className="review-line-number w-[4ch] select-none text-right text-muted-foreground">
                               {line.newLine}
                             </td>
                             <td
@@ -192,7 +197,7 @@ export function ReviewDiff({
                             <td className="review-line-text whitespace-pre">
                               <code>{line.text}</code>
                               {line.noNewline && (
-                                <span className="review-no-newline block italic text-muted">
+                                <span className="review-no-newline block italic text-muted-foreground">
                                   {t.review.diff.noNewline}
                                 </span>
                               )}
@@ -219,7 +224,7 @@ export function ReviewDiff({
             data-diff-path={file.path}
             tabIndex={-1}
           >
-            <header className="review-file-header flex flex-wrap items-center gap-3 bg-surface-raised p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
+            <header className="review-file-header flex flex-wrap items-center gap-3 bg-muted p-4 [&_h3]:m-0 [&_h3]:min-w-0 [&_h3]:flex-1 [&_h3]:text-sm [&_h3]:[overflow-wrap:anywhere]">
               <h3>
                 <code>{file.path}</code>
               </h3>
@@ -416,7 +421,7 @@ export function ReviewOverlay({
       >
         <header className="review-header flex shrink-0 flex-wrap justify-between gap-2 border-b border-border p-3 md:gap-4 md:p-6">
           <div className="min-w-0 flex-1 basis-96 [overflow-wrap:anywhere]">
-            <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+            <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
               {t.review.diff.review} / <code>{item.slug}</code>
             </p>
             <DialogTitle className="my-1 text-sm font-medium md:my-2 md:text-xl">
@@ -433,7 +438,9 @@ export function ReviewOverlay({
               {t.review.diff.details}
             </Button>
             <div id={detailsId} className={cn(!detailsOpen && "hidden md:block")}>
-              <DialogDescription className="text-muted">{t.review.diff.readOnly}</DialogDescription>
+              <DialogDescription className="text-muted-foreground">
+                {t.review.diff.readOnly}
+              </DialogDescription>
               {diff && (
                 <div className="review-range text-xs [overflow-wrap:anywhere]">
                   <p>
@@ -491,7 +498,7 @@ export function ReviewOverlay({
           </div>
         </header>
         {actionError && (
-          <p role="alert" className="warning text-warning">
+          <p role="alert" className="warning text-attention-foreground">
             {actionError}
           </p>
         )}
@@ -521,7 +528,7 @@ export function ReviewOverlay({
             <p
               role="alert"
               className={cn(
-                "review-empty p-8 warning text-warning md:col-span-2",
+                "review-empty p-8 warning text-attention-foreground md:col-span-2",
                 pane !== "diff" && "hidden md:block",
               )}
             >
@@ -554,7 +561,7 @@ export function ReviewOverlay({
             <p
               role="status"
               className={cn(
-                "review-empty p-8 muted text-muted md:col-span-2",
+                "review-empty p-8 muted text-muted-foreground md:col-span-2",
                 pane !== "diff" && "hidden md:block",
               )}
             >
@@ -600,11 +607,13 @@ export function ReviewOverlay({
             </section>
             <section aria-label={t.review.diff.checks}>
               <h3>{t.review.diff.checks}</h3>
-              {checks ?? <p className="muted text-muted">{t.review.diff.checksPlaceholder}</p>}
+              {checks ?? (
+                <p className="muted text-muted-foreground">{t.review.diff.checksPlaceholder}</p>
+              )}
             </section>
           </aside>
         </div>
-        <footer className="flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted">
+        <footer className="flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
           <span>{t.review.diff.footer}</span>
           <span>
             <kbd>Esc</kbd>

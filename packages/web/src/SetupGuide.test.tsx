@@ -3,10 +3,10 @@ import { createMemoryRepoFiles, indexProject, planSetup } from "@stintwork/core"
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { TopBar } from "./TopBar";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { en } from "./i18n/en";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { TopBar } from "./TopBar";
 
 const original = "# Developer rules\nKeep this exactly.\n";
 const files = createMemoryRepoFiles({ "AGENTS.md": original });
@@ -264,7 +264,9 @@ test.each(["en", "zh-CN"] as const)(
     expect(dialog).toHaveAccessibleDescription(t.planning.setup.githubNotice);
     expect(within(dialog).getByText(t.planning.setup.githubTracker)).toBeVisible();
     expect(checkbox).not.toBeChecked();
-    expect(within(dialog).getByText(t.planning.setup.replacesLines(2))).toHaveClass("text-danger");
+    expect(within(dialog).getByText(t.planning.setup.replacesLines(2))).toHaveClass(
+      "text-blocked-foreground",
+    );
     expect(within(dialog).queryByRole("checkbox", { name: "AGENTS.md" })).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: t.planning.setup.review(2) }));
     expect(

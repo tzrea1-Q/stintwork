@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
 @import "./styles/tokens.css";
+
+@custom-variant dark (&:is(.dark *));
 
 /* Document defaults must also cover portalled primitives outside the app root. */
 @layer base {
@@ -13,19 +18,19 @@
     cursor: pointer;
   }
   :focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--ring);
     outline-offset: 3px;
   }
   code,
   kbd {
-    font-family: var(--font-monospace);
+    font-family: var(--font-mono);
   }
   kbd {
     font-size: var(--type-xs);
-    color: var(--muted);
+    color: var(--muted-foreground);
   }
   * {
     scrollbar-width: thin;
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: var(--input) transparent;
   }
 }

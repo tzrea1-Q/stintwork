@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
+
 import {
-  builtInWorkflowYaml,
   builtInWorkflows,
+  builtInWorkflowYaml,
   createMemoryRepoFiles,
   indexProject,
 } from "@stintwork/core";
@@ -12,6 +12,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { chooseOption } from "./select-test-helper";
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 function snapshot(id = "feature") {

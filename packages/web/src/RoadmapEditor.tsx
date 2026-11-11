@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
 import { en } from "./i18n/en";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { SelectField } from "./ui/SelectField";
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "./ui/Dialog";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { t } = useLanguage();
@@ -78,7 +79,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
       }}
     >
       <DialogContent
-        className="roadmap-editor w-3xl [&_fieldset]:mt-5 [&_fieldset]:min-w-0 [&_form]:mb-3 [&_form]:flex [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-3 [&_label]:grid [&_label]:min-w-0 [&_label]:flex-1 [&_label]:basis-48 [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_button]:max-w-full [&_button]:h-auto [&_button]:min-h-8 [&_button]:whitespace-normal [&_button]:py-1"
+        className="roadmap-editor w-3xl [&_fieldset]:mt-5 [&_fieldset]:min-w-0 [&_form]:mb-3 [&_form]:flex [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-3 [&_label]:grid [&_label]:min-w-0 [&_label]:flex-1 [&_label]:basis-48 [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_button]:max-w-full [&_button]:h-auto [&_button]:min-h-8 [&_button]:whitespace-normal [&_button]:py-1"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -92,11 +93,11 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
             {t.planning.roadmap.close}
           </Button>
         </header>
-        <DialogDescription className="text-muted">
+        <DialogDescription className="text-muted-foreground">
           {t.planning.roadmap.description}
         </DialogDescription>
         {error && (
-          <p role="alert" className="warning text-warning">
+          <p role="alert" className="warning text-attention-foreground">
             {Object.entries(en.planning.roadmap.errors).reduce(
               (message, [key, original]) =>
                 message === original
@@ -205,7 +206,7 @@ function MilestoneFields({
       aria-label={milestone.name}
     >
       <h3 className="mb-3 font-medium">
-        {milestone.name} <small className="muted text-muted">{milestone.id}</small>
+        {milestone.name} <small className="muted text-muted-foreground">{milestone.id}</small>
       </h3>
       <form
         onSubmit={(event) => {

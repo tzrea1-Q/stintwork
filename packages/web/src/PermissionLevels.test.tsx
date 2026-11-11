@@ -8,11 +8,11 @@ import {
 } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chooseOption } from "./select-test-helper";
-import { en } from "./i18n/en";
 import { afterEach, expect, test, vi } from "vitest";
-import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
+import { claudeProfile, codexProfile, grokProfile } from "../../agents/src/profiles";
 import { StageBriefPreview } from "./BriefPreview";
+import { en } from "./i18n/en";
+import { chooseOption } from "./select-test-helper";
 
 const files = createMemoryRepoFiles({
   ".scratch/first/workflow.yaml": "workflow: feature\nstage: spec\n",

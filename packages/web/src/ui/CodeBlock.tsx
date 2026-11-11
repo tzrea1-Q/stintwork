@@ -13,7 +13,7 @@ export function CodeBlock({ className, ...props }: ComponentPropsWithoutRef<"pre
       // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users must be able to scroll code independently.
       tabIndex={0}
       className={cn(
-        "my-3 max-w-full overflow-auto whitespace-pre rounded-md border border-border bg-bg p-3 font-mono text-xs [overflow-wrap:normal] [&_code]:bg-transparent [&_code]:p-0",
+        "my-3 max-w-full overflow-auto whitespace-pre rounded-md border border-border bg-background p-3 font-mono text-xs [overflow-wrap:normal] [&_code]:bg-transparent [&_code]:p-0",
         className,
       )}
       {...props}

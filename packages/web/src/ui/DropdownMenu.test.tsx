@@ -5,11 +5,11 @@ import { useState } from "react";
 import { expect, test } from "vitest";
 import {
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuTrigger,
 } from "./DropdownMenu";
 
 function LanguageMenu() {

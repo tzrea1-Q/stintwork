@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
-import {
-  translateCoreText,
-  readResponseJson,
-  CoreTextError,
-  useErrorText,
-  useLanguage,
-} from "./i18n/language";
 
 import {
   type AgentProfile,
   agentUnavailable,
   builtInWorkflows,
-  stageAgent,
   type StageId,
+  stageAgent,
   type WorkflowDefinitions,
 } from "@stintwork/core";
 import { useEffect, useState } from "react";
-import type { BoardWorkItem } from "./WorkItemCard";
-import { SelectField } from "./ui/SelectField";
-
+import {
+  CoreTextError,
+  readResponseJson,
+  translateCoreText,
+  useErrorText,
+  useLanguage,
+} from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
+import { SelectField } from "./ui/SelectField";
+import type { BoardWorkItem } from "./WorkItemCard";
 
 export function StageAgentRail({
   item,
@@ -88,7 +87,7 @@ export function StageAgentRail({
   return (
     <>
       <ol
-        className="stage-rail flex shrink-0 gap-2 overflow-x-auto border-y border-border bg-bg px-4 py-4 sm:px-7 [&>li]:min-w-40 [&>li]:flex-1 [&>li]:border-t-2 [&>li]:border-border-strong [&>li]:p-2 [&>li]:text-xs [&>li]:text-muted [&>li[aria-current=step]]:border-accent [&>li[aria-current=step]]:bg-accent-soft [&>li[aria-current=step]]:text-accent [&_small]:mt-1 [&_small]:block [&_small]:text-xs"
+        className="stage-rail flex shrink-0 gap-2 overflow-x-auto border-y border-border bg-background px-4 py-4 sm:px-7 [&>li]:min-w-40 [&>li]:flex-1 [&>li]:border-t-2 [&>li]:border-input [&>li]:p-2 [&>li]:text-xs [&>li]:text-muted-foreground [&>li[aria-current=step]]:border-ring [&>li[aria-current=step]]:bg-accent [&>li[aria-current=step]]:text-accent-foreground [&_small]:mt-1 [&_small]:block [&_small]:text-xs"
         aria-label={t.stints.workflowStages(workflowName(workflow, t))}
       >
         {workflow.stages.map((stage) => {
@@ -131,7 +130,10 @@ export function StageAgentRail({
         })}
       </ol>
       {error && (
-        <p role="alert" className="warning shrink-0 px-4 py-3 text-sm text-warning sm:px-7">
+        <p
+          role="alert"
+          className="warning shrink-0 px-4 py-3 text-sm text-attention-foreground sm:px-7"
+        >
           {error}
         </p>
       )}

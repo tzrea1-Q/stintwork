@@ -10,5 +10,5 @@ test("a status badge keeps its accessible status and token variant", () => {
     </Badge>,
   );
   expect(screen.getByRole("status", { name: "Needs you" })).toHaveTextContent("Waiting 中文");
-  expect(screen.getByRole("status")).toHaveClass("text-warning");
+  expect(screen.getByRole("status")).toHaveClass("text-attention-foreground");
 });

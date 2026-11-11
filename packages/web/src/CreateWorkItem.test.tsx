@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
+
 import { createMemoryRepoFiles, indexProject, prepareWorkItemCreation } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,6 +8,7 @@ import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { CreateWorkItem } from "./CreateWorkItem";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { chooseOption } from "./select-test-helper";
 
 const contents = {
   ".stintwork/roadmap.md": "## First\nId: first\nStatus: active\n",

@@ -14,7 +14,7 @@ export function WarningCallout({
     <section
       role="alert"
       aria-label={t.warningCallout.title(warnings.length)}
-      className="mb-4 min-w-0 rounded-md border border-warning/30 bg-warning/10 p-3 text-warning"
+      className="mb-4 min-w-0 rounded-md border border-attention/30 bg-attention-soft p-3 text-attention-foreground"
     >
       <div className="flex items-start gap-2">
         <TriangleAlert className="size-icon-sm shrink-0" aria-hidden="true" />

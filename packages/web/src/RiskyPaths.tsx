@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Button } from "./ui/Button";
-import { riskyPathAccepted, type RiskyPath, type ReviewDecision } from "@stintwork/core";
+
+import { type ReviewDecision, type RiskyPath, riskyPathAccepted } from "@stintwork/core";
 import { useState } from "react";
 import { useLanguage } from "./i18n/language";
+import { Button } from "./ui/Button";
 
 export function RiskyPaths({
   risks,

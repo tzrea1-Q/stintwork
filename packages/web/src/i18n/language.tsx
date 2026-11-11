@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { en, type Catalog } from "./en";
+
+import { type CoreText, isCoreTextMessage, readCoreTextWire } from "@stintwork/core";
+import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import { type Catalog, en } from "./en";
 import { zhCN } from "./zh-CN";
-import { isCoreTextMessage, readCoreTextWire, type CoreText } from "@stintwork/core";
 
 export type Language = "en" | "zh-CN";
 export const languageStorageKey = "stintwork.language";

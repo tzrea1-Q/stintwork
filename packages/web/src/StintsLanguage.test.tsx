@@ -1,23 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
+
 import {
   applyStintLogEntry,
   builtInWorkflows,
   compileBrief,
   createMemoryRepoFiles,
   indexProject,
-  summarizeStint,
   type Stint,
+  summarizeStint,
 } from "@stintwork/core";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { codexProfile } from "../../agents/src/profiles";
-import { WorkItemDrawer } from "./WorkItemDrawer";
-import { StintHistory } from "./StintHistory";
-import { StintStream } from "./StintStream";
 import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
+import { StintHistory } from "./StintHistory";
+import { StintStream } from "./StintStream";
+import { chooseOption } from "./select-test-helper";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Developer conventions 原文",

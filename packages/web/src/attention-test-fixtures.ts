@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
-  createMemoryRepoFiles,
-  indexProject,
-  deriveAttentionItems,
   type AgentProfile,
+  createMemoryRepoFiles,
+  deriveAttentionItems,
+  indexProject,
   type StintLogEntry,
 } from "@stintwork/core";
 

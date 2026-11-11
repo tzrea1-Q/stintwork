@@ -9,9 +9,9 @@ import {
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { claudeProfile, codexProfile, grokProfile } from "../../agents/src/profiles";
 import { StageBriefPreview } from "./BriefPreview";
 import { WorkItemDrawer } from "./WorkItemDrawer";
-import { codexProfile, claudeProfile, grokProfile } from "../../agents/src/profiles";
 
 const files = createMemoryRepoFiles({
   "AGENTS.md": "Conventions",

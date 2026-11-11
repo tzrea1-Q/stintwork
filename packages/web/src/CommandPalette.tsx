@@ -2,11 +2,11 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { Command } from "cmdk";
 import { Check, Search, X } from "lucide-react";
-import { workflowName } from "./i18n/workflow-names";
 import { useLanguage } from "./i18n/language";
+import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "./ui/Tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function CommandPalette({
   snapshot,
@@ -39,12 +39,12 @@ export function CommandPalette({
         <Command
           label={t.planning.palette.search}
           vimBindings={false}
-          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-sm [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent-soft [&_[cmdk-item][data-selected=true]]:ring-1 [&_[cmdk-item][data-selected=true]]:ring-accent [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted"
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-sm [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:ring-1 [&_[cmdk-item][data-selected=true]]:ring-ring [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
         >
           <div className="command-search flex items-center gap-3 border-b border-border p-4">
-            <Search className="size-icon-sm shrink-0 text-muted" aria-hidden="true" />
+            <Search className="size-icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
             <Command.Input
-              className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-accent"
+              className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-ring"
               placeholder={t.planning.palette.placeholder}
               aria-label={t.planning.palette.search}
             />
@@ -71,7 +71,7 @@ export function CommandPalette({
             label={t.planning.palette.suggestions}
             className="max-h-[50dvh] overflow-auto overscroll-contain p-2"
           >
-            <Command.Empty className="p-5 text-center text-muted">
+            <Command.Empty className="p-5 text-center text-muted-foreground">
               {t.planning.palette.empty}
             </Command.Empty>
             <Command.Group heading={t.planning.palette.actions}>
@@ -138,7 +138,7 @@ export function CommandPalette({
               ))}
             </Command.Group>
           </Command.List>
-          <footer className="command-footer flex flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted">
+          <footer className="command-footer flex flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground">
             <span>{t.planning.palette.navigation}</span>
             <kbd>Esc</kbd>
           </footer>

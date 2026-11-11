@@ -2,10 +2,10 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { PermissionAnswer } from "./PermissionAnswer";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { en } from "./i18n/en";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { PermissionAnswer } from "./PermissionAnswer";
 
 const request = {
   requestId: "same-id",

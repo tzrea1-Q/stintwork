@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
-import { StintRecovery } from "./StintRecovery";
-import { CodeBlock } from "./ui/CodeBlock";
+
 import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
 import { Bell, Inbox, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CheckpointWarnings } from "./CheckpointWarnings";
-import { PermissionAnswer } from "./PermissionAnswer";
-import { HandoffAnswer } from "./HandoffAnswer";
-import { MemoryProposal } from "./MemoryProposal";
 import { GateView } from "./GateView";
-import { attentionStageName, attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
+import { HandoffAnswer } from "./HandoffAnswer";
+import { en } from "./i18n/en";
 import {
   CoreTextError,
   readResponseJson,
@@ -18,11 +15,15 @@ import {
   useLanguage,
 } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
-import { en } from "./i18n/en";
+import { MemoryProposal } from "./MemoryProposal";
+import { PermissionAnswer } from "./PermissionAnswer";
+import { StintRecovery } from "./StintRecovery";
 import { Button } from "./ui/Button";
+import { CodeBlock } from "./ui/CodeBlock";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { WarningCallout } from "./ui/WarningCallout";
+import { attentionStageName, attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
 
 export function NeedsYouQueue({
   snapshot,
@@ -111,15 +112,15 @@ export function NeedsYouQueue({
             if (!navigating.current && opener.current?.isConnected) opener.current.focus();
           }}
         >
-          <header className="needs-you-heading flex shrink-0 items-center justify-between gap-4 border-b border-border bg-surface p-4 sm:p-6">
+          <header className="needs-you-heading flex shrink-0 items-center justify-between gap-4 border-b border-border bg-card p-4 sm:p-6">
             <div className="min-w-0">
-              <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+              <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
                 {t.needsYou.yourAttention}
               </p>
               <SheetTitle className="mt-2 flex flex-wrap items-center gap-2 text-xl">
                 <Inbox className="size-icon-md shrink-0" aria-hidden="true" />
                 {t.needsYou.heading}{" "}
-                <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+                <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
                   {snapshot.attentionItems.length}
                 </span>
               </SheetTitle>
@@ -147,7 +148,7 @@ export function NeedsYouQueue({
           </header>
           <div className="needs-you-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 sm:p-6">
             {snapshot.attentionItems.length === 0 && (
-              <p role="status" className="needs-you-empty py-4 text-center text-muted">
+              <p role="status" className="needs-you-empty py-4 text-center text-muted-foreground">
                 {t.needsYou.empty}
               </p>
             )}
@@ -174,10 +175,10 @@ export function NeedsYouQueue({
                 return (
                   <article
                     key={item.id}
-                    className="attention-item mb-4 min-w-0 rounded-lg border border-border-strong bg-surface p-4 text-sm [overflow-wrap:anywhere] [&_h3]:my-3 [&_h3]:text-lg [&_p]:my-2 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-border-strong [&_textarea]:bg-surface [&_textarea]:p-3 [&_textarea]:text-text"
+                    className="attention-item mb-4 min-w-0 rounded-lg border border-input bg-card p-4 text-sm [overflow-wrap:anywhere] [&_h3]:my-3 [&_h3]:text-lg [&_p]:my-2 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
                     aria-label={title}
                   >
-                    <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+                    <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
                       {t.needsYou.loginRequired} · {profile?.displayName ?? item.agent}
                     </p>
                     <h3>{title}</h3>
@@ -198,7 +199,7 @@ export function NeedsYouQueue({
                           )}
                         </p>
                       )}
-                    <CodeBlock className="max-w-full overflow-x-auto whitespace-pre rounded-sm bg-bg p-3 font-mono text-xs [overflow-wrap:normal]">
+                    <CodeBlock className="max-w-full overflow-x-auto whitespace-pre rounded-sm bg-background p-3 font-mono text-xs [overflow-wrap:normal]">
                       <code>{item.loginCommand}</code>
                     </CodeBlock>
                     <Button
@@ -214,10 +215,10 @@ export function NeedsYouQueue({
               return (
                 <article
                   key={item.id}
-                  className="attention-item mb-4 min-w-0 rounded-lg border border-border-strong bg-surface p-4 text-sm [overflow-wrap:anywhere] [&_h3]:my-3 [&_h3]:text-lg [&_p]:my-2 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-border-strong [&_textarea]:bg-surface [&_textarea]:p-3 [&_textarea]:text-text"
+                  className="attention-item mb-4 min-w-0 rounded-lg border border-input bg-card p-4 text-sm [overflow-wrap:anywhere] [&_h3]:my-3 [&_h3]:text-lg [&_p]:my-2 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
                   aria-label={title}
                 >
-                  <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+                  <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
                     {item.kind === "permission"
                       ? t.needsYou.permission
                       : item.kind === "handoff-unresolved"
@@ -263,7 +264,7 @@ export function NeedsYouQueue({
                   >
                     {workItem?.title ?? item.workItem} · {item.workItem}
                   </Button>
-                  <p className="muted text-muted">
+                  <p className="muted text-muted-foreground">
                     {item.ticket === null
                       ? t.needsYou.noTicket
                       : t.needsYou.ticket(item.ticket, !!workItem?.github)}
@@ -274,7 +275,7 @@ export function NeedsYouQueue({
                       </>
                     )}
                   </p>
-                  <p className="muted text-muted">
+                  <p className="muted text-muted-foreground">
                     <time dateTime={item.raisedAt} title={item.raisedAt}>
                       {item.raisedAt === "1970-01-01T00:00:00.000Z"
                         ? t.needsYou.noReadinessTime
@@ -343,13 +344,13 @@ export function NeedsYouQueue({
                   {t.topBar.projectWarnings}
                 </h3>
                 <WarningCallout warnings={snapshot.warnings} />
-                <p className="text-xs text-muted">{t.topBar.readOnly}</p>
+                <p className="text-xs text-muted-foreground">{t.topBar.readOnly}</p>
               </section>
             )}
           </div>
-          <footer className="needs-you-footer shrink-0 border-t border-border bg-surface p-4 text-xs wrap-anywhere sm:p-6 [&_p]:mt-2">
+          <footer className="needs-you-footer shrink-0 border-t border-border bg-card p-4 text-xs wrap-anywhere sm:p-6 [&_p]:mt-2">
             {answerError && (
-              <p role="alert" className="warning text-warning">
+              <p role="alert" className="warning text-attention-foreground">
                 {answerItem &&
                   `${attentionTitle(answerItem, t, language, undefined, attentionStageName(answerItem, snapshot, t))}: `}
                 {answerError}
@@ -365,10 +366,10 @@ export function NeedsYouQueue({
               {alerts.enabled ? t.needsYou.disableNotifications : t.needsYou.enableNotifications}
             </Button>
             {!alerts.supported && (
-              <p className="muted text-muted">{t.needsYou.notificationsUnsupported}</p>
+              <p className="muted text-muted-foreground">{t.needsYou.notificationsUnsupported}</p>
             )}
             {alerts.error && (
-              <p role="alert" className="warning text-warning">
+              <p role="alert" className="warning text-attention-foreground">
                 {alerts.error}
               </p>
             )}

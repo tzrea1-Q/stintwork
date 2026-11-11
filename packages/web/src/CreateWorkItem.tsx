@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
-import { workflowName } from "./i18n/workflow-names";
 import { en } from "./i18n/en";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
 import { SelectField } from "./ui/SelectField";
@@ -105,7 +106,7 @@ export function CreateWorkItem({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-surface [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-surface [&_textarea]:p-2"
+        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-card [&_textarea]:p-2"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -136,7 +137,7 @@ export function CreateWorkItem({
               />
             </label>
             {!derivedSlug && (
-              <p id={slugHintId} className="muted text-muted">
+              <p id={slugHintId} className="muted text-muted-foreground">
                 {t.slugInput.hint}
               </p>
             )}
@@ -196,7 +197,7 @@ export function CreateWorkItem({
               )}
             </p>
             {error && (
-              <p role="alert" className="warning text-warning">
+              <p role="alert" className="warning text-attention-foreground">
                 {Object.entries(en.planning.create.errors).reduce(
                   (message, [key, original]) =>
                     message === original
@@ -206,7 +207,7 @@ export function CreateWorkItem({
                 )}
               </p>
             )}
-            <p className="muted text-muted">{t.planning.create.description}</p>
+            <p className="muted text-muted-foreground">{t.planning.create.description}</p>
             <footer className="flex flex-wrap justify-end gap-3">
               <Button onClick={onClose}>{t.planning.create.cancel}</Button>
               <Button variant="primary" type="submit" disabled={!slug}>

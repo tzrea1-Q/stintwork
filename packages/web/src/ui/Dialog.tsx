@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import * as Primitive from "@radix-ui/react-dialog";
+
 import { cva, type VariantProps } from "class-variance-authority";
+import { Dialog as Primitive } from "radix-ui";
 import {
-  forwardRef,
-  useRef,
   type ComponentPropsWithoutRef,
   type ElementRef,
+  forwardRef,
   type RefObject,
+  useRef,
 } from "react";
 import { cn } from "./cn";
 
@@ -17,7 +18,7 @@ export const DialogTitle = Primitive.Title;
 export const DialogDescription = Primitive.Description;
 
 const contentVariants = cva(
-  "fixed z-50 max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-auto break-words rounded-md border border-border bg-surface p-6 text-sm text-text shadow-overlay",
+  "fixed z-50 max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-auto break-words rounded-2xl border border-border bg-card p-6 text-sm text-foreground shadow-overlay",
   {
     variants: {
       placement: {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Button } from "./ui/Button";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import { useState } from "react";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { Button } from "./ui/Button";
 
 export function StopStint({
   stintId,
@@ -37,7 +38,7 @@ export function StopStint({
         {requested ? t.stints.stopping : recovering ? t.stints.stopStint : t.stints.stop}
       </Button>
       {error && (
-        <p role="alert" className="warning text-warning">
+        <p role="alert" className="warning text-attention-foreground">
           {error}
         </p>
       )}

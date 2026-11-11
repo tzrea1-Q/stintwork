@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { coreText, type StintSummary } from "@stintwork/core";
-import { renderCoreText, translateCoreText, useLanguage } from "./i18n/language";
 import type { Catalog } from "./i18n/en";
+import { renderCoreText, translateCoreText, useLanguage } from "./i18n/language";
 import { Badge } from "./ui/Badge";
 import { Disclosure } from "./ui/Disclosure";
 
@@ -35,9 +35,9 @@ export function StintRecovery({ stint }: { stint: StintSummary }) {
   const fallback = recovery.state === "fallback" && stint.status !== "running";
   const reason = recovery.reason ? recoveryReason(recovery.reason, t) : "";
   return (
-    <div className="stint-recovery my-3 grid min-w-0 gap-3 rounded-md border border-border bg-surface-raised p-3 text-sm [overflow-wrap:anywhere]">
+    <div className="stint-recovery my-3 grid min-w-0 gap-3 rounded-md border border-border bg-muted p-3 text-sm [overflow-wrap:anywhere]">
       {fallback ? (
-        <p role="status" className="text-warning">
+        <p role="status" className="text-attention-foreground">
           {stint.checkpointCommit
             ? t.stints.recovery.saved(stint.checkpointCommit)
             : !stint.error?.includes("Checkpoint failed:")

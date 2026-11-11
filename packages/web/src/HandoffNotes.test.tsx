@@ -8,10 +8,10 @@ import {
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
+import { codexProfile } from "../../agents/src/profiles";
+import { attentionSnapshot } from "./attention-test-fixtures";
 import { Board } from "./Board";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
-import { attentionSnapshot } from "./attention-test-fixtures";
-import { codexProfile } from "../../agents/src/profiles";
 
 function handoffSnapshot() {
   const snapshot = attentionSnapshot([]);

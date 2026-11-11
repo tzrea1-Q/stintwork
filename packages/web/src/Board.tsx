@@ -2,24 +2,24 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GithubStatus } from "./GithubStatus";
 import { Column } from "./Column";
 import { CommandPalette } from "./CommandPalette";
+import { CreateWorkItem } from "./CreateWorkItem";
+import { CustomiseWorkflow } from "./CustomiseWorkflow";
+import { GithubStatus } from "./GithubStatus";
+import { useLanguage } from "./i18n/language";
+import { stageName } from "./i18n/workflow-names";
+import { NeedsYouQueue } from "./NeedsYouQueue";
+import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
+import { Button } from "./ui/Button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
+import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
+import { useAttentionAlerts } from "./useAttentionAlerts";
 import type { Connection } from "./useProjectSnapshot";
 import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
-import { NeedsYouQueue } from "./NeedsYouQueue";
-import { useAttentionAlerts } from "./useAttentionAlerts";
-import { RoadmapEditor } from "./RoadmapEditor";
-import { CreateWorkItem } from "./CreateWorkItem";
-import { CustomiseWorkflow } from "./CustomiseWorkflow";
-import { useLanguage } from "./i18n/language";
-import { stageName } from "./i18n/workflow-names";
-import { Button } from "./ui/Button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
-import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 
 export function Board({
   snapshot,
@@ -173,7 +173,7 @@ export function Board({
       {snapshot.attentionItems.some((item) => item.kind === "permission") && (
         <button
           type="button"
-          className="border-b border-warning bg-surface px-4 py-2 text-left text-sm text-warning"
+          className="border-b border-attention/30 bg-card px-4 py-2 text-left text-sm text-attention-foreground"
           onClick={() => setNeedsYouOpen(true)}
         >
           {t.needsYou.pendingPermissions}
@@ -182,20 +182,23 @@ export function Board({
       <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="pipeline-heading flex flex-wrap items-center justify-between gap-4 px-4 py-6 sm:px-6">
           <div>
-            <p className="eyebrow text-xs uppercase tracking-widest text-muted">
+            <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
               {t.board.workbench}
             </p>
             <h1 className="mt-1 flex items-center gap-3 text-xl font-medium tracking-tight">
               {t.board.pipeline}{" "}
-              <span className="heading-count grid min-w-6 place-items-center rounded-sm border border-border-strong px-1 text-xs text-muted">
+              <span className="heading-count grid min-w-6 place-items-center rounded-sm border border-input px-1 text-xs text-muted-foreground">
                 {visible.length}
               </span>
             </h1>
-            <p className="mt-1 text-xs muted text-muted">{t.board.description}</p>
+            <p className="mt-1 text-xs muted text-muted-foreground">{t.board.description}</p>
           </div>
-          <p className="connection-status flex items-center gap-2 text-xs text-muted" role="status">
+          <p
+            className="connection-status flex items-center gap-2 text-xs text-muted-foreground"
+            role="status"
+          >
             <span
-              className={`status-dot size-1 rounded-full ${connection === "live" ? "is-live bg-success" : "is-reconnecting bg-warning"}`}
+              className={`status-dot size-1 rounded-full ${connection === "live" ? "is-live bg-success" : "is-reconnecting bg-attention"}`}
             />
             {connection === "live"
               ? t.board.live
@@ -206,14 +209,14 @@ export function Board({
         </div>
         {error && (
           <p
-            className="connection-error bg-accent-soft px-4 py-3 text-xs text-warning sm:px-6"
+            className="connection-error bg-attention-soft px-4 py-3 text-xs text-attention-foreground sm:px-6"
             role="alert"
           >
             {error}
             {t.board.lastAvailable}
           </p>
         )}
-        <div className="board-toolbar flex flex-col gap-3 border-y border-border px-4 py-3 text-xs text-muted lg:flex-row lg:items-center lg:justify-between lg:px-6">
+        <div className="board-toolbar flex flex-col gap-3 border-y border-border px-4 py-3 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
             <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
               <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
@@ -285,7 +288,7 @@ export function Board({
           </div>
         </div>
         {githubTracker && (
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm text-muted sm:px-6">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm text-muted-foreground sm:px-6">
             <span>{t.board.githubCreation}</span>
             {repository && /^[a-z\d-]+\/[a-z\d_.-]+$/i.test(repository) && (
               <a
@@ -308,7 +311,7 @@ export function Board({
           aria-label={t.board.stages}
         >
           {githubTracker && snapshot.github?.verifying ? (
-            <p className="mt-4 text-muted" role="status">
+            <p className="mt-4 text-muted-foreground" role="status">
               {t.board.verifyingGithub}
             </p>
           ) : githubTracker &&
@@ -319,15 +322,15 @@ export function Board({
               (!snapshot.github.complete && snapshot.workItems.length === 0)) ? null : snapshot
               .workItems.length === 0 ? (
             <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
-              <FolderOpen className="size-icon-lg muted text-muted" aria-hidden="true" />
+              <FolderOpen className="size-icon-lg muted text-muted-foreground" aria-hidden="true" />
               <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
               {!githubTracker && (
                 <>
-                  <p className="mt-2 muted text-muted">
+                  <p className="mt-2 muted text-muted-foreground">
                     {t.board.startWithSpec}
                     <code>.scratch/&lt;work-item&gt;/spec.md</code>.
                   </p>
-                  <p className="mt-2 text-xs muted text-muted">
+                  <p className="mt-2 text-xs muted text-muted-foreground">
                     {t.board.addTickets}
                     <code>.scratch/&lt;work-item&gt;/issues/</code>
                     {t.board.updatesAsYouEdit}
@@ -338,7 +341,7 @@ export function Board({
           ) : (
             <>
               {visible.length === 0 && (
-                <p className="mt-4 muted text-muted" role="status">
+                <p className="mt-4 muted text-muted-foreground" role="status">
                   {t.board.emptyMilestone}
                 </p>
               )}
@@ -367,7 +370,7 @@ export function Board({
                   data-card-column="unstaged"
                   aria-label={t.board.unstaged}
                 >
-                  <h2 className="mb-3 text-xs muted text-muted">
+                  <h2 className="mb-3 text-xs muted text-muted-foreground">
                     {t.board.unstagedCount(unstaged.length)}
                   </h2>
                   <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3">
@@ -392,9 +395,12 @@ export function Board({
           <details className="shipped-lane mt-5 border-t border-border pt-4 [&>summary]:flex [&>summary]:w-fit [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-2 [&>summary]:text-xs [&>summary::-webkit-details-marker]:hidden [&[open]_.shipped-chevron]:rotate-90">
             <summary>
               <ChevronRight className="shipped-chevron size-icon-sm" aria-hidden="true" />
-              <CheckCheck className="size-icon-sm success text-success" aria-hidden="true" />
+              <CheckCheck
+                className="size-icon-sm success text-success-foreground"
+                aria-hidden="true"
+              />
               <h2>{t.board.shipped}</h2>
-              <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+              <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
                 {shipped.length}
               </span>
             </summary>
@@ -417,7 +423,7 @@ export function Board({
                 ))}
               </div>
             ) : (
-              <p className="py-4 text-xs muted text-muted">{t.board.emptyShipped}</p>
+              <p className="py-4 text-xs muted text-muted-foreground">{t.board.emptyShipped}</p>
             )}
           </details>
         </section>

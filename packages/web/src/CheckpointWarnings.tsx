@@ -11,7 +11,10 @@ export function CheckpointWarnings({ warnings }: { warnings?: readonly Checkpoin
     "generated-directory": t.needsYou.generatedDirectory,
   };
   return (
-    <section className="warning text-warning" aria-label={t.needsYou.checkpointWarnings}>
+    <section
+      className="warning text-attention-foreground"
+      aria-label={t.needsYou.checkpointWarnings}
+    >
       <h4>{t.needsYou.checkpointWarnings}</h4>
       {warnings.some((warning) => warning.excluded) && <p>{t.needsYou.excludedFiles}</p>}
       {warnings.some((warning) => !warning.excluded) && <p>{t.needsYou.committedFiles}</p>}

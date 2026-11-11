@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Button } from "./ui/Button";
-import { readResponseJson, CoreTextError, useErrorText, useLanguage } from "./i18n/language";
+
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
+import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { PermissionDetails } from "./PermissionDetails";
+import { Button } from "./ui/Button";
 
 type PermissionAnswerProps = {
   stintId: string;
@@ -81,7 +82,9 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
       )}
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
-        <p className="warning text-warning">{t.needsYou.declineEndsTurn(profile.displayName)}</p>
+        <p className="warning text-attention-foreground">
+          {t.needsYou.declineEndsTurn(profile.displayName)}
+        </p>
       )}
       <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
         {request.options.map((option) => (
@@ -108,7 +111,7 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
       </div>
       {submitted && <p role="status">{t.needsYou.answerSent}</p>}
       {error && (
-        <p role="alert" className="warning text-warning">
+        <p role="alert" className="warning text-attention-foreground">
           {error}
         </p>
       )}

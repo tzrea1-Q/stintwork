@@ -2,8 +2,8 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { Board } from "./Board";
 import { attentionProfile, attentionSnapshot } from "./attention-test-fixtures";
+import { Board } from "./Board";
 
 afterEach(() => {
   vi.unstubAllGlobals();

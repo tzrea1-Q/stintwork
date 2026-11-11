@@ -3,8 +3,8 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { expect, test } from "vitest";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
 import { Dialog, DialogContent, DialogTitle } from "./Dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
 
 function MilestoneSelect() {
   const [value, setValue] = useState("m1");

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Markdown } from "./ui/Markdown";
-import { Button } from "./ui/Button";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
-import { readResponseJson, CoreTextError, useLanguage } from "./i18n/language";
+
 import type { HandoffUnresolvedAttentionItem } from "@stintwork/core";
 import { useId, useRef, useState } from "react";
+import { CoreTextError, readResponseJson, useLanguage } from "./i18n/language";
+import { Button } from "./ui/Button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
+import { Markdown } from "./ui/Markdown";
 
 export function HandoffAnswer({
   item,
@@ -72,7 +73,7 @@ export function HandoffAnswer({
           disabled={sending || submitted}
           onChange={(event) => setNote(event.target.value)}
         />
-        <p className="muted text-muted">{t.needsYou.noteHelp}</p>
+        <p className="muted text-muted-foreground">{t.needsYou.noteHelp}</p>
         <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
           <Button variant="primary" type="submit" disabled={!note.trim() || sending || submitted}>
             {t.needsYou.saveNote}

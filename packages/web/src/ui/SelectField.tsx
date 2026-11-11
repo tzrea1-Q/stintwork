@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, type ComponentPropsWithoutRef } from "react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
+import { type ComponentPropsWithoutRef, useEffect, useRef } from "react";
 import { cn } from "./cn";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./Select";
 
 export function SelectField({
   value,

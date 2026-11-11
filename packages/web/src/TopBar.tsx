@@ -2,9 +2,9 @@
 import type { ProjectSnapshot } from "@stintwork/core";
 import { GitBranch, Inbox, Search, Settings } from "lucide-react";
 import { useRef, useState } from "react";
-import { SetupGuide } from "./SetupGuide";
-import { useLanguage } from "./i18n/language";
 import { LanguageMenu } from "./i18n/LanguageMenu";
+import { useLanguage } from "./i18n/language";
+import { SetupGuide } from "./SetupGuide";
 import { Button } from "./ui/Button";
 import { Dialog } from "./ui/Dialog";
 import {
@@ -40,7 +40,7 @@ export function TopBar({
   const warnings = snapshot.warnings.length;
 
   return (
-    <header className="top-bar flex shrink-0 items-center gap-2 border-b border-border bg-surface px-4 py-3 sm:gap-4 xl:px-6">
+    <header className="top-bar flex shrink-0 items-center gap-2 border-b border-border bg-card px-4 py-3 sm:gap-4 xl:px-6">
       <div className="top-project flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
         <strong
           className="min-w-0 truncate text-sm tracking-tight"
@@ -51,7 +51,7 @@ export function TopBar({
         </strong>
         {snapshot.branch && (
           <span
-            className="flex min-w-0 max-w-[40%] shrink-0 items-center gap-1 border-l border-border-strong pl-2 font-mono text-xs text-muted sm:pl-3"
+            className="flex min-w-0 max-w-[40%] shrink-0 items-center gap-1 border-l border-input pl-2 font-mono text-xs text-muted-foreground sm:pl-3"
             data-truncate
             title={snapshot.branch}
           >
@@ -73,14 +73,14 @@ export function TopBar({
           <Inbox aria-hidden="true" />
           {t.topBar.needsYou}
           <span
-            className={`rounded-sm bg-surface-raised px-1 text-xs ${snapshot.attentionItems.length ? "text-warning" : "text-muted"}`}
+            className={`rounded-sm bg-muted px-1 text-xs ${snapshot.attentionItems.length ? "text-attention-foreground" : "text-muted-foreground"}`}
           >
             {snapshot.attentionItems.length}
           </span>
           {warnings > 0 && (
             <span
               data-warning-dot
-              className="size-1 shrink-0 rounded-full bg-warning"
+              className="size-1 shrink-0 rounded-full bg-attention"
               aria-hidden="true"
             />
           )}
@@ -122,7 +122,7 @@ export function TopBar({
                     {ready < checks.length && (
                       <span
                         data-warning-dot
-                        className="absolute right-1 top-1 size-1 rounded-full bg-warning"
+                        className="absolute right-1 top-1 size-1 rounded-full bg-attention"
                         aria-hidden="true"
                       />
                     )}
@@ -148,7 +148,7 @@ export function TopBar({
               <DropdownMenuSeparator className="my-1 border-t border-border" />
               <DropdownMenuItem aria-haspopup="dialog" onSelect={() => setSetupOpen(true)}>
                 {t.topBar.projectSetup}{" "}
-                <span className="ml-auto pl-4 text-muted">
+                <span className="ml-auto pl-4 text-muted-foreground">
                   {ready}/{checks.length}
                 </span>
               </DropdownMenuItem>

@@ -5,11 +5,11 @@ import { useState } from "react";
 import { expect, test } from "vitest";
 import {
   Dialog,
-  DialogTrigger,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
   DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+  DialogTrigger,
 } from "./Dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 

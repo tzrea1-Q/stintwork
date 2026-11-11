@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Slot } from "@radix-ui/react-slot";
+
 import { cva, type VariantProps } from "class-variance-authority";
-import { forwardRef, type ComponentPropsWithoutRef } from "react";
+import { Slot } from "radix-ui";
+import { type ComponentPropsWithoutRef, forwardRef } from "react";
 import { cn } from "./cn";
 
 const buttonVariants = cva(
-  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal rounded-md border text-sm font-medium [overflow-wrap:anywhere] transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
+  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal rounded-full border text-sm font-medium [overflow-wrap:anywhere] transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
   {
     variants: {
       variant: {
-        primary: "border-transparent bg-accent text-on-accent hover:opacity-90",
-        secondary: "border-border bg-surface text-text hover:bg-surface-hover",
+        primary: "border-transparent bg-primary text-primary-foreground hover:opacity-90",
+        secondary: "border-border bg-card text-foreground hover:bg-secondary",
         ghost:
-          "border-transparent bg-transparent text-muted hover:bg-surface-hover hover:text-text",
-        link: "border-transparent bg-transparent text-text hover:text-accent",
-        danger: "border-transparent bg-danger text-on-danger hover:opacity-90",
+          "border-transparent bg-transparent text-muted-foreground hover:bg-secondary hover:text-foreground",
+        link: "border-transparent bg-transparent text-foreground hover:text-accent-foreground",
+        danger: "border-transparent bg-destructive text-destructive-foreground hover:opacity-90",
       },
       size: {
         sm: "min-h-7 px-2 py-1",
@@ -31,7 +32,7 @@ export const Button = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<"button"> & VariantProps<typeof buttonVariants> & { asChild?: boolean }
 >(function Button({ asChild, variant, size, className, type, ...props }, ref) {
-  const Component = asChild ? Slot : "button";
+  const Component = asChild ? Slot.Root : "button";
   return (
     <Component
       ref={ref}

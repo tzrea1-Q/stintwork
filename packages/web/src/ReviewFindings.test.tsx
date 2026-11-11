@@ -9,9 +9,9 @@ import {
 import type { WorkItemDiff } from "@stintwork/git";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chooseOption } from "./select-test-helper";
 import { afterEach, expect, test, vi } from "vitest";
 import { ReviewOverlay } from "./ReviewOverlay";
+import { chooseOption } from "./select-test-helper";
 
 const diff: WorkItemDiff = {
   branch: "stintwork/example",

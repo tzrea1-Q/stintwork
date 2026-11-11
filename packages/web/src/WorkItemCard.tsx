@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { recoveryStatus } from "./StintRecovery";
-import { Button } from "./ui/Button";
+
 import type { Milestone, ProjectSnapshot, WorkflowDefinition } from "@stintwork/core";
 import { Bug, Info, Layers3, LockKeyhole, Sparkles, Zap } from "lucide-react";
-import { Badge } from "./ui/Badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
+import { recoveryStatus } from "./StintRecovery";
+import { Badge } from "./ui/Badge";
+import { Button } from "./ui/Button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export type BoardWorkItem = ProjectSnapshot["workItems"][number];
 
@@ -60,12 +61,12 @@ export function WorkItemCard({
 
   return (
     <article
-      className="work-item relative min-w-0 rounded-md border border-border-strong bg-surface p-3 shadow-card hover:border-accent has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-accent"
+      className="work-item relative min-w-0 rounded-md border border-input bg-card p-3 shadow-card hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring"
       aria-label={`${item.slug}: ${item.title}`}
     >
       <div className="flex items-start justify-between gap-2">
         <span
-          className="work-item-id inline-flex min-w-0 items-center gap-2 font-mono text-xs text-muted [&_svg]:size-icon-sm [&_svg]:shrink-0"
+          className="work-item-id inline-flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
           title={typeName}
         >
           <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
@@ -74,7 +75,7 @@ export function WorkItemCard({
         </span>
         {item.milestone && (
           <span
-            className="milestone-tag shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted"
+            className="milestone-tag shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
             title={milestone?.name}
           >
             {milestone?.id ?? item.milestone}
@@ -96,7 +97,7 @@ export function WorkItemCard({
       </h3>
       {item.activeStint?.status === "running" && (
         <span
-          className="stint-running mb-3 flex items-center gap-2 text-xs text-accent"
+          className="stint-running mb-3 flex items-center gap-2 text-xs text-accent-foreground"
           role="status"
         >
           <span className="stint-running-dot size-1 rounded-full bg-current" aria-hidden="true" />
@@ -136,7 +137,7 @@ export function WorkItemCard({
           )}
         </div>
       )}
-      <div className="ticket-progress flex items-center justify-between gap-2 text-xs text-muted">
+      <div className="ticket-progress flex items-center justify-between gap-2 text-xs text-muted-foreground">
         {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
           <span>{item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}</span>
         ) : (
@@ -146,7 +147,7 @@ export function WorkItemCard({
               {t.card.tickets}
             </span>
             <progress
-              className="h-1 w-11 appearance-none overflow-hidden rounded-sm border-0 bg-surface-hover [&::-webkit-progress-bar]:bg-surface-hover [&::-webkit-progress-value]:bg-accent [&::-moz-progress-bar]:bg-accent"
+              className="h-1 w-11 appearance-none overflow-hidden rounded-sm border-0 bg-secondary [&::-webkit-progress-bar]:bg-secondary [&::-webkit-progress-value]:bg-accent-foreground [&::-moz-progress-bar]:bg-accent-foreground"
               aria-label={t.card.progress(item.slug)}
               max={Math.max(1, item.tickets.length)}
               value={resolved}

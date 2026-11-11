@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { chooseOption } from "./select-test-helper";
-import { builtInWorkflows, compileBrief, type AgentProfile } from "@stintwork/core";
+
+import { type AgentProfile, builtInWorkflows, compileBrief } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { Board } from "./Board";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { attentionProfile, attentionSnapshot } from "./attention-test-fixtures";
+import { Board } from "./Board";
+import { chooseOption } from "./select-test-helper";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 const warning =
   'Grok Build has permission_mode = "always-approve" in its config. Grok won’t ask for permissions, regardless of the stint’s permission level.';

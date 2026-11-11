@@ -3,8 +3,8 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
-import { Tooltip, TooltipProvider, TooltipTrigger, TooltipContent } from "./Tooltip";
-import { Sheet, SheetTrigger, SheetContent, SheetTitle, SheetClose } from "./Sheet";
+import { Sheet, SheetClose, SheetContent, SheetTitle, SheetTrigger } from "./Sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./Tooltip";
 
 afterEach(() => vi.restoreAllMocks());
 

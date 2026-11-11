@@ -2,11 +2,11 @@
 import { createMemoryRepoFiles, editRoadmap, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { chooseOption } from "./select-test-helper";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
-import { RoadmapEditor } from "./RoadmapEditor";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { RoadmapEditor } from "./RoadmapEditor";
+import { chooseOption } from "./select-test-helper";
 
 const initial =
   "# Roadmap\n\n## First\nId: first\nStatus: active\n- board\n\n## Second\nId: second\nStatus: planned\n";

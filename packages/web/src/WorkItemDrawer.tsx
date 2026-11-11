@@ -1,32 +1,33 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Markdown } from "./ui/Markdown";
-import { Badge } from "./ui/Badge";
+
 import {
-  builtInWorkflows,
-  type WorkflowDefinitions,
-  type Milestone,
   type AgentProfile,
+  builtInWorkflows,
+  type Milestone,
   type Warning,
+  type WorkflowDefinitions,
 } from "@stintwork/core";
 import { CheckCircle2, Circle, Copy, LockKeyhole, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
-import { StintStream } from "./StintStream";
-import { StopStint } from "./StopStint";
-import { StintHistory } from "./StintHistory";
-import type { BoardWorkItem } from "./WorkItemCard";
-import { StageAgentRail } from "./StageAgentRail";
-import { GateView } from "./GateView";
-import { ReviewOverlay } from "./ReviewOverlay";
 import { ChecksPanel } from "./ChecksPanel";
-import { ShipActions } from "./ShipActions";
-import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
+import { GateView } from "./GateView";
+import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { ticketStatus, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
+import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
+import { ReviewOverlay } from "./ReviewOverlay";
+import { ShipActions } from "./ShipActions";
+import { StageAgentRail } from "./StageAgentRail";
+import { StintHistory } from "./StintHistory";
+import { StintStream } from "./StintStream";
+import { StopStint } from "./StopStint";
+import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import { Markdown } from "./ui/Markdown";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
+import type { BoardWorkItem } from "./WorkItemCard";
 
 function FilePath({ path }: { path: string }) {
   const { t } = useLanguage();
@@ -42,7 +43,7 @@ function FilePath({ path }: { path: string }) {
   }
 
   return (
-    <div className="file-path mb-4 mt-2 flex flex-wrap items-center gap-2 text-xs text-muted [&_code]:min-w-0 [&_code]:[overflow-wrap:anywhere]">
+    <div className="file-path mb-4 mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground [&_code]:min-w-0 [&_code]:[overflow-wrap:anywhere]">
       <code>{path}</code>
       <Tooltip>
         <TooltipTrigger asChild>
@@ -174,7 +175,7 @@ export function WorkItemDrawer({
           {pendingPermissions && (
             <button
               type="button"
-              className="shrink-0 border-b border-warning bg-surface px-4 py-2 text-left text-sm text-warning"
+              className="shrink-0 border-b border-attention/30 bg-card px-4 py-2 text-left text-sm text-attention-foreground"
               onClick={onOpenNeedsYou}
             >
               {t.needsYou.pendingPermissions}
@@ -182,7 +183,7 @@ export function WorkItemDrawer({
           )}
           <header className="drawer-header shrink-0 px-4 py-6 sm:px-7">
             <div className="flex items-center justify-between gap-3">
-              <p className="eyebrow text-xs uppercase tracking-widest text-muted min-w-0 break-words">
+              <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground min-w-0 break-words">
                 {type} / <code>{item.slug}</code>
               </p>
               <div className="flex shrink-0 items-center gap-2">
@@ -215,10 +216,10 @@ export function WorkItemDrawer({
             >
               {item.title}
             </SheetTitle>
-            <p className="mt-3 text-xs text-muted wrap-anywhere">
+            <p className="mt-3 text-xs text-muted-foreground wrap-anywhere">
               {t.stints.milestone} {milestone?.name ?? item.milestone ?? t.stints.noMilestone}
             </p>
-            <p className="mt-3 text-xs text-muted wrap-anywhere">
+            <p className="mt-3 text-xs text-muted-foreground wrap-anywhere">
               {t.stints.workflow} {workflowName(workflow, t)}{" "}
               {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
                 <Button
@@ -232,7 +233,7 @@ export function WorkItemDrawer({
             </p>
             {item.worktreePath && (
               <div className="mt-3">
-                <p className="text-xs muted text-muted">{t.stints.worktreeFiles}</p>
+                <p className="text-xs muted text-muted-foreground">{t.stints.worktreeFiles}</p>
                 <FilePath path={item.worktreePath} />
                 <Button size="sm" onClick={() => setReviewOpen(true)}>
                   {t.stints.openReview}
@@ -241,12 +242,12 @@ export function WorkItemDrawer({
             )}
           </header>
           {refreshing && (
-            <p role="status" className="px-4 text-sm text-muted sm:px-7">
+            <p role="status" className="px-4 text-sm text-muted-foreground sm:px-7">
               {t.board.githubStatus.pending}
             </p>
           )}
           {refreshError && (
-            <div className="px-4 text-sm text-warning sm:px-7">
+            <div className="px-4 text-sm text-attention-foreground sm:px-7">
               <p role="alert">{refreshError}</p>
               <Button variant="secondary" onClick={() => setRefreshAttempt((count) => count + 1)}>
                 {t.board.githubStatus.retry}
@@ -256,18 +257,18 @@ export function WorkItemDrawer({
           {item.stage && !item.merged ? (
             <StageAgentRail key={item.slug} item={item} workflows={workflows} />
           ) : !item.merged ? (
-            <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted">
+            <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
               {t.stints.noStage}
             </p>
           ) : null}
           <nav
-            className="drawer-sections flex shrink-0 gap-6 border-b border-border px-4 py-3 text-xs sm:px-7 [&_a:hover]:text-accent"
+            className="drawer-sections flex shrink-0 gap-6 border-b border-border px-4 py-3 text-xs sm:px-7 [&_a:hover]:text-accent-foreground"
             aria-label={t.stints.sections}
           >
             <a href="#drawer-spec">{t.stints.spec}</a>
             <a href="#drawer-tickets">
               {t.stints.tickets}{" "}
-              <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+              <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
                 {item.tickets.length}
               </span>
             </a>
@@ -337,9 +338,11 @@ export function WorkItemDrawer({
                   <Markdown>{item.spec.text}</Markdown>
                 </>
               ) : missingShippedDetail ? (
-                <p className="muted text-muted">{t.board.githubStatus.detailUnavailable}</p>
+                <p className="muted text-muted-foreground">
+                  {t.board.githubStatus.detailUnavailable}
+                </p>
               ) : (
-                <p className="muted text-muted">{t.stints.noSpec}</p>
+                <p className="muted text-muted-foreground">{t.stints.noSpec}</p>
               )}
             </section>
             <section id="drawer-tickets" aria-labelledby="drawer-tickets-title">
@@ -348,7 +351,7 @@ export function WorkItemDrawer({
                 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
               >
                 {t.stints.tickets}{" "}
-                <span className="count min-w-5 rounded-sm bg-surface-raised px-1 text-center text-xs text-muted">
+                <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
                   {item.tickets.length}
                 </span>
               </h3>
@@ -363,15 +366,15 @@ export function WorkItemDrawer({
                         : Circle;
                     return (
                       <li key={ticket.path}>
-                        <details className="drawer-ticket rounded-md border border-border p-3 [&>summary]:flex [&>summary]:list-none [&>summary]:items-start [&>summary]:gap-3 [&>summary::-webkit-details-marker]:hidden [&>summary::after]:ml-auto [&>summary::after]:text-muted [&>summary::after]:content-['+'] [&[open]>summary::after]:content-['−']">
+                        <details className="drawer-ticket rounded-md border border-border p-3 [&>summary]:flex [&>summary]:list-none [&>summary]:items-start [&>summary]:gap-3 [&>summary::-webkit-details-marker]:hidden [&>summary::after]:ml-auto [&>summary::after]:text-muted-foreground [&>summary::after]:content-['+'] [&[open]>summary::after]:content-['−']">
                           <summary>
                             <StatusIcon
                               className={
                                 ticket.resolved
-                                  ? "size-icon-sm shrink-0 text-success"
+                                  ? "size-icon-sm shrink-0 text-success-foreground"
                                   : blocked
-                                    ? "size-icon-sm shrink-0 text-warning"
-                                    : "size-icon-sm shrink-0 text-muted"
+                                    ? "size-icon-sm shrink-0 text-attention-foreground"
+                                    : "size-icon-sm shrink-0 text-muted-foreground"
                               }
                               aria-hidden="true"
                             />
@@ -380,7 +383,11 @@ export function WorkItemDrawer({
                                 {ticketNumber(ticket.number)} · {ticket.title}
                               </strong>
                               <small
-                                className={blocked ? "warning text-warning" : "muted text-muted"}
+                                className={
+                                  blocked
+                                    ? "warning text-attention-foreground"
+                                    : "muted text-muted-foreground"
+                                }
                               >
                                 <Badge
                                   variant={
@@ -415,9 +422,11 @@ export function WorkItemDrawer({
                   })}
                 </ol>
               ) : missingShippedDetail ? (
-                <p className="muted text-muted">{t.board.githubStatus.detailUnavailable}</p>
+                <p className="muted text-muted-foreground">
+                  {t.board.githubStatus.detailUnavailable}
+                </p>
               ) : (
-                <p className="muted text-muted">{t.stints.noTickets}</p>
+                <p className="muted text-muted-foreground">{t.stints.noTickets}</p>
               )}
             </section>
             <section aria-labelledby="drawer-stint-history-title">
@@ -453,7 +462,7 @@ export function WorkItemDrawer({
               </>
             )}
           </div>
-          <footer className="drawer-footer flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted sm:px-7">
+          <footer className="drawer-footer flex shrink-0 flex-wrap justify-between gap-2 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7">
             <span>{item.github ? t.stints.githubTracker : t.stints.tracker}</span>
             <span>
               <kbd>Esc</kbd>
