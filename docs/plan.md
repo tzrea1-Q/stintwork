@@ -193,6 +193,8 @@ Publish the release after its milestones pass.
 
 **Exit test:** the ACP contract tests pass for every agent, v0.2 is on npm with release notes, and the repo is public. CI, both README renders and links, and issue templates are checked on the public repo, along with SECURITY's private reporting route.
 
+Shipped 2026-11-10: `stintwork@0.2.0` published from `33125f8` (tag `v0.2.0`) and the repo made public. Grok Build's contract counted as an accepted limitation, recorded as an open issue below.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.
@@ -202,6 +204,8 @@ Publish the release after its milestones pass.
 
 - Run the outside-developer test with 3–5 developers (go-public 04 and first-release 12). It is outside v0.2 and does not gate development or release.
 - Fix what they ran into (the old M9). Set the scope from real outside feedback after the public release.
+- **Open issue: Grok Build is unverified end to end.** Every real Grok stint and most contract scenarios returned HTTP 429 (included usage exhausted) on the maintainer's account, so v0.2 shipped with Grok experimental and its contract as an accepted limitation. Reopen [agent-polish 04](../.scratch/agent-polish/issues/04-grok-end-to-end.md) on an account with available usage: one real stint with a parsed handoff and a full contract run, including Ask with a non-always-approve config.
+- Antigravity CLI native restart ([more-agents 07](../.scratch/more-agents/issues/07-antigravity-native-restart.md)): the v0.2 contract showed new-process `session/load` works.
 
 ### Later (not in v0.2)
 

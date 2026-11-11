@@ -76,6 +76,6 @@ Status: shipped
 
 ## M13 · v0.2 release and going public
 Id: m13
-Status: planned
+Status: shipped
 
 - v02-release
