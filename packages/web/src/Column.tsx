@@ -55,7 +55,7 @@ export function Column({
     .join(" · ");
   return (
     <section
-      className={`stage-column min-w-0 snap-start ${items.length ? "flex-[1_1_0] min-w-[150px]" : "group flex-[0_0_56px] min-w-14 transition-[flex-basis] hover:basis-[150px] focus-within:basis-[150px]"}`}
+      className={`stage-column relative min-w-0 snap-start ${items.length ? "flex-[1_1_0] min-w-[150px]" : "group flex-[0_0_56px] min-w-14 transition-[flex-basis] hover:basis-[150px] focus-within:basis-[150px]"}`}
       data-card-column={id}
       aria-labelledby={`stage-${id}`}
       tabIndex={items.length ? undefined : 0}

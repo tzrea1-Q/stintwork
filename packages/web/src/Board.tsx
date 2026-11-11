@@ -386,7 +386,7 @@ export function Board({
                       )}
                       <div className="stage-board min-w-0 w-full max-w-full overflow-hidden rounded-3xl bg-card p-3 shadow-card">
                         <div
-                          className="stage-scroll min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                          className="stage-scroll relative min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
                           ref={stageScroll}
                         >
                           <div className="stage-grid flex min-h-[360px] gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">

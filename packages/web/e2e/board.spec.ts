@@ -100,6 +100,18 @@ for (const language of ["en", "zh-CN"] as const) {
         expect(dimensions.scroller).toBeLessThanOrEqual(dimensions.card);
         const columns = stages.locator(".stage-column");
         await expect(columns.locator(".stage-header .count")).toHaveCount(6);
+        const emptyLabels = columns.locator(":scope > div > .sr-only");
+        expect(await emptyLabels.count()).toBeGreaterThan(0);
+        expect(await stages.evaluate((element) => getComputedStyle(element).position)).toBe(
+          "relative",
+        );
+        expect(
+          await emptyLabels.evaluateAll((labels) =>
+            labels.every(
+              (label) => (label as HTMLElement).offsetParent === label.closest(".stage-column"),
+            ),
+          ),
+        ).toBe(true);
         if (width === 390 || width === 768) {
           expect(await stages.evaluate((element) => getComputedStyle(element).scrollSnapType)).toBe(
             "x mandatory",
