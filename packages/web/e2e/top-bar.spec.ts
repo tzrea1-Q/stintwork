@@ -247,9 +247,10 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(tooltip).not.toBeVisible();
         }
 
-        const milestone = page
-          .locator(".board-toolbar")
-          .getByRole("combobox", { name: t.topBar.milestone, exact: true });
+        // The language changes mid-test, so match the milestone picker's name in either language.
+        const milestone = page.locator(".board-toolbar").getByRole("combobox", {
+          name: new RegExp(`^(${en.topBar.milestone}|${zhCN.topBar.milestone})$`),
+        });
         const triggerWidth = await milestone.evaluate(
           (element) => element.getBoundingClientRect().width,
         );
