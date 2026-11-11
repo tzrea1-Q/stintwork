@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "./cn";
-export function Skeleton({ className, ...props }: ComponentPropsWithoutRef<"div">) {
+
+function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
-      {...props}
+      data-slot="skeleton"
       aria-hidden="true"
       className={cn("motion-safe:animate-pulse rounded-md bg-muted", className)}
+      {...props}
     />
   );
 }
+
+export { Skeleton };

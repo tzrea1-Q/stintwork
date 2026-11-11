@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Separator as P } from "radix-ui";
-import type { ComponentPropsWithoutRef } from "react";
+"use client";
+
+import type * as React from "react";
 import { cn } from "./cn";
-export function Separator({
+import { Separator as SeparatorPrimitive } from "radix-ui";
+
+function Separator({
   className,
   orientation = "horizontal",
-  decorative = false,
+  decorative = true,
   ...props
-}: ComponentPropsWithoutRef<typeof P.Root>) {
+}: React.ComponentProps<typeof SeparatorPrimitive.Root>) {
   return (
-    <P.Root
-      orientation={orientation}
+    <SeparatorPrimitive.Root
+      data-slot="separator"
       decorative={decorative}
+      orientation={orientation}
       className={cn(
-        "shrink-0 bg-border",
-        orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
+        "shrink-0 bg-border data-horizontal:h-px data-horizontal:w-full data-vertical:w-px data-vertical:self-stretch",
         className,
       )}
       {...props}
     />
   );
 }
+
+export { Separator };

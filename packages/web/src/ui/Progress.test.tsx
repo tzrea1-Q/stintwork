@@ -9,5 +9,5 @@ test("exposes progress", () => {
     "aria-valuenow",
     "40",
   );
-  expect(screen.getByRole("progressbar").firstChild).toHaveStyle({ width: "50%" });
+  expect(screen.getByRole("progressbar").firstChild).toHaveStyle({ transform: "translateX(-50%)" });
 });

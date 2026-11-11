@@ -19,3 +19,14 @@ test("navigates with arrows", async () => {
   expect(screen.getByRole("tab", { name: "B" })).toHaveAttribute("aria-selected", "true");
   expect(screen.getByText("Panel")).toBeVisible();
 });
+
+test("exposes line list variant", () => {
+  render(
+    <Tabs defaultValue="a">
+      <TabsList variant="line">
+        <TabsTrigger value="a">A</TabsTrigger>
+      </TabsList>
+    </Tabs>,
+  );
+  expect(screen.getByRole("tablist")).toHaveAttribute("data-variant", "line");
+});

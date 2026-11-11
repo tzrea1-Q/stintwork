@@ -10,3 +10,13 @@ test("toggles with keyboard", async () => {
   await user.keyboard("[Space]");
   expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("aria-pressed", "true");
 });
+
+test("exposes variant and size", () => {
+  render(
+    <Toggle variant="outline" size="sm">
+      Bold
+    </Toggle>,
+  );
+  expect(screen.getByRole("button", { name: "Bold" })).toHaveAttribute("data-slot", "toggle");
+  expect(screen.getByRole("button", { name: "Bold" })).toHaveClass("border");
+});

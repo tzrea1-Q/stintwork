@@ -6,7 +6,7 @@ Blocked by: 01
 
 ## What to build
 
-Use the shadcn CLI to add card, item, empty, progress, skeleton, kbd, tabs, toggle-group, scroll-area, sonner, avatar and separator, and restyle command. Review generated source and keep it in `src/ui/`. Add Stintwork StatusChip, AgentAvatar, IconChip, PropertyRow and SegmentedProgress. Use semantic tokens, 36px round tinted row icons, labels with values and segmented counts. Each component and pattern has a behaviour test appropriate to its semantics.
+Read the official shadcn registry source with `pnpm dlx shadcn@4.23.0 view <name>` and adapt card, item, empty, progress, skeleton, kbd, tabs, toggle, toggle-group, scroll-area, sonner, avatar and separator into `src/ui/`, and restyle command. Add Stintwork StatusChip, AgentAvatar, IconChip, PropertyRow and SegmentedProgress. Use semantic tokens, 36px round tinted row icons, labels with values and segmented counts. Each component and pattern has a behaviour test appropriate to its semantics.
 
 Scope: Shared components and tests; preserve existing screen behaviour.
 

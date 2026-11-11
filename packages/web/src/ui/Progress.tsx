@@ -1,24 +1,34 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Progress as P } from "radix-ui";
-import type { ComponentPropsWithoutRef } from "react";
+"use client";
+
+import type * as React from "react";
 import { cn } from "./cn";
-export function Progress({
+import { Progress as ProgressPrimitive } from "radix-ui";
+
+function Progress({
   className,
   value,
   max = 100,
   ...props
-}: ComponentPropsWithoutRef<typeof P.Root>) {
+}: React.ComponentProps<typeof ProgressPrimitive.Root>) {
   return (
-    <P.Root
-      className={cn("relative h-2 overflow-hidden rounded-full bg-muted", className)}
+    <ProgressPrimitive.Root
+      data-slot="progress"
       value={value}
       max={max}
+      className={cn(
+        "relative flex h-1 w-full items-center overflow-x-hidden rounded-full bg-muted",
+        className,
+      )}
       {...props}
     >
-      <P.Indicator
-        className="h-full bg-primary"
-        style={{ width: `${((value ?? 0) / max) * 100}%` }}
+      <ProgressPrimitive.Indicator
+        data-slot="progress-indicator"
+        className="size-full flex-1 bg-primary transition-all"
+        style={{ transform: `translateX(-${100 - ((value ?? 0) / max) * 100}%)` }}
       />
-    </P.Root>
+    </ProgressPrimitive.Root>
   );
 }
+
+export { Progress };

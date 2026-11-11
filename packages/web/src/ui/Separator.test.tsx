@@ -6,7 +6,7 @@ import { Separator } from "./Separator";
 test("supports semantic and decorative separators", () => {
   const { container } = render(
     <>
-      <Separator />
+      <Separator decorative={false} />
       <Separator decorative />
     </>,
   );

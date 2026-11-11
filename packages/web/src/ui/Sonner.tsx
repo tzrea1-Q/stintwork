@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from "react";
+import { CircleCheck, Info, TriangleAlert, OctagonX, Loader2 } from "lucide-react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
-export function Toaster(props: ToasterProps) {
+
+function Toaster({ ...props }: ToasterProps) {
   const [theme, setTheme] = useState<"light" | "dark">(() =>
     document.documentElement.classList.contains("dark") ? "dark" : "light",
   );
@@ -14,15 +16,26 @@ export function Toaster(props: ToasterProps) {
   }, []);
   return (
     <Sonner
-      {...props}
       theme={theme}
-      toastOptions={{
-        ...props.toastOptions,
-        classNames: {
-          toast: "!rounded-2xl !border-border !bg-popover !text-popover-foreground !shadow-overlay",
-          ...props.toastOptions?.classNames,
-        },
+      className="toaster group"
+      icons={{
+        success: <CircleCheck className="size-4" />,
+        info: <Info className="size-4" />,
+        warning: <TriangleAlert className="size-4" />,
+        error: <OctagonX className="size-4" />,
+        loading: <Loader2 className="size-4 animate-spin" />,
       }}
+      style={
+        {
+          "--normal-bg": "var(--popover)",
+          "--normal-text": "var(--popover-foreground)",
+          "--normal-border": "var(--border)",
+          "--border-radius": "var(--radius)",
+        } as CSSProperties
+      }
+      toastOptions={{ classNames: { toast: "!shadow-overlay" } }}
+      {...props}
     />
   );
 }
+export { Toaster };
