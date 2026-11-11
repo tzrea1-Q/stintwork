@@ -56,7 +56,11 @@ for (const language of ["en", "zh-CN"] as const) {
           .getByRole("button")
           .click();
         await expect(page).toHaveURL(/view=pipeline/);
-        await expect(page.getByRole("dialog", { name: item.title })).toBeVisible();
+        if (width >= 1024) {
+          await expect(page.getByRole("complementary", { name: item.title })).toBeVisible();
+        } else {
+          await expect(page.getByRole("dialog", { name: item.title })).toBeVisible();
+        }
         current = { ...snapshot, workItems: [], milestones: [], attentionItems: [] };
         await page.goto("/");
         await expect(overview.getByText(t.board.empty)).toBeVisible();
