@@ -16,6 +16,8 @@ import {
   GitBranch,
   GitPullRequest,
   LayoutGrid,
+  ListTodo,
+  Workflow,
   LockKeyhole,
   Sparkles,
   X,
@@ -200,7 +202,6 @@ export function WorkItemDrawer({
   const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
-  const type = item.type === "effort" ? t.card.effort : workflowName(workflow, t);
   const reviewStageId = workflow.stages.find(({ gate }) => gate === "evidence")?.id;
   const archived = reviewFindings(item.stints, item.reviewDecisions, item, reviewStageId);
   const openTickets = item.tickets.filter((ticket) => !ticket.resolved);
@@ -241,7 +242,7 @@ export function WorkItemDrawer({
 
   const content = (
     <>
-      {pendingPermissions && (
+      {pendingPermissions && !docked && (
         <button
           type="button"
           className="shrink-0 border-b border-attention/30 bg-card px-4 py-2 text-left text-sm text-attention-foreground"
@@ -250,61 +251,79 @@ export function WorkItemDrawer({
           {t.needsYou.pendingPermissions}
         </button>
       )}
-      <header className="drawer-header relative max-h-[35%] shrink-0 overflow-y-auto px-4 py-6 sm:px-7">
-        <div className="flex items-center justify-between gap-3">
+      <header className="drawer-header relative shrink-0 px-4 py-4 sm:px-7">
+        <div className="flex min-w-0 items-start gap-3">
           <IconChip icon={Sparkles} tone="accent" />
-          <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground min-w-0 break-words">
-            {type} / <code>{item.slug}</code>
-          </p>
-          <div className="flex shrink-0 items-center gap-2">
-            <Tooltip>
-              <TooltipTrigger
-                asChild
-                onFocus={(event) => {
-                  if (autoFocusing.current || !opener.current) event.preventDefault();
-                }}
+          <div className="min-w-0 flex-1">
+            {docked ? (
+              <h2 className="truncate text-base font-medium" data-truncate title={item.title}>
+                {item.title}
+              </h2>
+            ) : (
+              <SheetTitle
+                className="truncate text-base font-medium"
+                data-truncate
+                title={item.title}
               >
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="max-md:size-10"
-                  ref={closeButton}
-                  aria-label={t.stints.closeWorkItem}
-                  onClick={onClose}
-                >
-                  <X aria-hidden="true" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{t.stints.closeWorkItem}</TooltipContent>
-            </Tooltip>
+                {item.title}
+              </SheetTitle>
+            )}
+            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+              <code
+                className="min-w-0 truncate text-xs text-muted-foreground"
+                data-truncate
+                title={item.slug}
+              >
+                {item.slug}
+              </code>
+              <StatusChip
+                status={
+                  item.activeStint?.status === "running"
+                    ? "running"
+                    : attentionCount
+                      ? "attention"
+                      : blocked
+                        ? "blocked"
+                        : item.merged
+                          ? "success"
+                          : "stopped"
+                }
+              >
+                {item.activeStint?.status === "running"
+                  ? (recoveryStatus(item.activeStint, t) ?? t.card.running)
+                  : attentionCount
+                    ? t.card.needsYou(attentionCount)
+                    : blocked
+                      ? t.card.blocked
+                      : item.merged
+                        ? t.card.shipped
+                        : t.pipelineBoard.idle}
+              </StatusChip>
+            </div>
           </div>
+          <Tooltip>
+            <TooltipTrigger
+              asChild
+              onFocus={(event) => {
+                if (autoFocusing.current || !opener.current) event.preventDefault();
+              }}
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-10 shrink-0"
+                ref={closeButton}
+                aria-label={t.stints.closeWorkItem}
+                onClick={onClose}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t.stints.closeWorkItem}</TooltipContent>
+          </Tooltip>
         </div>
-        {docked ? (
-          <h2 className="mt-3 truncate text-xl font-medium" data-truncate title={item.title}>
-            {item.title}
-          </h2>
-        ) : (
-          <SheetTitle
-            className="mt-3 text-xl font-medium truncate"
-            data-truncate
-            title={item.title}
-          >
-            {item.title}
-          </SheetTitle>
-        )}
-        <p className="mt-3 text-xs text-muted-foreground wrap-anywhere">
-          {t.stints.milestone} {milestone?.name ?? item.milestone ?? t.stints.noMilestone}
-        </p>
-        <p className="mt-3 text-xs text-muted-foreground wrap-anywhere">
-          {t.stints.workflow} {workflowName(workflow, t)}{" "}
-          {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
-            <Button variant="ghost" size="sm" onClick={() => onCustomiseWorkflow(item.workflow)}>
-              {t.stints.customise}
-            </Button>
-          )}
-        </p>
       </header>
-      <div className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 py-6 sm:px-7 [&_section+section]:mt-8 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-6">
+      <div className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-4 sm:px-7 [&_section+section]:mt-5 [&_.drawer-section-heading]:text-sm [&_.drawer-section-heading]:font-medium">
         {refreshing && (
           <p role="status" className="px-4 text-sm text-muted-foreground sm:px-7">
             {t.board.githubStatus.pending}
@@ -318,7 +337,31 @@ export function WorkItemDrawer({
             </Button>
           </div>
         )}
-        <PropertyList className="relative max-h-40 shrink-0 overflow-auto px-4 sm:px-7 [&_dd]:overflow-visible [&_dd]:whitespace-normal">
+        <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_6.5rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dd]:overflow-visible [&_dd]:whitespace-normal">
+          <PropertyRow
+            icon={ListTodo}
+            label={t.drawerIdentity.milestone}
+            value={milestone?.name ?? item.milestone ?? t.stints.noMilestone}
+          />
+          <PropertyRow
+            icon={Workflow}
+            label={t.drawerIdentity.workflow}
+            value={
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
+                <span>{workflowName(workflow, t)}</span>
+                {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="min-h-10"
+                    onClick={() => onCustomiseWorkflow(item.workflow)}
+                  >
+                    {t.stints.customise}
+                  </Button>
+                )}
+              </div>
+            }
+          />
           {stage && (
             <PropertyRow
               icon={LayoutGrid}
@@ -373,38 +416,13 @@ export function WorkItemDrawer({
             <StageAgentRail key={item.slug} item={item} workflows={workflows} />
           )}
         </PropertyList>
-        <div className="px-4 sm:px-7">
-          <StatusChip
-            status={
-              item.activeStint?.status === "running"
-                ? "running"
-                : attentionCount
-                  ? "attention"
-                  : blocked
-                    ? "blocked"
-                    : item.merged
-                      ? "success"
-                      : "stopped"
-            }
-          >
-            {item.activeStint?.status === "running"
-              ? (recoveryStatus(item.activeStint, t) ?? t.card.running)
-              : attentionCount
-                ? t.card.needsYou(attentionCount)
-                : blocked
-                  ? t.card.blocked
-                  : item.merged
-                    ? t.card.shipped
-                    : t.pipelineBoard.idle}
-          </StatusChip>
-        </div>
         {!item.stage && !item.merged ? (
           <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
             {t.stints.noStage}
           </p>
         ) : null}
         <nav
-          className="drawer-sections flex shrink-0 gap-6 border-b border-border px-4 py-3 text-xs sm:px-7 [&_a:hover]:text-accent-foreground"
+          className="drawer-sections my-4 flex shrink-0 gap-6 border-b border-border py-3 text-xs [&_a:hover]:text-accent-foreground"
           aria-label={t.stints.sections}
         >
           <a href="#drawer-spec">{t.stints.spec}</a>
@@ -578,56 +596,70 @@ export function WorkItemDrawer({
           </>
         )}
       </div>
-      <footer className="drawer-footer relative max-h-[40%] shrink-0 overflow-auto border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7">
-        {showStageAction && (
-          <section
-            aria-label={t.stints.stageStintSection}
-            className={
-              stageAvailable
-                ? "footer-primary [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
-                : "[&_.brief-action]:mb-0"
-            }
-          >
-            <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
-              {t.stints.stageStint(stage ? stageName(workflow, stage, t) : "")}
-            </h3>
-            <StageBriefPreview item={item} workflows={workflows} githubReadOnly={githubReadOnly} />
-          </section>
-        )}
-        {nextTicket && (
-          <div
-            className={
-              canStart
-                ? "footer-primary [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
-                : "[&_.brief-action]:mb-0"
-            }
-          >
-            <span>
-              {ticketNumber(nextTicket.number)} · {nextTicket.title}
-            </span>
-            <TicketBriefPreview
-              item={item}
-              ticket={nextTicket}
-              workflows={workflows}
-              githubReadOnly={githubReadOnly}
-            />
+      <footer className="drawer-footer relative shrink-0 border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7">
+        <div>
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 [&_.brief-action]:contents [&_.brief-action>p]:order-last [&_.brief-action>p]:min-w-0 [&_.brief-action>p]:basis-full [&_.brief-action>p]:truncate [&_.brief-action>p]:text-xs">
+            {showStageAction && (
+              <section
+                aria-label={t.stints.stageStintSection}
+                className={
+                  stageAvailable
+                    ? "footer-primary contents [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
+                    : "contents [&_.brief-action]:mb-0"
+                }
+              >
+                <h3 className="sr-only">
+                  {t.stints.stageStint(stage ? stageName(workflow, stage, t) : "")}
+                </h3>
+                <StageBriefPreview
+                  item={item}
+                  workflows={workflows}
+                  githubReadOnly={githubReadOnly}
+                />
+              </section>
+            )}
+            {nextTicket && (
+              <div
+                className={
+                  canStart
+                    ? "footer-primary contents [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
+                    : "contents [&_.brief-action]:mb-0"
+                }
+              >
+                <span
+                  className="order-first block min-w-0 basis-full truncate"
+                  data-truncate
+                  title={`${ticketNumber(nextTicket.number)} · ${nextTicket.title}`}
+                >
+                  {ticketNumber(nextTicket.number)} · {nextTicket.title}
+                </span>
+                <TicketBriefPreview
+                  item={item}
+                  ticket={nextTicket}
+                  workflows={workflows}
+                  githubReadOnly={githubReadOnly}
+                />
+              </div>
+            )}
+            {item.worktreePath && (
+              <Button
+                variant={reviewPrimary ? "primary" : "secondary"}
+                size="sm"
+                onClick={() => setReviewOpen(true)}
+              >
+                {t.stints.openReview}
+              </Button>
+            )}
           </div>
-        )}
-        {item.worktreePath && (
-          <Button
-            variant={reviewPrimary ? "primary" : "secondary"}
-            size="sm"
-            onClick={() => setReviewOpen(true)}
-          >
-            {t.stints.openReview}
-          </Button>
-        )}
-        <div className="flex flex-wrap justify-between gap-2">
-          <span>{item.github ? t.stints.githubTracker : t.stints.tracker}</span>
-          <span>
-            <kbd>Esc</kbd>
-            {t.stints.returnToPipeline}
-          </span>
+          <div className="mt-1 flex min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap">
+            <span className="truncate">
+              {item.github ? t.stints.githubTracker : t.stints.tracker}
+            </span>
+            <span className="truncate">
+              <kbd>Esc</kbd>
+              {t.stints.returnToPipeline}
+            </span>
+          </div>
         </div>
       </footer>
       {reviewOpen && (
@@ -673,7 +705,7 @@ export function WorkItemDrawer({
           }}
         >
           <SheetContent
-            className="work-item-drawer flex w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col p-0"
+            className="work-item-drawer flex w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col p-0 [&_button]:min-h-10 [&_button]:min-w-10 [&_summary]:min-h-10"
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => {
               event.preventDefault();

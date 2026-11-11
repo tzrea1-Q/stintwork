@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { coreTextEnglish } from "@stintwork/core";
 export const en = {
+  drawerIdentity: { milestone: "Milestone", workflow: "Workflow" },
   codeBlock: "Code block",
   warningCallout: {
     title: (count: number) => `${count} ${count === 1 ? "warning" : "warnings"}`,
@@ -22,6 +23,11 @@ export const en = {
     },
   },
   overview: {
+    description: "A view of your project’s work.",
+    open: "Open",
+    tickets: "Tickets resolved",
+    shippedMilestone: "shipped milestone",
+    shippedMilestones: "shipped milestones",
     milestones: "Milestone progress",
     stages: "Where the work is",
     next: "Next up",

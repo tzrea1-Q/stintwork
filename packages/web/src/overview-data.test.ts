@@ -31,7 +31,7 @@ test("derives only available cards and chooses the first untouched item in miles
   );
   const data = overviewData(snapshot);
   expect(data.next?.slug).toBe("zed");
-  expect(data.milestones).toMatchObject([{ total: 1, shipped: 0 }]);
+  expect(data.milestones).toMatchObject([{ total: 1, resolved: 0 }]);
   expect(data.columns.reduce((sum, column) => sum + column.count, 0)).toBe(2);
   expect(data.running).toEqual([]);
   expect(data.activity).toEqual([]);
@@ -103,4 +103,53 @@ test("Next up accepts ready or no tickets and excludes items with only blocked o
   expect(overviewData(snapshot).next?.slug).toBe("one");
   item.tickets[1].resolved = true;
   expect(overviewData(snapshot).next).toBeUndefined();
+});
+
+test("derives ticket progress and ranks milestone status before roadmap and snapshot order", () => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/a/spec.md": "# A",
+      ".scratch/b/spec.md": "# B",
+      ".scratch/c/spec.md": "# C",
+      ".scratch/d/spec.md": "# D",
+    }),
+    { name: "Test" },
+  );
+  snapshot.milestones = [
+    { id: "shipped", name: "Shipped", status: "shipped", workItemSlugs: ["a"] },
+    { id: "planned", name: "Planned", status: "planned", workItemSlugs: ["b"] },
+    { id: "active", name: "Active", status: "active", workItemSlugs: ["c"] },
+  ];
+  const [a, b, c] = snapshot.workItems;
+  a.milestone = "shipped";
+  b.milestone = "planned";
+  c.milestone = "active";
+  const ticket = {
+    number: 1,
+    slug: "one",
+    title: "One",
+    status: "open",
+    resolved: true,
+    blockedBy: [],
+    blocked: false,
+    comments: [],
+    body: "",
+    path: "",
+  };
+  c.tickets = [ticket, { ...ticket, number: 2, resolved: false }];
+  const data = overviewData(snapshot);
+  expect(data.milestones.map(({ milestone }) => milestone.status)).toEqual([
+    "active",
+    "planned",
+    "shipped",
+  ]);
+  expect(data.milestones[0]).toMatchObject({ resolved: 1, total: 2 });
+  expect(data.milestones[1]).toMatchObject({ resolved: 0, total: 1 });
+  expect(data.next?.slug).toBe(c.slug);
+  c.merged = { at: "2026-01-01", commit: "abc" };
+  expect(overviewData(snapshot).next?.slug).toBe(b.slug);
+  b.merged = { at: "2026-01-01", commit: "abc" };
+  expect(overviewData(snapshot).next?.slug).toBe(snapshot.workItems[3].slug);
+  snapshot.workItems[3].merged = { at: "2026-01-01", commit: "abc" };
+  expect(overviewData(snapshot).next?.slug).toBe(a.slug);
 });

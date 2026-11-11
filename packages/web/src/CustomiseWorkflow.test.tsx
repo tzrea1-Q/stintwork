@@ -305,6 +305,7 @@ test("new workflow ids appear in the create dialog without a built-in copy actio
   expect(create.getByRole("combobox", { name: "Workflow" })).toHaveTextContent("Team");
   await user.click(create.getByRole("button", { name: "Cancel" }));
   await user.click(screen.getByRole("button", { name: "Open example: Example" }));
-  expect(screen.getByText("Workflow: Team")).toBeInTheDocument();
+  const drawer = screen.getByRole("dialog", { name: "Example" });
+  expect(within(drawer).getByText("Workflow").closest("[role=group]")).toHaveTextContent("Team");
   expect(screen.queryByRole("button", { name: "Customise" })).not.toBeInTheDocument();
 });

@@ -28,6 +28,7 @@ for (const language of ["en", "zh-CN"] as const) {
             status: "active",
             workItemSlugs: [item.slug],
           },
+          { id: "shipped", name: "Shipped milestone", status: "shipped", workItemSlugs: [] },
         ];
         item.milestone = "overview";
         delete item.merged;
@@ -48,12 +49,16 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(overview.getByText(t.overview.milestones)).toBeVisible();
         await expect(overview.getByText(t.overview.stages)).toBeVisible();
         await expect(overview.getByText(t.overview.next)).toBeVisible();
+        const disclosure = overview.locator("summary");
+        await disclosure.focus();
+        await page.keyboard.press("Enter");
+        await expect(overview.getByRole("button", { name: "Shipped milestone" })).toBeVisible();
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("overview.png"), fullPage: true });
         await overview
           .locator('[data-slot="card"]')
           .filter({ hasText: t.overview.next })
-          .getByRole("button")
+          .getByRole("button", { name: t.overview.open })
           .click();
         await expect(page).toHaveURL(/view=pipeline/);
         if (width >= 1024) {

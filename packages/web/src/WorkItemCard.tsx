@@ -143,7 +143,7 @@ export function WorkItemCard({
           </StatusChip>
         </span>
         {running && attentionCount > 0 && (
-          <span role="status" aria-label={t.card.attention(attentionCount)}>
+          <span className="text-xs" role="status" aria-label={t.card.attention(attentionCount)}>
             {t.card.needsYou(attentionCount)}
           </span>
         )}

@@ -339,7 +339,19 @@ test("the detail renders each stage picker once in its property list and marks t
   );
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   const rail = screen.getByRole("list", { name: "Feature workflow stages" });
-  expect(rail.closest("dl")).not.toBeNull();
+  const properties = rail.closest("dl");
+  expect(properties).not.toBeNull();
+  expect(properties).toHaveClass("[&_[role=group]]:grid-cols-[1rem_6.5rem_minmax(0,1fr)]");
+  expect(properties).toHaveClass("[&_[role=group]]:items-center");
+  expect(properties).not.toHaveClass("overflow-auto");
+  expect(properties).not.toHaveClass("overflow-y-auto");
+  expect(properties).not.toHaveClass("max-h-40");
+  expect(properties?.querySelector(".overflow-auto, .overflow-y-auto")).toBeNull();
+  for (const row of within(rail).getAllByRole("listitem")) {
+    const label = row.querySelector("dt");
+    expect(label).not.toBeNull();
+    expect(within(row).getAllByText(label?.textContent ?? "", { exact: false })).toHaveLength(1);
+  }
   expect(within(rail).getAllByRole("combobox")).toHaveLength(
     builtInWorkflows.feature.stages.length,
   );

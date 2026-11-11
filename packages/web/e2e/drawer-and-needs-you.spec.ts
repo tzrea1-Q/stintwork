@@ -104,6 +104,24 @@ for (const language of ["en", "zh-CN"] as const) {
           sheet.locator(".drawer-header").getByRole("heading", { name: item.title, exact: true }),
         ).toHaveAttribute("title", item.title);
         await expect(sheet.getByRole("combobox").last()).toBeDisabled();
+        const rows = sheet.locator(".drawer-content > dl [role=group]");
+        const positions = await rows.evaluateAll((elements) =>
+          elements.map((element) => {
+            const label = element.querySelector("dt")?.getBoundingClientRect();
+            const value = element.querySelector("dd")?.getBoundingClientRect();
+            if (!label || !value) throw new Error("Expected a property label and value");
+            return {
+              x: value.x,
+              labelCenter: label.y + label.height / 2,
+              valueCenter: value.y + value.height / 2,
+            };
+          }),
+        );
+        expect(positions.length).toBeGreaterThan(2);
+        for (const position of positions) {
+          expect(Math.abs(position.x - positions[0].x)).toBeLessThanOrEqual(1);
+          expect(Math.abs(position.labelCenter - position.valueCenter)).toBeLessThanOrEqual(1);
+        }
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-loading");
         releaseAgents();
         await expect(
@@ -437,9 +455,11 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(sheet).not.toBeVisible();
         const drawer = page.locator(".work-item-drawer");
         const drawerClose = drawer.getByRole("button", { name: t.stints.closeWorkItem });
-        await expect(
-          drawer.getByRole("button", { name: t.needsYou.pendingPermissions }),
-        ).toBeVisible();
+        const drawerPermission = drawer.getByRole("button", {
+          name: t.needsYou.pendingPermissions,
+        });
+        if (width >= 1024) await expect(drawerPermission).toHaveCount(0);
+        else await expect(drawerPermission).toBeVisible();
         await expect(drawerClose).toBeFocused();
         await captureSheet(page, testInfo, ".work-item-drawer", "needs-you-navigation-drawer");
         await drawerClose.click();

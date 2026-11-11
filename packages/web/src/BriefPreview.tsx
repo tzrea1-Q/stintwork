@@ -123,7 +123,7 @@ function StintBriefAction({
           : t.stints.startStint}
       </Button>
       {reason && (
-        <p id={reasonId} className="muted text-muted-foreground">
+        <p id={reasonId} className="muted text-muted-foreground" data-truncate title={reason}>
           {reason}
         </p>
       )}

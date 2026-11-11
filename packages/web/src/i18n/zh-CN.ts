@@ -16,6 +16,7 @@ export function joinChinese(...segments: (string | number | null | undefined)[])
 }
 
 export const zhCN: Catalog = {
+  drawerIdentity: { milestone: "里程碑", workflow: "工作流" },
   codeBlock: "代码块",
   warningCallout: {
     title: (count) => `${count} 条警告`,
@@ -37,6 +38,11 @@ export const zhCN: Catalog = {
     },
   },
   overview: {
+    description: "查看项目的工作进展。",
+    open: "打开",
+    tickets: "已解决的工单",
+    shippedMilestone: "个已交付里程碑",
+    shippedMilestones: "个已交付里程碑",
     milestones: "里程碑进度",
     stages: "工作所处阶段",
     next: "接下来",

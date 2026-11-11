@@ -12,23 +12,35 @@ export function overviewData(snapshot: ProjectSnapshot) {
   const milestones = snapshot.milestones
     .map((milestone) => {
       const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
+      const tickets = items.flatMap((item) => item.tickets);
       return {
         milestone,
-        total: items.length,
-        shipped: items.filter((item) => item.merged).length,
+        total: tickets.length || items.length,
+        resolved: tickets.length
+          ? tickets.filter((ticket) => ticket.resolved).length
+          : items.filter((item) => item.merged).length,
       };
     })
-    .filter(({ total }) => total > 0);
+    .sort((a, b) => {
+      const rank = { active: 0, planned: 1, shipped: 2 };
+      return rank[a.milestone.status] - rank[b.milestone.status];
+    });
   const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const)
     .map((column) => ({ column, count: active.filter((item) => item.column === column).length }))
     .filter(({ count }) => count > 0);
-  // In roadmap then snapshot order, choose the first untouched item with no tickets or a ready ticket.
+  // Rank by milestone status, then roadmap order, then snapshot order.
   const ordered = [...snapshot.workItems].sort((a, b) => {
     const rank = (id: string | undefined) => {
       const index = snapshot.milestones.findIndex((milestone) => milestone.id === id);
-      return index < 0 ? snapshot.milestones.length : index;
+      const milestone = snapshot.milestones[index];
+      return {
+        status: milestone ? { active: 0, planned: 1, shipped: 3 }[milestone.status] : 2,
+        index,
+      };
     };
-    return rank(a.milestone) - rank(b.milestone);
+    const left = rank(a.milestone);
+    const right = rank(b.milestone);
+    return left.status - right.status || left.index - right.index;
   });
   const next = ordered.find(
     (item) =>

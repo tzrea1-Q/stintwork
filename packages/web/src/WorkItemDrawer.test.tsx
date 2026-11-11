@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { applyStintLogEntry, createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
@@ -487,3 +487,77 @@ test.each([
     if (state === "ticket") expect(footer).toHaveTextContent("01 · First ticket");
   },
 );
+
+test.each([false, true])(
+  "permission banner appears only in the Sheet (docked=%s)",
+  async (docked) => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: docked,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(() => {})),
+    );
+    const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+      name: "Project",
+    }).workItems[0];
+    const openNeedsYou = vi.fn();
+    render(
+      <WorkItemDrawer
+        item={item}
+        onClose={() => {}}
+        pendingPermissions
+        onOpenNeedsYou={openNeedsYou}
+      />,
+    );
+    const banner = screen.queryByRole("button", {
+      name: "Permission requests need your attention",
+    });
+    if (docked) expect(banner).not.toBeInTheDocument();
+    else {
+      expect(banner).toBeInTheDocument();
+      if (banner) await userEvent.setup().click(banner);
+      expect(openNeedsYou).toHaveBeenCalledOnce();
+    }
+  },
+);
+
+test("the disabled stage action retains its full accessible reason beside review", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(() => new Promise<Response>(() => {})),
+  );
+  const item = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/spec.md": "# First",
+      ".scratch/first/workflow.yaml": "workflow: feature\nstage: spec\n",
+    }),
+    { name: "Project" },
+  ).workItems[0];
+  const active = applyStintLogEntry(null, {
+    type: "started",
+    at: "2026-10-09T10:00:00Z",
+    stint: {
+      id: "active",
+      workItem: item.slug,
+      stage: "spec",
+      ticket: null,
+      agent: "codex",
+      worktree: { path: "/tree", branch: "first" },
+      baseCommit: "base",
+      brief: { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Brief" },
+    },
+  });
+  if (!active) throw new Error("Expected active stint");
+  item.activeStint = active;
+  item.worktreePath = "/tree";
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  const start = screen.getByRole("button", { name: "Start stint" });
+  const reason = "A stint is already active for this work item.";
+  expect(start).toBeDisabled();
+  expect(start).toHaveAccessibleDescription(reason);
+  expect(screen.getByText(reason)).toHaveAttribute("title", reason);
+  expect(screen.getByRole("button", { name: "Open review" })).toBeEnabled();
+});

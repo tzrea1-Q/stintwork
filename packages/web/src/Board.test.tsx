@@ -367,7 +367,9 @@ test("?item=<slug> opens the drawer on load", () => {
   const drawer = screen.getByRole("dialog", { name: "The live board" });
   const rail = within(drawer).getByRole("list", { name: "Feature workflow stages" });
   expect(rail.querySelector('[aria-current="step"]')).toHaveTextContent("ImplementInferred");
-  expect(drawer).toHaveTextContent("Milestone: M1 · The board");
+  expect(within(drawer).getByText("Milestone").closest("[role=group]")).toHaveTextContent(
+    "M1 · The board",
+  );
   expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
 });
 
@@ -563,10 +565,8 @@ test("searches the palette by slug and supports its keyboard close button", asyn
   const drawer = screen.getByRole("dialog", { name: "Diagnose login" });
   expect(
     Array.from(
-      within(drawer)
-        .getByRole("list", { name: "Bug workflow stages" })
-        .querySelectorAll("li > span"),
-    ).map((stage) => stage.textContent),
+      within(drawer).getByRole("list", { name: "Bug workflow stages" }).querySelectorAll("li dt"),
+    ).map((stage) => stage.firstChild?.textContent),
   ).toEqual(["Diagnose", "Fix", "Review", "Ship"]);
   await user.keyboard("{Escape}");
   await user.click(trigger);

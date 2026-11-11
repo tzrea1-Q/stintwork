@@ -88,26 +88,32 @@ export function StageAgentRail({
 
   return (
     <>
-      <ol className="stage-rail" aria-label={t.stints.workflowStages(workflowName(workflow, t))}>
+      <ol
+        className="stage-rail [&_[role=group]]:items-center [&_[role=group]]:py-0"
+        aria-label={t.stints.workflowStages(workflowName(workflow, t))}
+      >
         {workflow.stages.map((stage) => {
           const chosen =
             (choices.source === item.stages ? choices.agents[stage.id] : undefined) ??
             stageAgent(item, stage.id, agents, workflows);
           return (
             <li key={stage.id} aria-current={stage.id === item.stage ? "step" : undefined}>
-              <span>{stageName(workflow, stage, t)}</span>
               <PropertyRow
                 icon={Sparkles}
                 label={
                   <>
                     {stageName(workflow, stage, t)}
-                    {stage.id === item.stage && item.inferred && <small>{t.stints.inferred}</small>}
+                    {stage.id === item.stage && item.inferred && (
+                      <small className="ml-1 rounded-full bg-muted px-2 py-0.5 text-xs">
+                        {t.stints.inferred}
+                      </small>
+                    )}
                   </>
                 }
                 value={
                   <SelectField
                     aria-label={t.stints.stageAgent(stageName(workflow, stage, t))}
-                    className="mt-2"
+                    className="h-10 text-xs"
                     value={chosen}
                     disabled={saving || !!item.activeStint || !agents.length}
                     onValueChange={(agent) => void choose(stage.id, agent)}

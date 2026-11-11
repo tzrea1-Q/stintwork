@@ -19,7 +19,7 @@ test("Overview opens a work item in Pipeline with keyboard and restores view on 
   expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
   const next = screen.getByText("Next up").closest('[data-slot="card"]');
   if (!(next instanceof HTMLElement)) throw new Error("Missing Next up card");
-  const button = within(next).getByRole("button", { name: /One/ });
+  const button = within(next).getByRole("button", { name: "Open" });
   button.focus();
   await user.keyboard("{Enter}");
   expect(screen.getByRole("dialog", { name: "One" })).toBeVisible();
@@ -133,4 +133,32 @@ test("refreshes elapsed time immediately when a running stint appears", () => {
   rerender(<Overview snapshot={{ ...snapshot, workItems: [running] }} {...props} />);
   expect(screen.getByText(/5 min elapsed/)).toBeVisible();
   now.mockRestore();
+});
+
+test("orders cards and discloses shipped milestones", async () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One" });
+  snapshot.milestones = [
+    { id: "done", name: "Done milestone", status: "shipped", workItemSlugs: [] },
+    { id: "active", name: "Active milestone", status: "active", workItemSlugs: ["one"] },
+  ];
+  snapshot.workItems[0].milestone = "active";
+  render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const titles = Array.from(document.querySelectorAll('[data-slot="card-title"]')).map(
+    (node) => node.textContent,
+  );
+  expect(titles).toEqual(["Next up", "Milestone progress", "Where the work is"]);
+  const summary = screen.getByText("1 shipped milestone");
+  expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible();
+  await userEvent.setup().click(summary);
+  expect(screen.getByRole("button", { name: "Done milestone" })).toBeVisible();
 });
