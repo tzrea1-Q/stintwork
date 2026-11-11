@@ -14,7 +14,8 @@ csv.tickets = [{id:'01',title:'Parse CSV with column mapping',status:'resolved',
 const spec = item('F-14','Sign in with GitHub','Spec','M2','Claude Code','Approve spec'); spec.stageStates.Spec = 'waiting'
 const review = item('B-31','Split totals off by one cent','Review','M2','Codex','Allow command','waiting'); review.handoff = 'Review has 3 findings and lint is failing. Permission is needed to run the money tests.'
 const recurring = item('F-15','Recurring transactions','Clarify','M3','Claude Code','Answer question','waiting')
-export const initialItems: WorkItem[] = [csv,spec,review,recurring,item('F-16','Multi-currency','Clarify','M3','Antigravity CLI','Start Clarify'),item('F-18','交易分类与预算概览','Tickets','M2','Claude Code','Review tickets'),item('F-19','Provide a clear, accessible overview of all imported transactions and their reconciliation history','Implement','M2','Codex','Start stint','running'),{...item('T-40','Upgrade to Vite 7','Ship','M1','Codex','Shipped'),shipped:true},{...item('F-9','Budget envelopes','Ship','M1','Claude Code','Shipped'),shipped:true}]
+const unstarted = (i: WorkItem) => ({...i, history: []})
+export const initialItems: WorkItem[] = [csv,spec,review,recurring,unstarted(item('F-16','Multi-currency','Clarify','M3','Antigravity CLI','Start Clarify')),unstarted(item('F-18','交易分类与预算概览','Tickets','M2','Claude Code','Review tickets')),item('F-19','Provide a clear, accessible overview of all imported transactions and their reconciliation history','Implement','M2','Codex','Start stint','running'),{...item('T-40','Upgrade to Vite 7','Ship','M1','Codex','Shipped'),shipped:true},{...item('F-9','Budget envelopes','Ship','M1','Claude Code','Shipped'),shipped:true}]
 export type Attention = { id: string; item: string; kind: 'question' | 'permission' | 'approval' | 'review' | 'memory'; title: string; detail: string }
 export const initialAttention: Attention[] = [
  {id:'question',item:'F-15',kind:'question',title:'Recurring transactions',detail:'Should past occurrences keep their original amount?'},
@@ -23,3 +24,5 @@ export const initialAttention: Attention[] = [
  {id:'review',item:'B-31',kind:'review',title:'Review needs attention',detail:'3 findings · lint failing'},
  {id:'memory',item:'B-31',kind:'memory',title:'Memory proposal',detail:'Store money as integer cents'}]
 export const milestones = [{id:'M1',name:'Private beta',progress:100},{id:'M2',name:'Import & auth',progress:62},{id:'M3',name:'Automation',progress:12}]
+
+export function workItemStatus(i:WorkItem, attention:Attention[]) { return i.shipped?'done':attention.some(a=>a.item===i.id)?'waiting':i.history[0]?.stage===i.stage&&i.history[0]?.status==='running'?'running':i.history[0]?.stage===i.stage&&i.history[0]?.status==='stopped'?'stopped':i.history.length?'ready':'not-started' }
