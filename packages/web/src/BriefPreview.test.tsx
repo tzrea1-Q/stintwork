@@ -188,11 +188,11 @@ test("Chinese brief translates pointer reasons, preserving paths, decision title
     </LanguageProvider>,
   );
   await userEvent.setup().click(screen.getByRole("button", { name: "开始 Stint" }));
-  expect(await screen.findByText(/项目约定与 Agent 指令/, { selector: "li" })).toHaveTextContent(
+  expect((await screen.findByText(/项目约定与 Agent 指令/)).closest("li")).toHaveTextContent(
     "AGENTS.md",
   );
   expect(
-    screen.getByText(/决策记录：Files are the source of truth/, { selector: "li" }),
+    screen.getByText(/决策记录：Files are the source of truth/).closest("li"),
   ).toHaveTextContent("docs/adr/0001-files.md");
   expect(
     screen.getByText(
@@ -254,11 +254,21 @@ test("opens the drawer's brief sheet, shows every section and copies the exact p
   ]) {
     expect(preview.getByRole("heading", { name: heading })).toBeInTheDocument();
   }
+  expect(
+    preview
+      .getByText("None — start from the project conventions and work item scope.")
+      .closest("[data-slot=empty]"),
+  ).toBeInTheDocument();
+  expect(
+    preview.getByText(
+      (_text, element) => element?.tagName === "PRE" && element.textContent === brief.prompt,
+    ),
+  ).toHaveClass("overflow-auto");
   for (const pointer of brief.pointers) {
     expect(preview.getByText(pointer.path, { selector: "li code" })).toBeInTheDocument();
     expect(
-      preview.getByText(`— ${pointer.reason.text}`, { exact: false, selector: "li" }),
-    ).toBeInTheDocument();
+      preview.getByText(pointer.path, { selector: "li code" }).closest("li"),
+    ).toHaveTextContent(pointer.reason.text);
   }
   expect(preview.getByText(`/implement ${ticketPath}`, { selector: "code" })).toBeInTheDocument();
   expect(

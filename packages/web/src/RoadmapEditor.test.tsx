@@ -40,6 +40,7 @@ async function open() {
 test("roadmap traps keyboard focus and restores the opener after outside dismissal", async () => {
   mockServer();
   const { user, sheet } = await open();
+  expect(sheet.getByRole("progressbar", { name: "First" })).toHaveAttribute("aria-valuemax", "1");
   await user.tab({ shift: true });
   expect(sheet.getByRole("button", { name: "Move work item" })).toHaveFocus();
   await user.tab();

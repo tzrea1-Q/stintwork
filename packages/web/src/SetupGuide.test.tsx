@@ -116,6 +116,12 @@ test.each(["en", "zh-CN"] as const)(
     const { dialog, trigger, t } = await open(user, language);
     const panel = within(dialog);
     expect(dialog).toHaveAccessibleDescription(t.planning.setup.description);
+    const ready = initial.checks.filter((check) => check.status === "ready").length;
+    expect(
+      panel.getByRole("progressbar", {
+        name: `${ready}/${initial.checks.length} ${t.planning.setup.statuses.ready}`,
+      }),
+    ).toHaveAttribute("aria-valuenow", String(ready));
     const warning = panel.getByRole("alert", { name: t.warningCallout.title(1) });
     expect(within(warning).getByText("Core warning 原文", { exact: true })).toBeVisible();
     expect(within(warning).getByText("docs/中文.md: Core warning 原文")).not.toBeVisible();

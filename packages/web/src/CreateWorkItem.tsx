@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
+import { FileText } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
@@ -8,6 +9,7 @@ import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i1
 import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { Item, ItemContent, ItemMedia } from "./ui/Item";
 import { SelectField } from "./ui/SelectField";
 
 export function CreateWorkItem({
@@ -109,7 +111,7 @@ export function CreateWorkItem({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-card [&_textarea]:p-2"
+        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-xl [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-xl [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-card [&_textarea]:p-2"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -180,10 +182,23 @@ export function CreateWorkItem({
                 onChange={(event) => setIntent(event.target.value)}
               />
             </label>
-            <p role="status">
+            <div role="status">
               {slug ? (
                 <>
                   {t.planning.create.folder} <code>.scratch/{slug}/</code>
+                  {[
+                    `.scratch/${slug}/workflow.yaml`,
+                    ...(milestone ? [".stintwork/roadmap.md"] : []),
+                  ].map((path) => (
+                    <Item key={path} size="sm">
+                      <ItemMedia>
+                        <FileText aria-hidden="true" className="size-4" />
+                      </ItemMedia>
+                      <ItemContent>
+                        <code className="break-all">{path}</code>
+                      </ItemContent>
+                    </Item>
+                  ))}
                 </>
               ) : !validSlug && title.trim() ? (
                 editedSlug ? (
@@ -198,7 +213,7 @@ export function CreateWorkItem({
               ) : (
                 t.planning.create.enterTitle
               )}
-            </p>
+            </div>
             {error && (
               <p role="alert" className="warning text-attention-foreground">
                 {Object.entries(en.planning.create.errors).reduce(

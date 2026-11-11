@@ -40,6 +40,8 @@ test("the YAML grid item can shrink so code scrolls inside its preview", async (
   fetcher();
   render(<CustomiseWorkflow id="feature" onClose={vi.fn()} />);
   const preview = await screen.findByRole("region", { name: "Built-in workflow YAML" });
+  expect(screen.getAllByRole("listitem")).toHaveLength(builtInWorkflows.feature.stages.length);
+  expect(screen.getByText("/to-spec")).toBeInTheDocument();
   expect(preview).toHaveClass("min-w-0");
   expect(preview.querySelector("pre")).toHaveClass("overflow-auto");
 });

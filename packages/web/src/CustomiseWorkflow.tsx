@@ -5,11 +5,14 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
-import { workflowName } from "./i18n/workflow-names";
+import { stageName, workflowName } from "./i18n/workflow-names";
+import { AgentAvatar } from "./ui/AgentAvatar";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { Item, ItemContent, ItemMedia } from "./ui/Item";
 import { Skeleton } from "./ui/Skeleton";
+import { StatusChip } from "./ui/StatusChip";
 
 export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => void }) {
   const { t } = useLanguage();
@@ -98,8 +101,33 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
                 <code>{preview.path}</code>
                 {t.planning.customise.description}
               </p>
+              {workflow && (
+                <ol className="space-y-2">
+                  {workflow.stages.map((stage, index) => {
+                    const agent = stage.agent ?? workflow.defaultAgent;
+                    return (
+                      <li key={stage.id}>
+                        <Item variant="outline">
+                          <ItemMedia>
+                            <span className="flex size-7 items-center justify-center rounded-full bg-muted">
+                              {index + 1}
+                            </span>
+                          </ItemMedia>
+                          <ItemContent>
+                            <span>{stageName(workflow, stage, t)}</span>
+                            <code>{stage.skill ?? "—"}</code>
+                          </ItemContent>
+                          <StatusChip status="stopped">{stage.gate}</StatusChip>
+                          <AgentAvatar agent={agent} name={agent} />
+                          <span>{agent}</span>
+                        </Item>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
               <section aria-label={t.planning.customise.yaml} className="min-w-0">
-                <CodeBlock className="max-h-[50dvh] overflow-auto rounded-sm border border-border p-3 text-sm focus-visible:outline-ring">
+                <CodeBlock className="max-h-[50dvh] overflow-auto rounded-xl border border-border bg-muted p-3 text-sm focus-visible:outline-ring">
                   <code>{preview.yaml}</code>
                 </CodeBlock>
               </section>

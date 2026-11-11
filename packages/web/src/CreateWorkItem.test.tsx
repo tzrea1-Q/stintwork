@@ -607,6 +607,8 @@ test("previews on the server, offers all loaded workflows and submits optional m
     "Keep the current look.",
   );
   expect(await dialog.findByText(".scratch/server-preview/")).toBeInTheDocument();
+  expect(dialog.getByText(".scratch/server-preview/workflow.yaml")).toBeInTheDocument();
+  expect(dialog.getByText(".stintwork/roadmap.md")).toBeInTheDocument();
   const input = {
     title: "New Idea",
     workflow: "team",

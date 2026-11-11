@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import { builtInWorkflowYaml } from "@stintwork/core";
 import { codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
@@ -488,6 +488,17 @@ for (const language of ["en", "zh-CN"] as const) {
             await content.evaluate((element) => element.scrollHeight > element.clientHeight),
           ).toBe(true);
           await dialog.getByRole("heading", { name: t.stints.fullPrompt }).scrollIntoViewIfNeeded();
+          const prompt = dialog.locator(".brief-prompt").last();
+          await expect(prompt).toHaveCSS("overflow", "auto");
+          await prompt.focus();
+          await page.keyboard.press("ArrowDown");
+          await expect
+            .poll(() => prompt.evaluate((element) => element.scrollTop))
+            .toBeGreaterThan(0);
+          await expect(dialog.getByRole("region", { name: t.stints.changedPaths })).toHaveCSS(
+            "overflow",
+            "auto",
+          );
           await capture(page, dialog, testInfo, "brief-long");
           await content.evaluate((element) => {
             element.scrollTop = element.scrollHeight;
