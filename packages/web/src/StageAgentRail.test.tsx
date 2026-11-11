@@ -329,3 +329,22 @@ test.each([
   expect(screen.getByRole("option", { name: `Antigravity CLI (${label})` })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "Codex" })).toBeInTheDocument();
 });
+
+test("the detail renders each stage picker once in its property list and marks the current stage", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents }))),
+  );
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  const rail = screen.getByRole("list", { name: "Feature workflow stages" });
+  expect(rail.closest("dl")).not.toBeNull();
+  expect(within(rail).getAllByRole("combobox")).toHaveLength(
+    builtInWorkflows.feature.stages.length,
+  );
+  expect(rail.querySelector('[aria-current="step"]')).toContainElement(
+    screen.getByRole("combobox", { name: "Implement agent" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Implement agent" })).toBeEnabled(),
+  );
+});

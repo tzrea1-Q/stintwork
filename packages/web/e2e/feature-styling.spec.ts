@@ -54,9 +54,10 @@ const recorded: Stint = {
 
 async function capture(page: Page, overlay: Locator, info: TestInfo, state: string) {
   await expect(overlay).toBeVisible();
-  await expect(overlay).toHaveAttribute("data-state", "open");
+  const docked = (await overlay.evaluate((element) => element.tagName)) === "ASIDE";
+  if (!docked) await expect(overlay).toHaveAttribute("data-state", "open");
   const id = await overlay.getAttribute("id");
-  await assertLayout(page, { region: `[id="${id}"]` });
+  await assertLayout(page, { region: docked ? ".work-item-drawer" : `[id="${id}"]` });
   await overlay.screenshot({ path: info.outputPath(`${state}.png`) });
 }
 
@@ -134,7 +135,10 @@ for (const language of ["en", "zh-CN"] as const) {
               exact: true,
             })
             .click();
-          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const drawer = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const gate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
@@ -159,7 +163,10 @@ for (const language of ["en", "zh-CN"] as const) {
               exact: true,
             })
             .click();
-          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const drawer = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const gate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
@@ -193,7 +200,10 @@ for (const language of ["en", "zh-CN"] as const) {
               exact: true,
             })
             .click();
-          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const drawer = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const gate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
@@ -236,7 +246,10 @@ for (const language of ["en", "zh-CN"] as const) {
               exact: true,
             })
             .click();
-          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const drawer = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const specGate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
@@ -280,7 +293,10 @@ for (const language of ["en", "zh-CN"] as const) {
             exact: true,
           });
           await trigger.click();
-          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const drawer = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const gate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
@@ -330,7 +346,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await tooltipBox.screenshot({ path: info.outputPath("gate-close-tooltip.png") });
           await page.keyboard.press("Escape");
           await expect(tooltip).toBeHidden();
-          await expect(drawer).toHaveAttribute("data-state", "open");
+          await expect(drawer).toBeVisible();
           await expect(close).toBeFocused();
           await page.keyboard.press("Escape");
           await expect(drawer).toBeHidden();
@@ -434,7 +450,10 @@ for (const language of ["en", "zh-CN"] as const) {
               exact: true,
             })
             .click();
-          const drawer = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const drawer = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
           const ship = drawer.getByRole("region", { name: t.review.ship.label, exact: true });
           const publish = drawer.getByRole("button", { name: t.review.ship.openPr });
@@ -509,7 +528,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await tooltipBox.screenshot({ path: info.outputPath("ship-close-tooltip.png") });
           await page.keyboard.press("Escape");
           await expect(tooltip).toBeHidden();
-          await expect(drawer).toHaveAttribute("data-state", "open");
+          await expect(drawer).toBeVisible();
           await expect(close).toBeFocused();
           await page.keyboard.press("Escape");
           await expect(drawer).toBeHidden();

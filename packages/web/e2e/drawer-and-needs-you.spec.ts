@@ -86,6 +86,19 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.keyboard.press("Enter");
         const sheet = page.locator(".work-item-drawer");
         const close = sheet.getByRole("button", { name: t.stints.closeWorkItem });
+        if (width >= 1024) {
+          await expect(page.getByRole("complementary", { name: item.title })).toBeVisible();
+          await expect(page.locator(".pipeline-main")).toBeVisible();
+          const boardBox = await page.locator(".pipeline-main").boundingBox();
+          const panelBox = await sheet.boundingBox();
+          expect(
+            boardBox && panelBox && boardBox.x + boardBox.width <= panelBox.x + 1,
+          ).toBeTruthy();
+          await assertLayout(page, { region: ".work-item-drawer" });
+        } else {
+          await expect(page.getByRole("dialog", { name: item.title })).toBeVisible();
+        }
+
         await expect(close).toBeFocused();
         await expect(
           sheet.locator(".drawer-header").getByRole("heading", { name: item.title, exact: true }),
@@ -145,7 +158,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(page.locator("html")).toHaveAttribute("lang", other);
         await expect(languageTrigger).toBeFocused();
         await trigger.click();
-        await expect(sheet).toHaveAttribute("data-state", "open");
+        await expect(sheet).toBeVisible();
         await expect(
           sheet.getByRole("button", { name: (other === "en" ? en : zhCN).stints.closeWorkItem }),
         ).toBeFocused();

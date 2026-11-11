@@ -213,6 +213,8 @@ export function Board({
           onPipeline={() => changeView("pipeline")}
         />
       )}
+      {/* biome-ignore format: preserve the independently edited pipeline main */}
+      <div className="flex min-h-0 min-w-0 flex-1 gap-4">
       <main
         hidden={view === "overview"}
         className={`pipeline-main ${view === "overview" ? "hidden" : "flex"} min-h-0 min-w-0 flex-1 flex-col`}
@@ -526,18 +528,10 @@ export function Board({
           }}
         </BoardWorkflowFilter>
       </main>
-      {needsYouOpen && (
-        <NeedsYouQueue
-          snapshot={snapshot}
-          alerts={alerts}
-          openSlug={openSlug}
-          onClose={() => setNeedsYouOpen(false)}
-          onOpenItem={openWorkItem}
-        />
-      )}
       {openItem && (
         <WorkItemDrawer
           workflows={snapshot.workflows}
+          attentionCount={snapshot.attentionItems.filter((entry) => entry.workItem === openItem.slug).length}
           pendingPermissions={snapshot.attentionItems.some((item) => item.kind === "permission")}
           onOpenNeedsYou={() => setNeedsYouOpen(true)}
           warnings={snapshot.warnings}
@@ -556,6 +550,16 @@ export function Board({
           milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
           onClose={() => setOpenSlug(null)}
           onCustomiseWorkflow={setCustomiseId}
+        />
+      )}
+      </div>
+      {needsYouOpen && (
+        <NeedsYouQueue
+          snapshot={snapshot}
+          alerts={alerts}
+          openSlug={openSlug}
+          onClose={() => setNeedsYouOpen(false)}
+          onOpenItem={openWorkItem}
         />
       )}
       {verifyingItem && (

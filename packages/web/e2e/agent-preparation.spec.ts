@@ -141,7 +141,10 @@ for (const language of ["en", "zh-CN"] as const) {
               await route.fulfill({ json: dialogBrief });
             });
             await page.goto("/?item=dialog-item");
-            const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+            const parent = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+              name: dialogItem.title,
+              exact: true,
+            });
             const trigger = parent.getByRole("button", { name: t.stints.startStint, exact: true });
             const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });
             const agentSection = dialog.getByRole("region", { name: t.stints.agent, exact: true });
@@ -234,7 +237,10 @@ for (const language of ["en", "zh-CN"] as const) {
             route.fulfill({ json: dialogBrief }),
           );
           await page.goto("/?item=dialog-item");
-          const parent = page.getByRole("dialog", { name: dialogItem.title, exact: true });
+          const parent = page.getByRole(width >= 1024 ? "complementary" : "dialog", {
+            name: dialogItem.title,
+            exact: true,
+          });
           const trigger = parent.getByRole("button", { name: t.stints.startStint, exact: true });
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.stints.briefPreview });

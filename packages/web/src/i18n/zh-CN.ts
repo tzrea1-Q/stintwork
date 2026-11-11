@@ -687,6 +687,7 @@ export const zhCN: Catalog = {
       },
     },
   },
+  detailPanel: { stage: "阶段", branch: "分支", pullRequest: "拉取请求" },
   stints: {
     copied: "已复制",
     copyPathFailed: "无法复制。请选中路径并手动复制。",

@@ -8,6 +8,7 @@ import {
   stageAgent,
   type WorkflowDefinitions,
 } from "@stintwork/core";
+import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
 import {
   CoreTextError,
@@ -17,6 +18,7 @@ import {
   useLanguage,
 } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
+import { PropertyRow } from "./ui/PropertyRow";
 import { SelectField } from "./ui/SelectField";
 import type { BoardWorkItem } from "./WorkItemCard";
 
@@ -86,10 +88,7 @@ export function StageAgentRail({
 
   return (
     <>
-      <ol
-        className="stage-rail flex shrink-0 gap-2 overflow-x-auto border-y border-border bg-background px-4 py-4 sm:px-7 [&>li]:min-w-40 [&>li]:flex-1 [&>li]:border-t-2 [&>li]:border-input [&>li]:p-2 [&>li]:text-xs [&>li]:text-muted-foreground [&>li[aria-current=step]]:border-ring [&>li[aria-current=step]]:bg-accent [&>li[aria-current=step]]:text-accent-foreground [&_small]:mt-1 [&_small]:block [&_small]:text-xs"
-        aria-label={t.stints.workflowStages(workflowName(workflow, t))}
-      >
+      <ol className="stage-rail" aria-label={t.stints.workflowStages(workflowName(workflow, t))}>
         {workflow.stages.map((stage) => {
           const chosen =
             (choices.source === item.stages ? choices.agents[stage.id] : undefined) ??
@@ -97,33 +96,44 @@ export function StageAgentRail({
           return (
             <li key={stage.id} aria-current={stage.id === item.stage ? "step" : undefined}>
               <span>{stageName(workflow, stage, t)}</span>
-              {stage.id === item.stage && item.inferred && <small>{t.stints.inferred}</small>}
-              <SelectField
-                aria-label={t.stints.stageAgent(stageName(workflow, stage, t))}
-                className="mt-2"
-                value={chosen}
-                disabled={saving || !!item.activeStint || !agents.length}
-                onValueChange={(agent) => void choose(stage.id, agent)}
-                options={[
-                  ...(!agents.some(({ id }) => id === chosen)
-                    ? [
-                        {
-                          value: chosen,
-                          disabled: true,
-                          label: `${chosen} — ${agents.length ? t.stints.notRegistered : t.stints.readingAgents}`,
-                        },
-                      ]
-                    : []),
-                  ...agents.map((agent) => {
-                    const unavailable = agentUnavailable(agent);
-                    const reason = unavailable === null ? null : translateCoreText(unavailable, t);
-                    return {
-                      value: agent.id,
-                      disabled: !!reason,
-                      label: `${agent.displayName}${agent.experimental ? ` (${t.stints.experimental})` : ""}${reason ? ` — ${reason}` : ""}`,
-                    };
-                  }),
-                ]}
+              <PropertyRow
+                icon={Sparkles}
+                label={
+                  <>
+                    {stageName(workflow, stage, t)}
+                    {stage.id === item.stage && item.inferred && <small>{t.stints.inferred}</small>}
+                  </>
+                }
+                value={
+                  <SelectField
+                    aria-label={t.stints.stageAgent(stageName(workflow, stage, t))}
+                    className="mt-2"
+                    value={chosen}
+                    disabled={saving || !!item.activeStint || !agents.length}
+                    onValueChange={(agent) => void choose(stage.id, agent)}
+                    options={[
+                      ...(!agents.some(({ id }) => id === chosen)
+                        ? [
+                            {
+                              value: chosen,
+                              disabled: true,
+                              label: `${chosen} — ${agents.length ? t.stints.notRegistered : t.stints.readingAgents}`,
+                            },
+                          ]
+                        : []),
+                      ...agents.map((agent) => {
+                        const unavailable = agentUnavailable(agent);
+                        const reason =
+                          unavailable === null ? null : translateCoreText(unavailable, t);
+                        return {
+                          value: agent.id,
+                          disabled: !!reason,
+                          label: `${agent.displayName}${agent.experimental ? ` (${t.stints.experimental})` : ""}${reason ? ` — ${reason}` : ""}`,
+                        };
+                      }),
+                    ]}
+                  />
+                }
               />
             </li>
           );
