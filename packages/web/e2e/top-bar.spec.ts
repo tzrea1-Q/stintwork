@@ -227,7 +227,9 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(tooltip).not.toBeVisible();
         }
 
-        const milestone = page.locator('.board-toolbar [role="combobox"]');
+        const milestone = page
+          .locator(".board-toolbar")
+          .getByRole("combobox", { name: t.topBar.milestone, exact: true });
         await milestone.click();
         const milestoneOptions = page.getByRole("listbox");
         await expect(milestoneOptions).toHaveAttribute("data-state", "open");

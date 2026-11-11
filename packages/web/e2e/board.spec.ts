@@ -76,6 +76,28 @@ for (const language of ["en", "zh-CN"] as const) {
           expect(actions.y).toBeGreaterThanOrEqual(context.y + context.height);
         }
         const stages = page.locator(".stage-scroll");
+        const card = page.locator(".stage-board");
+        await expect(
+          page
+            .locator(".board-toolbar")
+            .getByRole("combobox", { name: t.topBar.milestone, exact: true }),
+        ).toBeVisible();
+        await expect(
+          page
+            .locator(".board-toolbar")
+            .getByRole("combobox", { name: t.pipelineBoard.workflow, exact: true }),
+        ).toBeVisible();
+        const dimensions = await card.evaluate((element) => {
+          const viewport = element.querySelector<HTMLElement>(".stage-scroll");
+          if (!viewport) throw new Error("Missing stage scroller");
+          return {
+            card: element.getBoundingClientRect().width,
+            scroller: viewport.getBoundingClientRect().width,
+            viewport: document.documentElement.clientWidth,
+          };
+        });
+        expect(dimensions.card).toBeLessThanOrEqual(dimensions.viewport);
+        expect(dimensions.scroller).toBeLessThanOrEqual(dimensions.card);
         const columns = stages.locator(".stage-column");
         await expect(columns.locator(".stage-header .count")).toHaveCount(6);
         if (width === 390 || width === 768) {

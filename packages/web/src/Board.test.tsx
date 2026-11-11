@@ -104,7 +104,10 @@ test("milestone filter hides other milestones", async () => {
     within(document.querySelector(".top-bar") as HTMLElement).queryByRole("combobox"),
   ).not.toBeInTheDocument();
   await user.click(screen.getByRole("combobox", { name: "Milestone" }));
-  await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
+  const option = await screen.findByRole("option", { name: "M1 · The board" });
+  expect(option).toHaveAccessibleDescription("0/1 shipped");
+  expect(within(option).getByTitle("M1 · The board")).toHaveTextContent("M1 · The board");
+  await user.click(option);
   expect(screen.getByRole("article", { name: /^board:/ })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^next:/ })).not.toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^clarify:/ })).not.toBeInTheDocument();

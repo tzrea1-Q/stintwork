@@ -223,7 +223,7 @@ export function Board({
                     {t.board.lastAvailable}
                   </p>
                 )}
-                <div className="board-toolbar flex flex-col gap-3 px-4 py-3 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-3 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
                   <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
                     <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
                       <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
@@ -245,30 +245,27 @@ export function Board({
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="all">{t.board.allMilestones}</SelectItem>
-                          {snapshot.milestones.map((entry) => (
-                            <SelectItem
-                              key={entry.id}
-                              value={`milestone:${entry.id}`}
-                              aria-label={entry.name}
-                            >
-                              {entry.name}
-                              <span aria-hidden="true">
-                                {" "}
-                                ·{" "}
-                                {
-                                  snapshot.workItems.filter(
-                                    (item) => item.milestone === entry.id && item.merged,
-                                  ).length
-                                }
-                                /
-                                {
-                                  snapshot.workItems.filter((item) => item.milestone === entry.id)
-                                    .length
-                                }{" "}
-                                {t.pipelineBoard.milestoneProgress}
-                              </span>
-                            </SelectItem>
-                          ))}
+                          {snapshot.milestones.map((entry) => {
+                            const total = snapshot.workItems.filter(
+                              (item) => item.milestone === entry.id,
+                            ).length;
+                            const done = snapshot.workItems.filter(
+                              (item) => item.milestone === entry.id && item.merged,
+                            ).length;
+                            const progress = `${done}/${total} ${t.pipelineBoard.milestoneProgress}`;
+                            return (
+                              <SelectItem
+                                key={entry.id}
+                                value={`milestone:${entry.id}`}
+                                title={entry.name}
+                                aria-description={progress}
+                                data-progress={progress}
+                                className="gap-2 after:shrink-0 after:text-xs after:text-muted-foreground after:content-[attr(data-progress)]"
+                              >
+                                {entry.name}
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
@@ -344,7 +341,7 @@ export function Board({
                   <GithubStatus github={snapshot.github} />
                 )}
                 <section
-                  className="board-scroll min-h-0 min-w-0 flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
+                  className="board-scroll min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
                   ref={scroll}
                   aria-label={t.board.stages}
                 >
@@ -387,25 +384,29 @@ export function Board({
                           {t.board.emptyMilestone}
                         </p>
                       )}
-                      <div
-                        className="stage-scroll min-w-0 overflow-x-auto overscroll-x-contain rounded-3xl bg-card p-3 shadow-card max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
-                        ref={stageScroll}
-                      >
-                        <div className="stage-grid flex min-h-[360px] gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
-                          {builtInWorkflows.feature.stages.map((stage) => (
-                            <Column
-                              key={stage.id}
-                              id={stage.column}
-                              name={stageName(builtInWorkflows.feature, stage, t)}
-                              items={filteredActive.filter((item) => item.column === stage.column)}
-                              milestones={snapshot.milestones}
-                              workflows={snapshot.workflows}
-                              attentionItems={snapshot.attentionItems}
-                              agents={snapshot.agents}
-                              selectedSlug={openSlug}
-                              onOpen={openWorkItem}
-                            />
-                          ))}
+                      <div className="stage-board min-w-0 w-full max-w-full overflow-hidden rounded-3xl bg-card p-3 shadow-card">
+                        <div
+                          className="stage-scroll min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                          ref={stageScroll}
+                        >
+                          <div className="stage-grid flex min-h-[360px] gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
+                            {builtInWorkflows.feature.stages.map((stage) => (
+                              <Column
+                                key={stage.id}
+                                id={stage.column}
+                                name={stageName(builtInWorkflows.feature, stage, t)}
+                                items={filteredActive.filter(
+                                  (item) => item.column === stage.column,
+                                )}
+                                milestones={snapshot.milestones}
+                                workflows={snapshot.workflows}
+                                attentionItems={snapshot.attentionItems}
+                                agents={snapshot.agents}
+                                selectedSlug={openSlug}
+                                onOpen={openWorkItem}
+                              />
+                            ))}
+                          </div>
                         </div>
                       </div>
                       {filteredUnstaged.length > 0 && (
