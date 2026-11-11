@@ -1,38 +1,31 @@
 /* The board and detail own their scrolling within the viewport. */
-.app-shell { height: 100dvh; min-height: 0; overflow: hidden; }
-.workspace { display: flex; flex-direction: column; min-height: 0; padding-bottom: 24px; }
-.content { flex: 1; min-height: 0; align-items: stretch; }
-.board { min-height: 0; overflow: auto; position: relative; }
-.board-inner { min-width: 0; height: 100%; gap: 10px; }
-.column { flex: 1 0 110px; width: auto; min-width: 0; }
-.column-empty { flex: 0 0 70px; }
-.column-empty .column-title { flex-wrap: wrap; gap: 4px; font-size: 11px; }
-.column-empty .column-stat, .column-empty .empty-column { display: none; }
-.desktop-detail { min-height: 0; }
-.desktop-detail .detail { height: 100%; display: flex; flex-direction: column; }
-.detail-inner { overflow-y: auto; flex: 1; min-height: 0; }
-.detail-footer { background: var(--card); flex: none; }
+div.app-shell { display: grid; grid-template-columns: 232px minmax(0, 1fr); height: 100dvh; min-height: 0; overflow: hidden; }
+div.app-shell:has(> .desktop-sidebar[hidden]) { grid-template-columns: minmax(0, 1fr); }
+.app-shell .desktop-sidebar, .app-shell .sidebar-custom { width: 100%; min-width: 0; }
+.app-shell .workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-bottom: 24px; }
+.app-shell .header, .app-shell .toolbar { flex: none; }
+.app-shell .content { display: flex; gap: 16px; flex: 1; min-height: 0; align-items: stretch; }
+.app-shell .board-wrap { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.app-shell .board { flex: 1; min-height: 0; overflow: auto; position: relative; padding: 12px; }
+.app-shell .board-inner { min-width: 0; height: 100%; gap: 8px; }
+.app-shell .column { flex: 1 1 0; width: auto; min-width: 128px; }
+.app-shell .column-empty { flex: 0 0 56px; min-width: 56px; transition: flex-basis .2s; }
+.app-shell .column-empty:hover, .app-shell .column-empty:focus-within, .app-shell .column-empty:focus { flex-basis: 128px; }
+.app-shell .column-empty .column-title { flex-wrap: wrap; gap: 4px; font-size: 11px; overflow: hidden; }
+.app-shell .column-empty .column-stat, .app-shell .column-empty .empty-column { display: none; }
+.desktop-detail { flex: 0 0 340px; min-height: 0; }
+.detail.detail { width: 100%; height: 100%; display: flex; flex-direction: column; }
+.detail .detail-top { flex: none; padding: 20px 20px 0; }
+.detail .detail-inner { overflow-y: auto; flex: 1; min-height: 0; padding-top: 0; }
+.detail .detail-footer { background: var(--card); flex: none; }
 .gate-circle { width: 15px; height: 15px; border: 1.5px solid var(--muted-foreground); border-radius: 50%; flex: none; }
 .check-row.gate-failing svg { color: var(--blocked); }
-@media(max-width: 1023px) { .board { min-height: 0; } }
-@media(max-width: 767px) { .board-inner { min-width: 0; } .workspace { padding-bottom: 75px; } .detail { height: 100%; display: flex; flex-direction: column; } }
-
 .detail .segments .filled { background: var(--success); }
-.board-wrap { flex: 1; min-width: 0; min-height: 0; display:flex; flex-direction:column; gap:8px; }
-.board { flex:1; }
-.board-inner { gap:6px; }
-.column { flex:1 1 0; min-width:150px; }
-.column-empty { flex:0 0 56px; min-width:56px; transition:flex-basis .2s; }
-.column-empty:hover, .column-empty:focus-within, .column-empty:focus { flex-basis:150px; }
-.column-empty .column-title { overflow:hidden; }
-.shipped-row { background:var(--card); border-radius:14px; padding:10px 16px; font-size:12px; }
-.shipped-row summary { cursor:pointer; color:var(--muted-foreground); }
-.shipped-row button { display:block; padding:7px 0; text-align:left; }
-@media(min-width:1024px) {
- .desktop-sidebar, .desktop-sidebar [data-sidebar] { width:190px!important; }
- .sidebar-custom { width:190px; }
- .desktop-detail .detail { width:300px; height:calc(100dvh - 24px); }
- .desktop-detail { align-self:flex-start; margin-top:calc(-1 * (30px + 33px + 26px + 36px + 16px)); }
- .board { overflow-x:hidden; padding:16px; }
+.app-shell .shipped-row { background: var(--card); border-radius: 14px; padding: 10px 16px; font-size: 12px; }
+.app-shell .shipped-row summary { cursor: pointer; color: var(--muted-foreground); }
+.app-shell .shipped-row button { display: block; padding: 7px 0; text-align: left; }
+@media (max-width: 1023px) { .app-shell .board-inner { min-width: 900px; } }
+@media (max-width: 767px) {
+ div.app-shell, div.app-shell:has(> .desktop-sidebar[hidden]) { display: block; }
+ .app-shell .workspace { height: 100%; padding-bottom: 75px; }
 }
-@media(max-width:1023px) { .board-inner { min-width:900px; } }
