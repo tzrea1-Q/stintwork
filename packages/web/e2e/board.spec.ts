@@ -48,7 +48,7 @@ for (const language of ["en", "zh-CN"] as const) {
           item.milestone = item.slug === "long-title" ? "first" : "next";
         await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
         await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
-        await page.goto("/");
+        await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         await expect(page.locator('.board-scroll [data-work-item="long-title"]')).toBeAttached();
         await expect(page.locator('.board-scroll [data-work-item="chinese-title"]')).toHaveText(
@@ -217,7 +217,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await request.ready;
           await route.fulfill({ status: 503 });
         });
-        await page.goto("/");
+        await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         await expect(page.getByRole("status")).toHaveText(t.connection.reading);
         await assertLayout(page);

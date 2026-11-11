@@ -16,6 +16,10 @@ import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
 
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();

@@ -8,7 +8,7 @@ import {
 } from "@stintwork/core";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { WorkItemCard } from "./WorkItemCard";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -43,6 +43,10 @@ const files = {
 function project(contents: Record<string, string> = files) {
   return indexProject(createMemoryRepoFiles(contents), { name: "Stintwork", branch: "codex/06" });
 }
+
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
 
 afterEach(() => {
   window.history.replaceState(null, "", "/");
@@ -121,7 +125,7 @@ test("milestone filter hides other milestones", async () => {
 });
 
 test("the toolbar milestone picker supports keyboard selection and dismissal without changing the URL", async () => {
-  window.history.replaceState(null, "", "/?keep=original");
+  window.history.replaceState(null, "", "/?keep=original&view=pipeline");
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   const picker = screen.getByRole("combobox", { name: "Milestone" });
@@ -370,6 +374,7 @@ test("?item=<slug> opens the drawer on load", () => {
 test("command palette jumps to a work item", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
+  window.history.replaceState(null, "", "/");
   await user.click(screen.getByRole("combobox", { name: "Milestone" }));
   await user.click(await screen.findByRole("option", { name: "M1 · The board" }));
   await user.keyboard("{Meta>}k{/Meta}");
@@ -1021,7 +1026,7 @@ test("card tint, status and segmented progress follow snapshot state", () => {
 test("empty stages remain named, counted and focusable", () => {
   render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
   const column = screen.getByRole("region", { name: "Ship" });
-  expect(column).toHaveClass("min-w-14");
+  expect(column).toHaveClass("flex-[0_0_64px]", "min-w-16");
   expect(column).toHaveAttribute("tabindex", "0");
   expect(within(column).getByText("0")).toBeInTheDocument();
 });

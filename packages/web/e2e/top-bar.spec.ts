@@ -182,6 +182,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(header.locator("select")).toHaveCount(0);
         await expect(header.getByRole("button")).toHaveCount(5);
         const nav = header.getByRole("navigation", { name: t.viewNavigation.label });
+        await nav.getByRole("button", { name: t.viewNavigation.pipeline }).click();
         await nav.getByRole("button", { name: t.viewNavigation.overview }).click();
         await expect(nav.getByRole("button", { name: t.viewNavigation.overview })).toHaveAttribute(
           "aria-current",

@@ -55,7 +55,7 @@ export function Column({
     .join(" · ");
   return (
     <section
-      className={`stage-column relative min-w-0 snap-start ${items.length ? "min-w-[150px] max-w-[340px] flex-1" : "group flex-[0_0_56px] min-w-14 transition-[flex-basis] hover:basis-[150px] focus-within:basis-[150px]"}`}
+      className={`stage-column relative min-w-0 snap-start ${items.length ? "min-w-[150px] max-w-[340px] flex-1" : "group flex-[0_0_64px] min-w-16 transition-[flex-basis] hover:basis-[150px] focus-within:basis-[150px]"}`}
       data-card-column={id}
       aria-labelledby={`stage-${id}`}
       tabIndex={items.length ? undefined : 0}
@@ -70,6 +70,7 @@ export function Column({
           <h2
             id={`stage-${id}`}
             title={name}
+            data-truncate={!items.length || undefined}
             className={
               items.length
                 ? "min-w-0 break-words text-xs font-medium"

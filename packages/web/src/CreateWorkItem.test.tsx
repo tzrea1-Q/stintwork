@@ -4,7 +4,7 @@ import { createMemoryRepoFiles, indexProject, prepareWorkItemCreation } from "@s
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { CreateWorkItem } from "./CreateWorkItem";
@@ -199,6 +199,10 @@ test("Enter on the palette close button never selects a command", async () => {
   expect(close).toHaveBeenCalledOnce();
   expect(create).not.toHaveBeenCalled();
 });
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
+
 afterEach(() => {
   localStorage.clear();
   document.documentElement.lang = "en";

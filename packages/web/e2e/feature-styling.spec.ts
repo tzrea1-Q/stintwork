@@ -127,7 +127,7 @@ for (const language of ["en", "zh-CN"] as const) {
             });
             await route.fulfill({ json: { approval: "stale" } });
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await page
             .getByRole("button", {
               name: t.card.open(dialogItem.slug, dialogItem.title),
@@ -152,7 +152,7 @@ for (const language of ["en", "zh-CN"] as const) {
               json: { stage: "tickets", approval: "stale", reason: "head-changed" },
             }),
           );
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await page
             .getByRole("button", {
               name: t.card.open(dialogItem.slug, dialogItem.title),
@@ -186,7 +186,7 @@ for (const language of ["en", "zh-CN"] as const) {
               },
             },
           };
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await page
             .getByRole("button", {
               name: t.card.open(dialogItem.slug, dialogItem.title),
@@ -229,7 +229,7 @@ for (const language of ["en", "zh-CN"] as const) {
             });
             await publish();
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await page
             .getByRole("button", {
               name: t.card.open(dialogItem.slug, dialogItem.title),
@@ -274,7 +274,7 @@ for (const language of ["en", "zh-CN"] as const) {
               });
             } else await route.fulfill({ json: { stage: "tickets" } });
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           const trigger = page.getByRole("button", {
             name: t.card.open(dialogItem.slug, dialogItem.title),
             exact: true,
@@ -427,7 +427,7 @@ for (const language of ["en", "zh-CN"] as const) {
               });
             } else await route.fulfill({ json: { merged: { commit: "d".repeat(40) } } });
           });
-          await page.goto("/");
+          await page.goto("/?view=pipeline");
           await page
             .getByRole("button", {
               name: t.card.open(dialogItem.slug, dialogItem.title),

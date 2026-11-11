@@ -3,7 +3,7 @@ import { createMemoryRepoFiles, editRoadmap, indexProject } from "@stintwork/cor
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { RoadmapEditor } from "./RoadmapEditor";
@@ -49,6 +49,10 @@ test("roadmap traps keyboard focus and restores the opener after outside dismiss
   await waitFor(() => expect(screen.getByRole("button", { name: "Edit roadmap" })).toHaveFocus());
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   localStorage.clear();

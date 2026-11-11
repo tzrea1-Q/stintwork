@@ -87,6 +87,10 @@ beforeEach(() => {
   );
 });
 
+beforeEach(() => {
+  window.history.replaceState(null, "", "/?view=pipeline");
+});
+
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
