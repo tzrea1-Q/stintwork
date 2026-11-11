@@ -425,7 +425,7 @@ export function Board({
                           className="stage-scroll relative min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
                           ref={stageScroll}
                         >
-                          <div className="stage-grid flex min-h-[360px] gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
+                          <div className="stage-grid flex min-h-[360px] justify-start gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
                             {builtInWorkflows.feature.stages.map((stage) => (
                               <Column
                                 key={stage.id}
