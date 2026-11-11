@@ -16,7 +16,7 @@ import {
   type Ticket,
   type WorkflowDefinitions,
 } from "@stintwork/core";
-import { Copy, LoaderCircle, X } from "lucide-react";
+import { Copy, FileText, LoaderCircle, Shield, User, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import {
   CoreTextError,
@@ -26,12 +26,18 @@ import {
   useLanguage,
 } from "./i18n/language";
 import { stageName as translatedStageName } from "./i18n/workflow-names";
+import { AgentAvatar } from "./ui/AgentAvatar";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import { Card } from "./ui/Card";
 import { CodeBlock } from "./ui/CodeBlock";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { Disclosure } from "./ui/Disclosure";
+import { Empty } from "./ui/Empty";
+import { Item, ItemContent, ItemMedia } from "./ui/Item";
+import { PropertyList, PropertyRow } from "./ui/PropertyRow";
 import { SelectField } from "./ui/SelectField";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 export function TicketBriefPreview({
@@ -366,60 +372,75 @@ function BriefPreviewSheet({
         <header className="shrink-0 border-b border-border p-4 sm:p-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <DialogTitle className="text-xl font-medium">{t.stints.briefPreview}</DialogTitle>
-            <Button
-              variant="ghost"
-              ref={closeButton}
-              aria-label={t.stints.closeBrief}
-              onClick={onClose}
-            >
-              <X aria-hidden="true" /> {t.stints.closeBrief}
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    ref={closeButton}
+                    aria-label={t.stints.closeBrief}
+                    onClick={onClose}
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t.stints.closeBrief}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
           <DialogDescription className="mt-3 break-words text-muted-foreground">
-            {slug} ·{" "}
-            {ticketNumber === null ? stageName : t.stints.briefTicket(ticketNumber, github)}
+            {slug} · {stageName}
+            {ticketNumber !== null && ` · ${t.stints.briefTicket(ticketNumber, github)}`}
           </DialogDescription>
         </header>
-        <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&_section+section]:mt-6 [&_section+section]:border-t [&_section+section]:border-border [&_section+section]:pt-5 [&_h3]:mb-2 [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2">
+        <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain space-y-5 p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&>section+section]:mt-6 [&_h3]:mb-2 [&_h3]:font-medium [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2">
           <section aria-label={t.stints.agent}>
-            <h3>{t.stints.agent}</h3>
-            <label htmlFor={`${selectId}-agent`}>
-              <span className="sr-only">{t.stints.agent}</span>
-              <SelectField
-                id={`${selectId}-agent`}
-                aria-label={t.stints.agent}
-                value={agent}
-                onValueChange={(value) => {
-                  setAgent(value);
-                  setPreparation(null);
-                  setStartError("");
-                  setCancelled(false);
-                }}
-                aria-describedby={agentAvailabilityId}
-                disabled={!agents.length || starting}
-                options={[
-                  ...(agent && !selectedAgent
-                    ? [
-                        {
-                          value: agent,
-                          disabled: true,
-                          label: `${agent} — ${t.stints.notRegistered}`,
-                        },
-                      ]
-                    : []),
-                  ...agents.map((candidate) => {
-                    const availability = agentUnavailable(candidate);
-                    const reason =
-                      availability === null ? null : translateCoreText(availability, t);
-                    return {
-                      value: candidate.id,
-                      disabled: !!reason,
-                      label: `${candidate.displayName}${candidate.experimental ? ` (${t.stints.experimental})` : ""}${reason ? ` — ${reason}` : ""}`,
-                    };
-                  }),
-                ]}
+            <PropertyList>
+              <PropertyRow
+                icon={User}
+                label={<h3>{t.stints.agent}</h3>}
+                value={
+                  <label htmlFor={`${selectId}-agent`}>
+                    <span className="sr-only">{t.stints.agent}</span>
+                    <SelectField
+                      id={`${selectId}-agent`}
+                      aria-label={t.stints.agent}
+                      value={agent}
+                      onValueChange={(value) => {
+                        setAgent(value);
+                        setPreparation(null);
+                        setStartError("");
+                        setCancelled(false);
+                      }}
+                      aria-describedby={agentAvailabilityId}
+                      disabled={!agents.length || starting}
+                      options={[
+                        ...(agent && !selectedAgent
+                          ? [
+                              {
+                                value: agent,
+                                disabled: true,
+                                label: `${agent} — ${t.stints.notRegistered}`,
+                              },
+                            ]
+                          : []),
+                        ...agents.map((candidate) => {
+                          const availability = agentUnavailable(candidate);
+                          const reason =
+                            availability === null ? null : translateCoreText(availability, t);
+                          return {
+                            value: candidate.id,
+                            disabled: !!reason,
+                            label: `${candidate.displayName}${candidate.experimental ? ` (${t.stints.experimental})` : ""}${reason ? ` — ${reason}` : ""}`,
+                          };
+                        }),
+                      ]}
+                    />
+                  </label>
+                }
               />
-            </label>
+            </PropertyList>
             <p id={agentAvailabilityId} className="muted text-muted-foreground">
               {brief
                 ? agents.length
@@ -568,23 +589,30 @@ function BriefPreviewSheet({
             )}
           </section>
           <section>
-            <h3>{t.stints.permissionLevel}</h3>
-            <label htmlFor={`${selectId}-permissionLevel`}>
-              <span className="sr-only">{t.stints.permissionLevel}</span>
-              <SelectField
-                id={`${selectId}-permissionLevel`}
-                aria-label={t.stints.permissionLevel}
-                value={permissionLevel}
-                disabled={!brief || starting || savingDefault}
-                onValueChange={(value) => {
-                  if (isPermissionLevel(value)) setPermissionLevel(value);
-                }}
-                options={permissionLevels.map((level) => ({
-                  value: level,
-                  label: t.stints.permissionLevels[level],
-                }))}
+            <PropertyList>
+              <PropertyRow
+                icon={Shield}
+                label={<h3>{t.stints.permissionLevel}</h3>}
+                value={
+                  <label htmlFor={`${selectId}-permissionLevel`}>
+                    <span className="sr-only">{t.stints.permissionLevel}</span>
+                    <SelectField
+                      id={`${selectId}-permissionLevel`}
+                      aria-label={t.stints.permissionLevel}
+                      value={permissionLevel}
+                      disabled={!brief || starting || savingDefault}
+                      onValueChange={(value) => {
+                        if (isPermissionLevel(value)) setPermissionLevel(value);
+                      }}
+                      options={permissionLevels.map((level) => ({
+                        value: level,
+                        label: t.stints.permissionLevels[level],
+                      }))}
+                    />
+                  </label>
+                }
               />
-            </label>
+            </PropertyList>
             <p className="muted text-muted-foreground">
               {t.stints.projectDefault} {t.stints.permissionLevels[projectDefault]}
             </p>
@@ -633,40 +661,66 @@ function BriefPreviewSheet({
                 <h3>{t.stints.skill}</h3>
                 <code>{brief.skill ? brief.prompt.split("\n")[0] : t.stints.noSkill}</code>
               </section>
-              <section>
-                <h3>{t.stints.readFirst}</h3>
-                <ul>
-                  {brief.pointers.map(({ path, reason }) => (
-                    <li key={path}>
-                      <code>{path}</code> — {translateCoreText(reason, t)}
-                    </li>
-                  ))}
-                </ul>
-              </section>
+              <Card>
+                <section className="p-4">
+                  <h3>{t.stints.readFirst}</h3>
+                  <ul>
+                    {brief.pointers.map(({ path, reason }) => (
+                      <li key={path}>
+                        <Item size="sm">
+                          <ItemMedia>
+                            <FileText aria-hidden="true" className="size-4" />
+                          </ItemMedia>
+                          <ItemContent>
+                            <code className="break-all">{path}</code>
+                            <span className="text-muted-foreground">
+                              {translateCoreText(reason, t)}
+                            </span>
+                          </ItemContent>
+                        </Item>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              </Card>
               {brief.checkpointCommit && (
                 <section>
                   <h3>{t.stints.checkpointCommit}</h3>
                   <code>{brief.checkpointCommit}</code>
                 </section>
               )}
-              <section>
-                <h3>
-                  {t.stints.lastHandoff}
-                  {brief.lastHandoff && ` (${brief.lastHandoff.stint}, ${brief.lastHandoff.agent})`}
-                </h3>
-                {brief.lastHandoff ? (
-                  <dl className="brief-handoff">
-                    <dt>{t.stints.whereStopped}</dt>
-                    <dd>{brief.lastHandoff.stoppedAt}</dd>
-                    <dt>{t.stints.whatUnresolved}</dt>
-                    <dd>{brief.lastHandoff.unresolved}</dd>
-                    <dt>{t.stints.nextStep}</dt>
-                    <dd>{brief.lastHandoff.nextStep}</dd>
-                  </dl>
-                ) : (
-                  <p>{t.stints.firstHandoff}</p>
-                )}
-              </section>
+              <Card>
+                <section className="p-4">
+                  <h3>
+                    {t.stints.lastHandoff}
+                    {brief.lastHandoff &&
+                      ` (${brief.lastHandoff.stint}, ${brief.lastHandoff.agent})`}
+                  </h3>
+                  {brief.lastHandoff ? (
+                    <blockquote className="border-l-2 border-border pl-4">
+                      <div className="flex items-center gap-2">
+                        <AgentAvatar
+                          agent={brief.lastHandoff.agent}
+                          name={brief.lastHandoff.agent}
+                        />
+                        <span>
+                          {brief.lastHandoff.agent} · {brief.lastHandoff.stint}
+                        </span>
+                      </div>
+                      <dl className="brief-handoff">
+                        <dt>{t.stints.whereStopped}</dt>
+                        <dd>{brief.lastHandoff.stoppedAt}</dd>
+                        <dt>{t.stints.whatUnresolved}</dt>
+                        <dd>{brief.lastHandoff.unresolved}</dd>
+                        <dt>{t.stints.nextStep}</dt>
+                        <dd>{brief.lastHandoff.nextStep}</dd>
+                      </dl>
+                    </blockquote>
+                  ) : (
+                    <Empty>{t.stints.firstHandoff}</Empty>
+                  )}
+                </section>
+              </Card>
               {(brief.developerNotes ?? []).length > 0 && (
                 <section>
                   <h3>{t.stints.developerNotes}</h3>
@@ -685,35 +739,48 @@ function BriefPreviewSheet({
                   ))}
                 </section>
               )}
-              <section>
-                <h3>{t.stints.changedPaths}</h3>
-                {brief.changedPaths.length ? (
-                  <ul>
-                    {brief.changedPaths.map((path) => (
-                      <li key={path}>
-                        {path.endsWith("/workflow.yaml") && `${t.stints.changedWorkflow}: `}
-                        {path.endsWith("/review.yaml") && `${t.stints.changedReview}: `}
-                        <code>{path}</code>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>{t.stints.none}</p>
-                )}
-                <p className="muted text-muted-foreground">{t.stints.filesWin}</p>
-              </section>
-              <section>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <h3>{t.stints.fullPrompt}</h3>
-                  <Button onClick={copy}>
-                    <Copy aria-hidden="true" /> {t.stints.copyPrompt}
-                  </Button>
-                </div>
-                <span role="status" className="copy-status text-xs">
-                  {copyStatus}
-                </span>
-                <CodeBlock className="brief-prompt">{brief.prompt}</CodeBlock>
-              </section>
+              <Card>
+                <section className="p-4 min-w-0">
+                  <h3>{t.stints.changedPaths}</h3>
+                  {brief.changedPaths.length ? (
+                    <section
+                      aria-label={t.stints.changedPaths}
+                      className="max-h-40 overflow-auto font-mono"
+                      // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users can scroll this list independently.
+                      tabIndex={0}
+                    >
+                      <ul>
+                        {brief.changedPaths.map((path) => (
+                          <li key={path}>
+                            {path.endsWith("/workflow.yaml") && `${t.stints.changedWorkflow}: `}
+                            {path.endsWith("/review.yaml") && `${t.stints.changedReview}: `}
+                            <code>{path}</code>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  ) : (
+                    <p>{t.stints.none}</p>
+                  )}
+                  <p className="muted text-muted-foreground">{t.stints.filesWin}</p>
+                </section>
+              </Card>
+              <Card>
+                <section className="p-4 min-w-0">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3>{t.stints.fullPrompt}</h3>
+                    <Button onClick={copy}>
+                      <Copy aria-hidden="true" /> {t.stints.copyPrompt}
+                    </Button>
+                  </div>
+                  <span role="status" className="copy-status text-xs">
+                    {copyStatus}
+                  </span>
+                  <CodeBlock className="brief-prompt max-h-64 overflow-auto rounded-xl bg-muted p-3">
+                    {brief.prompt}
+                  </CodeBlock>
+                </section>
+              </Card>
             </>
           )}
         </div>

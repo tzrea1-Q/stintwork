@@ -118,7 +118,7 @@ for (const language of ["en", "zh-CN"] as const) {
         const drawer = page.locator(".work-item-drawer");
         const live = drawer.locator('section[aria-labelledby="drawer-live-stint-title"]');
         await expect(
-          live.locator(':scope > p[role="status"]'),
+          live.locator(':scope > div:first-of-type > p[role="status"]'),
           "Stage stint headers use the registered Agent name and omit absent tickets",
         ).toHaveText(`Codex · ${t.stints.statuses.running}`);
         await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
@@ -148,7 +148,9 @@ for (const language of ["en", "zh-CN"] as const) {
         const details = live.getByText(t.stints.recovery.details, { exact: true });
         await details.focus();
         await page.keyboard.press("Enter");
-        const disclosure = live.locator(".stint-stream > .stint-recovery > details");
+        const disclosure = live.locator(
+          '.stint-stream > .stint-recovery > [data-slot="card-content"] > details',
+        );
         await expect(
           disclosure,
           "Recovery details must be an open disclosure inside the active stint stream",

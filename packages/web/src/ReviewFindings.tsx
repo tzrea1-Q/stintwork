@@ -14,7 +14,9 @@ import { useLanguage } from "./i18n/language";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
+import { Item, ItemContent } from "./ui/Item";
 import { SelectField } from "./ui/SelectField";
+import { StatusChip } from "./ui/StatusChip";
 
 export type DisplayFinding = ReviewFinding & {
   commit: string;
@@ -80,97 +82,128 @@ export function FindingCard({
   const [accepting, setAccepting] = useState(false);
   const [reason, setReason] = useState("");
   return (
-    <article
-      className="review-finding m-3 min-w-0 rounded-md border border-border p-3 [overflow-wrap:anywhere] [&_h4]:my-2 [&_p]:my-2"
-      id={anchor}
-      aria-label={finding.title}
-      tabIndex={-1}
+    <Item
+      asChild
+      variant="outline"
+      className="review-finding m-3 min-w-0 w-auto items-start [overflow-wrap:anywhere] [&_h4]:my-2 [&_p]:my-2"
     >
-      <h4>{finding.title}</h4>
-      <p>
-        {t.review.findings.axes[finding.axis]} · {t.review.findings.severities[finding.severity]} ·{" "}
-        <Badge
-          variant={
-            finding.status === "resolved"
-              ? "success"
-              : finding.status === "accepted"
-                ? "accent"
-                : "warning"
-          }
-        >
-          {t.review.findings.statuses[finding.status]}
-        </Badge>
-      </p>
-      <p>
-        <code>
-          {finding.path}:{finding.line}
-        </code>
-      </p>
-      <p className="review-finding-body whitespace-pre-wrap">{finding.body}</p>
-      {finding.reason && (
-        <p>
-          {t.review.findings.reasonPrefix}
-          {finding.reason}
-        </p>
-      )}
-      <p className="muted text-muted-foreground">
-        {t.review.findings.reviewedCommit}
-        <code>{finding.commit}</code>
-        {finding.stale && t.review.findings.stale}
-        {finding.historical && t.review.findings.history}
-      </p>
-      {onDecision && !finding.historical && (
-        <div className="review-finding-actions flex flex-wrap gap-2 [&_form]:grid [&_form]:w-full [&_form]:gap-2 [&_label]:grid [&_label]:w-full [&_label]:gap-2 [&_textarea]:min-h-20 [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-background [&_textarea]:p-2">
-          {finding.status !== "resolved" && (
-            <Button
-              type="button"
-              disabled={saving}
-              onClick={() => void onDecision(finding.id, "resolved")}
+      <article id={anchor} aria-label={finding.title} tabIndex={-1}>
+        <ItemContent className="min-w-0">
+          <h4>{finding.title}</h4>
+          <StatusChip
+            status={
+              finding.severity === "blocker" || finding.severity === "major"
+                ? "blocked"
+                : finding.severity === "minor"
+                  ? "attention"
+                  : "stopped"
+            }
+          >
+            {t.review.findings.severities[finding.severity]}
+          </StatusChip>
+          <p>
+            {t.review.findings.axes[finding.axis]} ·{" "}
+            {t.review.findings.severities[finding.severity]} ·{" "}
+            <Badge
+              variant={
+                finding.status === "resolved"
+                  ? "success"
+                  : finding.status === "accepted"
+                    ? "accent"
+                    : "warning"
+              }
             >
-              {t.review.findings.resolve}
-            </Button>
+              {t.review.findings.statuses[finding.status]}
+            </Badge>
+          </p>
+          <p>
+            <code>
+              {finding.path}:{finding.line}
+            </code>
+          </p>
+          <p className="review-finding-body whitespace-pre-wrap">{finding.body}</p>
+          {finding.reason && (
+            <p>
+              {t.review.findings.reasonPrefix}
+              {finding.reason}
+            </p>
           )}
-          {finding.status !== "accepted" && (
-            <Button type="button" disabled={saving} onClick={() => setAccepting(true)}>
-              {t.review.findings.accept}
-            </Button>
+          <p className="muted text-muted-foreground">
+            {t.review.findings.reviewedCommit}
+            <code>{finding.commit}</code>
+            {finding.stale && (
+              <span className="rounded bg-attention-soft text-attention-foreground">
+                {t.review.findings.stale}
+              </span>
+            )}
+            {finding.historical && t.review.findings.history}
+          </p>
+          {onDecision && !finding.historical && (
+            <div className="review-finding-actions flex flex-wrap gap-2 [&_form]:grid [&_form]:w-full [&_form]:gap-2 [&_label]:grid [&_label]:w-full [&_label]:gap-2 [&_textarea]:min-h-20 [&_textarea]:rounded-sm [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-background [&_textarea]:p-2">
+              {finding.status !== "resolved" && (
+                <Button
+                  size="sm"
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void onDecision(finding.id, "resolved")}
+                >
+                  {t.review.findings.resolve}
+                </Button>
+              )}
+              {finding.status !== "accepted" && (
+                <Button
+                  size="sm"
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setAccepting(true)}
+                >
+                  {t.review.findings.accept}
+                </Button>
+              )}
+              {finding.status !== "open" && (
+                <Button
+                  size="sm"
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void onDecision(finding.id, "open")}
+                >
+                  {t.review.findings.reopen}
+                </Button>
+              )}
+              {accepting && (
+                <form
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (reason.trim() && (await onDecision(finding.id, "accepted", reason.trim())))
+                      setAccepting(false);
+                  }}
+                >
+                  <label>
+                    {t.review.findings.reason}
+                    <textarea
+                      required
+                      value={reason}
+                      onChange={(event) => setReason(event.target.value)}
+                    />
+                  </label>
+                  <Button type="submit" disabled={saving || !reason.trim()}>
+                    {t.review.findings.save}
+                  </Button>
+                  <Button
+                    size="sm"
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setAccepting(false)}
+                  >
+                    {t.review.findings.cancel}
+                  </Button>
+                </form>
+              )}
+            </div>
           )}
-          {finding.status !== "open" && (
-            <Button
-              type="button"
-              disabled={saving}
-              onClick={() => void onDecision(finding.id, "open")}
-            >
-              {t.review.findings.reopen}
-            </Button>
-          )}
-          {accepting && (
-            <form
-              onSubmit={async (event) => {
-                event.preventDefault();
-                if (reason.trim() && (await onDecision(finding.id, "accepted", reason.trim())))
-                  setAccepting(false);
-              }}
-            >
-              <label>
-                {t.review.findings.reason}
-                <textarea
-                  required
-                  value={reason}
-                  onChange={(event) => setReason(event.target.value)}
-                />
-              </label>
-              <Button type="submit" disabled={saving || !reason.trim()}>
-                {t.review.findings.save}
-              </Button>
-              <Button type="button" disabled={saving} onClick={() => setAccepting(false)}>
-                {t.review.findings.cancel}
-              </Button>
-            </form>
-          )}
-        </div>
-      )}
-    </article>
+        </ItemContent>
+      </article>
+    </Item>
   );
 }
 
@@ -284,37 +317,54 @@ export function FindingsRail({
       <ul className="review-findings-rail m-0 list-none p-0 [&_li]:border-b [&_li]:border-border [&_li]:py-3 [&_li]:[overflow-wrap:anywhere] [&_a]:text-foreground">
         {filtered.map((finding) => (
           <li key={finding.id}>
-            <a href={`#${anchor(finding)}`} onClick={onSelectFinding}>
-              {finding.title}
-            </a>
-            <p>
-              {t.review.findings.axes[finding.axis]} ·{" "}
-              {t.review.findings.severities[finding.severity]} ·{" "}
-              <Badge
-                variant={
-                  finding.status === "resolved"
-                    ? "success"
-                    : finding.status === "accepted"
-                      ? "accent"
-                      : "warning"
-                }
-              >
-                {t.review.findings.statuses[finding.status]}
-              </Badge>
-            </p>
-            <p>
-              <code>
-                {finding.path}:{finding.line}
-              </code>
-            </p>
-            <p>
-              {t.review.findings.reviewedCommit}
-              <code>{finding.commit}</code>
-              {finding.stale && (
-                <span className="warning text-attention-foreground">{t.review.findings.stale}</span>
-              )}
-              {finding.historical && t.review.findings.history}
-            </p>
+            <Item variant="outline">
+              <ItemContent className="min-w-0">
+                <StatusChip
+                  status={
+                    finding.severity === "blocker" || finding.severity === "major"
+                      ? "blocked"
+                      : finding.severity === "minor"
+                        ? "attention"
+                        : "stopped"
+                  }
+                >
+                  {t.review.findings.severities[finding.severity]}
+                </StatusChip>
+                <a href={`#${anchor(finding)}`} onClick={onSelectFinding}>
+                  {finding.title}
+                </a>
+                <p>
+                  {t.review.findings.axes[finding.axis]} ·{" "}
+                  {t.review.findings.severities[finding.severity]} ·{" "}
+                  <Badge
+                    variant={
+                      finding.status === "resolved"
+                        ? "success"
+                        : finding.status === "accepted"
+                          ? "accent"
+                          : "warning"
+                    }
+                  >
+                    {t.review.findings.statuses[finding.status]}
+                  </Badge>
+                </p>
+                <p>
+                  <code>
+                    {finding.path}:{finding.line}
+                  </code>
+                </p>
+                <p>
+                  {t.review.findings.reviewedCommit}
+                  <code>{finding.commit}</code>
+                  {finding.stale && (
+                    <span className="rounded bg-attention-soft text-attention-foreground">
+                      {t.review.findings.stale}
+                    </span>
+                  )}
+                  {finding.historical && t.review.findings.history}
+                </p>
+              </ItemContent>
+            </Item>
           </li>
         ))}
       </ul>

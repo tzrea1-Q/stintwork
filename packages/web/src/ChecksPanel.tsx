@@ -6,12 +6,15 @@ import {
   type ProjectSnapshot,
   type WorkItemChecks,
 } from "@stintwork/core";
+import { Check, Circle, LoaderCircle, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { PullRequestChecksPanel } from "./PullRequestChecksPanel";
-import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
+import { IconChip } from "./ui/IconChip";
+import { Item, ItemContent, ItemMedia } from "./ui/Item";
+import { SegmentedProgress } from "./ui/SegmentedProgress";
 
 type ChecksItem = Pick<
   ProjectSnapshot["workItems"][number],
@@ -142,36 +145,62 @@ export function ChecksPanel({
       {data && !results.length && data.commands.length > 0 && (
         <p className="muted text-muted-foreground">{t.review.checks.noEvidence}</p>
       )}
+      {results.length > 0 && (
+        <div className="my-3 space-y-2">
+          <p>
+            {`${results.filter((result) => result.status === "passed").length} ${t.review.visualRefresh07.of} ${results.length} ${t.review.visualRefresh07.passing}`}
+          </p>
+          <SegmentedProgress
+            value={results.filter((result) => result.status === "passed").length}
+            total={results.length}
+            label={`${results.filter((result) => result.status === "passed").length} ${t.review.visualRefresh07.of} ${results.length} ${t.review.visualRefresh07.passing}`}
+            tone="success"
+          />
+        </div>
+      )}
       <ul
         className="check-results list-none p-0 [&>li]:border-t [&>li]:border-border [&>li]:py-3 [&_code]:[overflow-wrap:anywhere] [&_pre]:max-h-60"
         aria-label={t.review.checks.latest}
       >
         {results.map((result) => (
           <li key={result.name}>
-            <p>
-              <strong>{result.name}</strong> ·{" "}
-              <Badge
-                variant={
-                  result.status === "passed"
-                    ? "success"
-                    : result.status === "failed"
-                      ? "danger"
-                      : result.status === "running"
-                        ? "accent"
-                        : "warning"
-                }
-              >
-                {t.review.checks.statuses[result.status]}
-              </Badge>
-              {evidenceStale(evidence, result.commit) && (
-                <strong className="warning text-attention-foreground">
-                  {t.review.checks.stale}
-                </strong>
-              )}
-            </p>
-            <p>
-              <code>{result.commit}</code> · {t.review.checks.duration(result.durationMs)}
-            </p>
+            <Item variant="outline" size="sm">
+              <ItemMedia>
+                <IconChip
+                  icon={
+                    result.status === "passed"
+                      ? Check
+                      : result.status === "failed"
+                        ? X
+                        : result.status === "running"
+                          ? LoaderCircle
+                          : Circle
+                  }
+                  tone={
+                    result.status === "passed"
+                      ? "success"
+                      : result.status === "failed"
+                        ? "blocked"
+                        : result.status === "running"
+                          ? "running"
+                          : "stopped"
+                  }
+                  label={t.review.checks.statuses[result.status]}
+                />
+              </ItemMedia>
+              <ItemContent className="min-w-0">
+                <strong>{result.name}</strong>
+                <span>{t.review.checks.statuses[result.status]}</span>
+                {evidenceStale(evidence, result.commit) && (
+                  <strong className="rounded bg-attention-soft text-attention-foreground">
+                    {t.review.checks.stale}
+                  </strong>
+                )}
+                <p className="font-mono text-xs text-muted-foreground">
+                  {result.commit} · {t.review.checks.duration(result.durationMs)}
+                </p>
+              </ItemContent>
+            </Item>
             <details open={result.status === "running" || result.status === "failed"}>
               <summary>{t.review.checks.commandOutput(result.name)}</summary>
               <code>{result.command}</code>

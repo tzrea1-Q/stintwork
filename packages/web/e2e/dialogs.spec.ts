@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import { builtInWorkflowYaml } from "@stintwork/core";
 import { codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
@@ -488,6 +488,17 @@ for (const language of ["en", "zh-CN"] as const) {
             await content.evaluate((element) => element.scrollHeight > element.clientHeight),
           ).toBe(true);
           await dialog.getByRole("heading", { name: t.stints.fullPrompt }).scrollIntoViewIfNeeded();
+          const prompt = dialog.locator(".brief-prompt").last();
+          await expect(prompt).toHaveCSS("overflow", "auto");
+          await prompt.focus();
+          await page.keyboard.press("ArrowDown");
+          await expect
+            .poll(() => prompt.evaluate((element) => element.scrollTop))
+            .toBeGreaterThan(0);
+          await expect(dialog.getByRole("region", { name: t.stints.changedPaths })).toHaveCSS(
+            "overflow",
+            "auto",
+          );
           await capture(page, dialog, testInfo, "brief-long");
           await content.evaluate((element) => {
             element.scrollTop = element.scrollHeight;
@@ -650,6 +661,14 @@ for (const language of ["en", "zh-CN"] as const) {
             await capture(page, dialog, testInfo, "review-findings-pane");
           }
           const checks = dialog.getByRole("region", { name: t.review.diff.checks, exact: true });
+          await expect(
+            checks.getByRole("progressbar", {
+              name: `0 ${t.review.visualRefresh07.of} 1 ${t.review.visualRefresh07.passing}`,
+            }),
+          ).toHaveAttribute("aria-valuenow", "0");
+          await expect(
+            checks.getByRole("img", { name: t.review.checks.statuses.failed }),
+          ).toBeVisible();
           const output = checks.locator("pre");
           await output.scrollIntoViewIfNeeded();
           await expect(output).toHaveCSS("white-space", "pre");
@@ -870,6 +889,7 @@ for (const language of ["en", "zh-CN"] as const) {
           const dialog = page.getByRole("dialog", { name: t.planning.palette.title });
           const search = dialog.getByRole("combobox", { name: t.planning.palette.search });
           await expect(search).toBeFocused();
+          await expect(search).toHaveCSS("outline-style", "none");
           await capture(page, dialog, testInfo, "palette-long");
           await search.fill("no-matching-work-item-9384");
           await expect(dialog.getByText(t.planning.palette.empty)).toBeVisible();

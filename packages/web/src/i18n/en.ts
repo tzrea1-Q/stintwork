@@ -242,6 +242,13 @@ export const en = {
       down: (name: string) => `Move ${name} down`,
     },
     customise: {
+      gateKinds: {
+        manual: "Manual approval",
+        spec: "Spec approval",
+        tickets: "Tickets approval",
+        evidence: "Review evidence",
+        merge: "Merge",
+      },
       errors: {
         preview: "Could not preview the workflow.",
         invalidPreview: "Invalid workflow preview.",
@@ -534,6 +541,16 @@ export const en = {
         "sent-back": "sent-back",
         rejected: "rejected",
       },
+    },
+    visualRefresh07: {
+      of: "of",
+      passing: "passing",
+      recovery: "Recovery",
+      permission: "Permission request",
+      agent: "Agent",
+      stint: "Stint",
+      path: "Path",
+      status: "Status",
     },
     checks: {
       duration: (milliseconds: number) => `${milliseconds} ms`,
@@ -943,6 +960,15 @@ export const en = {
       completed: "completed",
       failed: "failed",
     },
+  },
+  actionToast: {
+    created: "Work item created.",
+    workflowSaved: "Workflow saved.",
+    roadmapSaved: "Roadmap saved.",
+    gateChanged: "Gate updated.",
+    permissionAnswered: "Permission answered.",
+    stintStopped: "Stop requested.",
+    failed: "Action failed. See details for more information.",
   },
   coreText: { ...coreTextEnglish },
   slugInput: {

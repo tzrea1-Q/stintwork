@@ -3,6 +3,7 @@
 import { createMemoryRepoFiles, indexProject, prepareWorkItemCreation } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
@@ -455,6 +456,7 @@ test("Chinese command palette translates controls and searches verbatim repo con
 });
 
 test("Chinese create controls submit a mixed Chinese title using the existing slug rules", async () => {
+  const success = vi.spyOn(toast, "success");
   localStorage.setItem(languageStorageKey, "zh-CN");
   const user = userEvent.setup();
   const project = snapshot();
@@ -498,6 +500,8 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
     }),
   );
   expect(onCreated).toHaveBeenCalledOnce();
+  expect(success).toHaveBeenCalledWith("工作项已创建。");
+  success.mockRestore();
 });
 
 test.each([
@@ -603,6 +607,8 @@ test("previews on the server, offers all loaded workflows and submits optional m
     "Keep the current look.",
   );
   expect(await dialog.findByText(".scratch/server-preview/")).toBeInTheDocument();
+  expect(dialog.getByText(".scratch/server-preview/workflow.yaml")).toBeInTheDocument();
+  expect(dialog.getByText(".stintwork/roadmap.md")).toBeInTheDocument();
   const input = {
     title: "New Idea",
     workflow: "team",
@@ -723,4 +729,18 @@ test("stale previews cannot enable confirmation for a newer title", async () => 
   await act(async () => pending[1](response({ slug: "new" })));
   expect(await dialog.findByText(".scratch/new/")).toBeInTheDocument();
   expect(dialog.getByRole("button", { name: "Create work item" })).toBeEnabled();
+});
+
+test("places a preview refusal immediately after the folder field", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(response({ reason: "Work item idea already exists." }, 409)),
+  );
+  render(<CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />);
+  fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Idea" } });
+  const error = await screen.findByRole("alert");
+  expect(error).toHaveTextContent("Work item idea already exists.");
+  expect(
+    screen.getByRole("textbox", { name: "Folder name" }).closest("label")?.nextElementSibling,
+  ).toBe(error);
 });

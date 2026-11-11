@@ -255,6 +255,13 @@ export const zhCN: Catalog = {
       down: (name: string) => joinChinese("下移", name),
     },
     customise: {
+      gateKinds: {
+        manual: "人工审批",
+        spec: "规格审批",
+        tickets: "工单审批",
+        evidence: "审查证据",
+        merge: "合并",
+      },
       errors: {
         preview: "无法预览工作流。",
         invalidPreview: "工作流预览无效。",
@@ -542,6 +549,16 @@ export const zhCN: Catalog = {
         "sent-back": "已退回",
         rejected: "已拒绝",
       },
+    },
+    visualRefresh07: {
+      of: "/",
+      passing: "项通过",
+      recovery: "恢复",
+      permission: "权限请求",
+      agent: "代理",
+      stint: "工作段",
+      path: "路径",
+      status: "状态",
     },
     checks: {
       duration: (milliseconds: number) => joinChinese(milliseconds, "毫秒"),
@@ -1295,6 +1312,15 @@ export const zhCN: Catalog = {
     "git.invalidSetupFile": "Stintwork 设置文件无效。",
     "git.riskyMetadata": "无法读取风险路径的元数据。",
     "git.riskySize": "无法读取风险路径的大小。",
+  },
+  actionToast: {
+    created: "工作项已创建。",
+    workflowSaved: "工作流已保存。",
+    roadmapSaved: "路线图已保存。",
+    gateChanged: "关卡已更新。",
+    permissionAnswered: "权限请求已回复。",
+    stintStopped: "已请求停止 Stint。",
+    failed: "操作失败，请查看详细信息。",
   },
   slugInput: {
     label: "文件夹名称",

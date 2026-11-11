@@ -7,6 +7,7 @@ import type {
   SetupPlan,
   WorkflowDefinitions,
 } from "@stintwork/core";
+import { Check, Circle } from "lucide-react";
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
@@ -17,6 +18,7 @@ import { Checkbox } from "./ui/Checkbox";
 import { DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { DiffPreview } from "./ui/DiffPreview";
 import { Disclosure } from "./ui/Disclosure";
+import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { WarningCallout } from "./ui/WarningCallout";
 
 type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
@@ -222,6 +224,18 @@ export function SetupGuide({
         {guide && !message && (
           <>
             <WarningCallout warnings={guide.warnings} />
+            {!confirming && (
+              <div className="mb-5 space-y-2">
+                <p className="font-medium">
+                  {`${guide.checks.filter((check) => check.status === "ready").length}/${guide.checks.length} ${t.planning.setup.statuses.ready}`}
+                </p>
+                <SegmentedProgress
+                  value={guide.checks.filter((check) => check.status === "ready").length}
+                  total={guide.checks.length}
+                  label={`${guide.checks.filter((check) => check.status === "ready").length}/${guide.checks.length} ${t.planning.setup.statuses.ready}`}
+                />
+              </div>
+            )}
             {confirming ? (
               <section ref={reviewRef} tabIndex={-1} aria-label={t.planning.setup.confirm}>
                 <h3 className="text-base font-medium">{t.planning.setup.confirm}</h3>
@@ -274,8 +288,16 @@ export function SetupGuide({
                                   (!change.requires || selected.includes(change.requires)),
                               );
                               return (
-                                <li key={check.id}>
+                                <li key={check.id} className="rounded-xl border border-border p-4">
                                   <div className="flex flex-wrap items-center gap-2">
+                                    {check.status === "ready" ? (
+                                      <Check aria-hidden="true" className="size-4 text-success" />
+                                    ) : (
+                                      <Circle
+                                        aria-hidden="true"
+                                        className="size-4 text-muted-foreground"
+                                      />
+                                    )}
                                     <h4 className="text-sm font-medium">{copy.name}</h4>
                                     <Badge
                                       variant={

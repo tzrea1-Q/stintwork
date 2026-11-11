@@ -424,9 +424,19 @@ export function ReviewOverlay({
             <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
               {t.review.diff.review} / <code>{item.slug}</code>
             </p>
-            <DialogTitle className="my-1 text-sm font-medium md:my-2 md:text-xl">
-              {item.title}
-            </DialogTitle>
+            <div className="review-range flex flex-wrap items-center gap-2">
+              <DialogTitle className="my-1 text-sm font-medium md:my-2 md:text-xl">
+                {item.title}
+              </DialogTitle>
+              {(item.headCommit ?? diff?.headCommit) && (
+                <span className="text-xs text-muted-foreground">
+                  {t.review.diff.branchHead}
+                  <code className="rounded-full bg-muted px-2 py-1 text-xs">
+                    {item.headCommit ?? diff?.headCommit}
+                  </code>
+                </span>
+              )}
+            </div>
             <Button
               size="sm"
               variant="ghost"
@@ -450,8 +460,7 @@ export function ReviewOverlay({
                   </p>
                   <p>
                     {t.review.diff.mergeBase}
-                    <code>{diff.mergeBase}</code> · {t.review.diff.branchHead}
-                    <code>{diff.headCommit}</code>
+                    <code>{diff.mergeBase}</code>
                   </p>
                 </div>
               )}

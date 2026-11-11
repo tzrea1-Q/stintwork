@@ -8,6 +8,7 @@ import {
 } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
@@ -39,6 +40,8 @@ test("the YAML grid item can shrink so code scrolls inside its preview", async (
   fetcher();
   render(<CustomiseWorkflow id="feature" onClose={vi.fn()} />);
   const preview = await screen.findByRole("region", { name: "Built-in workflow YAML" });
+  expect(screen.getAllByRole("listitem")).toHaveLength(builtInWorkflows.feature.stages.length);
+  expect(screen.getByText("/to-spec")).toBeInTheDocument();
   expect(preview).toHaveClass("min-w-0");
   expect(preview.querySelector("pre")).toHaveClass("overflow-auto");
 });
@@ -70,6 +73,7 @@ afterEach(() => {
 });
 
 test("Chinese customisation preserves the exact workflow YAML, path and commit message", async () => {
+  const success = vi.spyOn(toast, "success");
   localStorage.setItem(languageStorageKey, "zh-CN");
   const fetch = fetcher();
   const user = userEvent.setup();
@@ -92,6 +96,24 @@ test("Chinese customisation preserves the exact workflow YAML, path and commit m
     expect.objectContaining({ method: "POST", body: "{}" }),
   );
   expect(onClose).toHaveBeenCalledOnce();
+  expect(success).toHaveBeenCalledWith("工作流已保存。");
+  success.mockRestore();
+});
+
+test("Chinese stage summaries translate gate kinds", async () => {
+  localStorage.setItem(languageStorageKey, "zh-CN");
+  fetcher();
+  render(
+    <LanguageProvider>
+      <CustomiseWorkflow id="feature" onClose={vi.fn()} />
+    </LanguageProvider>,
+  );
+  await screen.findByText(".stintwork/workflows/feature.yaml");
+  expect(screen.getAllByText("人工审批").length).toBeGreaterThan(0);
+  expect(screen.getByText("规格审批")).toBeInTheDocument();
+  expect(screen.getByText("工单审批")).toBeInTheDocument();
+  expect(screen.getByText("审查证据")).toBeInTheDocument();
+  expect(screen.getByText("合并")).toBeInTheDocument();
 });
 
 test.each(["drawer", "palette"])(

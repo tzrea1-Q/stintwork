@@ -7,11 +7,14 @@ import {
   type PullRequestPreview,
   type WorkflowDefinitions,
 } from "@stintwork/core";
+import { CircleDot, GitBranch, GitPullRequest } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { PropertyList, PropertyRow } from "./ui/PropertyRow";
+import { StatusChip } from "./ui/StatusChip";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 export function ShipActions({
@@ -156,17 +159,49 @@ export function ShipActions({
           )}
           {pullRequest ? (
             <>
-              <p>
-                {t.review.ship.pullRequest(pullRequest.number)} ·{" "}
-                <a href={pullRequest.url} target="_blank" rel="noreferrer">
-                  {t.review.ship.view}
-                </a>
-              </p>
+              <PropertyList>
+                <PropertyRow
+                  icon={GitPullRequest}
+                  label={t.review.ship.pullRequest(pullRequest.number)}
+                  value={
+                    <a href={pullRequest.url} target="_blank" rel="noreferrer">
+                      {t.review.ship.view}
+                    </a>
+                  }
+                />
+                <PropertyRow
+                  icon={GitBranch}
+                  label={t.review.ship.branch}
+                  value={<code>{pullRequest.branch}</code>}
+                />
+                <PropertyRow
+                  icon={CircleDot}
+                  label={t.review.visualRefresh07.status}
+                  value={
+                    <StatusChip
+                      status={
+                        ci?.state === "MERGED"
+                          ? "success"
+                          : ci?.state === "CLOSED"
+                            ? "stopped"
+                            : ci?.state === "OPEN"
+                              ? "running"
+                              : "attention"
+                      }
+                    >
+                      {ci?.state && Object.hasOwn(t.review.pr.states, ci.state)
+                        ? t.review.pr.states[ci.state as keyof typeof t.review.pr.states]
+                        : (ci?.state ?? t.review.pr.buckets.pending)}
+                    </StatusChip>
+                  }
+                />
+              </PropertyList>
               <p>{t.review.ship.rechecks}</p>
               {!mergeReady && <p>{t.review.ship.notReady}</p>}
               <Button
                 type="button"
                 ref={mergeTrigger}
+                variant="primary"
                 disabled={busy || blockers.length > 0 || !!message || !mergeReady}
                 onClick={() => void action("preview-merge-pr")}
               >

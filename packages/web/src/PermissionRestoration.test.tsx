@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -25,6 +26,7 @@ afterEach(() => {
 test.each(["en", "zh-CN"])(
   "%s disables restored answers, binds keyboard consent to the current attempt and waits for delivery",
   async (language) => {
+    const success = vi.spyOn(toast, "success");
     localStorage.setItem(languageStorageKey, language);
     const t = language === "en" ? en : zhCN;
     let delivered!: () => void;
@@ -60,6 +62,8 @@ test.each(["en", "zh-CN"])(
     expect(screen.getByRole("button", { name: /No/ })).toBeDisabled();
     delivered();
     expect(await screen.findByText(t.needsYou.answerSent)).toBeVisible();
+    expect(success).toHaveBeenCalledWith(t.actionToast.permissionAnswered);
+    success.mockRestore();
     // A reused ID in another attempt must not inherit submitted state.
     view.rerender(
       <LanguageProvider>

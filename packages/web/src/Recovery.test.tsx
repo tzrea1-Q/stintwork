@@ -38,6 +38,8 @@ test.each([
       </LanguageProvider>,
     );
     expect(screen.getAllByText(label).length).toBeGreaterThan(0);
+    const recovery = document.querySelector(".stint-recovery");
+    expect(recovery?.querySelector('[data-slot="card-header"]')).toHaveTextContent(label);
     expect(
       screen.getByRole("button", { name: language === "en" ? "Start stint" : "开始 Stint" }),
     ).toBeDisabled();
@@ -54,6 +56,12 @@ test.each([
     expect(details.closest("details")).toHaveAttribute("open");
     const disclosure = details.closest("details");
     if (!disclosure) throw new Error("Expected recovery details");
+    const selectionReason = within(disclosure).getByText(
+      language === "en"
+        ? "Installed CLI is within the tested range; confirmed at stint start."
+        : /已安装的 CLI/,
+    );
+    expect(selectionReason.closest("dd")).not.toHaveClass("truncate");
     expect(within(disclosure).getAllByText(recoveryPath, { exact: true }).length).toBeGreaterThan(
       0,
     );

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { Square } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
 
@@ -26,15 +28,18 @@ export function StopStint({
         const body = await readResponseJson(response);
         throw new CoreTextError(body, t.stints.stopFailed);
       }
+      toast.success(t.actionToast.stintStopped);
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : t.stints.stopFailed);
       setRequested(false);
     }
   }
 
   return (
-    <div>
-      <Button type="button" onClick={stop} disabled={requested}>
+    <div className="min-w-0">
+      <Button variant="secondary" size="sm" type="button" onClick={stop} disabled={requested}>
+        <Square aria-hidden="true" />
         {requested ? t.stints.stopping : recovering ? t.stints.stopStint : t.stints.stop}
       </Button>
       {error && (

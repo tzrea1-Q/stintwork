@@ -2,6 +2,7 @@
 
 import type { AgentProfile, StintEvent } from "@stintwork/core";
 import { useState } from "react";
+import { toast } from "sonner";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { PermissionDetails } from "./PermissionDetails";
 import { Button } from "./ui/Button";
@@ -57,7 +58,9 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
         throw new CoreTextError(body, t.needsYou.permissionFailed);
       }
       setSubmitted(true);
+      toast.success(t.actionToast.permissionAnswered);
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       const reason =
         cause instanceof CoreTextError && cause.reasonMessage !== undefined
           ? cause
@@ -80,6 +83,15 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
             : t.needsYou.waitingPermission}
         </p>
       )}
+      <p className="font-medium">{t.review.visualRefresh07.permission}</p>
+      <p className="text-muted-foreground">
+        {profile && (
+          <>
+            {t.review.visualRefresh07.agent}: {profile.displayName} ·{" "}
+          </>
+        )}
+        {t.review.visualRefresh07.stint}: <code>{stintId}</code>
+      </p>
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
         <p className="warning text-attention-foreground">

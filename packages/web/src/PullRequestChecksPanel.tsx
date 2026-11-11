@@ -6,10 +6,13 @@ import {
   type PullRequest,
   type PullRequestChecks,
 } from "@stintwork/core";
+import { Check, Circle, LoaderCircle, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
-import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import { IconChip } from "./ui/IconChip";
+import { Item, ItemContent, ItemMedia } from "./ui/Item";
+import { SegmentedProgress } from "./ui/SegmentedProgress";
 
 export function PullRequestChecksPanel({
   item,
@@ -126,30 +129,68 @@ export function PullRequestChecksPanel({
             {Object.hasOwn(t.review.pr.states, checks.state)
               ? t.review.pr.states[checks.state as keyof typeof t.review.pr.states]
               : checks.state}{" "}
-            · <code>{checks.headCommit}</code> ·{" "}
-            <time dateTime={checks.fetchedAt}>{checks.fetchedAt}</time>
+            · <code className="text-muted-foreground">{checks.headCommit}</code> ·{" "}
+            <time className="font-mono text-muted-foreground" dateTime={checks.fetchedAt}>
+              {checks.fetchedAt}
+            </time>
             {evidenceStale(item, checks.headCommit) && (
               <strong className="warning text-attention-foreground">{t.review.pr.stale}</strong>
             )}
           </p>
+          {checks.checks.length > 0 && (
+            <div className="my-3 space-y-2">
+              <p>
+                {`${checks.checks.filter((check) => check.bucket === "pass").length} ${t.review.visualRefresh07.of} ${checks.checks.length} ${t.review.visualRefresh07.passing}`}
+              </p>
+              <SegmentedProgress
+                value={checks.checks.filter((check) => check.bucket === "pass").length}
+                total={checks.checks.length}
+                label={`${checks.checks.filter((check) => check.bucket === "pass").length} ${t.review.visualRefresh07.of} ${checks.checks.length} ${t.review.visualRefresh07.passing}`}
+                tone="success"
+              />
+            </div>
+          )}
           {!checks.checks.length && <p>{t.review.pr.empty}</p>}
           <ul aria-label={t.review.pr.results}>
             {checks.checks.map((check) => (
               <li key={`${check.name}:${check.link}`}>
-                {check.name} ·{" "}
-                <Badge
-                  variant={
-                    check.bucket === "pass"
-                      ? "success"
-                      : check.bucket === "fail"
-                        ? "danger"
-                        : "warning"
-                  }
-                >
-                  {Object.hasOwn(t.review.pr.buckets, check.bucket)
-                    ? t.review.pr.buckets[check.bucket as keyof typeof t.review.pr.buckets]
-                    : check.bucket}
-                </Badge>
+                <Item variant="outline" size="sm">
+                  <ItemMedia>
+                    <IconChip
+                      icon={
+                        check.bucket === "pass"
+                          ? Check
+                          : check.bucket === "fail"
+                            ? X
+                            : check.bucket === "running"
+                              ? LoaderCircle
+                              : Circle
+                      }
+                      tone={
+                        check.bucket === "pass"
+                          ? "success"
+                          : check.bucket === "fail"
+                            ? "blocked"
+                            : check.bucket === "running"
+                              ? "running"
+                              : "stopped"
+                      }
+                      label={
+                        Object.hasOwn(t.review.pr.buckets, check.bucket)
+                          ? t.review.pr.buckets[check.bucket as keyof typeof t.review.pr.buckets]
+                          : check.bucket
+                      }
+                    />
+                  </ItemMedia>
+                  <ItemContent className="min-w-0">
+                    <strong>
+                      {check.name} ·{" "}
+                      {Object.hasOwn(t.review.pr.buckets, check.bucket)
+                        ? t.review.pr.buckets[check.bucket as keyof typeof t.review.pr.buckets]
+                        : check.bucket}
+                    </strong>
+                  </ItemContent>
+                </Item>
               </li>
             ))}
           </ul>
