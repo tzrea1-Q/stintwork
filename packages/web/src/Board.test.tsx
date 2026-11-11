@@ -129,9 +129,6 @@ test("the toolbar milestone picker supports keyboard selection and dismissal wit
   picker.focus();
   await user.keyboard("{Enter}");
   const all = await screen.findByRole("option", { name: "All milestones" });
-  expect(screen.getByRole("combobox", { name: "Milestone" })).toBe(picker);
-  expect(screen.getByRole("combobox", { name: "Workflow" })).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Pipeline" })).not.toBeInTheDocument();
   await waitFor(() => expect(all).toHaveFocus());
   await user.keyboard("{ArrowDown}{Enter}");
   await waitFor(() => expect(picker).toHaveFocus());
@@ -973,10 +970,7 @@ test("workflow filter narrows the board without changing the URL", async () => {
   render(<Board snapshot={project()} />);
   const url = window.location.href;
   await user.click(screen.getByRole("combobox", { name: "Workflow" }));
-  const bug = await screen.findByRole("option", { name: "Bug" });
-  expect(screen.getByRole("combobox", { name: "Milestone" })).toBeInTheDocument();
-  expect(screen.getByRole("combobox", { name: "Workflow" })).toBeInTheDocument();
-  await user.click(bug);
+  await user.click(await screen.findByRole("option", { name: "Bug" }));
   expect(screen.getByRole("article", { name: /^bug-login:/ })).toBeInTheDocument();
   expect(screen.queryByRole("article", { name: /^board:/ })).not.toBeInTheDocument();
   expect(window.location.href).toBe(url);

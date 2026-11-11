@@ -182,7 +182,7 @@ export function Board({
       )}
       <main className="pipeline-main flex min-h-0 min-w-0 flex-1 flex-col">
         <BoardWorkflowFilter snapshot={snapshot} items={visible} openSlug={openSlug}>
-          {(filtered, workflowPicker, pickerOpen, setPickerOpen) => {
+          {(filtered, workflowPicker) => {
             const filteredActive = active.filter((item) => filtered.includes(item));
             const filteredShipped = shipped.filter((item) => filtered.includes(item));
             const filteredUnstaged = unstaged.filter((item) => filtered.includes(item));
@@ -229,19 +229,13 @@ export function Board({
                       <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
                       <Select
                         value={milestone ? `milestone:${milestone}` : "all"}
-                        onOpenChange={setPickerOpen}
                         onValueChange={(value) =>
                           setSelectedMilestone(
                             value === "all" ? "" : value.slice("milestone:".length),
                           )
                         }
                       >
-                        {/* Radix hideOthers preserves live regions; off keeps this trigger discoverable without announcements. */}
-                        <SelectTrigger
-                          aria-label={t.topBar.milestone}
-                          aria-live={pickerOpen ? "off" : undefined}
-                          className="max-w-64"
-                        >
+                        <SelectTrigger aria-label={t.topBar.milestone} className="max-w-64">
                           <SelectValue
                             data-truncate
                             title={selected?.name ?? t.board.allMilestones}

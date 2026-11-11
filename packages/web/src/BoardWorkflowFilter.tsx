@@ -14,16 +14,10 @@ export function BoardWorkflowFilter({
   snapshot: ProjectSnapshot;
   items: ProjectSnapshot["workItems"];
   openSlug: string | null;
-  children: (
-    items: ProjectSnapshot["workItems"],
-    picker: ReactNode,
-    pickerOpen: boolean,
-    setPickerOpen: (open: boolean) => void,
-  ) => ReactNode;
+  children: (items: ProjectSnapshot["workItems"], picker: ReactNode) => ReactNode;
 }) {
   const { t } = useLanguage();
   const [workflow, setWorkflow] = useState<string | null>(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const previousSlug = useRef(openSlug);
   useEffect(() => {
     if (openSlug && openSlug !== previousSlug.current) {
@@ -37,17 +31,11 @@ export function BoardWorkflowFilter({
   const picker = available.length > 0 && (
     <Select
       value={selected === null ? "all" : `workflow:${selected}`}
-      onOpenChange={setPickerOpen}
       onValueChange={(value) =>
         setWorkflow(value === "all" ? null : value.slice("workflow:".length))
       }
     >
-      {/* Preserve both toolbar triggers when Radix hides the rest of the page. */}
-      <SelectTrigger
-        aria-label={t.pipelineBoard.workflow}
-        aria-live={pickerOpen ? "off" : undefined}
-        className="max-w-48"
-      >
+      <SelectTrigger aria-label={t.pipelineBoard.workflow} className="max-w-48">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -63,7 +51,5 @@ export function BoardWorkflowFilter({
   return children(
     items.filter((item) => selected === null || item.workflow === selected),
     picker,
-    pickerOpen,
-    setPickerOpen,
   );
 }
