@@ -248,12 +248,12 @@ for (const language of ["en", "zh-CN"] as const) {
         }
 
         const milestone = page.locator('.board-toolbar [role="combobox"]');
-        await milestone.click();
-        const milestoneOptions = page.getByRole("listbox");
-        await expect(milestoneOptions).toHaveAttribute("data-state", "open");
         const triggerWidth = await milestone.evaluate(
           (element) => element.getBoundingClientRect().width,
         );
+        await milestone.click();
+        const milestoneOptions = page.getByRole("listbox");
+        await expect(milestoneOptions).toHaveAttribute("data-state", "open");
         await expect
           .poll(async () =>
             Math.abs(
