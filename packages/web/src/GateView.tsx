@@ -8,7 +8,9 @@ import {
   type Warning,
   type WorkflowDefinitions,
 } from "@stintwork/core";
+import { CheckCircle2, Circle, GitCommitHorizontal } from "lucide-react";
 import { useState } from "react";
+import { toast } from "sonner";
 import { refreshGithubItem } from "./github-refresh";
 import { HandoffAnswer } from "./HandoffAnswer";
 import { HandoffCard } from "./HandoffCard";
@@ -22,6 +24,9 @@ import {
 } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
+import { PropertyList, PropertyRow } from "./ui/PropertyRow";
+import { SegmentedProgress } from "./ui/SegmentedProgress";
+import { StatusChip } from "./ui/StatusChip";
 import type { BoardWorkItem } from "./WorkItemCard";
 
 export function GateView({
@@ -96,6 +101,7 @@ export function GateView({
           setRefreshNeeded(true);
         throw new CoreTextError(result, t.stints.changeGateFailed);
       }
+      toast.success(t.actionToast.gateChanged);
       if (github) {
         setMessage(
           t.stints.githubApproval[result.approval as "current" | "stale" | "unknown"] ??
@@ -116,6 +122,7 @@ export function GateView({
           : t.stints.gateReopened(name),
       );
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
     } finally {
       setSaving(false);
@@ -125,7 +132,7 @@ export function GateView({
   return (
     <section
       aria-label={t.stints.gate(stageName(workflows[item.workflow], current, t))}
-      className="handoff-card my-3 rounded-sm border border-border bg-muted p-3 [overflow-wrap:anywhere] [&_h4]:font-semibold [&_dt]:font-semibold [&_dl>div]:mt-2 [&>p]:mt-2"
+      className="handoff-card my-3 rounded-2xl border border-border bg-card p-4 [overflow-wrap:anywhere] [&_h4]:font-semibold [&>p]:mt-2"
     >
       <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {t.stints.gate(stageName(workflows[item.workflow], current, t))}
@@ -134,20 +141,47 @@ export function GateView({
         {gate.ready ? t.stints.readyToApprove : translateCoreText(gate.reason, t)}
       </p>
       {gate.conditions.length > 0 && (
-        <ul aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}>
-          {gate.conditions.map((condition) => (
-            <li key={condition.id}>
-              <strong>{translateCoreText(condition.label, t)}</strong> ·{" "}
-              {condition.ready ? t.stints.ready : t.stints.blocked}
-              <p>{condition.ready ? t.stints.noAction : translateCoreText(condition.action, t)}</p>
-            </li>
-          ))}
-        </ul>
+        <div className="my-3 space-y-3">
+          <SegmentedProgress
+            value={gate.conditions.filter((condition) => condition.ready).length}
+            total={gate.conditions.length}
+            label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
+          />
+          <ul
+            aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
+            className="space-y-2"
+          >
+            {gate.conditions.map((condition) => (
+              <li key={condition.id} className="rounded-xl border border-border p-3">
+                {condition.ready ? (
+                  <CheckCircle2
+                    aria-hidden="true"
+                    className="mr-2 inline size-4 text-success-foreground"
+                  />
+                ) : (
+                  <Circle aria-hidden="true" className="mr-2 inline size-4 text-muted-foreground" />
+                )}
+                <strong>{translateCoreText(condition.label, t)}</strong> ·{" "}
+                <StatusChip status={condition.ready ? "success" : "attention"}>
+                  {condition.ready ? t.stints.ready : t.stints.blocked}
+                </StatusChip>
+                <p>
+                  {condition.ready ? t.stints.noAction : translateCoreText(condition.action, t)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       <p>
         {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length}
         {t.stints.ticketsResolved}
       </p>
+      <SegmentedProgress
+        value={item.tickets.filter(({ resolved }) => resolved).length}
+        total={item.tickets.length}
+        label={t.stints.ticketsResolved.trim()}
+      />
       <ul>
         {item.tickets.map((ticket) => (
           <li key={ticket.path}>
@@ -156,9 +190,19 @@ export function GateView({
           </li>
         ))}
       </ul>
-      <p>
-        {t.stints.lastCheckpoint} {checkpoint ? <code>{checkpoint}</code> : t.stints.noneRecorded}
-      </p>
+      <PropertyList>
+        <PropertyRow
+          icon={GitCommitHorizontal}
+          label={t.stints.lastCheckpoint}
+          value={
+            checkpoint ? (
+              <code className="block max-w-full overflow-auto font-mono">{checkpoint}</code>
+            ) : (
+              t.stints.noneRecorded
+            )
+          }
+        />
+      </PropertyList>
       <h4>{t.stints.lastHandoff}</h4>
       {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
       {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (

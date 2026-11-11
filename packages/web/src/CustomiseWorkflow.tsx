@@ -2,12 +2,14 @@
 
 import { builtInWorkflows } from "@stintwork/core";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
 import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { Skeleton } from "./ui/Skeleton";
 
 export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => void }) {
   const { t } = useLanguage();
@@ -59,8 +61,10 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
       });
       const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, en.planning.customise.errors.save);
+      toast.success(t.actionToast.workflowSaved);
       onClose();
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.customise.errors.save);
       setSaving(false);
     }
@@ -104,6 +108,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
           ) : (
             <p role="status">
               {error ? t.planning.customise.unavailable : t.planning.customise.loading}
+              {!error && <Skeleton aria-hidden="true" className="mt-3 h-24 w-full" />}
             </p>
           )}
           {error && (
@@ -117,7 +122,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
               )}
             </p>
           )}
-          <footer className="flex flex-wrap justify-end gap-3">
+          <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
             <Button onClick={onClose}>{t.planning.customise.cancel}</Button>
             <Button variant="primary" disabled={!preview} onClick={() => void customise()}>
               {saving ? t.planning.customise.saving : t.planning.customise.confirm}

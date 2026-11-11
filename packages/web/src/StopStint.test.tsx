@@ -8,6 +8,7 @@ import {
 } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
@@ -38,6 +39,7 @@ const stint = applyStintLogEntry(null, {
 afterEach(() => vi.unstubAllGlobals());
 
 test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows stopped history with its checkpoint and handoff", async () => {
+  const success = vi.spyOn(toast, "success");
   const user = userEvent.setup();
   vi.stubGlobal(
     "fetch",
@@ -58,6 +60,8 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
   await user.click(screen.getByRole("button", { name: "Stop" }));
   expect(fetch).toHaveBeenCalledWith("/api/stints/first/stop", { method: "POST" });
   expect(screen.getByRole("button", { name: "Stopping stint…" })).toBeDisabled();
+  expect(success).toHaveBeenCalledWith("Stop requested.");
+  success.mockRestore();
   await user.click(screen.getByRole("button", { name: "Stopping stint…" }));
   expect(fetch).toHaveBeenCalledTimes(2);
   const stopped = applyStintLogEntry(stint, {
@@ -89,6 +93,7 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
 });
 
 test("a failed Stop displays its error and lets the developer retry", async () => {
+  const failure = vi.spyOn(toast, "error");
   const user = userEvent.setup();
   vi.stubGlobal(
     "fetch",
@@ -102,6 +107,8 @@ test("a failed Stop displays its error and lets the developer retry", async () =
   render(<StopStint stintId="first/second" />);
   await user.click(screen.getByRole("button", { name: "Stop" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Could not cancel stint.");
+  expect(failure).toHaveBeenCalledWith("Action failed. See details for more information.");
+  failure.mockRestore();
   await user.click(screen.getByRole("button", { name: "Stop" }));
   expect(fetch).toHaveBeenLastCalledWith("/api/stints/first%2Fsecond/stop", { method: "POST" });
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();

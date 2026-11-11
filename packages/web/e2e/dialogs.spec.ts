@@ -870,6 +870,7 @@ for (const language of ["en", "zh-CN"] as const) {
           const dialog = page.getByRole("dialog", { name: t.planning.palette.title });
           const search = dialog.getByRole("combobox", { name: t.planning.palette.search });
           await expect(search).toBeFocused();
+          await expect(search).toHaveCSS("outline-style", "none");
           await capture(page, dialog, testInfo, "palette-long");
           await search.fill("no-matching-work-item-9384");
           await expect(dialog.getByText(t.planning.palette.empty)).toBeVisible();

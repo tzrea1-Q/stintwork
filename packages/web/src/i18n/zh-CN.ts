@@ -1282,6 +1282,15 @@ export const zhCN: Catalog = {
     "git.riskyMetadata": "无法读取风险路径的元数据。",
     "git.riskySize": "无法读取风险路径的大小。",
   },
+  actionToast: {
+    created: "工作项已创建。",
+    workflowSaved: "工作流已保存。",
+    roadmapSaved: "路线图已保存。",
+    gateChanged: "关卡已更新。",
+    permissionAnswered: "权限请求已回复。",
+    stintStopped: "已请求停止 Stint。",
+    failed: "操作失败，请查看详细信息。",
+  },
   slugInput: {
     label: "文件夹名称",
     hint: "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",

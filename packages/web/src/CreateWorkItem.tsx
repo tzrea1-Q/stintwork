@@ -2,6 +2,7 @@
 
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
+import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { workflowName } from "./i18n/workflow-names";
@@ -90,8 +91,10 @@ export function CreateWorkItem({
       });
       const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, en.planning.create.errors.save);
+      toast.success(t.actionToast.created);
       onCreated();
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.create.errors.save);
       setSaving(false);
     }
@@ -208,7 +211,7 @@ export function CreateWorkItem({
               </p>
             )}
             <p className="muted text-muted-foreground">{t.planning.create.description}</p>
-            <footer className="flex flex-wrap justify-end gap-3">
+            <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
               <Button onClick={onClose}>{t.planning.create.cancel}</Button>
               <Button variant="primary" type="submit" disabled={!slug}>
                 {saving ? t.planning.create.saving : t.planning.create.title}

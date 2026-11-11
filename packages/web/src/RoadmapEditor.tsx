@@ -2,6 +2,7 @@
 
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
+import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
@@ -58,7 +59,9 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
       setMilestones(result.milestones);
       if (change.kind === "add") setName("");
       setMessage(result.commit ? "committed" : "unchanged");
+      toast.success(t.actionToast.roadmapSaved);
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.roadmap.errors.save);
     } finally {
       setSaving(false);

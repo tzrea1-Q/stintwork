@@ -34,7 +34,7 @@ export function PermissionDetails({ details }: { details?: string }) {
         <CodeBlock className="permission-details">{command}</CodeBlock>
       )}
       {[...new Set(paths)].map((path) => (
-        <p key={path}>
+        <p key={path} className="max-w-full overflow-auto">
           <code>{path}</code>
         </p>
       ))}

@@ -37,7 +37,7 @@ export function CommandPalette({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="command-palette w-xl rounded-2xl bg-popover text-popover-foreground p-0"
+        className="command-palette w-xl rounded-2xl bg-popover text-popover-foreground p-0 focus-within:ring-2 focus-within:ring-ring"
       >
         <DialogTitle className="sr-only">{t.planning.palette.title}</DialogTitle>
         <Command
@@ -48,7 +48,7 @@ export function CommandPalette({
           <div className="command-search flex items-center gap-3 border-b border-border p-4">
             <Search className="size-icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
             <Command.Input
-              className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-ring"
+              className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-none"
               placeholder={t.planning.palette.placeholder}
               aria-label={t.planning.palette.search}
             />

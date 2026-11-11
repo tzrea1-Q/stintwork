@@ -930,6 +930,15 @@ export const en = {
       failed: "failed",
     },
   },
+  actionToast: {
+    created: "Work item created.",
+    workflowSaved: "Workflow saved.",
+    roadmapSaved: "Roadmap saved.",
+    gateChanged: "Gate updated.",
+    permissionAnswered: "Permission answered.",
+    stintStopped: "Stop requested.",
+    failed: "Action failed. See details for more information.",
+  },
   coreText: { ...coreTextEnglish },
   slugInput: {
     label: "Folder name",

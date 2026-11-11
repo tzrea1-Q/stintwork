@@ -8,6 +8,7 @@ import {
 } from "@stintwork/core";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { GateView } from "./GateView";
@@ -269,6 +270,14 @@ test("Review lists every evidence condition with state and an actionable remedy"
   render(<GateView item={item} />);
   const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
   expect(conditions.getAllByRole("listitem")).toHaveLength(6);
+  expect(screen.getByRole("progressbar", { name: "Review gate conditions" })).toHaveAttribute(
+    "aria-valuemax",
+    "6",
+  );
+  expect(screen.getByRole("progressbar", { name: "Review gate conditions" })).not.toHaveAttribute(
+    "aria-valuenow",
+    "6",
+  );
   expect(conditions.getByText("Latest Review stint finished").closest("li")).toHaveTextContent(
     "Ready",
   );
@@ -302,6 +311,10 @@ test("fresh bookkeeping evidence enables Review approval, but the server's refus
   render(<GateView item={reviewItem()} />);
   const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
   expect(conditions.getAllByText("No action needed.")).toHaveLength(6);
+  expect(screen.getByRole("progressbar", { name: "Review gate conditions" })).toHaveAttribute(
+    "aria-valuenow",
+    "6",
+  );
   const approve = screen.getByRole("button", { name: "Approve Review" });
   expect(approve).toBeEnabled();
   await user.click(approve);
@@ -908,6 +921,7 @@ test("a reopened local stage does not ask to reopen its stale approval again", (
 });
 
 test("local gate keeps its original request and confirmation", async () => {
+  const success = vi.spyOn(toast, "success");
   const item = project().workItems[0];
   const fetcher = vi
     .fn()
@@ -920,6 +934,8 @@ test("local gate keeps its original request and confirmation", async () => {
     expect.objectContaining({ body: "{}" }),
   );
   expect(screen.getByText("Gate approved. Stage advances to Review.")).toBeInTheDocument();
+  expect(success).toHaveBeenCalledWith("Gate updated.");
+  success.mockRestore();
 });
 
 test("GitHub refresh recovery requests fresh detail", async () => {

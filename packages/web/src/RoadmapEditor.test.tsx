@@ -2,6 +2,7 @@
 import { createMemoryRepoFiles, editRoadmap, indexProject } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -97,6 +98,7 @@ test("Chinese roadmap controls preserve milestone names, work item titles and th
 });
 
 test("the board exposes the editor, adds a milestone, and restores focus on close", async () => {
+  const success = vi.spyOn(toast, "success");
   const fetch = mockServer();
   const user = userEvent.setup();
   render(<Board snapshot={snapshot()} />);
@@ -116,6 +118,8 @@ test("the board exposes the editor, adds a milestone, and restores focus on clos
     body: JSON.stringify({ kind: "add", name: "Next delivery" }),
   });
   expect(sheet.getByRole("textbox", { name: "New milestone name" })).toHaveValue("");
+  expect(success).toHaveBeenCalledWith("Roadmap saved.");
+  success.mockRestore();
   await user.click(sheet.getByRole("button", { name: "Close roadmap" }));
   expect(screen.queryByRole("dialog", { name: "Edit roadmap" })).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();

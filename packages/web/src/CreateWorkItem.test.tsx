@@ -3,6 +3,7 @@
 import { createMemoryRepoFiles, indexProject, prepareWorkItemCreation } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
@@ -455,6 +456,7 @@ test("Chinese command palette translates controls and searches verbatim repo con
 });
 
 test("Chinese create controls submit a mixed Chinese title using the existing slug rules", async () => {
+  const success = vi.spyOn(toast, "success");
   localStorage.setItem(languageStorageKey, "zh-CN");
   const user = userEvent.setup();
   const project = snapshot();
@@ -498,6 +500,8 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
     }),
   );
   expect(onCreated).toHaveBeenCalledOnce();
+  expect(success).toHaveBeenCalledWith("工作项已创建。");
+  success.mockRestore();
 });
 
 test.each([

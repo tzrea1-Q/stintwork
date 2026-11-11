@@ -8,6 +8,7 @@ import {
 } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "sonner";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
@@ -70,6 +71,7 @@ afterEach(() => {
 });
 
 test("Chinese customisation preserves the exact workflow YAML, path and commit message", async () => {
+  const success = vi.spyOn(toast, "success");
   localStorage.setItem(languageStorageKey, "zh-CN");
   const fetch = fetcher();
   const user = userEvent.setup();
@@ -92,6 +94,8 @@ test("Chinese customisation preserves the exact workflow YAML, path and commit m
     expect.objectContaining({ method: "POST", body: "{}" }),
   );
   expect(onClose).toHaveBeenCalledOnce();
+  expect(success).toHaveBeenCalledWith("工作流已保存。");
+  success.mockRestore();
 });
 
 test.each(["drawer", "palette"])(

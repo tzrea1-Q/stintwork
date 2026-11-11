@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useState } from "react";
+import { toast } from "sonner";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
 
@@ -26,7 +27,9 @@ export function StopStint({
         const body = await readResponseJson(response);
         throw new CoreTextError(body, t.stints.stopFailed);
       }
+      toast.success(t.actionToast.stintStopped);
     } catch (cause) {
+      toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : t.stints.stopFailed);
       setRequested(false);
     }
