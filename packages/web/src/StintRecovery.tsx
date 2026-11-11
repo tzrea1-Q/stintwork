@@ -3,11 +3,11 @@ import { coreText, type StintSummary } from "@stintwork/core";
 import { FileText, Info, RotateCcw } from "lucide-react";
 import type { Catalog } from "./i18n/en";
 import { renderCoreText, translateCoreText, useLanguage } from "./i18n/language";
-import { Badge } from "./ui/Badge";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { Disclosure } from "./ui/Disclosure";
 import { IconChip } from "./ui/IconChip";
 import { PropertyList, PropertyRow } from "./ui/PropertyRow";
+import { StatusChip } from "./ui/StatusChip";
 
 // Older logs carry plain reasons; match only Stintwork's known copy, never agent text.
 function recoveryReason(reason: string, t: Catalog) {
@@ -39,13 +39,18 @@ export function StintRecovery({ stint }: { stint: StintSummary }) {
   const fallback = recovery.state === "fallback" && stint.status !== "running";
   const reason = recovery.reason ? recoveryReason(recovery.reason, t) : "";
   return (
-    <Card className="stint-recovery my-3 min-w-0 [overflow-wrap:anywhere]">
-      <CardHeader className="flex flex-row items-center gap-3">
+    <Card className="stint-recovery my-3 min-w-0 overflow-visible [overflow-wrap:anywhere]">
+      <CardHeader className="flex min-w-0 flex-row flex-wrap items-center gap-3">
         <IconChip icon={RotateCcw} tone="attention" />
-        <strong>{t.review.visualRefresh07.recovery}</strong>
+        <strong className="min-w-0">{t.review.visualRefresh07.recovery}</strong>
+        {!fallback && recoveryStatus(stint, t) && (
+          <StatusChip status={recovery.state === "resumed" ? "success" : "running"}>
+            {recoveryStatus(stint, t)}
+          </StatusChip>
+        )}
       </CardHeader>
       <CardContent>
-        {fallback ? (
+        {fallback && (
           <p role="status" className="text-attention-foreground">
             {stint.checkpointCommit
               ? t.stints.recovery.saved(stint.checkpointCommit)
@@ -60,13 +65,7 @@ export function StintRecovery({ stint }: { stint: StintSummary }) {
                       renderCoreText(stint.errorMessage, stint.error ?? reason, t),
                     )}
           </p>
-        ) : recoveryStatus(stint, t) ? (
-          <div>
-            <Badge variant={recovery.state === "resumed" ? "success" : "accent"}>
-              {recoveryStatus(stint, t)}
-            </Badge>
-          </div>
-        ) : null}
+        )}
         <Disclosure label={t.stints.recovery.details}>
           <PropertyList className="mt-2 px-2 pb-2">
             {reason && (
@@ -99,12 +98,20 @@ export function StintRecovery({ stint }: { stint: StintSummary }) {
                 <PropertyRow
                   icon={Info}
                   label={t.stints.recovery.recordedSource}
-                  value={translateCoreText(coreText({ code: `agent.source.${launch.source}` }), t)}
+                  value={
+                    <span>
+                      {translateCoreText(coreText({ code: `agent.source.${launch.source}` }), t)}
+                    </span>
+                  }
                 />
                 <PropertyRow
                   icon={Info}
                   label={t.stints.recovery.selectionReason}
-                  value={translateCoreText(coreText({ code: `agent.reason.${launch.reason}` }), t)}
+                  value={
+                    <span>
+                      {translateCoreText(coreText({ code: `agent.reason.${launch.reason}` }), t)}
+                    </span>
+                  }
                 />
                 <PropertyRow
                   icon={FileText}
@@ -114,12 +121,12 @@ export function StintRecovery({ stint }: { stint: StintSummary }) {
                 <PropertyRow
                   icon={Info}
                   label={t.stints.preparation.version}
-                  value={launch.executable.version}
+                  value={<span>{launch.executable.version}</span>}
                 />
                 <PropertyRow
                   icon={Info}
                   label={t.stints.preparation.adapterVersion}
-                  value={launch.adapterVersion}
+                  value={<span>{launch.adapterVersion}</span>}
                 />
                 <PropertyRow
                   icon={FileText}
