@@ -15,6 +15,15 @@ export function ticketsUnavailable(item: ProjectSnapshot["workItems"][number]) {
   );
 }
 
+export function workItemDone(item: ProjectSnapshot["workItems"][number]): boolean {
+  return (
+    !!item.merged ||
+    (!ticketsUnavailable(item) &&
+      item.tickets.length > 0 &&
+      item.tickets.every((ticket) => ticket.resolved))
+  );
+}
+
 export function overviewData(snapshot: ProjectSnapshot) {
   const active = snapshot.workItems.filter((item) => !item.merged);
   const milestones = snapshot.milestones
@@ -23,13 +32,7 @@ export function overviewData(snapshot: ProjectSnapshot) {
       return {
         milestone,
         total: items.length,
-        resolved: items.filter(
-          (item) =>
-            item.merged ||
-            (!ticketsUnavailable(item) &&
-              item.tickets.length > 0 &&
-              item.tickets.every((ticket) => ticket.resolved)),
-        ).length,
+        resolved: items.filter(workItemDone).length,
         incomplete: items.some(ticketsUnavailable),
       };
     })

@@ -37,6 +37,22 @@ async function open() {
   return { user, sheet: within(screen.getByRole("dialog", { name: "Edit roadmap" })) };
 }
 
+test("roadmap progress counts resolved local tickets without a merge", async () => {
+  const project = indexProject(
+    createMemoryRepoFiles({
+      ".stintwork/roadmap.md": initial,
+      ".scratch/board/spec.md": "# Board work item",
+      ".scratch/board/issues/01-done.md": "# Done\nStatus: resolved",
+    }),
+    { name: "Project" },
+  );
+  expect(project.workItems[0].merged).toBeUndefined();
+  expect(project.workItems[0].tickets[0].resolved).toBe(true);
+  render(<RoadmapEditor snapshot={project} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Edit roadmap" }));
+  expect(screen.getByRole("progressbar", { name: "First" })).toHaveAttribute("aria-valuenow", "1");
+});
+
 test("roadmap traps keyboard focus and restores the opener after outside dismissal", async () => {
   mockServer();
   const { user, sheet } = await open();

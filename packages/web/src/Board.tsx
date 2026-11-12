@@ -11,7 +11,7 @@ import { GithubStatus } from "./GithubStatus";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { Overview } from "./Overview";
-import { viewFromSearch } from "./overview-data";
+import { viewFromSearch, workItemDone } from "./overview-data";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
@@ -300,7 +300,7 @@ export function Board({
                                 (item) => item.milestone === entry.id,
                               ).length;
                               const done = snapshot.workItems.filter(
-                                (item) => item.milestone === entry.id && item.merged,
+                                (item) => item.milestone === entry.id && workItemDone(item),
                               ).length;
                               const progress = `${done}/${total} ${t.pipelineBoard.milestoneProgress}`;
                               return (

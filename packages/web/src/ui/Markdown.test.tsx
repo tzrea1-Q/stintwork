@@ -21,3 +21,20 @@ test("developer Markdown keeps GFM, omits HTML and gives code keyboard scroll ac
   await userEvent.setup().tab();
   expect(code).toHaveFocus();
 });
+
+test("Markdown headings retain their source styles at accessible detail levels", () => {
+  const { container } = render(
+    <Markdown>{"# One\n\n## Two\n\n### Three\n\n#### Four\n\n##### Five\n\n###### Six"}</Markdown>,
+  );
+  for (const [index, name] of ["One", "Two", "Three", "Four", "Five", "Six"].entries()) {
+    expect(screen.getByRole("heading", { name, level: Math.min(index + 3, 6) })).toHaveAttribute(
+      "data-markdown-heading",
+      `h${index + 1}`,
+    );
+  }
+  expect(container.firstChild).toHaveClass(
+    "[&_[data-markdown-heading=h1]]:text-xl",
+    "[&_[data-markdown-heading=h2]]:text-lg",
+    "[&_[data-markdown-heading=h3]]:text-base",
+  );
+});
