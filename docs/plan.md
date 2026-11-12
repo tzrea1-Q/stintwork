@@ -209,6 +209,8 @@ Spec: `.scratch/visual-refresh/spec.md`. Decision: ADR 0019.
 
 **Exit test:** the browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` and both colour schemes, and the maintainer walks Overview, Pipeline with the detail panel, Needs you and every dialog at 1440, 768 and 390px in both languages and accepts the result.
 
+Shipped 2026-11-11: all eight visual-refresh tickets resolved; 460 Playwright cases passed and the maintainer accepted the walk-through.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.

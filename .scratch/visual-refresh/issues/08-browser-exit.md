@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 08 — Browser suite and M14 exit
 
-Status: in-progress
+Status: resolved
 Blocked by: 03, 04, 05, 06, 07
 
 ## What to build
@@ -15,9 +15,9 @@ Scope: Browser coverage, fixes required for acceptance, screenshots and maintain
 ## Acceptance criteria
 
 - [x] The browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` in both light and dark; minimum supported width is 360px.
-- [ ] Comments record the maintainer acceptance walk at 1440, 768 and 390px in both languages and actual suite results.
+- [x] Comments record the maintainer acceptance walk at 1440, 768 and 390px in both languages and actual suite results.
 - [x] Browser checks for changed screens cover 1440, 1024, 768 and 390px in `en` and `zh-CN`, with light and dark at 1440 and 390px. Screenshots are review artifacts; layout supports at least 360px.
-- [ ] Comments record actual behaviour and browser checks and coordinator review at 1440 and 390px in both languages before merging.
+- [x] Comments record actual behaviour and browser checks and coordinator review at 1440 and 390px in both languages before merging.
 
 ## Comments
 
@@ -32,3 +32,4 @@ Scope: Browser coverage, fixes required for acceptance, screenshots and maintain
 - Main at a7a7d89 before this ticket: 446 Playwright cases passed.
 - Final run on `visual-refresh/08`: `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck`, `pnpm test` (3441 passed) and `pnpm build` (no CSS warnings) all passed. `PLAYWRIGHT_CHROME_CHANNEL=chrome PLAYWRIGHT_PORT=4600 pnpm test:e2e`: 460 passed.
 
+**Maintainer, 2026-11-11:** Accepted after the requested walk-through of `main` at bd21ded against this repository (brief: Overview, Pipeline with the detail panel, Needs you and every dialog at 1440, 768 and 390px in `en` and `zh-CN`). No changes requested. M14 exits.
