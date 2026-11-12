@@ -5,17 +5,18 @@ import { useEffect, useState } from "react";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { overviewData, ticketsUnavailable } from "./overview-data";
+import { AgentAvatar } from "./ui/AgentAvatar";
 import { Button } from "./ui/Button";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/Card";
+import { Card, CardContent, CardHeader, CardTitle, Eyebrow } from "./ui/Card";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "./ui/Empty";
+import { IconChip } from "./ui/IconChip";
+import { Item, ItemContent, ItemMedia } from "./ui/Item";
+import { PageHeader } from "./ui/PageHeader";
 import { Progress } from "./ui/Progress";
 import { SegmentedProgress } from "./ui/SegmentedProgress";
-import { Item, ItemContent, ItemMedia } from "./ui/Item";
-import { IconChip } from "./ui/IconChip";
-import { AgentAvatar } from "./ui/AgentAvatar";
 import { StatusChip } from "./ui/StatusChip";
-import type { Connection } from "./useProjectSnapshot";
 import { attentionStageName, attentionTitle } from "./useAttentionAlerts";
+import type { Connection } from "./useProjectSnapshot";
 
 export function Overview({
   snapshot,
@@ -69,17 +70,19 @@ export function Overview({
           <span className="truncate font-medium" data-truncate title={item.title}>
             {item.title}
           </span>
-          <span className="truncate text-xs text-muted-foreground">{detail}</span>
+          <span className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{detail}</span>
         </ItemContent>
         <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
       </button>
     </Item>
   );
   return (
-    <main className="min-w-0 flex-1 overflow-auto p-4 sm:p-6">
-      <header className="mb-6">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-3xl font-medium tracking-tight">{t.viewNavigation.overview}</h1>
+    <main className="min-w-0 flex-1 overflow-auto px-4 pt-[42px] pb-5 min-[700px]:px-7 min-[700px]:pt-[65px] [&>header]:mx-auto [&>header]:max-w-[1320px] [&>div]:mx-auto [&>div]:max-w-[1320px]">
+      <PageHeader
+        eyebrow={`${snapshot.name} / ${t.viewNavigation.overview}`}
+        title={t.viewNavigation.overview}
+        description={t.overview.description}
+        actions={
           <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
             <span
               aria-hidden="true"
@@ -91,9 +94,8 @@ export function Overview({
                 ? t.board.connecting
                 : t.board.reconnecting}
           </p>
-        </div>
-        <p className="mt-1 text-sm text-muted-foreground">{t.overview.description}</p>
-      </header>
+        }
+      />
       {error && (
         <p
           role="alert"
@@ -124,19 +126,15 @@ export function Overview({
         {data.next && (
           <Card className="min-w-0 min-[769px]:col-span-2 min-[1280px]:col-span-8">
             <CardHeader>
-              <CardTitle>{t.overview.next}</CardTitle>
+              <Eyebrow>{t.overview.eyebrows.next}</Eyebrow>
+              <CardTitle className="truncate" data-truncate title={data.next.title}>
+                {data.next.title}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-start gap-3">
                 <IconChip icon={ArrowRight} tone="accent" />
                 <div className="min-w-0">
-                  <h2
-                    className="truncate text-xl font-medium"
-                    data-truncate
-                    title={data.next.title}
-                  >
-                    {data.next.title}
-                  </h2>
                   <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
                     {data.next.slug} · {stageLabel(data.next, data.next.stage)}
                     {data.next.milestone &&
@@ -194,7 +192,13 @@ export function Overview({
             {data.attention.length > 0 && (
               <Card className="min-w-0 min-[1280px]:col-span-4">
                 <CardHeader>
-                  <CardTitle>{t.topBar.needsYou}</CardTitle>
+                  <Eyebrow>{t.overview.eyebrows.attention}</Eyebrow>
+                  <CardTitle>
+                    {t.overview.attention}{" "}
+                    <span className="text-[11px] font-medium tabular-nums text-muted-foreground">
+                      {snapshot.attentionItems.length}
+                    </span>
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
                   {data.attention.map((item) => {
@@ -235,6 +239,7 @@ export function Overview({
             {data.running.length > 0 && (
               <Card className="min-w-0 min-[1280px]:col-span-4">
                 <CardHeader>
+                  <Eyebrow>{t.overview.eyebrows.live}</Eyebrow>
                   <CardTitle>{t.overview.running}</CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -266,6 +271,7 @@ export function Overview({
         {data.milestones.length > 0 && (
           <Card className="min-w-0 min-[1280px]:col-span-7">
             <CardHeader>
+              <Eyebrow>{t.overview.eyebrows.milestones}</Eyebrow>
               <CardTitle>{t.overview.milestones}</CardTitle>
             </CardHeader>
             <CardContent>
@@ -347,6 +353,7 @@ export function Overview({
         {data.columns.length > 0 && (
           <Card className="min-w-0 min-[1280px]:col-span-5">
             <CardHeader>
+              <Eyebrow>{t.overview.eyebrows.workflow}</Eyebrow>
               <CardTitle>{t.overview.stages}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -367,6 +374,7 @@ export function Overview({
         {data.activity.length > 0 && (
           <Card className="min-w-0 min-[769px]:col-span-2 min-[1280px]:col-span-12">
             <CardHeader>
+              <Eyebrow>{t.overview.eyebrows.activity}</Eyebrow>
               <CardTitle>{t.overview.activity}</CardTitle>
             </CardHeader>
             <CardContent>

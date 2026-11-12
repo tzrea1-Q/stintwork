@@ -4,9 +4,9 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
-import { Overview } from "./Overview";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { Overview } from "./Overview";
 
 const project = (files: Record<string, string>) =>
   indexProject(createMemoryRepoFiles(files), { name: "Test" });
@@ -17,7 +17,7 @@ test("Overview opens a work item in Pipeline with keyboard and restores view on 
   const user = userEvent.setup();
   render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
   expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
-  const next = screen.getByText("Next up").closest('[data-slot="card"]');
+  const next = screen.getByRole("heading", { name: "One" }).closest('[data-slot="card"]');
   if (!(next instanceof HTMLElement)) throw new Error("Missing Next up card");
   const button = within(next).getByRole("button", { name: "Open" });
   button.focus();
@@ -67,6 +67,27 @@ test("empty projects retain project-level attention and open its queue", async (
     />,
   );
   expect(screen.getByText("No work items yet")).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Needs you 1" })).toBeVisible();
+  const more = {
+    ...snapshot,
+    attentionItems: Array.from({ length: 4 }, (_, index) => ({
+      ...snapshot.attentionItems[0],
+      id: `login-${index}`,
+    })),
+  };
+  const { unmount } = render(
+    <Overview
+      snapshot={more}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: "Needs you 4" })).toBeVisible();
+  unmount();
   await userEvent.setup().click(screen.getByRole("button", { name: "Sign in" }));
   expect(onNeedsYou).toHaveBeenCalledOnce();
 });
@@ -101,6 +122,8 @@ test("Overview localizes attention titles and workflow stage names", () => {
       />
     </LanguageProvider>,
   );
+  expect(screen.getByRole("heading", { name: "需要你处理 1" })).toBeVisible();
+  expect(screen.getByText("你的关注")).toBeVisible();
   const title = zhCN.needsYou.stageReady("规格说明");
   expect(screen.getByRole("button", { name: title })).toBeVisible();
   expect(screen.getByText(title)).toHaveAttribute("title", title);
@@ -156,7 +179,7 @@ test("orders cards and discloses shipped milestones", async () => {
   const titles = Array.from(document.querySelectorAll('[data-slot="card-title"]')).map(
     (node) => node.textContent,
   );
-  expect(titles).toEqual(["Next up", "Milestone progress", "Where the work is"]);
+  expect(titles).toEqual(["One", "Roadmap", "Where the work is"]);
   const summary = screen.getByText("1 shipped milestone");
   expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible();
   await userEvent.setup().click(summary);
@@ -200,7 +223,9 @@ test.each([
       onMilestone={() => {}}
     />,
   );
-  const next = screen.getByText("Next up").closest('[data-slot="card"]') as HTMLElement;
+  const next = screen
+    .getByRole("heading", { name: "One" })
+    .closest('[data-slot="card"]') as HTMLElement;
   expect(within(next).getByText("Tickets resolved: Unavailable")).toBeVisible();
   expect(within(next).queryByRole("progressbar")).not.toBeInTheDocument();
   expect(within(next).getByText(new RegExp(item.slug)).className).toContain(

@@ -2,10 +2,11 @@
 import { expect, test } from "@playwright/test";
 import type { ProjectSnapshot } from "@stintwork/core";
 import { en } from "../src/i18n/en";
-import { recoveryStint } from "../src/recovery-test-fixtures";
 import { zhCN } from "../src/i18n/zh-CN";
+import { recoveryStint } from "../src/recovery-test-fixtures";
 import { dialogReview, dialogSnapshot, gate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
+import { richClock, richSnapshot } from "./rich.fixture";
 
 for (const language of ["en", "zh-CN"] as const) {
   const t = language === "en" ? en : zhCN;
@@ -13,6 +14,24 @@ for (const language of ["en", "zh-CN"] as const) {
     for (const colorScheme of width === 1440 || width === 390
       ? (["light", "dark"] as const)
       : (["light"] as const)) {
+      test(`rich overview ${width}px ${language} ${colorScheme}`, async ({ page }, info) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.clock.setFixedTime(new Date(richClock));
+        await page.addInitScript(
+          (choice) => localStorage.setItem("stintwork.language", choice),
+          language,
+        );
+        await page.route("**/api/project", (route) => route.fulfill({ json: richSnapshot }));
+        await page.routeWebSocket("**/api/live", (socket) =>
+          socket.send(JSON.stringify(richSnapshot)),
+        );
+        await page.goto("/?view=overview");
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await expect(page.getByText(/30 (min elapsed|分钟)/)).toBeVisible();
+        await assertLayout(page);
+        await page.screenshot({ path: info.outputPath("rich-overview.png"), fullPage: true });
+      });
       test(`Overview ${width}px ${language} ${colorScheme}`, async ({ page }, info) => {
         await page.setViewportSize({ width, height: 900 });
         await page.emulateMedia({ colorScheme });
@@ -48,9 +67,15 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           overview.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
         ).toBeVisible();
-        await expect(overview.getByText(t.overview.milestones)).toBeVisible();
-        await expect(overview.getByText(t.overview.stages)).toBeVisible();
-        await expect(overview.getByText(t.overview.next)).toBeVisible();
+        await expect(
+          overview.getByRole("heading", { name: t.overview.milestones, exact: true }),
+        ).toBeVisible();
+        await expect(
+          overview.getByRole("heading", { name: t.overview.stages, exact: true }),
+        ).toBeVisible();
+        await expect(
+          overview.getByRole("heading", { name: item.title, exact: true }),
+        ).toBeVisible();
         const disclosure = overview.locator("summary");
         await disclosure.focus();
         await page.keyboard.press("Enter");
@@ -171,15 +196,15 @@ for (const language of ["en", "zh-CN"] as const) {
           has: page.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
         });
         for (const title of [
-          t.overview.next,
-          t.topBar.needsYou,
+          snapshot.workItems[0].title,
+          `${t.overview.attention} 1`,
           t.overview.running,
           t.overview.milestones,
           t.overview.stages,
           t.overview.activity,
         ]) {
           await expect(
-            overview.locator('[data-slot="card-title"]').getByText(title, { exact: true }),
+            overview.locator('[data-slot="card-title"]').filter({ hasText: title }),
           ).toBeVisible();
         }
         await expect(overview.getByText(t.overview.progressIncomplete)).toBeVisible();
@@ -191,7 +216,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.screenshot({ path: info.outputPath("overview-full.png"), fullPage: true });
         const attention = overview
           .locator('[data-slot="card"]')
-          .filter({ hasText: t.topBar.needsYou });
+          .filter({ hasText: t.overview.attention });
         await attention.locator('[data-slot="card-content"] button').first().click();
         const queue = page.locator(".needs-you-queue");
         await expect(queue).toBeVisible();

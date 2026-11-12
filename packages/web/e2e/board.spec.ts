@@ -5,6 +5,7 @@ import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
 import { dialogSnapshot, gate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
+import { richClock, richSnapshot } from "./rich.fixture";
 
 for (const language of ["en", "zh-CN"] as const) {
   const t = language === "en" ? en : zhCN;
@@ -12,6 +13,23 @@ for (const language of ["en", "zh-CN"] as const) {
     for (const colorScheme of width === 1440 || width === 390
       ? (["light", "dark"] as const)
       : (["light"] as const)) {
+      test(`rich pipeline ${width}px ${language} ${colorScheme}`, async ({ page }, info) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme });
+        await page.clock.setFixedTime(new Date(richClock));
+        await page.addInitScript(
+          (choice) => localStorage.setItem("stintwork.language", choice),
+          language,
+        );
+        await page.route("**/api/project", (route) => route.fulfill({ json: richSnapshot }));
+        await page.routeWebSocket("**/api/live", (socket) =>
+          socket.send(JSON.stringify(richSnapshot)),
+        );
+        await page.goto("/?view=pipeline");
+        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await assertLayout(page);
+        await page.screenshot({ path: info.outputPath("rich-pipeline.png"), fullPage: true });
+      });
       test(`board ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 900 });
         await page.emulateMedia({ colorScheme });

@@ -289,3 +289,12 @@ test("switching views moves focus to the selected navigation pill", async () => 
   await user.click(overview);
   expect(overview).toHaveFocus();
 });
+
+test("shows the wordmark and project identity and hides an empty badge", () => {
+  renderTopBar();
+  expect(screen.getByText("Stintwork")).toBeInTheDocument();
+  expect(screen.getByText("✳")).toBeInTheDocument();
+  expect(screen.getByText("Project")).toBeInTheDocument();
+  expect(screen.getByText("main")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^Needs you 0/ })).not.toHaveTextContent("0");
+});
