@@ -85,3 +85,9 @@ Id: m14
 Status: shipped
 
 - visual-refresh
+
+## M15 · Visual fidelity
+Id: m15
+Status: active
+
+- visual-fidelity

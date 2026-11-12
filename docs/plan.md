@@ -211,6 +211,15 @@ Spec: `.scratch/visual-refresh/spec.md`. Decision: ADR 0019.
 
 Shipped 2026-11-11: all eight visual-refresh tickets resolved; 460 Playwright cases passed and the maintainer accepted the walk-through.
 
+### M15 · Visual fidelity · M
+
+Spec: `.scratch/visual-fidelity/spec.md`. Reference: Variant D, ADR 0019.
+
+- Bring type hierarchy, top bar, board cards, detail identity, Overview dashboard and overlays to Variant D's fidelity, using only existing snapshot data.
+- Compare every ticket side by side with Variant D on a rich fixture and on this repository's data.
+
+**Exit test:** the browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` and both colour schemes, and the maintainer compares Overview, Pipeline with the detail panel, Needs you and every dialog against Variant D at 1440, 768 and 390px in both languages and accepts the result.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.
