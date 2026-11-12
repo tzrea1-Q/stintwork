@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { expect, test } from "vitest";
-import { overviewData, viewFromSearch } from "./overview-data";
+import { overviewData, viewFromSearch, workItemDone } from "./overview-data";
 
 test("restores default and explicit views", () => {
   expect(viewFromSearch("")).toBe("overview");
@@ -188,12 +188,18 @@ test("milestone progress counts work items and flags unavailable tickets", () =>
     path: "",
   };
   a.tickets = [ticket, { ...ticket, number: 2 }];
+  expect(a.merged).toBeUndefined();
+  expect(a.github).toBeUndefined();
+  expect(workItemDone(a)).toBe(true);
+  expect(workItemDone(b)).toBe(false);
   c.tickets = [ticket];
   d.tickets = [ticket];
   e.tickets = [ticket];
   const github = { ticketsKnown: false } as NonNullable<typeof c.github>;
   c.github = github;
   d.github = { ...github, ticketsKnown: true, ticketsStale: true };
+  expect(workItemDone(c)).toBe(false);
+  expect(workItemDone(d)).toBe(false);
   e.github = { ...github, ticketsKnown: true, dependenciesUnknown: true };
   expect(overviewData(snapshot).milestones[0]).toMatchObject({
     resolved: 1,

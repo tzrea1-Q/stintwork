@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
+import { workItemDone } from "./overview-data";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
@@ -232,8 +233,9 @@ function MilestoneFields({
         {milestone.workItemSlugs.length > 0 && (
           <SegmentedProgress
             value={
-              workItems.filter((item) => milestone.workItemSlugs.includes(item.slug) && item.merged)
-                .length
+              workItems.filter(
+                (item) => milestone.workItemSlugs.includes(item.slug) && workItemDone(item),
+              ).length
             }
             total={milestone.workItemSlugs.length}
             label={milestone.name}

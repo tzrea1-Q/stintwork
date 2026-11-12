@@ -98,6 +98,23 @@ test("stage navigation describes its keyboard controls without moving focus", as
   }
 });
 
+test("milestone filter counts resolved local tickets without a merge", async () => {
+  const snapshot = project({
+    ...files,
+    ".scratch/board/issues/02-ui.md": "# 02 — Pipeline\nStatus: resolved",
+  });
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  expect(item?.merged).toBeUndefined();
+  expect(item?.github).toBeUndefined();
+  expect(item?.tickets).toHaveLength(2);
+  expect(item?.tickets.every((ticket) => ticket.resolved)).toBe(true);
+  render(<Board snapshot={snapshot} />);
+  await userEvent.setup().click(screen.getByRole("combobox", { name: "Milestone" }));
+  expect(await screen.findByRole("option", { name: "M1 · The board" })).toHaveAccessibleDescription(
+    "1/1 shipped",
+  );
+});
+
 test("milestone filter hides other milestones", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
