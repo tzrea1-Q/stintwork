@@ -180,15 +180,14 @@ for (const language of ["en", "zh-CN"] as const) {
           branchName,
         );
         const branch = header.getByText(branchName, { exact: true });
-        if (width < 640) {
-          await expect(branch).toBeHidden();
-          await expect(header.locator(".top-project > div")).toHaveAttribute(
-            "title",
-            `${projectName} · ${branchName}`,
-          );
-        } else {
-          await expect(branch).toBeVisible();
-        }
+        await expect(branch).toBeVisible();
+        const project = header.getByText(projectName, { exact: true });
+        expect(
+          await branch.evaluate((element) => element.getBoundingClientRect().width),
+        ).toBeGreaterThan(0);
+        expect(
+          await project.evaluate((element) => element.getBoundingClientRect().width),
+        ).toBeGreaterThanOrEqual(30);
         await expect(header.locator("select")).toHaveCount(0);
         await expect(header.getByRole("button")).toHaveCount(5);
         const nav = header.getByRole("navigation", { name: t.viewNavigation.label });

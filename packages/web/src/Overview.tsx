@@ -132,28 +132,23 @@ export function Overview({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-start gap-3">
-                <IconChip icon={ArrowRight} tone="accent" />
-                <div className="min-w-0">
-                  <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
-                    {data.next.slug} · {stageLabel(data.next, data.next.stage)}
-                    {data.next.milestone &&
-                      snapshot.milestones.find(
-                        (milestone) => milestone.id === data.next?.milestone,
-                      ) && (
-                        <>
-                          {" "}
-                          ·{" "}
-                          {
-                            snapshot.milestones.find(
-                              (milestone) => milestone.id === data.next?.milestone,
-                            )?.name
-                          }
-                        </>
-                      )}
-                  </p>
-                </div>
-              </div>
+              <p className="text-sm text-muted-foreground [overflow-wrap:anywhere]">
+                {data.next.slug} · {stageLabel(data.next, data.next.stage)}
+                {data.next.milestone &&
+                  snapshot.milestones.find(
+                    (milestone) => milestone.id === data.next?.milestone,
+                  ) && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      {
+                        snapshot.milestones.find(
+                          (milestone) => milestone.id === data.next?.milestone,
+                        )?.name
+                      }
+                    </>
+                  )}
+              </p>
               {ticketsUnavailable(data.next) ? (
                 <p className="text-sm text-muted-foreground">
                   {t.overview.tickets}: {t.overview.unavailable}

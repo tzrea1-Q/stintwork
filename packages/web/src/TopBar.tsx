@@ -46,7 +46,7 @@ export function TopBar({
 
   return (
     <header className="top-bar mx-auto flex min-h-16 w-full max-w-[1500px] shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-7">
-      <div className="top-project flex min-w-0 flex-1 items-center gap-2">
+      <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <span
           aria-hidden="true"
           className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-primary text-[17px] text-primary-foreground"
@@ -56,14 +56,14 @@ export function TopBar({
         <strong className="hidden font-bold tracking-tight sm:inline">Stintwork</strong>
         <div
           title={[snapshot.name, snapshot.branch].filter(Boolean).join(" · ")}
-          className="flex min-w-0 items-center gap-2 rounded-full border border-border bg-card px-3 py-2 text-xs"
+          className="flex min-w-0 items-center gap-1 rounded-full border border-border bg-card px-2 py-2 text-xs sm:gap-2 sm:px-3"
         >
-          <strong className="min-w-0 truncate" data-truncate title={snapshot.name}>
+          <strong className="min-w-[6ch] shrink truncate" data-truncate title={snapshot.name}>
             {snapshot.name}
           </strong>
           {snapshot.branch && (
             <span
-              className="hidden min-w-0 max-w-32 truncate font-mono text-muted-foreground sm:inline"
+              className="min-w-[2ch] max-w-40 shrink-[4] truncate font-mono text-muted-foreground"
               data-truncate
               title={snapshot.branch}
             >
@@ -81,7 +81,7 @@ export function TopBar({
             key={entry}
             id={`${entry}-view-trigger`}
             size="sm"
-            className="rounded-full px-2 py-[9px] min-[700px]:px-4"
+            className="rounded-full px-1.5 py-[9px] min-[700px]:px-4"
             variant={view === entry ? "primary" : "ghost"}
             aria-current={view === entry ? "page" : undefined}
             onClick={() => onViewChange(entry)}

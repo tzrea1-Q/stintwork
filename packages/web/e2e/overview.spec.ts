@@ -28,6 +28,12 @@ for (const language of ["en", "zh-CN"] as const) {
         );
         await page.goto("/?view=overview");
         await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        const next = page
+          .locator('[data-slot="card"]')
+          .filter({ hasText: t.overview.eyebrows.next });
+        await expect(
+          next.getByRole("heading", { name: richSnapshot.workItems[3].title }),
+        ).toBeVisible();
         await expect(page.getByText(/30 (min elapsed|分钟)/)).toBeVisible();
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("rich-overview.png"), fullPage: true });

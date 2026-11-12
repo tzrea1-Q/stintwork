@@ -294,7 +294,14 @@ test("shows the wordmark and project identity and hides an empty badge", () => {
   renderTopBar();
   expect(screen.getByText("Stintwork")).toBeInTheDocument();
   expect(screen.getByText("✳")).toBeInTheDocument();
-  expect(screen.getByText("Project")).toBeInTheDocument();
-  expect(screen.getByText("main")).toBeInTheDocument();
+  const project = screen.getByText("Project");
+  expect(project).toBeInTheDocument();
+  expect(project).not.toHaveClass("flex-[2_1_0%]");
+  const branch = screen.getByText("main");
+  expect(branch).toBeVisible();
+  expect(branch).toHaveAttribute("data-truncate");
+  expect(branch).toHaveAttribute("title", "main");
+  expect(branch).not.toHaveClass("hidden");
+  expect(branch).not.toHaveClass("flex-[1_1_0%]");
   expect(screen.getByRole("button", { name: /^Needs you 0/ })).not.toHaveTextContent("0");
 });

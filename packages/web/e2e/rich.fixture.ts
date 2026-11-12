@@ -28,13 +28,16 @@ richSnapshot.workItems = columns.map((column, index) => {
     stage: stint.stage,
     milestone: index < 3 ? "active" : "planned",
     activeStint: index === 0 ? stint : null,
-    stints: [
-      {
-        ...summarizeStint(stint),
-        status: index === 5 ? "stopped" : "finished",
-        endedAt: startedAt,
-      },
-    ],
+    stints:
+      index === 3
+        ? []
+        : [
+            {
+              ...summarizeStint(stint),
+              status: index === 5 ? "stopped" : "finished",
+              endedAt: startedAt,
+            },
+          ],
     tickets: [],
   };
 });
@@ -45,6 +48,20 @@ richSnapshot.workItems[0].stints.push({
   startedAt: "2026-11-06T12:00:00Z",
   endedAt: "2026-11-06T12:05:00Z",
 });
+richSnapshot.workItems[3].tickets = [
+  {
+    number: 1,
+    slug: "ready",
+    title: "Ready ticket",
+    status: "ready-for-agent",
+    resolved: false,
+    blockedBy: [],
+    blocked: false,
+    comments: [],
+    body: "Ready",
+    path: ".scratch/rich-implement/issues/01-ready.md",
+  },
+];
 const waiting = attentionSnapshot();
 const waitingItem = waiting.workItems[0];
 richSnapshot.workItems[1].activeStint = waitingItem.activeStint && {
