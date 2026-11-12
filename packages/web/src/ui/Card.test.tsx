@@ -4,13 +4,15 @@ import { expect, test } from "vitest";
 
 import {
   Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
   CardAction,
   CardContent,
+  CardDescription,
   CardFooter,
+  CardHeader,
+  CardTitle,
+  Eyebrow,
 } from "./Card";
+
 test("renders its content", () => {
   const { container } = render(<Card>Content</Card>);
   expect(screen.getByText("Content")).toBeInTheDocument();
@@ -43,4 +45,18 @@ test("composes all card parts", () => {
     "card-footer",
   ])
     expect(container.querySelector(`[data-slot="${slot}"]`)).toBeInTheDocument();
+});
+
+test("eyebrow precedes the accessible card title", () => {
+  render(
+    <Card>
+      <CardHeader>
+        <Eyebrow>Live</Eyebrow>
+        <CardTitle>Running stints</CardTitle>
+      </CardHeader>
+    </Card>,
+  );
+  const eyebrow = screen.getByText("Live");
+  const title = screen.getByRole("heading", { name: "Running stints" });
+  expect(eyebrow.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });

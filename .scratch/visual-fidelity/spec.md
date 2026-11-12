@@ -9,7 +9,7 @@ Milestone: M15 · Visual fidelity. See `docs/plan.md`, `GLOSSARY.md`, ADR 0006, 
 
 M14 shipped on 2026-11-11, but the maintainer found the app rougher and plainer than Variant D of `prototype-visual-v1`. On 2026-11-12 the coordinator compared both at 1440px. The tokens match: colours, 14px root, radius and card shadow. The drift is in hierarchy, content and acceptance:
 
-- **Flat type scale.** Page titles are 26px/500 instead of D's 39px tight titles; card titles 12px/500 instead of 13px/620; the detail title 16px with no identity block. Card headings have no uppercase eyebrow, so everything reads at one size.
+- **Flat type scale.** Page titles are 26px/500 instead of D's 39px tight titles; work item card titles 12px/500 instead of 13px/620; the detail title 16px with no identity block. Card headings have no uppercase eyebrow, so everything reads at one size.
 - **Thin Overview.** D is a three-column dashboard: a large milestone percentage with a target marker, stage bars split into running and waiting, a gradient Next up card, and an activity chart. The app shows text rows in a few cards with large empty areas. Shipped-only milestones collapse to one line.
 - **Grey, repetitive board.** Cards are tinted by state in code, but most real items have no stint, so every card is the same grey and repeats "No active stint" and "Inferred". Empty columns are stacked 64px slivers that unbalance the board.
 - **Form-like detail.** Six per-stage agent selects take half the panel; D shows one "Agent for this stage" row under an identity block.
@@ -31,7 +31,7 @@ Bring every screen to Variant D's fidelity using only data the project snapshot 
 ## Implementation Decisions
 
 - **Reference:** Variant D at tag `prototype-visual-v1` (branch `prototype/visual-direction`) stays the visual reference. Rebuild from it; never import its code. Run it with `cd prototype-visual && pnpm install && pnpm build && pnpm exec vite preview`, URL `?variant=D&theme=light|dark&lang=en|zh-CN`.
-- **Type scale:** page titles 39px (34px below 768px) with -0.055em tracking; uppercase eyebrow labels over card titles; card titles 13px/620; detail identity title 18px; tabular numerals for counts. Put these in shared patterns, not per screen.
+- **Type scale:** page titles 39px (34px below 768px) with -0.055em tracking; uppercase eyebrow labels over card titles; dashboard card titles 16px with -0.025em tracking; work item card titles 13px/620; detail identity title 18px; tabular numerals for counts. Put these in shared patterns, not per screen.
 - **Overview data:** derive only from the existing snapshot, with no new core or server state (ADR 0006).
   - Milestone percentage is the work-item done count already shared by Overview, Edit roadmap and the milestone filter (`workItemDone`).
   - The target marker comes from `milestone.target`.

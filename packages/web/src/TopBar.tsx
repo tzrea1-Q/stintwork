@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
-import { Asterisk, GitBranch, Inbox, Search, Settings } from "lucide-react";
+import { Inbox, Search, Settings } from "lucide-react";
 import { useRef, useState } from "react";
 import { LanguageMenu } from "./i18n/LanguageMenu";
 import { useLanguage } from "./i18n/language";
 import { SetupGuide } from "./SetupGuide";
 import { Button } from "./ui/Button";
-import { Kbd } from "./ui/Kbd";
 import { Dialog } from "./ui/Dialog";
 import {
   DropdownMenu,
@@ -15,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/DropdownMenu";
+import { Kbd } from "./ui/Kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function TopBar({
@@ -45,26 +45,32 @@ export function TopBar({
   const warnings = snapshot.warnings.length;
 
   return (
-    <header className="top-bar flex min-h-16 shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-6">
+    <header className="top-bar mx-auto flex min-h-16 w-full max-w-[1500px] shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-7">
       <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
-        <Asterisk className="size-5 shrink-0 text-foreground" aria-hidden="true" />
-        <strong
-          className="min-w-0 truncate text-sm tracking-tight"
-          data-truncate
-          title={snapshot.name}
+        <span
+          aria-hidden="true"
+          className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-primary text-[17px] text-primary-foreground"
         >
-          {snapshot.name}
-        </strong>
-        {snapshot.branch && (
-          <span
-            className="flex min-w-0 max-w-[40%] items-center gap-1 rounded-full bg-card px-2 py-1 font-mono text-xs text-muted-foreground"
-            data-truncate
-            title={snapshot.branch}
-          >
-            <GitBranch className="size-icon-sm shrink-0" aria-hidden="true" />
-            <span className="truncate">{snapshot.branch}</span>
-          </span>
-        )}
+          ✳
+        </span>
+        <strong className="hidden font-bold tracking-tight sm:inline">Stintwork</strong>
+        <div
+          title={[snapshot.name, snapshot.branch].filter(Boolean).join(" · ")}
+          className="flex min-w-0 items-center gap-1 rounded-full border border-border bg-card px-2 py-2 text-xs sm:gap-2 sm:px-3"
+        >
+          <strong className="min-w-[6ch] shrink truncate" data-truncate title={snapshot.name}>
+            {snapshot.name}
+          </strong>
+          {snapshot.branch && (
+            <span
+              className="min-w-[2ch] max-w-40 shrink-[4] truncate font-mono text-muted-foreground"
+              data-truncate
+              title={snapshot.branch}
+            >
+              {snapshot.branch}
+            </span>
+          )}
+        </div>
       </div>
       <nav
         aria-label={t.viewNavigation.label}
@@ -75,6 +81,7 @@ export function TopBar({
             key={entry}
             id={`${entry}-view-trigger`}
             size="sm"
+            className="rounded-full px-1.5 py-[9px] min-[700px]:px-4"
             variant={view === entry ? "primary" : "ghost"}
             aria-current={view === entry ? "page" : undefined}
             onClick={() => onViewChange(entry)}
@@ -109,7 +116,7 @@ export function TopBar({
                 id="needs-you-trigger"
                 variant="secondary"
                 size="icon"
-                className="relative"
+                className="relative size-9"
                 aria-label={`${t.topBar.needsYou} ${snapshot.attentionItems.length}${warnings ? ` · ${t.warningCallout.title(warnings)}` : ""}`}
                 aria-haspopup="dialog"
                 onClick={onOpenNeedsYou}
@@ -117,7 +124,7 @@ export function TopBar({
                 <Inbox aria-hidden="true" />
                 {snapshot.attentionItems.length > 0 && (
                   <span
-                    className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-attention-soft px-1 text-xs text-attention-foreground"
+                    className="absolute -right-[3px] -top-[3px] grid size-4 place-items-center rounded-full bg-attention text-[9px] tabular-nums text-background"
                     aria-hidden="true"
                   >
                     {snapshot.attentionItems.length}
@@ -143,7 +150,7 @@ export function TopBar({
                     ref={settingsTrigger}
                     variant="ghost"
                     size="icon"
-                    className="relative"
+                    className="relative size-9"
                     aria-label={t.topBar.settings}
                     aria-describedby={ready < checks.length ? "setup-status" : undefined}
                   >

@@ -175,10 +175,19 @@ for (const language of ["en", "zh-CN"] as const) {
           "title",
           projectName,
         );
-        await expect(header.getByText(branchName, { exact: true }).locator("..")).toHaveAttribute(
+        await expect(header.getByText(branchName, { exact: true })).toHaveAttribute(
           "title",
           branchName,
         );
+        const branch = header.getByText(branchName, { exact: true });
+        await expect(branch).toBeVisible();
+        const project = header.getByText(projectName, { exact: true });
+        expect(
+          await branch.evaluate((element) => element.getBoundingClientRect().width),
+        ).toBeGreaterThan(0);
+        expect(
+          await project.evaluate((element) => element.getBoundingClientRect().width),
+        ).toBeGreaterThanOrEqual(30);
         await expect(header.locator("select")).toHaveCount(0);
         await expect(header.getByRole("button")).toHaveCount(5);
         const nav = header.getByRole("navigation", { name: t.viewNavigation.label });

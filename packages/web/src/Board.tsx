@@ -2,20 +2,21 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Column } from "./Column";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
+import { Column } from "./Column";
 import { CommandPalette } from "./CommandPalette";
 import { CreateWorkItem } from "./CreateWorkItem";
 import { CustomiseWorkflow } from "./CustomiseWorkflow";
 import { GithubStatus } from "./GithubStatus";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
+import { NeedsYouQueue } from "./NeedsYouQueue";
 import { Overview } from "./Overview";
 import { viewFromSearch, workItemDone } from "./overview-data";
-import { NeedsYouQueue } from "./NeedsYouQueue";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
 import { Button } from "./ui/Button";
+import { PageHeader } from "./ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
@@ -238,31 +239,34 @@ export function Board({
               const filteredUnstaged = unstaged.filter((item) => filtered.includes(item));
               return (
                 <>
-                  <div className="pipeline-heading flex flex-wrap items-center justify-between gap-4 px-4 pt-6 pb-3 sm:px-6">
-                    <div>
-                      <h1 className="mt-1 flex items-center gap-3 text-3xl font-medium tracking-tight">
-                        {t.board.pipeline}{" "}
-                        <span className="heading-count grid min-w-6 place-items-center rounded-sm border border-input px-1 text-xs text-muted-foreground">
-                          {filtered.length}
-                        </span>
-                      </h1>
-                      <p className="mt-1 text-xs muted text-muted-foreground">
-                        {t.board.description}
-                      </p>
-                    </div>
-                    <p
-                      className="connection-status flex items-center gap-2 text-xs text-muted-foreground"
-                      role="status"
-                    >
-                      <span
-                        className={`status-dot size-1 rounded-full ${connection === "live" ? "is-live bg-success" : "is-reconnecting bg-attention"}`}
-                      />
-                      {connection === "live"
-                        ? t.board.live
-                        : connection === "connecting"
-                          ? t.board.connecting
-                          : t.board.reconnecting}
-                    </p>
+                  <div className="pipeline-heading mx-auto w-full max-w-[1376px] px-4 pt-[42px] min-[700px]:px-7 min-[700px]:pt-[65px]">
+                    <PageHeader
+                      eyebrow={`${snapshot.name} / ${t.board.pipeline}`}
+                      title={
+                        <>
+                          {t.board.pipeline}{" "}
+                          <span className="heading-count inline-grid min-w-6 place-items-center rounded-sm border border-input px-1 text-xs tabular-nums text-muted-foreground">
+                            {filtered.length}
+                          </span>
+                        </>
+                      }
+                      description={t.board.description}
+                      actions={
+                        <p
+                          className="connection-status flex items-center gap-2 text-xs text-muted-foreground"
+                          role="status"
+                        >
+                          <span
+                            className={`status-dot size-1 rounded-full ${connection === "live" ? "is-live bg-success" : "is-reconnecting bg-attention"}`}
+                          />
+                          {connection === "live"
+                            ? t.board.live
+                            : connection === "connecting"
+                              ? t.board.connecting
+                              : t.board.reconnecting}
+                        </p>
+                      }
+                    />
                   </div>
                   {error && (
                     <p
