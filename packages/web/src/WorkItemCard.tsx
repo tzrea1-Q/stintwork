@@ -7,7 +7,7 @@ import {
   type ProjectSnapshot,
   type WorkflowDefinition,
 } from "@stintwork/core";
-import { Bug, Info, Layers3, Sparkles, Zap } from "lucide-react";
+import { Bug, Layers3, Sparkles, Zap } from "lucide-react";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
 import { recoveryStatus } from "./StintRecovery";
@@ -42,20 +42,27 @@ export function WorkItemCard({
   const blocked =
     !item.github?.ticketsStale && open.length > 0 && open.every((ticket) => ticket.blocked);
   const running = item.activeStint?.status === "running";
+  const stopped =
+    !item.merged &&
+    !item.activeStint &&
+    item.stints[0]?.status === "stopped" &&
+    item.stints[0].stage === item.stage;
   const status = running
     ? "running"
     : attentionCount > 0
       ? "attention"
       : blocked
         ? "blocked"
-        : item.merged
-          ? "success"
-          : "stopped";
+        : stopped
+          ? "stopped"
+          : undefined;
   const agentId =
     item.stage && workflow
       ? stageAgent(item, item.stage, agents, { [workflow.id]: workflow })
       : undefined;
-  const agent = agents.find((entry) => entry.id === agentId);
+  const agent =
+    agents.find((entry) => entry.id === agentId) ??
+    (agentId ? { id: agentId, displayName: agentId } : undefined);
   const type = item.type === "effort" ? "effort" : item.workflow;
   const icons: Record<string, typeof Sparkles> = {
     feature: Sparkles,
@@ -102,18 +109,18 @@ export function WorkItemCard({
         </span>
         {item.milestone && (
           <span
-            className="milestone-tag shrink-0 rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
+            className="milestone-tag min-w-0 break-all rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
             title={milestone?.name}
           >
             {milestone?.id ?? item.milestone}
           </span>
         )}
       </div>
-      <h3 className="my-3 text-sm leading-5 font-medium break-words">
+      <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-[620] break-words">
         <Button
           variant="link"
           type="button"
-          className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left after:absolute after:inset-0 after:rounded-2xl"
+          className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-[620] after:absolute after:inset-0 after:rounded-2xl"
           data-work-item={item.slug}
           aria-label={t.card.open(item.slug, item.title)}
           aria-haspopup="dialog"
@@ -124,43 +131,49 @@ export function WorkItemCard({
           </span>
         </Button>
       </h3>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        {/* biome-ignore lint/a11y/useAriaPropsSupportedByRole: the label is only present with the status role. */}
-        <span
-          role={running || attentionCount > 0 ? "status" : undefined}
-          aria-label={!running && attentionCount > 0 ? t.card.attention(attentionCount) : undefined}
-        >
-          <StatusChip status={status} pulse={running}>
-            {running
-              ? ((item.activeStint && recoveryStatus(item.activeStint, t)) ?? t.card.running)
-              : attentionCount > 0
-                ? t.card.needsYou(attentionCount)
-                : blocked
-                  ? t.card.blocked
-                  : item.merged
-                    ? t.card.shipped
-                    : t.pipelineBoard.idle}
-          </StatusChip>
-        </span>
-        {running && attentionCount > 0 && (
-          <span className="text-xs" role="status" aria-label={t.card.attention(attentionCount)}>
-            {t.card.needsYou(attentionCount)}
-          </span>
-        )}
-        {agent && (
-          <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
-        )}
-      </div>
-      {(blocked || item.inferred || attentionCount > 0) && (
+      {status && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          {item.inferred && (
+          {running || attentionCount > 0 ? (
+            <span
+              role="status"
+              aria-label={!running ? t.card.attention(attentionCount) : undefined}
+            >
+              <StatusChip status={status} pulse={running}>
+                {running
+                  ? ((item.activeStint && recoveryStatus(item.activeStint, t)) ?? t.card.running)
+                  : t.card.needsYou(attentionCount)}
+              </StatusChip>
+            </span>
+          ) : (
+            <StatusChip status={status}>
+              {blocked ? t.card.blocked : t.overview.stintStatus.stopped}
+            </StatusChip>
+          )}
+          {running && attentionCount > 0 && (
+            <span className="text-xs" role="status" aria-label={t.card.attention(attentionCount)}>
+              {t.card.needsYou(attentionCount)}
+            </span>
+          )}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {agent &&
+          (item.inferred ? (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button variant="ghost" size="sm" className="relative z-10">
-                    <Info aria-hidden="true" />
-                    {t.card.inferred}
-                  </Button>
+                  <button
+                    type="button"
+                    className="relative z-10 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    aria-label={`${agent.displayName} · ${t.card.inferred}`}
+                  >
+                    <AgentAvatar
+                      agent={agent.id}
+                      name={agent.displayName}
+                      active={running}
+                      size="sm"
+                    />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent>
                   {t.card.inference}
@@ -169,27 +182,30 @@ export function WorkItemCard({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+          ) : (
+            <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
+          ))}
+        <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+          {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
+            <span>
+              {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
+            </span>
+          ) : (
+            <>
+              <span>
+                {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
+                {t.card.tickets}
+              </span>
+              <div className="w-11 shrink-0">
+                <SegmentedProgress
+                  label={t.card.progress(item.slug)}
+                  total={item.tickets.length}
+                  value={resolved}
+                />
+              </div>
+            </>
           )}
         </div>
-      )}
-      <div className="ticket-progress flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
-          <span>{item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}</span>
-        ) : (
-          <>
-            <span>
-              {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
-              {t.card.tickets}
-            </span>
-            <div className="w-11 shrink-0">
-              <SegmentedProgress
-                label={t.card.progress(item.slug)}
-                total={item.tickets.length}
-                value={resolved}
-              />
-            </div>
-          </>
-        )}
       </div>
     </article>
   );
