@@ -245,6 +245,33 @@ for (const language of ["en", "zh-CN"] as const) {
           ).toBeFocused();
         });
 
+        test("fourteen collapsed milestones fit in the viewport", async ({ page }, testInfo) => {
+          snapshot = {
+            ...dialogSnapshot,
+            milestones: Array.from({ length: 14 }, (_, index) => ({
+              id: `milestone-${index + 1}`,
+              name: `Milestone ${index + 1}`,
+              status: "planned" as const,
+              workItemSlugs: [],
+            })),
+          };
+          await page.goto("/?view=pipeline");
+          await page.getByRole("button", { name: t.planning.roadmap.title }).click();
+          const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
+          const last = dialog.getByRole("region", { name: "Milestone 14" });
+          await expect(last.getByRole("button", { expanded: false })).toBeVisible();
+          if (width === 1440) {
+            const bounds = await last.boundingBox();
+            if (!bounds) throw new Error("Last milestone has no bounds");
+            const dialogBounds = await dialog.boundingBox();
+            if (!dialogBounds) throw new Error("Roadmap dialog has no bounds");
+            expect(bounds.y + bounds.height).toBeLessThanOrEqual(
+              dialogBounds.y + dialogBounds.height,
+            );
+          }
+          await capture(page, dialog, testInfo, "roadmap-fourteen");
+        });
+
         test("roadmap: long, pending write, refusal, recovery and empty", async ({
           page,
         }, testInfo) => {
@@ -263,6 +290,10 @@ for (const language of ["en", "zh-CN"] as const) {
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
           await capture(page, dialog, testInfo, "roadmap-long");
+          await dialog
+            .getByRole("region", { name: snapshot.milestones[0].name })
+            .getByRole("button", { expanded: false })
+            .click();
           for (const label of [
             t.planning.roadmap.status(snapshot.milestones[0].name),
             t.planning.roadmap.workItem,

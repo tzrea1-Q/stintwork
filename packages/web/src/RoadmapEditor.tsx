@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { workItemDone } from "./overview-data";
 import { Button } from "./ui/Button";
-import { Card } from "./ui/Card";
+import { Eyebrow } from "./ui/Card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
-import { SegmentedProgress } from "./ui/SegmentedProgress";
+import { Progress } from "./ui/Progress";
 import { SelectField } from "./ui/SelectField";
 import { StatusChip } from "./ui/StatusChip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { t } = useLanguage();
@@ -116,18 +118,22 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
         )}
         {message && <p role="status">{t.planning.roadmap[message as "committed" | "unchanged"]}</p>}
         <fieldset disabled={saving}>
-          <legend>{t.planning.roadmap.milestones}</legend>
-          {milestones.map((milestone, index) => (
-            <MilestoneFields
-              key={`${milestone.id}:${milestone.name}:${milestone.status}:${milestone.target ?? ""}`}
-              milestone={milestone}
-              workItems={snapshot.workItems}
-              first={index === 0}
-              last={index === milestones.length - 1}
-              onSave={save}
-              onReorder={(offset) => reorder(index, offset)}
-            />
-          ))}
+          <legend>
+            <Eyebrow>{t.planning.roadmap.milestones}</Eyebrow>
+          </legend>
+          <TooltipProvider>
+            {milestones.map((milestone, index) => (
+              <MilestoneFields
+                key={milestone.id}
+                milestone={milestone}
+                workItems={snapshot.workItems}
+                first={index === 0}
+                last={index === milestones.length - 1}
+                onSave={save}
+                onReorder={(offset) => reorder(index, offset)}
+              />
+            ))}
+          </TooltipProvider>
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -208,15 +214,45 @@ function MilestoneFields({
   const { t } = useLanguage();
   const [name, setName] = useState(milestone.name);
   const selectId = useId();
+  const [expanded, setExpanded] = useState(false);
   const [status, setStatus] = useState(milestone.status);
   const [target, setTarget] = useState(milestone.target ?? "");
+  const total = milestone.workItemSlugs.length;
+  const done = workItems.filter(
+    (item) => milestone.workItemSlugs.includes(item.slug) && workItemDone(item),
+  ).length;
+  useEffect(() => {
+    setName(milestone.name);
+    setStatus(milestone.status);
+    setTarget(milestone.target ?? "");
+  }, [milestone.name, milestone.status, milestone.target]);
   return (
-    <Card className="mb-3">
-      <section className="roadmap-milestone px-4" aria-label={milestone.name}>
-        <h3 className="mb-3 font-medium">
-          {milestone.name} <small className="muted text-muted-foreground">{milestone.id}</small>
-        </h3>
-        <div className="mb-3 flex flex-wrap items-center gap-3">
+    <section className="roadmap-milestone border-b border-border" aria-label={milestone.name}>
+      <div className="flex min-w-0 items-center gap-1 py-0.5">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-ring"
+        >
+          <ChevronDown
+            aria-hidden="true"
+            className={`size-icon-sm shrink-0 ${expanded ? "rotate-180" : ""}`}
+          />
+          <span
+            className="min-w-0 flex-1 truncate font-semibold"
+            data-truncate
+            title={milestone.name}
+          >
+            {milestone.name}
+          </span>
+          <small
+            className="hidden max-w-24 truncate text-muted-foreground sm:inline"
+            data-truncate
+            title={milestone.id}
+          >
+            {milestone.id}
+          </small>
           <StatusChip
             status={
               milestone.status === "shipped"
@@ -228,79 +264,113 @@ function MilestoneFields({
           >
             {t.planning.roadmap[milestone.status]}
           </StatusChip>
-          {milestone.target && <time dateTime={milestone.target}>{milestone.target}</time>}
-        </div>
-        {milestone.workItemSlugs.length > 0 && (
-          <SegmentedProgress
-            value={
-              workItems.filter(
-                (item) => milestone.workItemSlugs.includes(item.slug) && workItemDone(item),
-              ).length
-            }
-            total={milestone.workItemSlugs.length}
-            label={milestone.name}
-          />
-        )}
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onSave({ kind: "rename", id: milestone.id, name });
-          }}
-        >
-          <label>
-            {t.planning.roadmap.name(milestone.name)}
-            <input required value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <Button type="submit" disabled={!name.trim() || name === milestone.name}>
-            {t.planning.roadmap.rename(milestone.name)}
-          </Button>
-        </form>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onSave({ kind: "update", id: milestone.id, status });
-          }}
-        >
-          <label htmlFor={`${selectId}-status`}>
-            {t.planning.roadmap.status(milestone.name)}
-            <SelectField
-              id={`${selectId}-status`}
-              aria-label={t.planning.roadmap.status(milestone.name)}
-              value={status}
-              onValueChange={(value) => setStatus(value as Milestone["status"])}
-              options={(["planned", "active", "shipped"] as const).map((value) => ({
-                value,
-                label: t.planning.roadmap[value],
-              }))}
+          {milestone.target && (
+            <time className="shrink-0 text-xs text-muted-foreground" dateTime={milestone.target}>
+              {milestone.target}
+            </time>
+          )}
+        </button>
+        {total > 0 && (
+          <div className="flex shrink-0 items-center gap-1">
+            <Progress
+              value={done}
+              max={total}
+              aria-label={milestone.name}
+              className="w-10 sm:w-16 [&_[data-slot=progress-indicator]]:bg-running"
             />
-          </label>
-          <Button type="submit" disabled={status === milestone.status}>
-            {t.planning.roadmap.setStatus(milestone.name)}
-          </Button>
-        </form>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void onSave({ kind: "update", id: milestone.id, target: target || null });
-          }}
-        >
-          <label>
-            {t.planning.roadmap.target(milestone.name)}
-            <input type="date" value={target} onChange={(event) => setTarget(event.target.value)} />
-          </label>
-          <Button type="submit" disabled={target === (milestone.target ?? "")}>
-            {t.planning.roadmap.setTarget(milestone.name)}
-          </Button>
-        </form>
-        <div className="roadmap-order mb-3 flex flex-wrap gap-3">
-          <Button disabled={first} onClick={() => onReorder(-1)}>
-            {t.planning.roadmap.up(milestone.name)}
-          </Button>
-          <Button disabled={last} onClick={() => onReorder(1)}>
-            {t.planning.roadmap.down(milestone.name)}
-          </Button>
+            <span className="text-xs tabular-nums text-muted-foreground">
+              {done}/{total}
+            </span>
+          </div>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t.planning.roadmap.up(milestone.name)}
+              disabled={first}
+              onClick={() => onReorder(-1)}
+            >
+              <ChevronUp aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t.planning.roadmap.up(milestone.name)}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t.planning.roadmap.down(milestone.name)}
+              disabled={last}
+              onClick={() => onReorder(1)}
+            >
+              <ChevronDown aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>{t.planning.roadmap.down(milestone.name)}</TooltipContent>
+        </Tooltip>
+      </div>
+      {expanded && (
+        <div className="px-2 pb-2">
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onSave({ kind: "rename", id: milestone.id, name });
+            }}
+          >
+            <label>
+              {t.planning.roadmap.name(milestone.name)}
+              <input required value={name} onChange={(event) => setName(event.target.value)} />
+            </label>
+            <Button type="submit" disabled={!name.trim() || name === milestone.name}>
+              {t.planning.roadmap.rename(milestone.name)}
+            </Button>
+          </form>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onSave({ kind: "update", id: milestone.id, status });
+            }}
+          >
+            <label htmlFor={`${selectId}-status`}>
+              {t.planning.roadmap.status(milestone.name)}
+              <SelectField
+                id={`${selectId}-status`}
+                aria-label={t.planning.roadmap.status(milestone.name)}
+                value={status}
+                onValueChange={(value) => setStatus(value as Milestone["status"])}
+                options={(["planned", "active", "shipped"] as const).map((value) => ({
+                  value,
+                  label: t.planning.roadmap[value],
+                }))}
+              />
+            </label>
+            <Button type="submit" disabled={status === milestone.status}>
+              {t.planning.roadmap.setStatus(milestone.name)}
+            </Button>
+          </form>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              void onSave({ kind: "update", id: milestone.id, target: target || null });
+            }}
+          >
+            <label>
+              {t.planning.roadmap.target(milestone.name)}
+              <input
+                type="date"
+                value={target}
+                onChange={(event) => setTarget(event.target.value)}
+              />
+            </label>
+            <Button type="submit" disabled={target === (milestone.target ?? "")}>
+              {t.planning.roadmap.setTarget(milestone.name)}
+            </Button>
+          </form>
         </div>
-      </section>
-    </Card>
+      )}
+    </section>
   );
 }

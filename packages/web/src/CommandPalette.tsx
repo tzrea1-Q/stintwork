@@ -37,15 +37,15 @@ export function CommandPalette({
     >
       <DialogContent
         aria-describedby={undefined}
-        className="command-palette w-xl rounded-2xl bg-popover text-popover-foreground p-0 focus-within:ring-2 focus-within:ring-ring"
+        className="command-palette w-xl rounded-[22px] bg-popover text-popover-foreground p-0 focus-within:ring-2 focus-within:ring-ring"
       >
         <DialogTitle className="sr-only">{t.planning.palette.title}</DialogTitle>
         <Command
           label={t.planning.palette.search}
           vimBindings={false}
-          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wide [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:text-accent-foreground [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:text-accent-foreground [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
         >
-          <div className="command-search flex items-center gap-3 border-b border-border p-4">
+          <div className="command-search flex items-center gap-3 border-b border-border px-4 py-2">
             <Search className="size-icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
             <Command.Input
               className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-none"

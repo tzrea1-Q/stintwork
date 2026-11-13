@@ -398,6 +398,9 @@ test("Chinese roadmap actions separate copy from Latin milestone names", async (
   const roadmap = within(screen.getByRole("dialog", { name: "编辑路线图" }));
   for (const name of ["M1 · The board", "M2 · The drawer"]) {
     expect(roadmap.getByRole("region", { name })).toBeInTheDocument();
+    await user.click(
+      within(roadmap.getByRole("region", { name })).getByRole("button", { expanded: false }),
+    );
     for (const action of ["重命名", "上移", "下移"])
       expect(roadmap.getByRole("button", { name: `${action} ${name}` })).toBeInTheDocument();
   }

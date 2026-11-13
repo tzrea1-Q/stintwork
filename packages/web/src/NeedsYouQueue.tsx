@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
-import { Bell, Inbox, X } from "lucide-react";
+import { Bell, ChevronRight, CircleHelp, Inbox, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { GateView } from "./GateView";
@@ -20,6 +20,7 @@ import { PermissionAnswer } from "./PermissionAnswer";
 import { StintRecovery } from "./StintRecovery";
 import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
+import { Eyebrow } from "./ui/Card";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { WarningCallout } from "./ui/WarningCallout";
@@ -114,9 +115,7 @@ export function NeedsYouQueue({
         >
           <header className="needs-you-heading flex shrink-0 items-center justify-between gap-4 border-b border-border bg-card p-4 sm:p-6">
             <div className="min-w-0">
-              <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
-                {t.needsYou.yourAttention}
-              </p>
+              <Eyebrow>{t.needsYou.yourAttention}</Eyebrow>
               <SheetTitle className="mt-2 flex flex-wrap items-center gap-2 text-xl">
                 <Inbox className="size-icon-md shrink-0" aria-hidden="true" />
                 {t.needsYou.heading}{" "}
@@ -175,10 +174,13 @@ export function NeedsYouQueue({
                 return (
                   <article
                     key={item.id}
-                    className="attention-item mb-4 min-w-0 rounded-lg border border-input bg-card p-4 text-sm [overflow-wrap:anywhere] [&_h3]:my-3 [&_h3]:text-lg [&_p]:my-2 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
+                    className="attention-item relative min-w-0 border-b border-border py-3 pl-12 text-xs [overflow-wrap:anywhere] [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-1 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
                     aria-label={title}
                   >
-                    <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
+                    <span className="absolute left-0 top-3 grid size-9 place-items-center rounded-full bg-attention-soft text-attention-foreground">
+                      <CircleHelp className="size-icon-sm" aria-hidden="true" />
+                    </span>
+                    <p className="text-xs text-muted-foreground">
                       {t.needsYou.loginRequired} · {profile?.displayName ?? item.agent}
                     </p>
                     <h3>{title}</h3>
@@ -215,10 +217,17 @@ export function NeedsYouQueue({
               return (
                 <article
                   key={item.id}
-                  className="attention-item mb-4 min-w-0 rounded-lg border border-input bg-card p-4 text-sm [overflow-wrap:anywhere] [&_h3]:my-3 [&_h3]:text-lg [&_p]:my-2 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
+                  className="attention-item relative min-w-0 border-b border-border py-3 pl-12 text-xs [overflow-wrap:anywhere] [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-1 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
                   aria-label={title}
                 >
-                  <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
+                  <span className="absolute left-0 top-3 grid size-9 place-items-center rounded-full bg-attention-soft text-attention-foreground">
+                    {item.kind === "permission" ? (
+                      <ShieldCheck className="size-icon-sm" aria-hidden="true" />
+                    ) : (
+                      <CircleHelp className="size-icon-sm" aria-hidden="true" />
+                    )}
+                  </span>
+                  <p className="text-xs text-muted-foreground">
                     {item.kind === "permission"
                       ? t.needsYou.permission
                       : item.kind === "handoff-unresolved"
@@ -263,6 +272,7 @@ export function NeedsYouQueue({
                     }}
                   >
                     {workItem?.title ?? item.workItem} · {item.workItem}
+                    <ChevronRight aria-hidden="true" />
                   </Button>
                   <p className="muted text-muted-foreground">
                     {item.ticket === null

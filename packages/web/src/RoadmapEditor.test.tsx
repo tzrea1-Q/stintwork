@@ -53,6 +53,41 @@ test("roadmap progress counts resolved local tickets without a merge", async () 
   expect(screen.getByRole("progressbar", { name: "First" })).toHaveAttribute("aria-valuenow", "1");
 });
 
+test("compact progress remains proportional and shows counts for many work items", async () => {
+  const project = snapshot();
+  const base = project.workItems[0];
+  project.workItems = Array.from({ length: 14 }, (_, index) => ({
+    ...base,
+    slug: `item-${index}`,
+    merged: index < 7 ? { at: "2026-10-10T10:00:00Z", commit: "a".repeat(40) } : undefined,
+  }));
+  project.milestones[0].workItemSlugs = project.workItems.map((item) => item.slug);
+  render(<RoadmapEditor snapshot={project} />);
+  await userEvent.setup().click(screen.getByRole("button", { name: "Edit roadmap" }));
+  const row = within(screen.getByRole("region", { name: "First" }));
+  const progress = row.getByRole("progressbar", { name: "First" });
+  expect(progress).toHaveAttribute("aria-valuenow", "7");
+  expect(progress).toHaveAttribute("aria-valuemax", "14");
+  expect(progress.querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
+    transform: "translateX(-50%)",
+  });
+  expect(row.getByText("7/14")).toHaveClass("tabular-nums");
+});
+
+test("reorder tooltips match accessible names on keyboard focus", async () => {
+  const { user, sheet } = await open();
+  await user.tab();
+  await user.tab();
+  const down = sheet.getByRole("button", { name: "Move First down" });
+  expect(down).toHaveFocus();
+  expect(await screen.findByRole("tooltip", { name: "Move First down" })).toBeInTheDocument();
+  await user.tab();
+  await user.tab();
+  const up = sheet.getByRole("button", { name: "Move Second up" });
+  expect(up).toHaveFocus();
+  expect(await screen.findByRole("tooltip", { name: "Move Second up" })).toBeInTheDocument();
+});
+
 test("roadmap traps keyboard focus and restores the opener after outside dismissal", async () => {
   mockServer();
   const { user, sheet } = await open();
@@ -89,6 +124,9 @@ test("Chinese roadmap controls preserve milestone names, work item titles and th
   expect(sheet.getByRole("button", { name: "关闭路线图" })).toBeInTheDocument();
   expect(sheet.getByText(/\.stintwork\/roadmap.md/)).toBeInTheDocument();
   expect(sheet.getByRole("region", { name: "First" })).toBeInTheDocument();
+  await user.click(
+    within(sheet.getByRole("region", { name: "First" })).getByRole("button", { expanded: false }),
+  );
   expect(sheet.getByRole("textbox", { name: "名称：First" })).toHaveValue("First");
   const status = sheet.getByRole("combobox", { name: "状态：First" });
   await user.click(status);
@@ -149,6 +187,9 @@ test("the board exposes the editor, adds a milestone, and restores focus on clos
 test("renames without changing the displayed stable id", async () => {
   const fetch = mockServer();
   const { user, sheet } = await open();
+  await user.click(
+    within(sheet.getByRole("region", { name: "First" })).getByRole("button", { expanded: false }),
+  );
   const input = sheet.getByRole("textbox", { name: "Name for First" });
   await user.clear(input);
   await user.type(input, "Renamed");
@@ -164,6 +205,9 @@ test("renames without changing the displayed stable id", async () => {
 test.each(["planned", "shipped"])("sets milestone status to %s explicitly", async (status) => {
   const fetch = mockServer();
   const { user, sheet } = await open();
+  await user.click(
+    within(sheet.getByRole("region", { name: "First" })).getByRole("button", { expanded: false }),
+  );
   await chooseOption(
     user,
     sheet.getByRole("combobox", { name: "Status for First" }),
@@ -187,6 +231,9 @@ test.each(["planned", "shipped"])("sets milestone status to %s explicitly", asyn
 test("sets a target date and clears it in separate writes", async () => {
   const fetch = mockServer();
   const { user, sheet } = await open();
+  await user.click(
+    within(sheet.getByRole("region", { name: "First" })).getByRole("button", { expanded: false }),
+  );
   fireEvent.change(sheet.getByLabelText("Target for First"), { target: { value: "2027-01-02" } });
   await user.click(sheet.getByRole("button", { name: "Set target for First" }));
   await waitFor(() =>
@@ -212,7 +259,8 @@ test("reorders up and down with disabled boundary controls", async () => {
   const { user, sheet } = await open();
   expect(sheet.getByRole("button", { name: "Move First up" })).toBeDisabled();
   expect(sheet.getByRole("button", { name: "Move Second down" })).toBeDisabled();
-  await user.click(sheet.getByRole("button", { name: "Move Second up" }));
+  sheet.getByRole("button", { name: "Move Second up" }).focus();
+  await user.keyboard("{Enter}");
   await waitFor(() => expect(sheet.getByRole("button", { name: "Move Second up" })).toBeDisabled());
   expect(sheet.getAllByRole("region").map((element) => element.getAttribute("aria-label"))).toEqual(
     ["Second", "First"],
@@ -309,4 +357,15 @@ test("follows refreshed milestones and supports an empty roadmap", async () => {
   expect(screen.queryByRole("region", { name: "First" })).not.toBeInTheDocument();
   rerender(<RoadmapEditor snapshot={snapshot()} />);
   expect(await screen.findByRole("region", { name: "First" })).toBeInTheDocument();
+});
+
+test("milestone rows start collapsed and expand by keyboard", async () => {
+  const { user, sheet } = await open();
+  const row = within(sheet.getByRole("region", { name: "First" }));
+  const toggle = row.getByRole("button", { expanded: false });
+  expect(row.queryByRole("textbox")).not.toBeInTheDocument();
+  toggle.focus();
+  await user.keyboard("{Enter}");
+  expect(toggle).toHaveAttribute("aria-expanded", "true");
+  expect(row.getByRole("textbox", { name: "Name for First" })).toBeVisible();
 });
