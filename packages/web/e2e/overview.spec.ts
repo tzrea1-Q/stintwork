@@ -229,8 +229,12 @@ for (const language of ["en", "zh-CN"] as const) {
           has: page.getByRole("heading", { name: featured.milestone.name, exact: true }),
         });
         await expect(featuredHeader.getByText(t.overview.eyebrows.milestones)).toBeVisible();
+        await overview.getByText(`1 ${t.overview.moreMilestone}`).click();
         await expect(overview.getByText(t.overview.progressIncomplete)).toBeVisible();
-        await overview.locator("summary").click();
+        await expect(
+          overview.getByRole("button", { name: snapshot.milestones[1].name }),
+        ).toBeVisible();
+        await overview.getByText(`3 ${t.overview.shippedMilestones}`).click();
         await expect(
           overview.getByRole("button", { name: snapshot.milestones[4].name }),
         ).toBeVisible();

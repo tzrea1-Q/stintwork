@@ -163,6 +163,7 @@ test("orders cards and discloses shipped milestones", async () => {
   snapshot.milestones = [
     { id: "done", name: "Done milestone", status: "shipped", workItemSlugs: [] },
     { id: "active", name: "Active milestone", status: "active", workItemSlugs: ["one"] },
+    { id: "planned", name: "Planned milestone", status: "planned", workItemSlugs: [] },
   ];
   snapshot.workItems[0].milestone = "active";
   render(
@@ -180,6 +181,11 @@ test("orders cards and discloses shipped milestones", async () => {
     (node) => node.textContent,
   );
   expect(titles).toEqual(["Active milestone", "Where the work is", "One"]);
+  expect(screen.getAllByRole("progressbar", { name: /milestone/ })).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "Planned milestone" })).not.toBeVisible();
+  await userEvent.setup().click(screen.getByText("1 more milestone"));
+  expect(screen.getByRole("button", { name: "Planned milestone" })).toBeVisible();
+  expect(screen.getByText("Planned")).toBeVisible();
   const summary = screen.getByText("1 shipped milestone");
   expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible();
   await userEvent.setup().click(summary);
@@ -232,7 +238,11 @@ test.each([
     "[overflow-wrap:anywhere]",
   );
   expect(within(next).getByText(new RegExp(name))).toBeVisible();
-  expect(screen.getByText("Progress may be incomplete")).toBeVisible();
+  const milestoneCard = screen.getByRole("heading", { name }).closest('[data-slot="card"]');
+  expect(milestoneCard).not.toBeNull();
+  expect(
+    within(milestoneCard as HTMLElement).getByText("Progress may be incomplete"),
+  ).toBeVisible();
   expect(screen.getByText("Work items").nextElementSibling).toHaveTextContent("0/1");
 });
 

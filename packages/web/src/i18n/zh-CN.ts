@@ -68,6 +68,8 @@ export const zhCN: Catalog = {
     description: "查看项目的工作进展。",
     open: "打开",
     tickets: "已解决的工单",
+    moreMilestone: "个其他里程碑",
+    moreMilestones: "个其他里程碑",
     shippedMilestone: "个已交付里程碑",
     shippedMilestones: "个已交付里程碑",
     milestones: "路线图",

@@ -105,11 +105,13 @@ export function WorkItemCard({
         >
           <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
           <span className="sr-only">{typeName}: </span>
-          <span className="break-all">{item.slug}</span>
+          <span className="truncate" data-truncate title={item.slug}>
+            {item.slug}
+          </span>
         </span>
         {item.milestone && (
           <span
-            className="milestone-tag min-w-0 break-all rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
+            className="milestone-tag shrink-0 whitespace-nowrap rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
             title={milestone?.name}
           >
             {milestone?.id ?? item.milestone}
