@@ -1,7 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { coreTextEnglish } from "@stintwork/core";
 export const en = {
-  drawerIdentity: { milestone: "Milestone", workflow: "Workflow" },
+  drawerIdentity: {
+    milestone: "Milestone",
+    workflow: "Workflow",
+    stageAgent: "Agent for this stage",
+    agentsByStage: "Agents by stage",
+  },
   codeBlock: "Code block",
   warningCallout: {
     title: (count: number) => `${count} ${count === 1 ? "warning" : "warnings"}`,

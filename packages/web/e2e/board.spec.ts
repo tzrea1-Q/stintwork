@@ -30,6 +30,45 @@ for (const language of ["en", "zh-CN"] as const) {
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("rich-pipeline.png"), fullPage: true });
       });
+      if (width === 1440) {
+        test(`rich detail gate is visible without scrolling ${language} ${colorScheme}`, async ({
+          page,
+        }, info) => {
+          await page.setViewportSize({ width, height: 900 });
+          await page.emulateMedia({ colorScheme });
+          await page.clock.setFixedTime(new Date(richClock));
+          await page.addInitScript(
+            (choice) => localStorage.setItem("stintwork.language", choice),
+            language,
+          );
+          await page.route("**/api/project", (route) => route.fulfill({ json: richSnapshot }));
+          await page.routeWebSocket("**/api/live", (socket) =>
+            socket.send(JSON.stringify(richSnapshot)),
+          );
+          await page.goto("/?view=pipeline&item=rich-implement");
+          const panel = page.locator(".work-item-drawer");
+          const gateTitle = t.stints.gate(language === "en" ? "Implement" : "实现");
+          const gate = panel.getByRole("region", { name: gateTitle });
+          await expect(gate).toBeVisible();
+          const viewport = await panel.locator(".drawer-content").boundingBox();
+          for (const element of [
+            gate.getByRole("heading", { name: gateTitle, level: 3 }),
+            gate.getByRole("list").first().getByRole("listitem").first(),
+          ]) {
+            await expect(element).toBeVisible();
+            const bounds = await element.boundingBox();
+            expect(
+              bounds &&
+                viewport &&
+                bounds.y >= viewport.y &&
+                bounds.y + bounds.height <= viewport.y + viewport.height,
+            ).toBeTruthy();
+          }
+          expect(await panel.locator(".drawer-content").evaluate((el) => el.scrollTop)).toBe(0);
+          await assertLayout(page);
+          await page.screenshot({ path: info.outputPath("rich-detail.png"), fullPage: true });
+        });
+      }
       test(`board ${width}px ${language} ${colorScheme}`, async ({ page }, testInfo) => {
         await page.setViewportSize({ width, height: 900 });
         await page.emulateMedia({ colorScheme });

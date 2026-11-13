@@ -4,6 +4,7 @@ import {
   type AgentProfile,
   builtInWorkflows,
   briefAvailability,
+  stageAgent,
   type Milestone,
   type Warning,
   type WorkflowDefinitions,
@@ -16,10 +17,7 @@ import {
   GitBranch,
   GitPullRequest,
   LayoutGrid,
-  ListTodo,
-  Workflow,
   LockKeyhole,
-  Sparkles,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -39,7 +37,7 @@ import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
-import { IconChip } from "./ui/IconChip";
+import { AgentAvatar } from "./ui/AgentAvatar";
 import { Markdown } from "./ui/Markdown";
 import { PropertyList, PropertyRow } from "./ui/PropertyRow";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
@@ -47,7 +45,7 @@ import { StatusChip } from "./ui/StatusChip";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import type { BoardWorkItem } from "./WorkItemCard";
 
-function FilePath({ path }: { path: string }) {
+function FilePath({ path, compact = false }: { path: string; compact?: boolean }) {
   const { t } = useLanguage();
   const [message, setMessage] = useState("");
 
@@ -61,13 +59,29 @@ function FilePath({ path }: { path: string }) {
   }
 
   return (
-    <div className="file-path mb-4 mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground [&_code]:min-w-0 [&_code]:[overflow-wrap:anywhere]">
-      <code className="block max-w-full truncate" data-truncate title={path}>
+    <div
+      className={
+        compact
+          ? "file-path flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
+          : "file-path mb-4 mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground [&_code]:min-w-0 [&_code]:[overflow-wrap:anywhere]"
+      }
+    >
+      <code
+        className={compact ? "min-w-0 flex-1 truncate" : "block max-w-full truncate"}
+        data-truncate
+        title={path}
+      >
         {path}
       </code>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" onClick={copy} aria-label={t.stints.copyPath(path)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={compact ? "shrink-0" : undefined}
+            onClick={copy}
+            aria-label={t.stints.copyPath(path)}
+          >
             <Copy aria-hidden="true" />
           </Button>
         </TooltipTrigger>
@@ -202,6 +216,24 @@ export function WorkItemDrawer({
   const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
+  const [agentChoice, setAgentChoice] = useState<{
+    source: BoardWorkItem["stages"];
+    slug: string;
+    agent: string;
+  }>();
+  const agent = item.stage
+    ? agentChoice?.source === item.stages && agentChoice.slug === item.slug
+      ? agentChoice.agent
+      : stageAgent(item, item.stage, agents, workflows)
+    : undefined;
+  const identityAgent = item.activeStint?.status === "running" ? item.activeStint.agent : agent;
+  const agentName =
+    agents.find((profile) => profile.id === identityAgent)?.displayName ?? identityAgent;
+  const branch =
+    item.activeStint?.worktree.branch ??
+    item.pullRequest?.branch ??
+    item.stints[0]?.worktree?.branch ??
+    (item.worktreePath ? `stintwork/${item.slug}` : undefined);
   const reviewStageId = workflow.stages.find(({ gate }) => gate === "evidence")?.id;
   const archived = reviewFindings(item.stints, item.reviewDecisions, item, reviewStageId);
   const openTickets = item.tickets.filter((ticket) => !ticket.resolved);
@@ -252,55 +284,43 @@ export function WorkItemDrawer({
         </button>
       )}
       <header className="drawer-header relative max-h-[35%] shrink-0 overflow-y-auto px-4 py-4 sm:px-7">
-        <div className="flex min-w-0 items-start gap-3">
-          <IconChip icon={Sparkles} tone="accent" />
-          <div className="min-w-0 flex-1">
-            {docked ? (
-              <h2 className="truncate text-base font-medium" data-truncate title={item.title}>
-                {item.title}
-              </h2>
-            ) : (
-              <SheetTitle
-                className="truncate text-base font-medium"
-                data-truncate
-                title={item.title}
-              >
-                {item.title}
-              </SheetTitle>
-            )}
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-              <code
-                className="min-w-0 truncate text-xs text-muted-foreground"
-                data-truncate
-                title={item.slug}
-              >
-                {item.slug}
-              </code>
-              <StatusChip
-                status={
-                  item.activeStint?.status === "running"
-                    ? "running"
-                    : attentionCount
-                      ? "attention"
-                      : blocked
-                        ? "blocked"
-                        : item.merged
-                          ? "success"
-                          : "stopped"
-                }
-              >
-                {item.activeStint?.status === "running"
-                  ? (recoveryStatus(item.activeStint, t) ?? t.card.running)
+        <div className="flex min-w-0 items-center gap-2">
+          <code
+            className="min-w-0 truncate font-mono text-[11px] text-muted-foreground"
+            data-truncate
+            title={item.slug}
+          >
+            {item.slug}
+          </code>
+          {(item.activeStint?.status === "running" ||
+            attentionCount > 0 ||
+            blocked ||
+            (!item.merged && item.stints[0]?.status === "stopped")) && (
+            <StatusChip
+              status={
+                item.activeStint?.status === "running"
+                  ? "running"
                   : attentionCount
-                    ? t.card.needsYou(attentionCount)
+                    ? "attention"
                     : blocked
-                      ? t.card.blocked
+                      ? "blocked"
                       : item.merged
-                        ? t.card.shipped
-                        : t.pipelineBoard.idle}
-              </StatusChip>
-            </div>
-          </div>
+                        ? "success"
+                        : "stopped"
+              }
+            >
+              {item.activeStint?.status === "running"
+                ? (recoveryStatus(item.activeStint, t) ?? t.card.running)
+                : attentionCount
+                  ? t.card.needsYou(attentionCount)
+                  : blocked
+                    ? t.card.blocked
+                    : item.merged
+                      ? t.card.shipped
+                      : t.stints.statuses.stopped}
+            </StatusChip>
+          )}
+          <span className="flex-1" />
           <Tooltip>
             <TooltipTrigger
               asChild
@@ -337,31 +357,93 @@ export function WorkItemDrawer({
             </Button>
           </div>
         )}
-        <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_6.5rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dd]:overflow-visible [&_dd]:whitespace-normal">
-          <PropertyRow
-            icon={ListTodo}
-            label={t.drawerIdentity.milestone}
-            value={milestone?.name ?? item.milestone ?? t.stints.noMilestone}
-          />
-          <PropertyRow
-            icon={Workflow}
-            label={t.drawerIdentity.workflow}
-            value={
-              <div className="flex min-w-0 flex-wrap items-center gap-1">
-                <span>{workflowName(workflow, t)}</span>
-                {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="min-h-10"
-                    onClick={() => onCustomiseWorkflow(item.workflow)}
-                  >
-                    {t.stints.customise}
-                  </Button>
-                )}
-              </div>
-            }
-          />
+        <div className="drawer-identity my-3 min-w-0 rounded-2xl bg-accent p-4">
+          {docked ? (
+            <h2
+              className="truncate text-lg font-semibold leading-tight tracking-[-0.03em]"
+              data-truncate
+              title={item.title}
+            >
+              {item.title}
+            </h2>
+          ) : (
+            <SheetTitle
+              className="truncate text-lg font-semibold leading-tight tracking-[-0.03em]"
+              data-truncate
+              title={item.title}
+            >
+              {item.title}
+            </SheetTitle>
+          )}
+          <div className="mb-3 mt-2 flex min-w-0 items-center gap-2">
+            <p
+              className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground"
+              data-truncate
+              title={`${workflowName(workflow, t)} · ${milestone?.name ?? item.milestone ?? t.stints.noMilestone}`}
+            >
+              {workflowName(workflow, t)} ·{" "}
+              {milestone?.name ?? item.milestone ?? t.stints.noMilestone}
+            </p>
+            {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-[11px]"
+                onClick={() => onCustomiseWorkflow(item.workflow)}
+              >
+                {t.stints.customise}
+              </Button>
+            )}
+          </div>
+          <div className="flex min-w-0 items-center gap-2">
+            {identityAgent && agentName && (
+              <AgentAvatar
+                agent={identityAgent}
+                name={agentName}
+                active={item.activeStint?.status === "running"}
+              />
+            )}
+            {branch && (
+              <code
+                className="min-w-0 truncate rounded-full bg-card px-2 py-1 font-mono text-[10px]"
+                data-truncate
+                title={branch}
+              >
+                {branch}
+              </code>
+            )}
+          </div>
+        </div>
+        {item.activeStint && (
+          <section aria-labelledby="drawer-live-stint-title">
+            <h3
+              id="drawer-live-stint-title"
+              className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+            >
+              {t.stints.liveStint}
+            </h3>
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+              <p role="status">
+                {activeProfile?.displayName ?? item.activeStint.agent}
+                {item.activeStint.ticket !== null && (
+                  <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
+                )}{" "}
+                · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
+              </p>
+              <StopStint
+                key={`stop:${item.activeStint.id}`}
+                stintId={item.activeStint.id}
+                recovering={!!item.activeStint.recovery?.state}
+              />
+            </div>
+            <StintStream
+              key={`stream:${item.activeStint.id}`}
+              stint={item.activeStint}
+              profile={activeProfile}
+            />
+          </section>
+        )}
+        <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dt]:text-[11px] [&_dd]:text-[11px] [&_dd]:whitespace-normal">
           {stage && (
             <PropertyRow
               icon={LayoutGrid}
@@ -373,7 +455,7 @@ export function WorkItemDrawer({
             <PropertyRow
               icon={FolderGit2}
               label={t.stints.worktreeFiles}
-              value={<FilePath path={item.worktreePath} />}
+              value={<FilePath path={item.worktreePath} compact />}
             />
           )}
           {item.pullRequest && (
@@ -413,7 +495,14 @@ export function WorkItemDrawer({
             />
           )}
           {item.stage && !item.merged && (
-            <StageAgentRail key={item.slug} item={item} workflows={workflows} />
+            <StageAgentRail
+              key={item.slug}
+              item={item}
+              workflows={workflows}
+              onAgentChange={(agent) =>
+                setAgentChoice({ source: item.stages, slug: item.slug, agent })
+              }
+            />
           )}
         </PropertyList>
         {!item.stage && !item.merged ? (
@@ -433,35 +522,6 @@ export function WorkItemDrawer({
             </span>
           </a>
         </nav>
-        {item.activeStint && (
-          <section aria-labelledby="drawer-live-stint-title">
-            <h3
-              id="drawer-live-stint-title"
-              className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
-            >
-              {t.stints.liveStint}
-            </h3>
-            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-              <p role="status">
-                {activeProfile?.displayName ?? item.activeStint.agent}
-                {item.activeStint.ticket !== null && (
-                  <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
-                )}{" "}
-                · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
-              </p>
-              <StopStint
-                key={`stop:${item.activeStint.id}`}
-                stintId={item.activeStint.id}
-                recovering={!!item.activeStint.recovery?.state}
-              />
-            </div>
-            <StintStream
-              key={`stream:${item.activeStint.id}`}
-              stint={item.activeStint}
-              profile={activeProfile}
-            />
-          </section>
-        )}
         <ShipActions item={item} workflows={workflows} onPausePolling={setShipPaused} />
         {!item.merged && (
           <GateView

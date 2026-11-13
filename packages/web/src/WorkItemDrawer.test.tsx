@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { applyStintLogEntry, createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import {
+  applyStintLogEntry,
+  createMemoryRepoFiles,
+  indexProject,
+  summarizeStint,
+} from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
+import { claudeProfile, codexProfile } from "../../agents/src/profiles";
+import { recoveryStint } from "./recovery-test-fixtures";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
@@ -174,7 +181,8 @@ test("the drawer shows and copies the worktree path even when no stint is active
   item.worktreePath = "/project-worktrees/first";
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   expect(screen.getByText("Work item files live in this worktree:")).toBeInTheDocument();
-  expect(screen.getByText(item.worktreePath)).toBeInTheDocument();
+  expect(screen.getByText(item.worktreePath)).toHaveAttribute("data-truncate");
+  expect(screen.getByText(item.worktreePath)).toHaveAttribute("title", item.worktreePath);
   await user.click(screen.getByRole("button", { name: `Copy ${item.worktreePath}` }));
   expect(await navigator.clipboard.readText()).toBe(item.worktreePath);
   expect(screen.getByRole("dialog")).toHaveTextContent("Copied");
@@ -576,4 +584,101 @@ test("the header and footer remain bounded and scrollable in a short Sheet", () 
   const footer = drawer.querySelector(".drawer-footer");
   expect(header).toHaveClass("max-h-[35%]", "overflow-y-auto");
   expect(footer).toHaveClass("max-h-[40%]", "overflow-y-auto");
+});
+
+test("the identity avatar shows the running agent while the stage row keeps its configured agent", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents: [claudeProfile, codexProfile] }))),
+  );
+  const item = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/spec.md": "# First",
+      ".scratch/first/workflow.yaml":
+        "workflow: feature\nstage: implement\nstages:\n  implement:\n    agent: claude\n",
+    }),
+    { name: "Project" },
+  ).workItems[0];
+  item.activeStint = { ...recoveryStint(), workItem: item.slug, agent: "codex" };
+  render(<WorkItemDrawer item={item} agents={[claudeProfile, codexProfile]} onClose={() => {}} />);
+  expect(screen.getByRole("img", { name: "Codex" })).toHaveClass("ring-running");
+  const row = screen.getByText("Agent for this stage").closest('[role="group"]');
+  await waitFor(() => expect(row).toHaveTextContent("Claude Code"));
+});
+
+test("the identity branch follows active stint, pull request, most recent stint and worktree precedence", () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents: [] }))),
+  );
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const stint = recoveryStint();
+  const history = summarizeStint(stint);
+  const older = {
+    ...history,
+    id: "older",
+    startedAt: "2020-01-01T00:00:00Z",
+    worktree: { ...stint.worktree, branch: "older-branch" },
+  };
+  const recent = { ...history, worktree: { ...stint.worktree, branch: "recent-branch" } };
+  const pr = {
+    number: 1,
+    url: "https://example.com/pr",
+    repo: "example/repo",
+    remote: "origin",
+    remoteUrl: "https://example.com/repo",
+    branch: "pr-branch",
+    base: "main",
+    headCommit: "abc",
+  };
+  const view = render(
+    <WorkItemDrawer
+      item={{
+        ...item,
+        activeStint: { ...stint, worktree: { ...stint.worktree, branch: "active-branch" } },
+        pullRequest: pr,
+        stints: [recent, older],
+        worktreePath: "/tree",
+      }}
+      onClose={() => {}}
+    />,
+  );
+  const chip = () => document.querySelector(".drawer-content code.rounded-full");
+  expect(chip()).toHaveAttribute("title", "active-branch");
+  view.rerender(
+    <WorkItemDrawer
+      item={{ ...item, pullRequest: pr, stints: [recent, older], worktreePath: "/tree" }}
+      onClose={() => {}}
+    />,
+  );
+  expect(chip()).toHaveAttribute("title", "pr-branch");
+  view.rerender(
+    <WorkItemDrawer
+      item={{ ...item, stints: [recent, older], worktreePath: "/tree" }}
+      onClose={() => {}}
+    />,
+  );
+  expect(chip()).toHaveAttribute("title", "recent-branch");
+  view.rerender(<WorkItemDrawer item={{ ...item, worktreePath: "/tree" }} onClose={() => {}} />);
+  expect(chip()).toHaveAttribute("title", "stintwork/first");
+  view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(chip()).toBeNull();
+});
+
+test("the header omits an idle status and shows a stopped stint", () => {
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  const header = document.querySelector(".drawer-header");
+  expect(header).not.toHaveTextContent("No active stint");
+  view.rerender(
+    <WorkItemDrawer
+      item={{ ...item, stints: [{ ...summarizeStint(recoveryStint()), status: "stopped" }] }}
+      onClose={() => {}}
+    />,
+  );
+  expect(header).toHaveTextContent("stopped");
 });
