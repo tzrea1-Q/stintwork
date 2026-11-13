@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject, type ProjectSnapshot } from "@stintwork/core";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
@@ -179,7 +179,7 @@ test("orders cards and discloses shipped milestones", async () => {
   const titles = Array.from(document.querySelectorAll('[data-slot="card-title"]')).map(
     (node) => node.textContent,
   );
-  expect(titles).toEqual(["One", "Roadmap", "Where the work is"]);
+  expect(titles).toEqual(["Roadmap", "Where the work is", "One"]);
   const summary = screen.getByText("1 shipped milestone");
   expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible();
   await userEvent.setup().click(summary);
@@ -234,4 +234,116 @@ test.each([
   expect(within(next).getByText(new RegExp(name))).toBeVisible();
   expect(screen.getByText("Progress may be incomplete")).toBeVisible();
   expect(screen.getByText("0/1 work items")).toBeVisible();
+});
+
+test("shows shipped milestone progress and accessible seven day chart", () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One", ".scratch/two/spec.md": "# Two" });
+  snapshot.milestones = [
+    { id: "done", name: "Latest shipped", status: "shipped", workItemSlugs: ["one", "two"] },
+  ];
+  for (const item of snapshot.workItems) item.milestone = "done";
+  snapshot.workItems[0].merged = { at: "2026-01-01", commit: "abc" };
+  snapshot.workItems[0].stints = [
+    {
+      id: "s",
+      agent: "codex",
+      stage: "spec",
+      status: "finished",
+      startedAt: new Date().toISOString(),
+      endedAt: null,
+    },
+  ] as (typeof snapshot.workItems)[0]["stints"];
+  render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  expect(screen.getAllByRole("button", { name: "Latest shipped" })[0]).toBeVisible();
+  expect(screen.getByRole("progressbar", { name: "Latest shipped" })).toHaveAttribute(
+    "aria-valuenow",
+    "1",
+  );
+  expect(screen.getByText((_, element) => element?.textContent === "50%")).toBeVisible();
+  expect(
+    within(screen.getByRole("list", { name: "Last 7 days" })).getAllByRole("listitem"),
+  ).toHaveLength(7);
+  expect(screen.getByLabelText(/: 1 stints/)).toBeInTheDocument();
+});
+
+test("advances the activity chart at local midnight without a running stint and cleans up", () => {
+  vi.useFakeTimers();
+  try {
+    const before = new Date(2026, 2, 9, 23, 59, 59);
+    vi.setSystemTime(before);
+    const snapshot = project({ ".scratch/one/spec.md": "# One" });
+    snapshot.workItems[0].stints = [
+      {
+        id: "s",
+        agent: "codex",
+        stage: "spec",
+        status: "finished",
+        startedAt: before.toISOString(),
+        endedAt: null,
+      },
+    ] as (typeof snapshot.workItems)[0]["stints"];
+    const { unmount } = render(
+      <Overview
+        snapshot={snapshot}
+        connection="live"
+        onPipeline={() => {}}
+        onOpenItem={() => {}}
+        onNeedsYou={() => {}}
+        onCreate={() => {}}
+        onMilestone={() => {}}
+      />,
+    );
+    const chart = screen.getByRole("list", { name: "Last 7 days" });
+    expect(within(chart).getAllByRole("listitem")[6]).toHaveAttribute(
+      "aria-label",
+      "Mar 9, 2026: 1 stints",
+    );
+    act(() => vi.advanceTimersByTime(1000));
+    expect(within(chart).getAllByRole("listitem")[5]).toHaveAttribute(
+      "aria-label",
+      "Mar 9, 2026: 1 stints",
+    );
+    expect(within(chart).getAllByRole("listitem")[6]).toHaveAttribute(
+      "aria-label",
+      "Mar 10, 2026: 0 stints",
+    );
+    unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("keyboard focus follows the dashboard card order", async () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One" });
+  snapshot.milestones = [
+    { id: "active", name: "Active milestone", status: "active", workItemSlugs: ["one"] },
+  ];
+  snapshot.workItems[0].milestone = "active";
+  render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const user = userEvent.setup();
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Active milestone" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
 });

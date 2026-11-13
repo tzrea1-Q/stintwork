@@ -23,6 +23,13 @@ export const en = {
     },
   },
   overview: {
+    target: "Target",
+    completed: "of milestone completed",
+    runningCount: "Running",
+    waitingCount: "Waiting",
+    otherCount: "Other",
+    lastSevenDays: "Last 7 days",
+    stintCount: "stints",
     eyebrows: {
       next: "Next up",
       attention: "Your attention",
