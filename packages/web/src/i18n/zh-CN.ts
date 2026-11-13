@@ -38,6 +38,13 @@ export const zhCN: Catalog = {
     },
   },
   overview: {
+    target: "目标日期",
+    completed: "里程碑已完成",
+    runningCount: "运行中",
+    waitingCount: "待处理",
+    otherCount: "其他",
+    lastSevenDays: "过去 7 天",
+    stintCount: "个 Stint",
     eyebrows: {
       next: "接下来",
       attention: "你的关注",

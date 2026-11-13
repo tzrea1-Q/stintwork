@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
 import { expect, test } from "vitest";
-import { overviewData, viewFromSearch, workItemDone } from "./overview-data";
+import {
+  milestonePercent,
+  overviewData,
+  stintDays,
+  viewFromSearch,
+  workItemDone,
+} from "./overview-data";
 
 test("restores default and explicit views", () => {
   expect(viewFromSearch("")).toBe("overview");
@@ -15,6 +21,7 @@ test("derives only available cards and chooses the first untouched item in miles
   const empty = indexProject(createMemoryRepoFiles({}), { name: "Test" });
   expect(overviewData(empty)).toEqual({
     milestones: [],
+    featured: undefined,
     columns: [],
     next: undefined,
     running: [],
@@ -221,4 +228,58 @@ test("milestone progress counts work items and flags unavailable tickets", () =>
     total: 5,
     incomplete: false,
   });
+});
+
+test("calculates percentages and chooses the last shipped milestone when no active or planned milestone exists", () => {
+  const snapshot = indexProject(createMemoryRepoFiles({}), { name: "Test" });
+  snapshot.milestones = [
+    { id: "old", name: "Old", status: "shipped", workItemSlugs: [] },
+    { id: "new", name: "New", status: "shipped", workItemSlugs: [] },
+  ];
+  expect(milestonePercent(1, 3)).toBe(33);
+  expect(milestonePercent(0, 0)).toBe(0);
+  expect(overviewData(snapshot).featured?.milestone.id).toBe("new");
+});
+
+test("splits stages into mutually exclusive running and waiting counts", () => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({ ".scratch/a/spec.md": "# A", ".scratch/b/spec.md": "# B" }),
+    { name: "Test" },
+  );
+  const [a, b] = snapshot.workItems;
+  b.column = a.column;
+  a.activeStint = { id: "run" } as NonNullable<typeof a.activeStint>;
+  snapshot.attentionItems = [
+    {
+      id: "a",
+      kind: "permission",
+      workItem: a.slug,
+      stintId: "run",
+      agent: "codex",
+      ticket: null,
+      title: "Permission",
+      details: "",
+      raisedAt: "",
+      requestId: "request",
+      options: [],
+    },
+  ];
+  expect(overviewData(snapshot).columns[0]).toMatchObject({ count: 2, running: 0, waiting: 1 });
+  b.activeStint = { id: "other" } as NonNullable<typeof b.activeStint>;
+  expect(overviewData(snapshot).columns[0]).toMatchObject({ count: 2, running: 1, waiting: 1 });
+});
+
+test("counts local calendar days including zero days and midnight boundaries", () => {
+  const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/a/spec.md": "# A" }), {
+    name: "Test",
+  });
+  const today = new Date(2026, 2, 9, 12);
+  const midnight = new Date(2026, 2, 9);
+  snapshot.workItems[0].stints = [
+    { startedAt: new Date(midnight.getTime() - 1).toISOString() },
+    { startedAt: midnight.toISOString() },
+    { startedAt: new Date(2026, 2, 2, 23, 59).toISOString() },
+    { startedAt: "invalid" },
+  ] as (typeof snapshot.workItems)[0]["stints"];
+  expect(stintDays(snapshot, today).map((day) => day.count)).toEqual([0, 0, 0, 0, 0, 1, 1]);
 });

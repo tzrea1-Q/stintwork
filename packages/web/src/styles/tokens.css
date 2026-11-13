@@ -42,6 +42,12 @@
   --agent-grok-soft: oklch(0.657 0.016 286 / 14%);
   --agent-antigravity: oklch(0.6304 0.18 259.96);
   --agent-antigravity-soft: oklch(0.624 0.188 259.81 / 14%);
+  --overview-focus-start: #39307a;
+  --overview-focus-middle: #574dc1;
+  --overview-focus-end: #567dbc;
+  --overview-focus-glow: #ce9069;
+  --overview-chart: #bdb5ed;
+  --overview-chart-today: #7163d5;
   --chart-1: oklch(0.5632 0.1404 256.72);
   --chart-2: oklch(0.6543 0.1719 285.99);
   --chart-3: oklch(0.5502 0.0963 162.79);
@@ -105,6 +111,12 @@
   --stopped: oklch(0.7638 0.0155 286.03);
   --stopped-soft: oklch(0.2624 0.0093 285.74);
   --stopped-foreground: oklch(0.7638 0.0155 286.03);
+  --overview-focus-start: #272052;
+  --overview-focus-middle: #494095;
+  --overview-focus-end: #39557f;
+  --overview-focus-glow: #a86d50;
+  --overview-chart: #796fba;
+  --overview-chart-today: #a99ff3;
   --chart-1: oklch(0.7962 0.1039 256.74);
   --chart-2: oklch(0.7376 0.1368 289.78);
   --chart-3: oklch(0.8181 0.1058 160.8);

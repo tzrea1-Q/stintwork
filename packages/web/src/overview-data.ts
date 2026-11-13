@@ -24,6 +24,32 @@ export function workItemDone(item: ProjectSnapshot["workItems"][number]): boolea
   );
 }
 
+// The snapshot has a target date but no milestone start or end, so a time-based
+// marker cannot be placed without inventing a span. Display the date alone.
+export function milestonePercent(resolved: number, total: number) {
+  return total ? Math.round((resolved / total) * 100) : 0;
+}
+
+export function stintDays(snapshot: ProjectSnapshot, now: Date) {
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6 + index);
+    return { date, count: 0 };
+  });
+  for (const item of snapshot.workItems) {
+    for (const stint of item.stints) {
+      const date = new Date(stint.startedAt);
+      const day = days.find(
+        (entry) =>
+          entry.date.getFullYear() === date.getFullYear() &&
+          entry.date.getMonth() === date.getMonth() &&
+          entry.date.getDate() === date.getDate(),
+      );
+      if (day) day.count++;
+    }
+  }
+  return days;
+}
+
 export function overviewData(snapshot: ProjectSnapshot) {
   const active = snapshot.workItems.filter((item) => !item.merged);
   const milestones = snapshot.milestones
@@ -31,6 +57,7 @@ export function overviewData(snapshot: ProjectSnapshot) {
       const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
       return {
         milestone,
+        tickets: items.flatMap((item) => item.tickets),
         total: items.length,
         resolved: items.filter(workItemDone).length,
         incomplete: items.some(ticketsUnavailable),
@@ -41,7 +68,18 @@ export function overviewData(snapshot: ProjectSnapshot) {
       return rank[a.milestone.status] - rank[b.milestone.status];
     });
   const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const)
-    .map((column) => ({ column, count: active.filter((item) => item.column === column).length }))
+    .map((column) => {
+      const items = active.filter((item) => item.column === column);
+      const waiting = items.filter((item) =>
+        snapshot.attentionItems.some((attention) => attention.workItem === item.slug),
+      );
+      return {
+        column,
+        count: items.length,
+        running: items.filter((item) => item.activeStint && !waiting.includes(item)).length,
+        waiting: waiting.length,
+      };
+    })
     .filter(({ count }) => count > 0);
   // Rank by milestone status, then roadmap order, then snapshot order.
   const ordered = [...snapshot.workItems].sort((a, b) => {
@@ -76,6 +114,9 @@ export function overviewData(snapshot: ProjectSnapshot) {
     .slice(0, 5);
   return {
     milestones,
+    // Roadmap order is chronological; the last shipped entry is the latest.
+    featured:
+      milestones.find(({ milestone }) => milestone.status !== "shipped") ?? milestones.at(-1),
     columns,
     next,
     running,
