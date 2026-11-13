@@ -179,7 +179,7 @@ test("orders cards and discloses shipped milestones", async () => {
   const titles = Array.from(document.querySelectorAll('[data-slot="card-title"]')).map(
     (node) => node.textContent,
   );
-  expect(titles).toEqual(["Roadmap", "Where the work is", "One"]);
+  expect(titles).toEqual(["Active milestone", "Where the work is", "One"]);
   const summary = screen.getByText("1 shipped milestone");
   expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible();
   await userEvent.setup().click(summary);
@@ -233,7 +233,7 @@ test.each([
   );
   expect(within(next).getByText(new RegExp(name))).toBeVisible();
   expect(screen.getByText("Progress may be incomplete")).toBeVisible();
-  expect(screen.getByText("0/1 work items")).toBeVisible();
+  expect(screen.getByText("Work items").nextElementSibling).toHaveTextContent("0/1");
 });
 
 test("shows shipped milestone progress and accessible seven day chart", () => {
@@ -274,6 +274,7 @@ test("shows shipped milestone progress and accessible seven day chart", () => {
     within(screen.getByRole("list", { name: "Last 7 days" })).getAllByRole("listitem"),
   ).toHaveLength(7);
   expect(screen.getByLabelText(/: 1 stints/)).toBeInTheDocument();
+  expect(screen.getByText("Stints this week").nextElementSibling).toHaveTextContent("1");
 });
 
 test("advances the activity chart at local midnight without a running stint and cleans up", () => {
@@ -346,4 +347,45 @@ test("keyboard focus follows the dashboard card order", async () => {
   expect(screen.getByRole("button", { name: "Active milestone" })).toHaveFocus();
   await user.tab();
   expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
+});
+
+test("shows all stage tracks, a neutral segment and the empty week alongside recent activity", () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One" });
+  snapshot.milestones = [{ id: "m", name: "Milestone", status: "active", workItemSlugs: ["one"] }];
+  snapshot.workItems[0].milestone = "m";
+  snapshot.workItems[0].stints = [
+    {
+      id: "old",
+      agent: "codex",
+      stage: "spec",
+      status: "finished",
+      startedAt: "2020-01-01T00:00:00Z",
+      endedAt: null,
+    },
+  ] as (typeof snapshot.workItems)[0]["stints"];
+  render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const stageCard = screen
+    .getByRole("heading", { name: "Where the work is" })
+    .closest('[data-slot="card"]') as HTMLElement;
+  const tracks = within(stageCard).getAllByRole("img");
+  expect(tracks).toHaveLength(6);
+  const occupied = tracks.find((track) => track.getAttribute("aria-label")?.includes("Other 1"));
+  expect(occupied?.lastElementChild).toHaveClass("bg-muted-foreground/40");
+  expect(occupied?.lastElementChild).toHaveStyle({ width: "100%" });
+  expect(screen.getByText("No stints in the last 7 days")).toBeVisible();
+  expect(
+    within(screen.getByRole("list", { name: "Last 7 days" })).getAllByRole("listitem"),
+  ).toHaveLength(7);
+  expect(screen.getByRole("button", { name: /One.*Spec/ })).toBeVisible();
+  expect(screen.getByText("Stints this week").nextElementSibling).toHaveTextContent("0");
 });

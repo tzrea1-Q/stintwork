@@ -22,7 +22,12 @@ test("derives only available cards and chooses the first untouched item in miles
   expect(overviewData(empty)).toEqual({
     milestones: [],
     featured: undefined,
-    columns: [],
+    columns: ["clarify", "spec", "tickets", "implement", "review", "ship"].map((column) => ({
+      column,
+      count: 0,
+      running: 0,
+      waiting: 0,
+    })),
     next: undefined,
     running: [],
     activity: [],
@@ -39,6 +44,7 @@ test("derives only available cards and chooses the first untouched item in miles
   const data = overviewData(snapshot);
   expect(data.next?.slug).toBe("zed");
   expect(data.milestones).toMatchObject([{ total: 1, resolved: 0 }]);
+  expect(data.columns).toHaveLength(6);
   expect(data.columns.reduce((sum, column) => sum + column.count, 0)).toBe(2);
   expect(data.running).toEqual([]);
   expect(data.activity).toEqual([]);
@@ -264,9 +270,13 @@ test("splits stages into mutually exclusive running and waiting counts", () => {
       options: [],
     },
   ];
-  expect(overviewData(snapshot).columns[0]).toMatchObject({ count: 2, running: 0, waiting: 1 });
+  expect(overviewData(snapshot).columns.find((column) => column.column === a.column)).toMatchObject(
+    { count: 2, running: 0, waiting: 1 },
+  );
   b.activeStint = { id: "other" } as NonNullable<typeof b.activeStint>;
-  expect(overviewData(snapshot).columns[0]).toMatchObject({ count: 2, running: 1, waiting: 1 });
+  expect(overviewData(snapshot).columns.find((column) => column.column === a.column)).toMatchObject(
+    { count: 2, running: 1, waiting: 1 },
+  );
 });
 
 test("counts local calendar days including zero days and midnight boundaries", () => {

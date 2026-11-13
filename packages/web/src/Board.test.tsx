@@ -1132,7 +1132,7 @@ test("idle card keeps its identity and progress without status rows", () => {
   expect(within(card).queryByText("Stopped")).not.toBeInTheDocument();
 });
 
-test("columns show running and waiting counts only when present", () => {
+test("columns always show running and waiting counts", () => {
   const snapshot = project();
   const item = snapshot.workItems.find((entry) => entry.slug === "board");
   if (!item) throw new Error("Missing board fixture");
@@ -1155,11 +1155,11 @@ test("columns show running and waiting counts only when present", () => {
   item.activeStint = stint;
   render(<Board snapshot={snapshot} />);
   expect(
-    within(screen.getByRole("region", { name: "Implement" })).getByText("1 running"),
+    within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 0 waiting"),
   ).toBeInTheDocument();
   expect(
-    within(screen.getByRole("region", { name: "Ship" })).queryByText(/running|waiting/),
-  ).not.toBeInTheDocument();
+    within(screen.getByRole("region", { name: "Ship" })).getByText("0 running · 0 waiting"),
+  ).toBeInTheDocument();
 });
 
 test("stopped chip reflects only a stopped stint in the current stage of an unmerged item", () => {
@@ -1195,6 +1195,6 @@ test("stopped chip reflects only a stopped stint in the current stage of an unme
 test("column header includes waiting count", () => {
   render(<Board snapshot={attentionSnapshot()} />);
   expect(
-    within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 1 need you"),
+    within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 1 waiting"),
   ).toBeInTheDocument();
 });

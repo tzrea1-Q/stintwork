@@ -67,8 +67,8 @@ export function overviewData(snapshot: ProjectSnapshot) {
       const rank = { active: 0, planned: 1, shipped: 2 };
       return rank[a.milestone.status] - rank[b.milestone.status];
     });
-  const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const)
-    .map((column) => {
+  const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const).map(
+    (column) => {
       const items = active.filter((item) => item.column === column);
       const waiting = items.filter((item) =>
         snapshot.attentionItems.some((attention) => attention.workItem === item.slug),
@@ -79,8 +79,8 @@ export function overviewData(snapshot: ProjectSnapshot) {
         running: items.filter((item) => item.activeStint && !waiting.includes(item)).length,
         waiting: waiting.length,
       };
-    })
-    .filter(({ count }) => count > 0);
+    },
+  );
   // Rank by milestone status, then roadmap order, then snapshot order.
   const ordered = [...snapshot.workItems].sort((a, b) => {
     const rank = (id: string | undefined) => {

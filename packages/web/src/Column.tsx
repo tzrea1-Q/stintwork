@@ -47,12 +47,7 @@ export function Column({
   const waiting = items.filter((item) =>
     attentionItems.some((entry) => entry.workItem === item.slug),
   ).length;
-  const stats = [
-    running && `${running} ${t.pipelineBoard.running}`,
-    waiting && `${waiting} ${t.pipelineBoard.waiting}`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const stats = `${running} ${t.pipelineBoard.running} · ${waiting} ${t.pipelineBoard.waiting}`;
   return (
     <section
       className="stage-column relative min-w-[150px] max-w-[340px] flex-1 snap-start"
@@ -63,12 +58,16 @@ export function Column({
       <header className="stage-header px-1 pb-4 pt-2">
         <div className="flex flex-wrap items-center gap-2">
           <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
-          <h2 id={`stage-${id}`} title={name} className="min-w-0 break-words text-xs font-medium">
+          <h2
+            id={`stage-${id}`}
+            title={name}
+            className="min-w-0 flex-1 break-words text-[13px] font-semibold"
+          >
             {name}
           </h2>
           <span className="count tabular-nums text-xs text-muted-foreground">{items.length}</span>
         </div>
-        {stats && <p className="mt-2 text-xs text-muted-foreground">{stats}</p>}
+        <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
       </header>
       <div className="flex flex-col gap-3">
         {items.length ? (
