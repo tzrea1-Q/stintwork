@@ -1024,6 +1024,8 @@ test("card tint, status and segmented progress follow snapshot state", () => {
     <WorkItemCard item={{ ...item, activeStint: stint }} onOpen={() => {}} />,
   );
   const card = screen.getByRole("article");
+  expect(within(card).getByText(item.slug)).toHaveAttribute("data-truncate");
+  expect(within(card).getByText(item.slug)).toHaveAttribute("title", item.slug);
   expect(card).toHaveClass("bg-running-soft");
   expect(within(card).getByRole("status")).toHaveTextContent("Stint running");
   expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");

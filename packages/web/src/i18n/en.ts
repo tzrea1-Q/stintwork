@@ -53,6 +53,8 @@ export const en = {
     description: "A view of your project’s work.",
     open: "Open",
     tickets: "Tickets resolved",
+    moreMilestone: "more milestone",
+    moreMilestones: "more milestones",
     shippedMilestone: "shipped milestone",
     shippedMilestones: "shipped milestones",
     milestones: "Roadmap",

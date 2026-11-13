@@ -46,6 +46,10 @@ export function Overview({
   const shippedMilestones = data.milestones.filter(
     ({ milestone }) => milestone.status === "shipped",
   );
+  const otherMilestones = data.milestones.filter(
+    ({ milestone }) =>
+      milestone.status !== "shipped" && milestone.id !== data.featured?.milestone.id,
+  );
   useEffect(() => {
     if (!data.running.length) return;
     setNow(Date.now());
@@ -143,10 +147,7 @@ export function Overview({
           <Card className="min-w-0">
             <CardContent>
               {data.milestones
-                .filter(
-                  ({ milestone }) =>
-                    milestone.status !== "shipped" || milestone.id === data.featured?.milestone.id,
-                )
+                .filter(({ milestone }) => milestone.id === data.featured?.milestone.id)
                 .map(({ milestone, resolved, total, incomplete, tickets }) => (
                   <div key={milestone.id} className="py-1">
                     <CardHeader className="px-0">
@@ -201,13 +202,13 @@ export function Overview({
                       )}
                     </div>
                     <div className="mt-6 space-y-0 text-xs">
-                      <div className="flex justify-between gap-2 py-3">
+                      <div className="flex justify-between gap-2 border-t border-border py-3">
                         <span className="text-muted-foreground">{t.overview.workItemMetric}</span>
                         <strong className="tabular-nums">
                           {resolved}/{total}
                         </strong>
                       </div>
-                      <div className="flex justify-between gap-2 border-t py-3">
+                      <div className="flex justify-between gap-2 border-t border-border py-3">
                         <span className="text-muted-foreground">{t.overview.tickets}</span>
                         <strong className="tabular-nums">
                           {incomplete
@@ -215,13 +216,53 @@ export function Overview({
                             : `${tickets.filter((ticket) => ticket.resolved).length}/${tickets.length}`}
                         </strong>
                       </div>
-                      <div className="flex justify-between gap-2 border-t py-3">
+                      <div className="flex justify-between gap-2 border-t border-border py-3">
                         <span className="text-muted-foreground">{t.overview.stintsThisWeek}</span>
                         <strong className="tabular-nums">{weekTotal}</strong>
                       </div>
                     </div>
                   </div>
                 ))}
+              {otherMilestones.length > 0 && (
+                <details className="py-2">
+                  <summary className="cursor-pointer text-sm font-medium">
+                    {otherMilestones.length}{" "}
+                    {otherMilestones.length === 1
+                      ? t.overview.moreMilestone
+                      : t.overview.moreMilestones}
+                  </summary>
+                  <div className="mt-2 space-y-1">
+                    {otherMilestones.map(({ milestone, resolved, total, incomplete }) => (
+                      <div key={milestone.id} className="py-1">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="min-w-0 flex-1 truncate text-left hover:underline"
+                            data-truncate
+                            title={milestone.name}
+                            onClick={() => onMilestone(milestone.id)}
+                          >
+                            {milestone.name}
+                          </button>
+                          <StatusChip
+                            status={milestone.status === "active" ? "running" : "stopped"}
+                          >
+                            {t.planning.roadmap[milestone.status]}
+                          </StatusChip>
+                          <span className="text-right text-sm tabular-nums">
+                            {resolved}/{total} {t.overview.workItems}
+                          </span>
+                        </div>
+                        {incomplete && (
+                          <p className="text-xs text-muted-foreground">
+                            {t.overview.progressIncomplete}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
               {shippedMilestones.length > 0 && (
                 <details className="py-2">
                   <summary className="cursor-pointer text-sm font-medium">
