@@ -18,7 +18,7 @@ export const DialogTitle = Primitive.Title;
 export const DialogDescription = Primitive.Description;
 
 const contentVariants = cva(
-  "fixed z-50 max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-auto break-words rounded-2xl border border-border bg-card p-6 text-sm text-foreground shadow-overlay",
+  "fixed z-50 max-h-[calc(100dvh-32px)] max-w-[calc(100vw-32px)] overflow-auto break-words rounded-[22px] border border-border bg-card p-6 text-sm text-foreground shadow-overlay",
   {
     variants: {
       placement: {
