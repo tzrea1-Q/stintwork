@@ -43,6 +43,10 @@ export const zhCN: Catalog = {
     },
   },
   overview: {
+    progress: "进度",
+    workItemMetric: "工作项",
+    stintsThisWeek: "本周 Stint",
+    noStintsThisWeek: "过去 7 天没有 Stint",
     target: "目标日期",
     completed: "里程碑已完成",
     runningCount: "运行中",

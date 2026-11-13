@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import type { ProjectSnapshot } from "@stintwork/core";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
+import { overviewData } from "../src/overview-data";
 import { recoveryStint } from "../src/recovery-test-fixtures";
 import { dialogReview, dialogSnapshot, gate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
@@ -73,8 +74,14 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           overview.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
         ).toBeVisible();
+        const featured = overviewData(snapshot).featured;
+        if (!featured) throw new Error("Missing featured milestone");
+        const milestoneCard = overview.locator('[data-slot="card"]').filter({
+          has: page.getByRole("heading", { name: featured.milestone.name, exact: true }),
+        });
+        await expect(milestoneCard.getByText(t.overview.eyebrows.milestones)).toBeVisible();
         await expect(
-          overview.getByRole("heading", { name: t.overview.milestones, exact: true }),
+          milestoneCard.getByRole("heading", { name: featured.milestone.name, exact: true }),
         ).toBeVisible();
         await expect(
           overview.getByRole("heading", { name: t.overview.stages, exact: true }),
@@ -201,18 +208,27 @@ for (const language of ["en", "zh-CN"] as const) {
         const overview = page.getByRole("main").filter({
           has: page.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
         });
+        const featured = overviewData(snapshot).featured;
+        if (!featured) throw new Error("Missing featured milestone");
         for (const title of [
           snapshot.workItems[0].title,
           `${t.overview.attention} 1`,
           t.overview.running,
-          t.overview.milestones,
+          featured.milestone.name,
           t.overview.stages,
-          t.overview.activity,
+          t.overview.lastSevenDays,
         ]) {
           await expect(
             overview.locator('[data-slot="card-title"]').filter({ hasText: title }),
           ).toBeVisible();
         }
+        const milestoneCard = overview.locator('[data-slot="card"]').filter({
+          has: page.getByRole("heading", { name: featured.milestone.name, exact: true }),
+        });
+        const featuredHeader = milestoneCard.locator('[data-slot="card-header"]').filter({
+          has: page.getByRole("heading", { name: featured.milestone.name, exact: true }),
+        });
+        await expect(featuredHeader.getByText(t.overview.eyebrows.milestones)).toBeVisible();
         await expect(overview.getByText(t.overview.progressIncomplete)).toBeVisible();
         await overview.locator("summary").click();
         await expect(

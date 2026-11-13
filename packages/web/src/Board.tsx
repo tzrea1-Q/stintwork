@@ -239,7 +239,7 @@ export function Board({
               const filteredUnstaged = unstaged.filter((item) => filtered.includes(item));
               return (
                 <>
-                  <div className="pipeline-heading mx-auto w-full max-w-[1376px] px-4 pt-[42px] min-[700px]:px-7 min-[700px]:pt-[65px]">
+                  <div className="pipeline-heading w-full px-4 pt-5 lg:px-6">
                     <PageHeader
                       eyebrow={`${snapshot.name} / ${t.board.pipeline}`}
                       title={

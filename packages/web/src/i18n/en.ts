@@ -28,6 +28,10 @@ export const en = {
     },
   },
   overview: {
+    progress: "Progress",
+    workItemMetric: "Work items",
+    stintsThisWeek: "Stints this week",
+    noStintsThisWeek: "No stints in the last 7 days",
     target: "Target",
     completed: "of milestone completed",
     runningCount: "Running",
@@ -108,7 +112,7 @@ export const en = {
     workflow: "Workflow",
     allWorkflows: "All workflows",
     running: "running",
-    waiting: "need you",
+    waiting: "waiting",
     milestoneProgress: "shipped",
   },
   board: {

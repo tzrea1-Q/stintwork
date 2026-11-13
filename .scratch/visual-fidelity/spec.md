@@ -31,7 +31,7 @@ Bring every screen to Variant D's fidelity using only data the project snapshot 
 ## Implementation Decisions
 
 - **Reference:** Variant D at tag `prototype-visual-v1` (branch `prototype/visual-direction`) stays the visual reference. Rebuild from it; never import its code. Run it with `cd prototype-visual && pnpm install && pnpm build && pnpm exec vite preview`, URL `?variant=D&theme=light|dark&lang=en|zh-CN`.
-- **Type scale:** page titles 39px (34px below 768px) with -0.055em tracking; uppercase eyebrow labels over card titles; dashboard card titles 16px with -0.025em tracking; work item card titles 13px/620; detail identity title 18px; tabular numerals for counts. Put these in shared patterns, not per screen.
+- **Type scale:** page titles 39px (34px below 768px) at weight 400 with -0.055em tracking; uppercase eyebrow labels over card titles; dashboard card titles 16px at weight 400 with -0.025em tracking; work item card titles 13px/620; detail identity title 18px; tabular numerals for counts. Put these in shared patterns, not per screen.
 - **Overview data:** derive only from the existing snapshot, with no new core or server state (ADR 0006).
   - Milestone percentage is the work-item done count already shared by Overview, Edit roadmap and the milestone filter (`workItemDone`).
   - The target marker comes from `milestone.target`.

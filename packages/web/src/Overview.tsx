@@ -7,7 +7,7 @@ import { stageName } from "./i18n/workflow-names";
 import { milestonePercent, overviewData, stintDays, ticketsUnavailable } from "./overview-data";
 import { AgentAvatar } from "./ui/AgentAvatar";
 import { Button } from "./ui/Button";
-import { Card, CardContent, CardHeader, CardTitle, Eyebrow } from "./ui/Card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle, Eyebrow } from "./ui/Card";
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "./ui/Empty";
 import { IconChip } from "./ui/IconChip";
 import { Item, ItemContent, ItemMedia } from "./ui/Item";
@@ -41,6 +41,7 @@ export function Overview({
   const data = overviewData(snapshot);
   const [now, setNow] = useState(Date.now);
   const days = stintDays(snapshot, new Date(now));
+  const weekTotal = days.reduce((sum, day) => sum + day.count, 0);
   const maxDay = Math.max(1, ...days.map((day) => day.count));
   const shippedMilestones = data.milestones.filter(
     ({ milestone }) => milestone.status === "shipped",
@@ -120,7 +121,7 @@ export function Overview({
           {t.board.lastAvailable}
         </p>
       )}
-      <div className="grid min-w-0 items-start grid-cols-1 gap-4 min-[769px]:grid-cols-2 min-[1280px]:grid-cols-[1fr_1.15fr_.95fr]">
+      <div className="grid min-w-0 grid-cols-1 gap-4 min-[769px]:grid-cols-2 min-[1280px]:grid-cols-[1fr_1.15fr_.95fr]">
         {!snapshot.workItems.length && (
           <Card className="min-[769px]:col-span-2 min-[1280px]:col-span-3">
             <Empty>
@@ -140,10 +141,6 @@ export function Overview({
         )}
         {data.milestones.length > 0 && (
           <Card className="min-w-0">
-            <CardHeader>
-              <Eyebrow>{t.overview.eyebrows.milestones}</Eyebrow>
-              <CardTitle>{t.overview.milestones}</CardTitle>
-            </CardHeader>
             <CardContent>
               {data.milestones
                 .filter(
@@ -152,31 +149,33 @@ export function Overview({
                 )
                 .map(({ milestone, resolved, total, incomplete, tickets }) => (
                   <div key={milestone.id} className="py-1">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left font-medium hover:underline"
-                        data-truncate
-                        title={milestone.name}
-                        onClick={() => onMilestone(milestone.id)}
-                      >
-                        {milestone.name}
-                      </button>
-                      <StatusChip
-                        status={
-                          milestone.status === "active"
-                            ? "running"
-                            : milestone.status === "shipped"
-                              ? "success"
-                              : "stopped"
-                        }
-                      >
-                        {t.planning.roadmap[milestone.status]}
-                      </StatusChip>
-                      <span className="text-right text-sm tabular-nums">
-                        {resolved}/{total} {t.overview.workItems}
-                      </span>
-                    </div>
+                    <CardHeader className="px-0">
+                      <Eyebrow>{t.overview.eyebrows.milestones}</Eyebrow>
+                      <CardTitle className="min-w-0">
+                        <button
+                          type="button"
+                          className="block max-w-full truncate text-left hover:underline"
+                          data-truncate
+                          title={milestone.name}
+                          onClick={() => onMilestone(milestone.id)}
+                        >
+                          {milestone.name}
+                        </button>
+                      </CardTitle>
+                      <CardAction>
+                        <StatusChip
+                          status={
+                            milestone.status === "active"
+                              ? "running"
+                              : milestone.status === "shipped"
+                                ? "success"
+                                : "stopped"
+                          }
+                        >
+                          {t.planning.roadmap[milestone.status]}
+                        </StatusChip>
+                      </CardAction>
+                    </CardHeader>
                     {incomplete && (
                       <p className="text-xs text-muted-foreground">
                         {t.overview.progressIncomplete}
@@ -193,18 +192,33 @@ export function Overview({
                       max={total || 1}
                       aria-label={milestone.name}
                     />
-                    {milestone.target && (
-                      <p className="mt-2 text-right text-xs text-muted-foreground">
-                        {t.overview.target} · {milestone.target}
-                      </p>
-                    )}
-                    <div className="mt-6 flex justify-between gap-2 border-t py-3 text-xs">
-                      <span className="text-muted-foreground">{t.overview.tickets}</span>
-                      <strong className="tabular-nums">
-                        {incomplete
-                          ? t.overview.unavailable
-                          : `${tickets.filter((ticket) => ticket.resolved).length}/${tickets.length}`}
-                      </strong>
+                    <div className="mt-2 flex justify-between gap-2 text-xs text-muted-foreground">
+                      <span>{t.overview.progress}</span>
+                      {milestone.target && (
+                        <span>
+                          {t.overview.target} · {milestone.target}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-6 space-y-0 text-xs">
+                      <div className="flex justify-between gap-2 py-3">
+                        <span className="text-muted-foreground">{t.overview.workItemMetric}</span>
+                        <strong className="tabular-nums">
+                          {resolved}/{total}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-2 border-t py-3">
+                        <span className="text-muted-foreground">{t.overview.tickets}</span>
+                        <strong className="tabular-nums">
+                          {incomplete
+                            ? t.overview.unavailable
+                            : `${tickets.filter((ticket) => ticket.resolved).length}/${tickets.length}`}
+                        </strong>
+                      </div>
+                      <div className="flex justify-between gap-2 border-t py-3">
+                        <span className="text-muted-foreground">{t.overview.stintsThisWeek}</span>
+                        <strong className="tabular-nums">{weekTotal}</strong>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -247,11 +261,14 @@ export function Overview({
             </CardContent>
           </Card>
         )}
-        {data.columns.length > 0 && (
+        {data.columns.some(({ count }) => count > 0) && (
           <Card className="min-w-0">
             <CardHeader>
               <Eyebrow>{t.overview.eyebrows.workflow}</Eyebrow>
               <CardTitle>{t.overview.stages}</CardTitle>
+              <CardAction className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {data.columns.reduce((sum, column) => sum + column.count, 0)} {t.overview.workItems}
+              </CardAction>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex flex-wrap justify-end gap-3 text-xs text-muted-foreground">
@@ -259,7 +276,7 @@ export function Overview({
                 <span>▨ {t.overview.waitingCount}</span>
               </div>
               {data.columns.map(({ column, count, running, waiting }) => {
-                const max = Math.max(...data.columns.map((entry) => entry.count));
+                const max = Math.max(1, ...data.columns.map((entry) => entry.count));
                 const label = t.workflows.feature.stages[column];
                 return (
                   <div key={column} className="flex items-center gap-2 text-xs">
@@ -280,7 +297,7 @@ export function Overview({
                         style={{ width: `${(waiting / max) * 100}%` }}
                       />
                       <span
-                        className="bg-border"
+                        className="bg-muted-foreground/40"
                         style={{ width: `${((count - running - waiting) / max) * 100}%` }}
                       />
                     </div>
@@ -292,18 +309,20 @@ export function Overview({
           </Card>
         )}
         {data.next && (
-          <Card className="min-h-[315px] min-w-0 justify-between border-0 bg-[radial-gradient(circle_at_95%_95%,var(--overview-focus-glow),transparent_45%),linear-gradient(135deg,var(--overview-focus-start),var(--overview-focus-middle)_52%,var(--overview-focus-end))] text-white min-[769px]:col-span-2 min-[1280px]:col-span-1">
+          <Card className="min-h-[315px] min-w-0 justify-between border-0 bg-[radial-gradient(circle_at_95%_95%,var(--overview-focus-glow),transparent_45%),linear-gradient(135deg,var(--overview-focus-start),var(--overview-focus-middle)_52%,var(--overview-focus-end))] text-white">
             <CardHeader>
-              <Eyebrow className="text-white/80">{t.overview.eyebrows.next}</Eyebrow>
+              <span className="w-fit rounded-full border border-white/20 bg-white/15 px-3 py-2 text-xs">
+                {t.overview.next}
+              </span>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <CardTitle
-                className="truncate text-[28px] leading-tight"
+                className="truncate text-[28px] leading-tight font-normal"
                 data-truncate
                 title={data.next.title}
               >
                 {data.next.title}
               </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
               <p className="text-sm text-white/80 [overflow-wrap:anywhere]">
                 {data.next.slug} · {stageLabel(data.next, data.next.stage)}
                 {data.next.milestone &&
@@ -356,7 +375,7 @@ export function Overview({
         )}
 
         {data.attention.length > 0 && (
-          <Card className="min-w-0 min-[1280px]:row-span-2">
+          <Card className="min-w-0">
             <CardHeader>
               <Eyebrow>{t.overview.eyebrows.attention}</Eyebrow>
               <CardTitle>
@@ -402,12 +421,17 @@ export function Overview({
           <Card className="min-w-0">
             <CardHeader>
               <Eyebrow>{t.overview.eyebrows.activity}</Eyebrow>
-              <CardTitle>{t.overview.activity}</CardTitle>
+              <CardTitle>{t.overview.lastSevenDays}</CardTitle>
+              <CardAction className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
+                {weekTotal} {t.overview.stintCount}
+              </CardAction>
             </CardHeader>
             <CardContent>
-              <p className="text-xs text-muted-foreground">{t.overview.lastSevenDays}</p>
+              {weekTotal === 0 && (
+                <p className="text-xs text-muted-foreground">{t.overview.noStintsThisWeek}</p>
+              )}
               <ul
-                className="mt-4 flex h-[140px] items-end gap-3"
+                className={`mt-4 flex ${weekTotal ? "h-[140px]" : "h-6"} items-end gap-3`}
                 aria-label={t.overview.lastSevenDays}
               >
                 {days.map(({ date, count }, index) => {
@@ -424,7 +448,7 @@ export function Overview({
                     >
                       <div
                         className={`w-full max-w-8 rounded-t ${index === 6 ? "bg-[var(--overview-chart-today)]" : "bg-[var(--overview-chart)]"}`}
-                        style={{ height: `${(count / maxDay) * 100}%` }}
+                        style={{ height: count ? `${(count / maxDay) * 100}%` : "2px" }}
                       />
                       <span className="text-xs text-muted-foreground">
                         {date.toLocaleDateString(language, { weekday: "short" })}
