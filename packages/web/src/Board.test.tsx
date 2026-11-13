@@ -380,16 +380,15 @@ test("renders tickets in dependency order with Blocked by", async () => {
   ).toBeInTheDocument();
 });
 
-test("?item=<slug> opens the drawer on load", () => {
+test("?item=<slug> opens the drawer on load", async () => {
   window.history.replaceState(null, "", "/?item=board");
   render(<Board snapshot={project()} />);
   const drawer = screen.getByRole("dialog", { name: "The live board" });
+  expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  await userEvent.setup().click(within(drawer).getByText("Agents by stage"));
   const rail = within(drawer).getByRole("list", { name: "Feature workflow stages" });
   expect(rail.querySelector('[aria-current="step"]')).toHaveTextContent("ImplementInferred");
-  expect(within(drawer).getByText("Milestone").closest("[role=group]")).toHaveTextContent(
-    "M1 · The board",
-  );
-  expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(within(drawer).getByText(/Feature · M1 · The board/)).toBeVisible();
 });
 
 test("command palette jumps to a work item", async () => {
@@ -540,12 +539,13 @@ test("refreshes the open drawer and returns focus to a card that changed stage",
     />,
   );
   const drawer = screen.getByRole("dialog");
+  expect(screen.getByRole("button", { name: "Close work item" })).toHaveFocus();
+  await user.click(within(drawer).getByText("Agents by stage"));
   expect(
     within(drawer)
       .getByRole("list", { name: "Feature workflow stages" })
       .querySelector('[aria-current="step"]'),
   ).toHaveTextContent("ReviewInferred");
-  expect(screen.getByRole("button", { name: "Close work item" })).toHaveFocus();
   await user.keyboard("{Escape}");
   expect(
     within(screen.getByRole("region", { name: "Review" })).getByRole("button", {
@@ -582,6 +582,7 @@ test("searches the palette by slug and supports its keyboard close button", asyn
   );
   await user.keyboard("{Enter}");
   const drawer = screen.getByRole("dialog", { name: "Diagnose login" });
+  await user.click(within(drawer).getByText("Agents by stage"));
   expect(
     Array.from(
       within(drawer).getByRole("list", { name: "Bug workflow stages" }).querySelectorAll("li dt"),

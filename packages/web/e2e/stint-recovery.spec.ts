@@ -128,6 +128,25 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           live.getByRole("button", { name: t.stints.stopStint, exact: true }),
         ).toBeEnabled();
+        const contentBounds = await drawer.locator(".drawer-content").boundingBox();
+        for (const element of [
+          live.getByRole("heading", { name: t.stints.liveStint, exact: true }),
+          live
+            .locator(".stint-recovery")
+            .getByText(t.stints.recovery.states.resuming, { exact: true }),
+        ]) {
+          const bounds = await element.boundingBox();
+          expect(
+            bounds &&
+              contentBounds &&
+              bounds.y >= contentBounds.y &&
+              bounds.y + bounds.height <= contentBounds.y + contentBounds.height,
+          ).toBeTruthy();
+        }
+        expect(
+          await drawer.locator(".drawer-content").evaluate((element) => element.scrollTop),
+        ).toBe(0);
+        await drawer.getByText(t.drawerIdentity.agentsByStage).click();
         for (const picker of await drawer.locator(".stage-rail").getByRole("combobox").all())
           await expect(picker).toBeDisabled();
         await live

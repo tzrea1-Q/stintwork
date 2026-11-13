@@ -101,8 +101,9 @@ for (const language of ["en", "zh-CN"] as const) {
 
         await expect(close).toBeFocused();
         await expect(
-          sheet.locator(".drawer-header").getByRole("heading", { name: item.title, exact: true }),
+          sheet.locator(".drawer-identity").getByRole("heading", { name: item.title, exact: true }),
         ).toHaveAttribute("title", item.title);
+        await sheet.locator("summary", { hasText: t.drawerIdentity.agentsByStage }).click();
         await expect(sheet.getByRole("combobox").last()).toBeDisabled();
         const rows = sheet.locator(".drawer-content > dl [role=group]");
         const positions = await rows.evaluateAll((elements) =>
@@ -208,6 +209,7 @@ for (const language of ["en", "zh-CN"] as const) {
         );
         await page.reload();
         await trigger.click();
+        await sheet.locator("summary", { hasText: t.drawerIdentity.agentsByStage }).click();
         const picker = sheet.locator(".stage-rail").getByRole("combobox").first();
         await expect(picker).toBeEnabled();
         await picker.click();

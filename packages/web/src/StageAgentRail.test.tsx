@@ -72,6 +72,7 @@ test.each([200, 503])(
         </SheetContent>
       </Sheet>,
     );
+    await user.click(screen.getByText("Agents by stage"));
     const picker = screen.getByRole("combobox", { name: "Review agent" });
     await waitFor(() => expect(picker).toBeEnabled());
     await user.click(picker);
@@ -124,6 +125,7 @@ test("Chinese agent picker translates an internal error and preserves unknown ag
       <StageAgentRail item={item} />
     </LanguageProvider>,
   );
+  await userEvent.setup().click(screen.getByText("各阶段 Agent"));
   const picker = screen.getByRole("combobox", { name: "实现 Agent" });
   await waitFor(() => expect(picker).toBeEnabled());
   await userEvent.setup().click(picker);
@@ -153,6 +155,7 @@ test("the stage rail defaults to workflow agents, honours stage choices, disable
     ),
   );
   render(<StageAgentRail item={item} />);
+  await userEvent.setup().click(screen.getByText("Agents by stage"));
   const picker = screen.getByRole("combobox", { name: "Implement agent" });
   await waitFor(() => expect(picker).toHaveTextContent("Claude Code"));
   expect(screen.getAllByRole("combobox")).toHaveLength(builtInWorkflows.feature.stages.length);
@@ -185,6 +188,7 @@ test("failed saves leave the recorded selection visible and expose the server re
     ),
   );
   render(<StageAgentRail item={item} />);
+  await userEvent.setup().click(screen.getByText("Agents by stage"));
   const picker = screen.getByRole("combobox", { name: "Implement agent" });
   await waitFor(() => expect(picker).toHaveTextContent("Claude Code"));
   await chooseOption(userEvent.setup(), picker, "Codex");
@@ -201,6 +205,7 @@ test("live workflow changes replace a saved local selection", async () => {
     ),
   );
   const { rerender } = render(<StageAgentRail item={item} />);
+  await userEvent.setup().click(screen.getByText("Agents by stage"));
   const picker = screen.getByRole("combobox", { name: "Review agent" });
   await waitFor(() => expect(picker).toBeEnabled());
   await chooseOption(userEvent.setup(), picker, "Claude Code");
@@ -217,6 +222,7 @@ test("an unregistered stage agent remains visible instead of silently selecting 
     vi.fn(async () => new Response(JSON.stringify({ agents }))),
   );
   render(<StageAgentRail item={{ ...item, stages: { implement: { agent: "removed" } } }} />);
+  await userEvent.setup().click(screen.getByText("Agents by stage"));
   await waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Implement agent" })).toHaveTextContent(
       "removed — Not registered",
@@ -324,6 +330,9 @@ test.each([
       <StageAgentRail item={item} />
     </LanguageProvider>,
   );
+  await userEvent
+    .setup()
+    .click(screen.getByText(language === "en" ? "Agents by stage" : "各阶段 Agent"));
   const picker = screen.getByRole("combobox", { name });
   await waitFor(() => expect(picker).toBeEnabled());
   await userEvent.setup().click(picker);
@@ -332,16 +341,52 @@ test.each([
   expect(screen.getByRole("option", { name: "Codex" })).toBeInTheDocument();
 });
 
+test("the identity shows work item context and the current inferred agent", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(JSON.stringify({ agents }))),
+  );
+  const detail = {
+    ...item,
+    inferred: true,
+    pullRequest: {
+      branch: "feature/first",
+      url: "https://example.com/pr",
+      number: 1,
+      repo: "example/repo",
+      remote: "origin",
+      remoteUrl: "https://example.com/repo",
+      base: "main",
+      headCommit: "abc",
+    },
+  };
+  render(
+    <WorkItemDrawer
+      item={detail}
+      milestone={{ id: "m1", name: "Milestone one", status: "active", workItemSlugs: [] }}
+      onClose={() => {}}
+    />,
+  );
+  expect(screen.getByRole("heading", { name: "First", level: 2 })).toBeVisible();
+  expect(screen.getByText("Feature · Milestone one")).toBeVisible();
+  expect(screen.getAllByText("feature/first").length).toBeGreaterThan(0);
+  const row = screen.getByText("Agent for this stage").closest('[role="group"]');
+  await waitFor(() => expect(row).toHaveTextContent("Claude Code"));
+  expect(row).toHaveTextContent("Inferred");
+});
+
 test("the detail renders each stage picker once in its property list and marks the current stage", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify({ agents }))),
   );
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.getByText("Agents by stage").closest("details")).not.toHaveAttribute("open");
+  await userEvent.setup().click(screen.getByText("Agents by stage"));
   const rail = screen.getByRole("list", { name: "Feature workflow stages" });
   const properties = rail.closest("dl");
   expect(properties).not.toBeNull();
-  expect(properties).toHaveClass("[&_[role=group]]:grid-cols-[1rem_6.5rem_minmax(0,1fr)]");
+  expect(properties).toHaveClass("[&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)]");
   expect(properties).toHaveClass("[&_[role=group]]:items-center");
   expect(properties).not.toHaveClass("overflow-auto");
   expect(properties).not.toHaveClass("overflow-y-auto");

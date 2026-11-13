@@ -16,7 +16,12 @@ export function joinChinese(...segments: (string | number | null | undefined)[])
 }
 
 export const zhCN: Catalog = {
-  drawerIdentity: { milestone: "里程碑", workflow: "工作流" },
+  drawerIdentity: {
+    milestone: "里程碑",
+    workflow: "工作流",
+    stageAgent: "本阶段的 Agent",
+    agentsByStage: "各阶段 Agent",
+  },
   codeBlock: "代码块",
   warningCallout: {
     title: (count) => `${count} 条警告`,

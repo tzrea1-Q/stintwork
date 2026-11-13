@@ -48,6 +48,7 @@ test.each(["feature", "team", "constructor"])(
     const column = screen.getByRole("region", { name: "Spec" });
     const card = within(column).getByRole("article", { name: "example: Example" });
     fireEvent.click(within(card).getByRole("button", { name: "Open example: Example" }));
+    fireEvent.click(screen.getByText("Agents by stage"));
     expect(screen.getByRole("list", { name: "Team workflow workflow stages" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Design agent" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Build agent" })).toBeInTheDocument();
