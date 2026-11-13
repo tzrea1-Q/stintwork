@@ -277,7 +277,7 @@ export function Board({
                       {t.board.lastAvailable}
                     </p>
                   )}
-                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-3 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-4 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
                     <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
                       <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
                         <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />

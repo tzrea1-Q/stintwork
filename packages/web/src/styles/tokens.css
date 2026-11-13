@@ -62,6 +62,7 @@
   --type-title-small: 34px;
   --type-eyebrow: 10px;
   --type-card-title: 16px;
+  --type-item-title: 13px;
   --type-context: 13px;
   font-family: var(--font-sans);
   font-size: var(--type-base);

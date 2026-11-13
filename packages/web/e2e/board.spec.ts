@@ -157,7 +157,7 @@ for (const language of ["en", "zh-CN"] as const) {
         if (width < 1024)
           expect(await stages.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
         await assertLayout(page, { region: ".pipeline-main" });
-        const inference = page.getByRole("button", { name: t.card.inferred, exact: true }).first();
+        const inference = page.getByRole("button", { name: new RegExp(t.card.inferred) }).first();
         await inference.hover();
         const description = page.getByRole("tooltip");
         await expect(description).toContainText(t.card.inference);

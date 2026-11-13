@@ -10,6 +10,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
+import { attentionSnapshot } from "./attention-test-fixtures";
 import { WorkItemCard } from "./WorkItemCard";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
@@ -166,16 +167,17 @@ test("the toolbar milestone picker supports keyboard selection and dismissal wit
   expect(window.location.href).toBe(url);
 });
 
-test("shows blocked and inferred badges", async () => {
+test("shows blocked and exposes inference by keyboard", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   const board = within(screen.getByRole("article", { name: /^board:/ }));
   expect(board.getByText("Blocked")).toBeInTheDocument();
-  await user.hover(board.getByRole("button", { name: "Inferred" }));
+  const trigger = board.getByRole("button", { name: /Inferred/ });
+  board.getByRole("button", { name: /^Open board:/ }).focus();
+  await user.tab();
+  expect(trigger).toHaveFocus();
   expect(await screen.findByRole("tooltip")).toHaveTextContent(/no valid workflow.yaml/);
-  expect(board.getByRole("button", { name: "Inferred" })).toHaveAccessibleDescription(
-    /Some tickets are open/,
-  );
+  expect(trigger).toHaveAccessibleDescription(/Some tickets are open/);
   expect(
     within(screen.getByRole("article", { name: /^ready:/ })).queryByText("Blocked"),
   ).not.toBeInTheDocument();
@@ -1043,7 +1045,8 @@ test("card tint, status and segmented progress follow snapshot state", () => {
 test("empty stages remain named, counted and focusable", () => {
   render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
   const column = screen.getByRole("region", { name: "Ship" });
-  expect(column).toHaveClass("flex-[0_0_64px]", "min-w-16");
+  expect(column).toHaveClass("flex-1", "min-w-[150px]");
+  expect(within(column).getAllByRole("heading")).toHaveLength(1);
   expect(column).toHaveAttribute("tabindex", "0");
   expect(within(column).getByText("0")).toBeInTheDocument();
 });
@@ -1098,4 +1101,100 @@ test("overview hides the pipeline wrapper and its docked detail", async () => {
   expect(screen.queryByRole("complementary", { name: "The live board" })).not.toBeInTheDocument();
   expect(container.querySelector(".pipeline-main")?.parentElement).not.toBeVisible();
   vi.unstubAllGlobals();
+});
+
+test("idle card keeps its identity and progress without status rows", () => {
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  render(
+    <WorkItemCard
+      item={{
+        ...item,
+        tickets: item.tickets.map((ticket) => ({ ...ticket, blocked: false })),
+        stints: [],
+        activeStint: null,
+      }}
+      milestone={snapshot.milestones[0]}
+      workflow={snapshot.workflows[item.workflow]}
+      agents={snapshot.agents}
+      onOpen={() => {}}
+    />,
+  );
+  const card = screen.getByRole("article");
+  expect(within(card).getByText(item.title)).toBeInTheDocument();
+  expect(within(card).getByText(item.slug)).toBeInTheDocument();
+  expect(within(card).getByText("m1")).toBeInTheDocument();
+  expect(within(card).getByRole("img")).toBeInTheDocument();
+  expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuemax", "2");
+  expect(within(card).queryByText("No active stint")).not.toBeInTheDocument();
+  expect(within(card).queryByText("Inferred")).not.toBeInTheDocument();
+  expect(within(card).queryByText("Stopped")).not.toBeInTheDocument();
+});
+
+test("columns show running and waiting counts only when present", () => {
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  const stint = foldStintLog([
+    {
+      type: "started",
+      at: "2026-10-09T10:00:00Z",
+      stint: {
+        id: "stint",
+        workItem: item.slug,
+        stage: "implement",
+        ticket: 1,
+        agent: "codex",
+        worktree: { path: "/worktree", branch: "work" },
+        baseCommit: "base",
+        brief: { skill: null, pointers: [], lastHandoff: null, changedPaths: [], prompt: "Work" },
+      },
+    },
+  ]);
+  item.activeStint = stint;
+  render(<Board snapshot={snapshot} />);
+  expect(
+    within(screen.getByRole("region", { name: "Implement" })).getByText("1 running"),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("region", { name: "Ship" })).queryByText(/running|waiting/),
+  ).not.toBeInTheDocument();
+});
+
+test("stopped chip reflects only a stopped stint in the current stage of an unmerged item", () => {
+  const item = attentionSnapshot().workItems[0];
+  const stopped = {
+    ...item,
+    activeStint: null,
+    stints: [{ ...item.stints[0], status: "stopped" as const }],
+  };
+  const { rerender } = render(<WorkItemCard item={stopped} onOpen={() => {}} />);
+  expect(screen.getByText("Stopped")).toBeInTheDocument();
+
+  rerender(<WorkItemCard item={{ ...stopped, stage: "review" }} onOpen={() => {}} />);
+  expect(screen.queryByText("Stopped")).not.toBeInTheDocument();
+
+  rerender(
+    <WorkItemCard
+      item={{ ...stopped, merged: { at: "2026-10-10T10:00:00Z", commit: "a".repeat(40) } }}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.queryByText("Stopped")).not.toBeInTheDocument();
+
+  rerender(
+    <WorkItemCard
+      item={{ ...stopped, stints: [{ ...stopped.stints[0], status: "finished" }] }}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.queryByText("Stopped")).not.toBeInTheDocument();
+});
+
+test("column header includes waiting count", () => {
+  render(<Board snapshot={attentionSnapshot()} />);
+  expect(
+    within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 1 need you"),
+  ).toBeInTheDocument();
 });

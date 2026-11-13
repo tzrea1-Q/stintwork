@@ -55,31 +55,18 @@ export function Column({
     .join(" · ");
   return (
     <section
-      className={`stage-column relative min-w-0 snap-start ${items.length ? "min-w-[150px] max-w-[340px] flex-1" : "group flex-[0_0_64px] min-w-16 transition-[flex-basis] hover:basis-[150px] focus-within:basis-[150px]"}`}
+      className="stage-column relative min-w-[150px] max-w-[340px] flex-1 snap-start"
       data-card-column={id}
       aria-labelledby={`stage-${id}`}
       tabIndex={items.length ? undefined : 0}
     >
       <header className="stage-header px-1 pb-4 pt-2">
-        <div
-          className={
-            items.length ? "flex flex-wrap items-center gap-2" : "flex flex-col items-center gap-2"
-          }
-        >
+        <div className="flex flex-wrap items-center gap-2">
           <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
-          <h2
-            id={`stage-${id}`}
-            title={name}
-            data-truncate={!items.length || undefined}
-            className={
-              items.length
-                ? "min-w-0 break-words text-xs font-medium"
-                : "w-full truncate text-center text-xs font-medium"
-            }
-          >
+          <h2 id={`stage-${id}`} title={name} className="min-w-0 break-words text-xs font-medium">
             {name}
           </h2>
-          <span className="count text-xs text-muted-foreground">{items.length}</span>
+          <span className="count tabular-nums text-xs text-muted-foreground">{items.length}</span>
         </div>
         {stats && <p className="mt-2 text-xs text-muted-foreground">{stats}</p>}
       </header>
