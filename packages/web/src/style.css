@@ -1,6 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 @import "tailwindcss";
-@import "tw-animate-css";
 @import "@fontsource-variable/geist";
 @import "@fontsource-variable/geist-mono";
 @import "./styles/tokens.css";
@@ -32,5 +31,35 @@
   * {
     scrollbar-width: thin;
     scrollbar-color: var(--input) transparent;
+  }
+}
+
+/* Utilities cannot target ::details-content or its discrete visibility transition. */
+@layer base {
+  details {
+    interpolate-size: allow-keywords;
+  }
+  details::details-content {
+    height: 0;
+    overflow: clip;
+    transition:
+      height var(--motion-duration-disclosure) var(--motion-ease-soft),
+      content-visibility var(--motion-duration-disclosure) allow-discrete;
+  }
+  details[open]::details-content {
+    height: auto;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    details::details-content {
+      transition: none;
+    }
+  }
+}
+.group\/disclosure summary svg {
+  transition: rotate var(--motion-duration-disclosure) var(--motion-ease-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .group\/disclosure summary svg {
+    transition: none;
   }
 }

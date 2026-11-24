@@ -1,5 +1,17 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 :root {
+  --motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --motion-ease-soft: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --motion-ease-away: cubic-bezier(0.33, 0.17, 0.67, 0.5);
+  --motion-ease-color: cubic-bezier(0.25, 0.1, 0.25, 1);
+  --motion-duration-color: 150ms;
+  --motion-duration-fade: 200ms;
+  --motion-duration-menu: 180ms;
+  --motion-duration-overlay: 300ms;
+  --motion-duration-sheet: 400ms;
+  --motion-duration-disclosure: 300ms;
+  --motion-duration-swap: 180ms;
+  --motion-duration-dismiss: 180ms;
   color-scheme: light;
   --background: oklch(0.9617 0.0027 286.35);
   --foreground: oklch(0.2069 0.0098 285.51);

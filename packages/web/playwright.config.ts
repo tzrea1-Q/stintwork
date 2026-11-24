@@ -15,6 +15,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never", outputFolder: "coverage/e2e/report" }]],
   use: {
     baseURL: `http://127.0.0.1:${port}`,
+    contextOptions: { reducedMotion: "reduce" },
     browserName: "chromium",
     channel: process.env.CI ? undefined : (process.env.PLAYWRIGHT_CHROME_CHANNEL ?? "chrome"),
     screenshot: "only-on-failure",

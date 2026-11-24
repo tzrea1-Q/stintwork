@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 "use client";
 
+import { m } from "motion/react";
+import { spring, useReducedMotionSafe } from "./motion";
 import type * as React from "react";
 import { cn } from "./cn";
 import { Progress as ProgressPrimitive } from "radix-ui";
@@ -11,6 +13,7 @@ function Progress({
   max = 100,
   ...props
 }: React.ComponentProps<typeof ProgressPrimitive.Root>) {
+  const reduced = useReducedMotionSafe();
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
@@ -22,11 +25,14 @@ function Progress({
       )}
       {...props}
     >
-      <ProgressPrimitive.Indicator
-        data-slot="progress-indicator"
-        className="size-full flex-1 bg-primary transition-all"
-        style={{ transform: `translateX(-${100 - ((value ?? 0) / max) * 100}%)` }}
-      />
+      <ProgressPrimitive.Indicator asChild data-slot="progress-indicator">
+        <m.div
+          className="size-full flex-1 origin-left bg-primary"
+          initial={false}
+          animate={{ scaleX: Math.max(0, Math.min(1, (value ?? 0) / max)) }}
+          transition={reduced ? { duration: 0 } : spring.number}
+        />
+      </ProgressPrimitive.Indicator>
     </ProgressPrimitive.Root>
   );
 }

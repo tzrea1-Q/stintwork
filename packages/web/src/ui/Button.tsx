@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { cva, type VariantProps } from "class-variance-authority";
+import { m } from "motion/react";
+import { usePress } from "./motion";
 import { Slot } from "radix-ui";
-import { type ComponentPropsWithoutRef, forwardRef } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type ComponentType,
+  type RefAttributes,
+  forwardRef,
+  isValidElement,
+  useImperativeHandle,
+  useRef,
+} from "react";
 import { cn } from "./cn";
 
 const buttonVariants = cva(
-  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal border text-sm font-medium [overflow-wrap:anywhere] transition-colors motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
+  "inline-flex max-w-full shrink-0 items-center justify-center gap-2 whitespace-normal border text-sm font-medium [overflow-wrap:anywhere] transition-[color,background-color,border-color,box-shadow,opacity] duration-(--motion-duration-color) ease-(--motion-ease-color) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-icon-sm",
   {
     variants: {
       variant: {
@@ -28,17 +38,46 @@ const buttonVariants = cva(
   },
 );
 
+const ButtonSlot = Slot.Root as ComponentType<
+  ComponentPropsWithoutRef<"button"> & RefAttributes<HTMLButtonElement>
+>;
+const MotionButton = m.button as ComponentType<
+  ComponentPropsWithoutRef<"button"> & {
+    animate?: { scale: number };
+    transition?: typeof import("./motion").spring.press;
+  } & RefAttributes<HTMLButtonElement>
+>;
+
 export const Button = forwardRef<
   HTMLButtonElement,
   ComponentPropsWithoutRef<"button"> & VariantProps<typeof buttonVariants> & { asChild?: boolean }
 >(function Button({ asChild, variant, size, className, type, ...props }, ref) {
-  const Component = asChild ? Slot.Root : "button";
+  const { press, rest } = usePress("control", props);
+  const elementRef = useRef<HTMLButtonElement>(null);
+  useImperativeHandle(ref, () => elementRef.current as HTMLButtonElement);
+  const classes = cn(buttonVariants({ variant, size }), className);
+  // Arbitrary asChild elements cannot be guaranteed to support Motion props.
+  if (asChild) {
+    const animated =
+      isValidElement(rest.children) &&
+      (rest.children.type === m.button || rest.children.type === m.a);
+    return (
+      <ButtonSlot
+        {...(animated ? press : {})}
+        ref={elementRef}
+        type={type}
+        className={classes}
+        {...(animated ? rest : props)}
+      />
+    );
+  }
   return (
-    <Component
-      ref={ref}
-      type={asChild ? type : (type ?? "button")}
-      className={cn(buttonVariants({ variant, size }), className)}
-      {...props}
+    <MotionButton
+      {...press}
+      {...rest}
+      ref={elementRef}
+      type={type ?? "button"}
+      className={classes}
     />
   );
 });

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createRoot } from "react-dom/client";
+import { MotionRoot } from "./ui/MotionRoot";
 import { App } from "./App";
 import { Toaster } from "./ui/Sonner";
 import "./style.css";
@@ -10,8 +11,8 @@ if (!root) {
   throw new Error("The page is missing its root element.");
 }
 createRoot(root).render(
-  <>
+  <MotionRoot>
     <App />
     <Toaster position="bottom-center" offset={16} mobileOffset={16} />
-  </>,
+  </MotionRoot>,
 );

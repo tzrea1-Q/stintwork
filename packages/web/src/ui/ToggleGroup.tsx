@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 "use client";
 
+import { m } from "motion/react";
+import { usePress } from "./motion";
 import * as React from "react";
 import type { VariantProps } from "class-variance-authority";
 import { cn } from "./cn";
@@ -63,9 +65,11 @@ function ToggleGroupItem({
   ...props
 }: React.ComponentProps<typeof ToggleGroupPrimitive.Item> & VariantProps<typeof toggleVariants>) {
   const context = React.useContext(ToggleGroupContext);
+  const { press, rest } = usePress("control", props);
 
   return (
     <ToggleGroupPrimitive.Item
+      asChild
       data-slot="toggle-group-item"
       data-variant={context.variant || variant}
       data-size={context.size || size}
@@ -78,9 +82,9 @@ function ToggleGroupItem({
         }),
         className,
       )}
-      {...props}
+      {...rest}
     >
-      {children}
+      <m.button {...press}>{children}</m.button>
     </ToggleGroupPrimitive.Item>
   );
 }
