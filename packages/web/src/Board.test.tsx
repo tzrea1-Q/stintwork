@@ -129,16 +129,17 @@ test("stage navigation targets column snap positions", async () => {
   const { container } = render(<Board snapshot={project()} />);
   const scroller = container.querySelector<HTMLElement>(".board-scroll");
   if (!scroller) throw new Error("Board scroller is missing");
+  scroller.style.scrollPaddingLeft = "28px";
   const columns = container.querySelectorAll<HTMLElement>(".stage-column");
   columns.forEach((column, index) => {
-    Object.defineProperty(column, "offsetLeft", { value: 16 + index * 180 });
+    Object.defineProperty(column, "offsetLeft", { value: 24 + index * 180 });
   });
   const scrollTo = vi.fn();
   scroller.scrollTo = scrollTo;
   const navigation = screen.getByRole("navigation", { name: "Stage navigation" });
   await user.click(within(navigation).getByRole("button", { name: "Next stages" }));
-  expect(scrollTo).toHaveBeenLastCalledWith({ left: 180 });
-  scroller.scrollLeft = 180;
+  expect(scrollTo).toHaveBeenLastCalledWith({ left: 176 });
+  scroller.scrollLeft = 176;
   await user.click(within(navigation).getByRole("button", { name: "Previous stages" }));
   expect(scrollTo).toHaveBeenLastCalledWith({ left: 0 });
 });

@@ -66,7 +66,8 @@ export function Board({
     const viewport = scroll.current;
     const columns = Array.from(viewport?.querySelectorAll<HTMLElement>(".stage-column") ?? []);
     if (!viewport || columns.length < 2) return;
-    const positions = columns.map((column) => column.offsetLeft - columns[0].offsetLeft);
+    const padding = Number.parseFloat(getComputedStyle(viewport).scrollPaddingLeft) || 0;
+    const positions = columns.map((column) => Math.max(0, column.offsetLeft - padding));
     const current = positions.reduce(
       (nearest, position, index) =>
         Math.abs(position - viewport.scrollLeft) <
@@ -386,7 +387,7 @@ export function Board({
                     <GithubStatus github={snapshot.github} />
                   )}
                   <section
-                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 scroll-px-4 sm:px-6 sm:scroll-px-6 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
                     onScroll={(event) => {
                       const grid = event.currentTarget.querySelector(".stage-grid");
                       event.currentTarget.dataset.scrolled = String(
