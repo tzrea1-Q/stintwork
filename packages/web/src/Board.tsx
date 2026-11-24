@@ -48,6 +48,10 @@ export function Board({
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createMounted, setCreateMounted] = useState(false);
+  useEffect(() => {
+    if (createOpen) setCreateMounted(true);
+  }, [createOpen]);
   const [customiseId, setCustomiseId] = useState<string | null>(null);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
@@ -638,9 +642,11 @@ export function Board({
           onClose={() => setPaletteOpen(false)}
         />
       )}
-      {createOpen && !githubTracker && (
+      {(createOpen || createMounted) && !githubTracker && (
         <CreateWorkItem
           snapshot={snapshot}
+          open={createOpen}
+          onExitComplete={() => setCreateMounted(false)}
           onClose={() => setCreateOpen(false)}
           onCreated={() => {
             setSelectedMilestone("");

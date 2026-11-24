@@ -25,6 +25,10 @@ test("a popover opens by keyboard, closes on Escape or outside press and returns
   await user.keyboard("{Escape}");
   await waitFor(() => expect(trigger).toHaveFocus());
   await user.click(trigger);
+  await user.click(trigger);
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
+  await user.click(trigger);
   await user.click(screen.getByRole("button", { name: "Outside" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });

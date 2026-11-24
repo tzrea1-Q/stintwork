@@ -14,10 +14,14 @@ import { SelectField } from "./ui/SelectField";
 
 export function CreateWorkItem({
   snapshot,
+  open = true,
+  onExitComplete,
   onClose,
   onCreated,
 }: {
   snapshot: ProjectSnapshot;
+  open?: boolean;
+  onExitComplete?: () => void;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -125,12 +129,13 @@ export function CreateWorkItem({
 
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(open) => {
         if (!open && !saving) onClose();
       }}
     >
       <DialogContent
+        onExitComplete={onExitComplete}
         aria-describedby={undefined}
         className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-xl [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-xl [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-card [&_textarea]:p-2"
         onEscapeKeyDown={(event) => {

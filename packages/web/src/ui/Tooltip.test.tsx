@@ -145,3 +145,25 @@ test.each(["default", "controlled"])(
     expect(changed).toHaveBeenCalledExactlyOnceWith(false);
   },
 );
+
+test("a tooltip opened shortly after another closes is instant", async () => {
+  const user = userEvent.setup();
+  render(
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger>First</TooltipTrigger>
+        <TooltipContent>First tip</TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger>Second</TooltipTrigger>
+        <TooltipContent>Second tip</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>,
+  );
+  await user.tab();
+  await screen.findByRole("tooltip", { name: "First tip" });
+  await user.keyboard("{Escape}");
+  await user.tab();
+  await screen.findByRole("tooltip", { name: "Second tip" });
+  expect(document.querySelector('[data-instant="true"]')).toHaveTextContent("Second tip");
+});

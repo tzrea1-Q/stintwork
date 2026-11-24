@@ -7,12 +7,14 @@ import {
 } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { LazyMotion, domMax, MotionGlobalConfig } from "motion/react";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { recoveryStint } from "./recovery-test-fixtures";
 import { WorkItemDrawer } from "./WorkItemDrawer";
+import { MotionRoot } from "./ui/MotionRoot";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -887,3 +889,61 @@ test.each([
     localStorage.removeItem(languageStorageKey);
   },
 );
+
+test("the mobile drawer finishes its entrance with motion enabled", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ agents: [] }))),
+    );
+    const user = userEvent.setup();
+    render(
+      <MotionRoot>
+        <DrawerExample />
+      </MotionRoot>,
+    );
+    await user.click(screen.getByRole("button", { name: "Inspect First" }));
+    const dialog = screen.getByRole("dialog", { name: "First" });
+    await waitFor(
+      () => {
+        expect(dialog).toHaveStyle({ opacity: "1", transform: "none" });
+      },
+      { timeout: 2500 },
+    );
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test("the mobile drawer enters when Motion features load after it mounts", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ agents: [] }))),
+    );
+    let load!: (features: typeof domMax) => void;
+    const features = () =>
+      new Promise<typeof domMax>((resolve) => {
+        load = resolve;
+      });
+    const user = userEvent.setup();
+    render(
+      <LazyMotion features={features} strict>
+        <DrawerExample />
+      </LazyMotion>,
+    );
+    await user.click(screen.getByRole("button", { name: "Inspect First" }));
+    const dialog = screen.getByRole("dialog", { name: "First" });
+    expect(dialog).toHaveStyle({ opacity: "1", transform: "none" });
+    await act(async () => {
+      load(domMax);
+    });
+    await waitFor(() => expect(dialog).toHaveStyle({ opacity: "1", transform: "none" }), {
+      timeout: 2500,
+    });
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});

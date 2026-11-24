@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
-import { expect, test } from "vitest";
+import { MotionGlobalConfig } from "motion/react";
+import { useRef, useState } from "react";
+import { expect, test, vi } from "vitest";
+import { Button } from "./Button";
 import {
   Dialog,
   DialogClose,
@@ -11,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./Dialog";
+import { MotionRoot } from "./MotionRoot";
 import { Popover, PopoverContent, PopoverTrigger } from "./Popover";
 
 test("a conditionally mounted dialog returns focus without a DialogTrigger", async () => {
@@ -151,4 +154,158 @@ test("pending-save hooks prevent Escape and outside dismissal", async () => {
   expect(screen.getByRole("dialog", { name: "Edit item" })).toBeVisible();
   await user.click(screen.getByRole("button", { name: "Cancel" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+test.each(["controlled", "uncontrolled"])("%s dialog returns focus after close", async (mode) => {
+  const user = userEvent.setup();
+  function Example() {
+    const [open, setOpen] = useState(false);
+    return (
+      <Dialog open={mode === "controlled" ? open : undefined} onOpenChange={setOpen}>
+        <DialogTrigger>Open</DialogTrigger>
+        <DialogContent aria-describedby={undefined}>
+          <DialogTitle>Example</DialogTitle>
+          <button type="button">Inside</button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+  render(<Example />);
+  const trigger = screen.getByRole("button", { name: "Open" });
+  await user.click(trigger);
+  expect(screen.getByRole("button", { name: "Inside" })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("nested dialogs close only the topmost on Escape", async () => {
+  const user = userEvent.setup();
+  render(
+    <Dialog>
+      <DialogTrigger>Outer</DialogTrigger>
+      <DialogContent aria-describedby={undefined}>
+        <DialogTitle>Outer dialog</DialogTitle>
+        <Dialog>
+          <DialogTrigger>Inner</DialogTrigger>
+          <DialogContent aria-describedby={undefined}>
+            <DialogTitle>Inner dialog</DialogTitle>
+            <button type="button">Inside</button>
+          </DialogContent>
+        </Dialog>
+      </DialogContent>
+    </Dialog>,
+  );
+  await user.click(screen.getByRole("button", { name: "Outer" }));
+  await user.click(screen.getByRole("button", { name: "Inner" }));
+  await user.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: "Inner dialog" })).not.toBeInTheDocument(),
+  );
+  expect(screen.getByRole("dialog", { name: "Outer dialog" })).toBeVisible();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Outer" })).toHaveFocus());
+});
+
+test("returnFocusRef overrides the trigger", async () => {
+  const user = userEvent.setup();
+  function Example() {
+    const ref = useRef<HTMLButtonElement>(null);
+    return (
+      <>
+        <button type="button" ref={ref}>
+          Destination
+        </button>
+        <Dialog>
+          <DialogTrigger>Open</DialogTrigger>
+          <DialogContent returnFocusRef={ref} aria-describedby={undefined}>
+            <DialogTitle>Example</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+  render(<Example />);
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Destination" })).toHaveFocus());
+});
+
+test("an open dialog keeps its content node across parent re-renders", async () => {
+  const user = userEvent.setup();
+  function Example() {
+    const [count, setCount] = useState(0);
+    return (
+      <Dialog>
+        <DialogTrigger>Open stable dialog</DialogTrigger>
+        <DialogContent aria-describedby={undefined}>
+          <DialogTitle>Stable dialog</DialogTitle>
+          <Button onClick={() => setCount((value) => value + 1)}>Count {count}</Button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+  render(
+    <MotionRoot>
+      <Example />
+    </MotionRoot>,
+  );
+  await user.click(screen.getByRole("button", { name: "Open stable dialog" }));
+  const button = screen.getByRole("button", { name: "Count 0" });
+  await user.click(button);
+  expect(button.isConnected).toBe(true);
+  expect(screen.getByRole("button", { name: "Count 1" })).toBe(button);
+});
+
+test.each(["left", "right"] as const)(
+  "a %s sheet starts visible and retains an edge entrance with motion enabled",
+  (placement) => {
+    MotionGlobalConfig.skipAnimations = false;
+    try {
+      render(
+        <MotionRoot>
+          <Dialog defaultOpen>
+            <DialogContent placement={placement} aria-describedby={undefined}>
+              <DialogTitle>Animated sheet</DialogTitle>
+            </DialogContent>
+          </Dialog>
+        </MotionRoot>,
+      );
+      const dialog = screen.getByRole("dialog", { name: "Animated sheet" });
+      expect(dialog).toHaveStyle({ opacity: "1", transform: "none" });
+      expect(dialog).toHaveClass(
+        placement === "left"
+          ? "motion-safe:starting:-translate-x-full"
+          : "motion-safe:starting:translate-x-full",
+      );
+    } finally {
+      MotionGlobalConfig.skipAnimations = true;
+    }
+  },
+);
+
+test("a reduced-motion sheet starts with opacity only", () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    render(
+      <MotionRoot>
+        <Dialog defaultOpen>
+          <DialogContent placement="right" aria-describedby={undefined}>
+            <DialogTitle>Reduced sheet</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      </MotionRoot>,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Reduced sheet" });
+    expect(dialog).toHaveStyle({ opacity: "0" });
+    expect(dialog.style.transform === "" || dialog.style.transform === "none").toBe(true);
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+    vi.unstubAllGlobals();
+  }
 });

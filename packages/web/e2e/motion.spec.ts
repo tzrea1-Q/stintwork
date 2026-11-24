@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test } from "@playwright/test";
 import type { ProjectSnapshot } from "@stintwork/core";
-import { sampleFrames } from "./support/frames";
+import { sampleFrames, waitForRest } from "./support/frames";
 
 test.use({ contextOptions: { reducedMotion: "no-preference", colorScheme: "light" } });
 
@@ -31,6 +31,7 @@ for (const width of [1440, 390]) {
     expect(scale(transform)).toBeCloseTo(value / max, 2);
     await page.goto("/?view=pipeline");
     await page.locator('.board-scroll [data-work-item="long-title"]').click();
+    await waitForRest(page, ".work-item-drawer");
     const drawer = page.locator(".work-item-drawer");
     const button = drawer.getByRole("button").first();
     await button.evaluate((element) => element.setAttribute("data-motion-test", "press"));
