@@ -28,7 +28,7 @@ for (const language of ["en", "zh-CN"] as const) {
           socket.send(JSON.stringify(richSnapshot)),
         );
         await page.goto("/?view=overview");
-        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
         const next = page
           .locator('[data-slot="card"]')
           .filter({ hasText: t.overview.eyebrows.next });
@@ -68,12 +68,8 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.route("**/api/project", (route) => route.fulfill({ json: current }));
         await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(current)));
         await page.goto("/");
-        const overview = page.getByRole("main").filter({
-          has: page.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
-        });
-        await expect(
-          overview.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
-        ).toBeVisible();
+        const overview = page.getByRole("main");
+        await expect(overview.getByRole("status")).toHaveText(t.board.live);
         const featured = overviewData(snapshot).featured;
         if (!featured) throw new Error("Missing featured milestone");
         const milestoneCard = overview.locator('[data-slot="card"]').filter({
@@ -205,9 +201,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.screenshot({ path: info.outputPath("overview-error.png"), fullPage: true });
         await connected.ready;
         publish();
-        const overview = page.getByRole("main").filter({
-          has: page.getByRole("heading", { name: t.viewNavigation.overview, level: 1 }),
-        });
+        const overview = page.getByRole("main");
         const featured = overviewData(snapshot).featured;
         if (!featured) throw new Error("Missing featured milestone");
         for (const title of [

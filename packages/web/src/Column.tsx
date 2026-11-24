@@ -55,7 +55,7 @@ export function Column({
       aria-labelledby={`stage-${id}`}
       tabIndex={items.length ? undefined : 0}
     >
-      <header className="stage-header px-1 pb-4 pt-2">
+      <header className="stage-header sticky top-0 z-20 bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
         <div className="flex flex-wrap items-center gap-2">
           <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
           <h2

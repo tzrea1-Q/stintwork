@@ -9,6 +9,53 @@ import { richClock, richSnapshot } from "./rich.fixture";
 
 for (const language of ["en", "zh-CN"] as const) {
   const t = language === "en" ? en : zhCN;
+  for (const width of [1440, 1024, 768, 390]) {
+    test(`sticky stage headers and page width ${width}px ${language}`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.addInitScript(
+        (choice) => localStorage.setItem("stintwork.language", choice),
+        language,
+      );
+      const snapshot = structuredClone(richSnapshot);
+      const item = snapshot.workItems[3];
+      snapshot.workItems.push(
+        ...Array.from({ length: 16 }, (_, index) => ({
+          ...structuredClone(item),
+          slug: `extra-${index}`,
+        })),
+      );
+      await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+      await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
+      await page.goto("/?view=pipeline");
+      const scroller = page.locator(".board-scroll");
+      await expect(scroller.locator(".stage-header")).toHaveCount(6);
+      await scroller.evaluate((element) => {
+        element.scrollTop = 700;
+      });
+      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(700);
+      const top = await scroller.evaluate((element) => element.getBoundingClientRect().top);
+      for (const header of await scroller.locator(".stage-header").all()) {
+        await header.scrollIntoViewIfNeeded();
+        const box = await header.boundingBox();
+        if (!box) throw new Error("Missing stage header bounds");
+        expect(Math.abs(box.y - top)).toBeLessThanOrEqual(1);
+        expect(
+          await header.evaluate((element) => {
+            const chip = element.querySelector("span");
+            if (!chip) return false;
+            const rect = chip.getBoundingClientRect();
+            const hit = document.elementFromPoint(
+              rect.left + rect.width / 2,
+              rect.top + rect.height / 2,
+            );
+            return !!hit && element.contains(hit);
+          }),
+        ).toBe(true);
+      }
+      await expect(scroller).toHaveAttribute("data-scrolled", "true");
+      await assertLayout(page);
+    });
+  }
   for (const width of [1440, 1024, 768, 390, 360]) {
     for (const colorScheme of width === 1440 || width === 390
       ? (["light", "dark"] as const)
@@ -26,7 +73,7 @@ for (const language of ["en", "zh-CN"] as const) {
           socket.send(JSON.stringify(richSnapshot)),
         );
         await page.goto("/?view=pipeline");
-        await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+        await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("rich-pipeline.png"), fullPage: true });
       });
@@ -132,8 +179,7 @@ for (const language of ["en", "zh-CN"] as const) {
         } else if (width < 1024) {
           expect(actions.y).toBeGreaterThanOrEqual(context.y + context.height);
         }
-        const stages = page.locator(".stage-scroll");
-        const card = page.locator(".stage-board");
+        const stages = page.locator(".board-scroll");
         await expect(
           page
             .locator(".board-toolbar")
@@ -144,17 +190,11 @@ for (const language of ["en", "zh-CN"] as const) {
             .locator(".board-toolbar")
             .getByRole("combobox", { name: t.pipelineBoard.workflow, exact: true }),
         ).toBeVisible();
-        const dimensions = await card.evaluate((element) => {
-          const viewport = element.querySelector<HTMLElement>(".stage-scroll");
-          if (!viewport) throw new Error("Missing stage scroller");
-          return {
-            card: element.getBoundingClientRect().width,
-            scroller: viewport.getBoundingClientRect().width,
-            viewport: document.documentElement.clientWidth,
-          };
-        });
-        expect(dimensions.card).toBeLessThanOrEqual(dimensions.viewport);
-        expect(dimensions.scroller).toBeLessThanOrEqual(dimensions.card);
+        const dimensions = await stages.evaluate((element) => ({
+          scroller: element.getBoundingClientRect().width,
+          viewport: document.documentElement.clientWidth,
+        }));
+        expect(dimensions.scroller).toBeLessThanOrEqual(dimensions.viewport);
         const columns = stages.locator(".stage-column");
         await expect(columns.locator(".stage-header .count")).toHaveCount(6);
         const emptyLabels = columns.locator(":scope > div > .sr-only");
@@ -181,10 +221,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect.poll(() => stages.evaluate((element) => element.scrollLeft)).toBe(0);
         }
         await assertLayout(page, { region: ".pipeline-main" });
-        if (width === 1440)
-          expect(await stages.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
-            await stages.evaluate((element) => element.clientWidth),
-          );
+
         if (width < 1024) {
           expect(
             await stages.evaluate((element) => element.scrollWidth > element.clientWidth),
@@ -195,6 +232,12 @@ for (const language of ["en", "zh-CN"] as const) {
         });
         if (width < 1024)
           expect(await stages.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+        if (width === 390 || width === 768) {
+          const last = await columns.last().boundingBox();
+          const card = await page.locator(".stage-board").boundingBox();
+          if (!last || !card) throw new Error("Missing stage bounds");
+          expect(last.x + last.width).toBeLessThanOrEqual(card.x + card.width);
+        }
         await assertLayout(page, { region: ".pipeline-main" });
         const inference = page.getByRole("button", { name: new RegExp(t.card.inferred) }).first();
         await inference.hover();
