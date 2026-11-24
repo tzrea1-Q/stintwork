@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 05 — Tabbed, resizable detail
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 03
 
 ## What to build
@@ -29,3 +29,19 @@ Scope: `WorkItemDrawer.tsx` and the components it renders, `Board.tsx` for the p
 - [ ] Comments include screenshots at 1440 and 390px in both languages on the e2e fixture and this repository's data.
 
 ## Comments
+
+**Coordinator, 2026-11-24:** Verification.
+
+- Codex implemented it in three rounds. Coordinator review found and got fixed:
+  - Tab content collapsed.
+  - The page overflowed by 56px with the panel open.
+  - Dragging did not resize; the handle was rebuilt.
+  - The selected tab was invisible, because `ui/Tabs.tsx` used shadcn's `data-active` instead of Radix's `data-state=active`.
+  - Ticket chips showed raw status codes.
+  - Resolved tickets showed "Blocked by".
+  - Spec lines were too long in full screen; a readable measure and contents were added.
+  - Two new lint warnings.
+  - After integration, tab content touched the tab bar, the stacked spec contents took about 300px at 390px (now a collapsed "Contents" disclosure), and the gate's handoff and warning sections had no gap.
+- Integration moved stint history, spec and tickets into tabs. Nine unit test files and five e2e specs now switch tabs, or read the active tab panel, before asserting. No assertion was removed.
+- Real browser on this repository's data, in a git clone: 1440px and 390px, en and zh-CN, Overview, Spec (full screen at 1440px), Tickets. The page has no horizontal scroll.
+- Final runs: the same as ticket 02, on the same integration branch. 3,473 unit tests passed; the 2 failures are pre-existing or flaky on `main`. 517 e2e tests passed.

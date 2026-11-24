@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 02 — Balanced stage columns
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -23,3 +23,16 @@ Scope: `Column.tsx`, `Board.tsx`, `WorkItemCard.tsx`, their tests and the e2e la
 - [ ] Comments include screenshots at 1440 and 390px in both languages on the e2e fixture and this repository's data.
 
 ## Comments
+
+**Coordinator, 2026-11-24:** Verification.
+
+- Codex implemented it. Coordinator review found three problems, all fixed:
+  - A six-item stage stayed a single column with 540px cards. One layout rule now covers every stage: rail, single or grid, from the measured stage width, the viewport and whether the panel is open.
+  - Below 1024px, columns grew to max-content (537px). They now have definite widths.
+  - The 144px headers were too tall. Rail and full headers now share one compact height.
+- The e2e sticky-header hit test now targets `[data-stage-icon]` instead of whatever element sat on top.
+- Real browser on this repository's data, in a git clone: 1440px and 390px, en and zh-CN. Empty stages collapse to rails and Implement and Review share the width. With the panel open, the columns stay single and the page has no horizontal scroll.
+- Final runs on `board-polish-integration-2`, together with 05:
+  - `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck` and `pnpm build` passed.
+  - `pnpm test`: 3,473 passed and 2 failed. `github-stints` "stint completion refreshes GitHub detail (cooldown)" also fails 1 run in 5 on `main`. `index.test.ts` "watching discovers project directories…" is the known failure that predates this milestone.
+  - `PLAYWRIGHT_CHROME_CHANNEL=chrome pnpm test:e2e`: 517 passed.
