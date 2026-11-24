@@ -118,6 +118,9 @@ test("empty stages expand by keyboard and collapse; populated stages stay column
   const rail = screen.getByRole("region", { name: "Clarify" });
   expect(rail).toHaveAttribute("data-layout", "rail");
   const expand = within(rail).getByRole("button", { name: "Expand Clarify, 0 work items" });
+  expect(expand.querySelector(".stage-header .count")).toHaveTextContent("0");
+  expect(expand.querySelector(".stage-header h2")).toBeNull();
+  expect(expand.querySelector("h2")).toHaveTextContent("Clarify");
   expand.focus();
   await user.keyboard("{Enter}");
   expect(rail).toHaveAttribute("data-layout", "single");
@@ -126,24 +129,46 @@ test("empty stages expand by keyboard and collapse; populated stages stay column
   await user.click(collapse);
   expect(rail).toHaveAttribute("data-layout", "rail");
   expect(within(rail).getByRole("button", { name: "Expand Clarify, 0 work items" })).toHaveFocus();
+  await user.keyboard(" ");
+  expect(rail).toHaveAttribute("data-layout", "single");
   const populated = screen.getByRole("region", { name: "Review" });
   expect(populated).not.toHaveAttribute("data-layout", "rail");
   await user.click(within(populated).getByRole("button", { name: /Open ready/ }));
   expect(populated).toHaveAttribute("data-layout", "single");
 });
 
-test("busy stages use a single layout when the detail panel is open", async () => {
+test("stage layout follows its width, viewport and detail panel", async () => {
   const snapshot = project();
   const item = snapshot.workItems.find((entry) => entry.column === "review");
   if (!item) throw new Error("Missing review item");
   snapshot.workItems.push(
-    ...Array.from({ length: 7 }, (_, index) => ({ ...item, slug: `review-${index}` })),
+    ...Array.from({ length: 5 }, (_, index) => ({ ...item, slug: `review-${index}` })),
   );
+  let width = 452;
+  const originalBounds = HTMLElement.prototype.getBoundingClientRect;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    const bounds = originalBounds.call(this);
+    return this.classList.contains("stage-column") ? { ...bounds, width } : bounds;
+  });
+  vi.stubGlobal("innerWidth", 1440);
   render(<Board snapshot={snapshot} />);
   const review = screen.getByRole("region", { name: "Review" });
   expect(review).toHaveAttribute("data-layout", "grid");
+  width = 451;
+  fireEvent.resize(window);
+  expect(review).toHaveAttribute("data-layout", "single");
+  width = 540;
+  vi.stubGlobal("innerWidth", 390);
+  fireEvent.resize(window);
+  expect(review).toHaveAttribute("data-layout", "single");
+  vi.stubGlobal("innerWidth", 1440);
+  fireEvent.resize(window);
+  expect(review).toHaveAttribute("data-layout", "grid");
   await userEvent.setup().click(within(review).getByRole("button", { name: /Open ready/ }));
   expect(review).toHaveAttribute("data-layout", "single");
+  vi.unstubAllGlobals();
 });
 
 test("stage navigation describes its keyboard controls without moving focus", async () => {

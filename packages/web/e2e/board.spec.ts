@@ -56,6 +56,20 @@ for (const language of ["en", "zh-CN"] as const) {
       await page.goto("/?view=pipeline");
       const scroller = page.locator(".board-scroll");
       await expect(scroller.locator(".stage-header")).toHaveCount(6);
+      const bottoms = await scroller
+        .locator(".stage-header")
+        .evaluateAll((headers) => headers.map((header) => header.getBoundingClientRect().bottom));
+      expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
+      if (width < 1024) {
+        await expect(scroller.locator('.stage-column[data-layout="grid"]')).toHaveCount(0);
+      }
+      if (width === 390 || width === 768) {
+        const widths = await scroller
+          .locator('.stage-column:not([data-layout="rail"])')
+          .evaluateAll((columns) => columns.map((column) => column.getBoundingClientRect().width));
+        expect(widths.length).toBeGreaterThan(0);
+        for (const columnWidth of widths) expect(columnWidth).toBeLessThanOrEqual(width - 32);
+      }
       await scroller.evaluate((element) => {
         element.scrollTop = 700;
       });
@@ -68,7 +82,7 @@ for (const language of ["en", "zh-CN"] as const) {
         expect(Math.abs(box.y - top)).toBeLessThanOrEqual(1);
         expect(
           await header.evaluate((element) => {
-            const chip = element.querySelector("span");
+            const chip = element.querySelector("[data-stage-icon]");
             if (!chip) return false;
             const rect = chip.getBoundingClientRect();
             const hit = document.elementFromPoint(

@@ -7,7 +7,7 @@ import type {
   WorkflowDefinitions,
 } from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLanguage } from "./i18n/language";
 import { IconChip } from "./ui/IconChip";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";
@@ -51,12 +51,27 @@ export function Column({
   const { t } = useLanguage();
   const section = useRef<HTMLElement>(null);
   const toggled = useRef(false);
+  const [wide, setWide] = useState(false);
+  useLayoutEffect(() => {
+    const element = section.current;
+    if (!element) return;
+    const measure = () =>
+      setWide(window.innerWidth >= 1024 && element.getBoundingClientRect().width >= 452);
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    window.addEventListener("resize", measure);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, []);
   useLayoutEffect(() => {
     if (toggled.current) section.current?.querySelector<HTMLButtonElement>("button")?.focus();
     toggled.current = false;
   });
   const rail = !items.length && !expanded;
-  const grid = items.length > 6 && !panelOpen;
+  const grid = items.length > 0 && wide && !panelOpen;
   const Icon = presentation[id];
   const running = items.filter((item) => item.activeStint?.status === "running").length;
   const waiting = items.filter((item) =>
@@ -66,62 +81,67 @@ export function Column({
   return (
     <section
       ref={section}
-      className={`stage-column relative snap-start ${rail ? "w-14 shrink-0" : "min-w-[220px] flex-1"}`}
+      className={`stage-column relative snap-start ${rail ? "w-14 shrink-0" : "w-[min(280px,calc(100vw-80px))] shrink-0 lg:min-w-[220px] lg:flex-1"}`}
       data-card-column={id}
       data-layout={rail ? "rail" : grid ? "grid" : "single"}
       aria-labelledby={`stage-${id}`}
     >
-      <header className="stage-header sticky top-0 z-20 bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
-        {rail ? (
-          <button
-            type="button"
-            className="flex w-full flex-col items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
-            aria-label={t.column.expand(name, items.length)}
-            onClick={() => {
-              toggled.current = true;
-              onToggle();
-            }}
+      {rail ? (
+        <button
+          type="button"
+          className="flex h-full w-full flex-col items-center rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
+          aria-label={t.column.expand(name, items.length)}
+          onClick={() => {
+            toggled.current = true;
+            onToggle();
+          }}
+        >
+          <header className="stage-header sticky top-0 z-20 flex h-[88px] w-full shrink-0 flex-col items-center gap-2 bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
+            <span data-stage-icon className="inline-flex shrink-0">
+              <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
+            </span>
+            <span className="count shrink-0 tabular-nums text-xs text-muted-foreground">
+              {items.length}
+            </span>
+          </header>
+          <h2
+            id={`stage-${id}`}
+            title={name}
+            className="mt-2 text-[13px] font-semibold [writing-mode:vertical-rl] [text-orientation:mixed]"
           >
-            <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
+            {name}
+          </h2>
+        </button>
+      ) : (
+        <header className="stage-header sticky top-0 z-20 h-[88px] bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
+          <div className="flex flex-wrap items-center gap-2">
+            <span data-stage-icon className="inline-flex shrink-0">
+              <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
+            </span>
             <h2
               id={`stage-${id}`}
-              className="text-[13px] font-semibold [writing-mode:vertical-rl] [text-orientation:mixed]"
+              title={name}
+              className="min-w-0 flex-1 break-words text-[13px] font-semibold"
             >
               {name}
             </h2>
             <span className="count tabular-nums text-xs text-muted-foreground">{items.length}</span>
-          </button>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
-              <h2
-                id={`stage-${id}`}
-                title={name}
-                className="min-w-0 flex-1 break-words text-[13px] font-semibold"
+            {!items.length && (
+              <button
+                type="button"
+                className="rounded text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                onClick={() => {
+                  toggled.current = true;
+                  onToggle();
+                }}
               >
-                {name}
-              </h2>
-              <span className="count tabular-nums text-xs text-muted-foreground">
-                {items.length}
-              </span>
-              {!items.length && (
-                <button
-                  type="button"
-                  className="rounded text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
-                  onClick={() => {
-                    toggled.current = true;
-                    onToggle();
-                  }}
-                >
-                  {t.column.collapse(name)}
-                </button>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
-          </>
-        )}
-      </header>
+                {t.column.collapse(name)}
+              </button>
+            )}
+          </div>
+          <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
+        </header>
+      )}
       <div
         className={
           grid
