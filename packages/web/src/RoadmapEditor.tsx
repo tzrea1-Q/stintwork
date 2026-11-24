@@ -208,6 +208,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
             )}
             <div className="flex items-center gap-1 md:hidden">
               <SelectField
+                className="min-w-0 flex-1"
                 aria-label={labels.milestones}
                 value={selected}
                 onValueChange={select}
@@ -394,30 +395,39 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
                     const original =
                       milestones.find((entry) => entry.workItemSlugs.includes(item.slug))?.id ?? "";
                     return (
-                      <div key={item.slug} className="flex flex-wrap items-center gap-2 py-1">
-                        <span className="min-w-0 flex-1 truncate" data-truncate title={item.title}>
+                      <div
+                        key={item.slug}
+                        className="flex min-w-0 flex-col gap-2 py-1 md:flex-row md:items-center"
+                      >
+                        <span
+                          className="min-w-0 break-words md:flex-1 md:truncate"
+                          data-truncate
+                          title={item.title}
+                        >
                           {item.title}
                         </span>
-                        <span className="text-sm">{labels.moveTo}</span>
-                        <SelectField
-                          className="w-44"
-                          aria-label={labels.moveItem(item.title, milestone.name)}
-                          value={moves[item.slug] ?? original}
-                          onValueChange={(value) =>
-                            setMoves((previous) => {
-                              const next = { ...previous };
-                              if (value === original) delete next[item.slug];
-                              else next[item.slug] = value;
-                              return next;
-                            })
-                          }
-                          options={[
-                            { value: "", label: labels.noMilestone },
-                            ...milestones
-                              .filter((entry) => original || entry.id === selected)
-                              .map((entry) => ({ value: entry.id, label: entry.name })),
-                          ]}
-                        />
+                        <div className="flex min-w-0 w-full items-center gap-2 md:w-auto">
+                          <span className="shrink-0 text-sm">{labels.moveTo}</span>
+                          <SelectField
+                            className="min-w-0 flex-1 md:w-44 md:flex-none"
+                            aria-label={labels.moveItem(item.title, milestone.name)}
+                            value={moves[item.slug] ?? original}
+                            onValueChange={(value) =>
+                              setMoves((previous) => {
+                                const next = { ...previous };
+                                if (value === original) delete next[item.slug];
+                                else next[item.slug] = value;
+                                return next;
+                              })
+                            }
+                            options={[
+                              { value: "", label: labels.noMilestone },
+                              ...milestones
+                                .filter((entry) => original || entry.id === selected)
+                                .map((entry) => ({ value: entry.id, label: entry.name })),
+                            ]}
+                          />
+                        </div>
                       </div>
                     );
                   })}

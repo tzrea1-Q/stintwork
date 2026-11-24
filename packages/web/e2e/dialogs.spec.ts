@@ -297,6 +297,40 @@ for (const language of ["en", "zh-CN"] as const) {
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
           await capture(page, dialog, testInfo, "roadmap-long");
+          if (width === 390 || width === 360) {
+            const content = await dialog.evaluate((element) => {
+              const bounds = element.getBoundingClientRect();
+              const style = getComputedStyle(element);
+              return {
+                left:
+                  bounds.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+                right:
+                  bounds.right -
+                  parseFloat(style.borderRightWidth) -
+                  parseFloat(style.paddingRight),
+              };
+            });
+            for (const label of [
+              t.planning.roadmap.up(snapshot.milestones[0].name),
+              t.planning.roadmap.down(snapshot.milestones[0].name),
+            ]) {
+              const bounds = await dialog
+                .getByRole("button", { name: label, exact: true })
+                .boundingBox();
+              if (!bounds) throw new Error(`Missing reorder button: ${label}`);
+              expect(bounds.x).toBeGreaterThanOrEqual(content.left);
+              expect(bounds.x + bounds.width).toBeLessThanOrEqual(content.right);
+            }
+            const title = dialog.getByText(snapshot.workItems[0].title, { exact: true });
+            await expect(title).toBeVisible();
+            const dimensions = await title.evaluate((element) => ({
+              scroll: element.scrollWidth,
+              client: element.clientWidth,
+              whiteSpace: getComputedStyle(element).whiteSpace,
+            }));
+            expect(dimensions.whiteSpace).not.toBe("nowrap");
+            expect(dimensions.scroll).toBeLessThanOrEqual(dimensions.client);
+          }
           const picker =
             width < 768
               ? dialog.getByRole("combobox", { name: t.planning.roadmap.milestones, exact: true })
