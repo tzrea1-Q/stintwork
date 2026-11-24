@@ -9,7 +9,7 @@ Blocked by: none
 Let the developer record a merge made outside Stintwork (ADR 0021).
 
 - **Core:** extend `MergeRecord` with optional `outside: true`; parse and write it in the workflow file. A work item with any merge record is Shipped, as today.
-- **Server:** an action that takes a work item and a commit. Refuse when the work item is GitHub-tracked, already has a merge record, or has a running stint, and when the commit does not exist or is not reachable from the main checkout's branch. Otherwise write `merged: { at, commit, outside: true }` to the work item's workflow file and commit it the way gate writes are committed. Return coded errors rendered through `coreText`.
+- **Server:** an action that takes a work item and a commit. Refuse when the work item is GitHub-tracked, already has a merge record, has a running stint, or has a Stintwork worktree, and when the commit does not exist or is not reachable from the main checkout's branch. Otherwise write `merged: { at, commit, outside: true }` to the work item's workflow file and commit it the way gate writes are committed. Return coded errors rendered through `coreText`.
 - **Web:** a secondary "Mark as shipped" action in work item detail, shown only when available. It opens a Dialog that explains the effect, takes the merge commit prefilled with the main checkout's `HEAD`, and confirms. On success a toast reports the result and the item moves to the Shipped lane. Detail of a shipped item shows "Merged outside Stintwork" with the short commit.
 
 Scope: `packages/core` stages and core text, the server action and route, the detail action and Dialog, i18n catalogs and tests.
