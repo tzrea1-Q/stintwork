@@ -546,6 +546,8 @@ export function Board({
         </main>
         {view === "pipeline" && openItem && (
           <WorkItemDrawer
+            mainHead={snapshot.mainHead}
+            localTracker={snapshot.setup.tracker === "local-markdown"}
             workflows={snapshot.workflows}
             attentionCount={
               snapshot.attentionItems.filter((entry) => entry.workItem === openItem.slug).length

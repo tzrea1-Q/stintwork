@@ -10,8 +10,8 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
-import { recoveryStint } from "./recovery-test-fixtures";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { recoveryStint } from "./recovery-test-fixtures";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -681,4 +681,73 @@ test("the header omits an idle status and shows a stopped stint", () => {
     />,
   );
   expect(header).toHaveTextContent("stopped");
+});
+
+test("mark as shipped supports keyboard, cancellation, coded errors and confirmation", async () => {
+  localStorage.setItem(languageStorageKey, "en");
+  const user = userEvent.setup();
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  let attempts = 0;
+  const fetcher = vi.fn(async (url: string) => {
+    if (!url.endsWith("/mark-shipped")) return new Response("{}", { status: 200 });
+    attempts++;
+    return attempts === 1
+      ? new Response(
+          JSON.stringify({
+            reason: "The commit could not be resolved.",
+            reasonMessage: { code: "outside.unknownCommit" },
+          }),
+          { status: 409 },
+        )
+      : new Response(JSON.stringify({ merged: {} }), { status: 200 });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<WorkItemDrawer item={item} mainHead="abcdef123" onClose={() => {}} />);
+  const trigger = screen.getByRole("button", { name: "Mark as shipped" });
+  trigger.focus();
+  await user.keyboard("{Enter}");
+  let dialog = screen.getByRole("dialog", { name: "Mark as shipped" });
+  expect(within(dialog).getByLabelText("Merge commit")).toHaveValue("abcdef123");
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(trigger).toHaveFocus();
+  await user.keyboard("{Enter}");
+  dialog = screen
+    .getAllByRole("dialog", { name: "Mark as shipped" })
+    .find((entry) => entry.getAttribute("data-state") === "open") as HTMLElement;
+  await user.click(within(dialog).getByRole("button", { name: "Mark as shipped" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+    "The commit could not be resolved.",
+  );
+  await user.click(within(dialog).getByRole("button", { name: "Mark as shipped" }));
+  await waitFor(() =>
+    expect(fetcher).toHaveBeenLastCalledWith(
+      "/api/work-items/first/mark-shipped",
+      expect.objectContaining({ body: JSON.stringify({ commit: "abcdef123" }) }),
+    ),
+  );
+  view.rerender(
+    <WorkItemDrawer
+      item={{
+        ...item,
+        merged: { at: "2026-01-01T00:00:00Z", commit: "a".repeat(40), outside: true },
+      }}
+      onClose={() => {}}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "Mark as shipped" })).not.toBeInTheDocument();
+  expect(screen.getByText(/Merged outside Stintwork/)).toBeInTheDocument();
+  view.rerender(
+    <WorkItemDrawer
+      item={{ ...item, activeStint: { ...recoveryStint(), status: "running" } }}
+      onClose={() => {}}
+    />,
+  );
+  expect(screen.queryByRole("button", { name: "Mark as shipped" })).not.toBeInTheDocument();
+  view.rerender(
+    <WorkItemDrawer item={{ ...item, worktreePath: "/worktree" }} onClose={() => {}} />,
+  );
+  expect(screen.queryByRole("button", { name: "Mark as shipped" })).not.toBeInTheDocument();
+  localStorage.removeItem(languageStorageKey);
 });

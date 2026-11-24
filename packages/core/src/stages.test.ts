@@ -286,3 +286,17 @@ test("preserves the input index and appends file-read warnings without throwing"
     warnings: [],
   });
 });
+
+test("outside merges round-trip and ignore other outside values", () => {
+  const merged = { at: "2026-10-10T10:00:00Z", commit: "a".repeat(40), outside: true as const };
+  const text = workflowMerge("workflow: feature\nstage: review\n", merged);
+  const item = (value: string) =>
+    resolve({ ".scratch/first/spec.md": "# First", ".scratch/first/workflow.yaml": value })
+      .workItems[0];
+  expect(item(text).merged).toEqual(merged);
+  for (const value of ["false", "yes", '"true"', "1", "null"]) {
+    expect(item(text.replace("outside: true", `outside: ${value}`)).merged).not.toHaveProperty(
+      "outside",
+    );
+  }
+});

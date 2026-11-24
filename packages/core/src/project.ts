@@ -80,6 +80,7 @@ export type ProjectSnapshot = {
   agents: AgentProfile[];
   attentionItems: AttentionItem[];
   branch?: string;
+  mainHead?: string;
   workflows: WorkflowDefinitions;
   milestones: Milestone[];
   workItems: (StagedWorkItem & {

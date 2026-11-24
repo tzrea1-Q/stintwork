@@ -77,6 +77,7 @@ import { addGateRoutes } from "./gates.js";
 import { addMemoryProposalRoutes } from "./memory-proposals.js";
 import { addFindingDecisionRoutes } from "./finding-decisions.js";
 import { addShipRoutes } from "./ship.js";
+import { addMarkShippedRoute } from "./mark-shipped.js";
 import { resolveProjectSnapshot } from "./project-snapshot.js";
 import type { ReviewEvidenceReader } from "./review-evidence.js";
 
@@ -200,6 +201,15 @@ export function addStintRoutes(
     githubSource?.getSnapshot,
   );
   const permissions = addStintPermissionRoute(app);
+  addMarkShippedRoute(
+    app,
+    root,
+    readProjectFiles,
+    refresh,
+    (slug) => active.has(slug),
+    workflowWrites,
+    githubSource?.getSnapshot,
+  );
   addShipRoutes(
     app,
     root,

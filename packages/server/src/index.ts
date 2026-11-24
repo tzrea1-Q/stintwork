@@ -368,6 +368,16 @@ export function createProjectServer(
         ...(branch ? { branch } : {}),
       },
     );
+    try {
+      snapshot.mainHead = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
+        cwd: root,
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 1000,
+      }).trim();
+    } catch {
+      /* An unborn or unavailable HEAD cannot prefill a commit. */
+    }
     projectGithubGates(snapshot, root, project, handoffApprovals);
     projectLocalApprovals(snapshot, root, project);
     readReviewEvidence(project, snapshot);

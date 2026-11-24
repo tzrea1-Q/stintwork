@@ -14,7 +14,13 @@ import {
 } from "./workflows.js";
 
 export type StageRecords = Record<string, Record<string, unknown>>;
-export type MergeRecord = { at: string; commit: string; pr?: string; method?: MergeMethod };
+export type MergeRecord = {
+  at: string;
+  commit: string;
+  pr?: string;
+  method?: MergeMethod;
+  outside?: true;
+};
 export function workflowMerge(
   text: string | undefined,
   merged: MergeRecord,
@@ -27,7 +33,11 @@ export function workflowMerge(
     typeof workflow === "string" && Object.hasOwn(workflows, workflow)
       ? workflows[workflow].stages.find(({ id }) => id === document.get("stage"))
       : undefined;
-  if (document.errors.length || document.warnings.length || stage?.gate !== "merge")
+  if (
+    document.errors.length ||
+    document.warnings.length ||
+    (merged.outside ? !stage : stage?.gate !== "merge")
+  )
     throw new CoreTextError({ code: "ship.validWorkflowMerge" });
   if (document.get("workflow") !== workflow) document.set("workflow", workflow);
   document.set("merged", merged);
@@ -152,6 +162,7 @@ export function readWorkflow(
       return invalid("Merged must contain a timestamp and commit");
     if (data.pullRequest !== undefined && !isPullRequest(data.pullRequest))
       return invalid("Pull request must contain a GitHub URL, number, repository and branches");
+    if (isRecord(data.merged) && data.merged.outside !== true) delete data.merged.outside;
     return {
       workflow,
       ...(data.title === undefined ? {} : { title: (data.title as string).trim() }),
