@@ -14,7 +14,10 @@ import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { recoveryStint } from "./recovery-test-fixtures";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
 
 test.each([
   ["en", "Local Markdown tracker", "GitHub Issues tracker"],
@@ -188,12 +191,13 @@ test("the drawer shows and copies the worktree path even when no stint is active
   expect(screen.getByRole("dialog")).toHaveTextContent("Copied");
 });
 
-test("the drawer does not claim a worktree for a main-checkout work item", () => {
+test("the drawer does not claim a worktree for a main-checkout work item", async () => {
   const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
     name: "Project",
   }).workItems[0];
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   expect(screen.queryByText("Work item files live in this worktree:")).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("tab", { name: "Spec" }));
   expect(screen.getByText(".scratch/first/spec.md")).toBeInTheDocument();
 });
 
@@ -363,7 +367,7 @@ test.each(["success", "closed", "exhausted"])(
   },
 );
 
-test("GitHub ticket numbers use issue format while local tickets keep Markdown format", () => {
+test("GitHub ticket numbers use issue format while local tickets keep Markdown format", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() => new Promise<Response>(() => {})),
@@ -376,6 +380,7 @@ test("GitHub ticket numbers use issue format while local tickets keep Markdown f
     { name: "Project" },
   ).workItems[0];
   const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  await userEvent.click(screen.getByRole("tab", { name: "Tickets" }));
   expect(screen.getByText("02 · Model")).toBeInTheDocument();
   expect(screen.getByText(/Blocked by 01/)).toBeInTheDocument();
   item.github = {
@@ -396,7 +401,7 @@ test("GitHub ticket numbers use issue format while local tickets keep Markdown f
   expect(screen.queryByText(/Blocked by #1/)).not.toBeInTheDocument();
 });
 
-test("shipped GitHub drawer does not show empty details until known", () => {
+test("shipped GitHub drawer does not show empty details until known", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(() => new Promise<Response>(() => {})),
@@ -415,13 +420,15 @@ test("shipped GitHub drawer does not show empty details until known", () => {
     complete: true,
   };
   const view = render(<WorkItemDrawer item={item} onClose={() => {}} />);
-  expect(screen.queryByText("No spec yet.")).not.toBeInTheDocument();
-  expect(screen.queryByText("No tickets yet.")).not.toBeInTheDocument();
-  expect(screen.getAllByText("GitHub details are not available yet.")).toHaveLength(2);
+  await userEvent.click(screen.getByRole("tab", { name: "Spec" }));
+  expect(screen.getByText("GitHub details are not available yet.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("tab", { name: "Tickets" }));
+  expect(screen.getByText("GitHub details are not available yet.")).toBeInTheDocument();
   item.github.ticketsKnown = true;
   view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
-  expect(screen.getByText("No spec yet.")).toBeInTheDocument();
   expect(screen.getByText("No tickets yet.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("tab", { name: "Spec" }));
+  expect(screen.getByText("No spec yet.")).toBeInTheDocument();
 });
 
 test("wide screens dock the detail, focus its close button and restore the opener on Escape", async () => {
@@ -645,7 +652,7 @@ test("the identity branch follows active stint, pull request, most recent stint 
       onClose={() => {}}
     />,
   );
-  const chip = () => document.querySelector(".drawer-content code.rounded-full");
+  const chip = () => document.querySelector(".drawer-identity code.rounded-full");
   expect(chip()).toHaveAttribute("title", "active-branch");
   view.rerender(
     <WorkItemDrawer
@@ -751,3 +758,118 @@ test("mark as shipped supports keyboard, cancellation, coded errors and confirma
   expect(screen.queryByRole("button", { name: "Mark as shipped" })).not.toBeInTheDocument();
   localStorage.removeItem(languageStorageKey);
 });
+
+test("tabs navigate by keyboard, show contents and select startable tickets", async () => {
+  const user = userEvent.setup();
+  const item = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/workflow.yaml": "workflow: feature\nstage: implement",
+      ".scratch/first/spec.md": "# First\n\n## Scope\n\n### Details\n\n## Outcome",
+      ".scratch/first/issues/01-next.md":
+        "# Next\nStatus: ready-for-agent\nBlocked by: none\n\nNext body",
+      ".scratch/first/issues/02-ready.md":
+        "# Ready\nStatus: ready-for-agent\nBlocked by: none\n\nReady body",
+      ".scratch/first/issues/03-blocked.md":
+        "# Blocked\nStatus: open\nBlocked by: 01\n\nBlocked body",
+      ".scratch/first/issues/04-done.md": "# Done\nStatus: resolved\nBlocked by: none\n\nDone body",
+    }),
+    { name: "Project" },
+  ).workItems[0];
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  const overview = screen.getByRole("tab", { name: "Overview" });
+  expect(overview).toHaveAttribute("aria-selected", "true");
+  overview.focus();
+  await user.keyboard("{ArrowRight}");
+  expect(new URL(location.href).searchParams.get("tab")).toBe("spec");
+  const contents = screen.getByRole("navigation", { name: "Contents" });
+  expect(within(contents).getByRole("button", { name: "Scope" })).toBeInTheDocument();
+  expect(within(contents).getByRole("button", { name: "Outcome" })).toBeInTheDocument();
+  expect(within(contents).getByRole("button", { name: "Details" })).toHaveClass("pl-4");
+  expect(contents).toHaveClass("@[960px]:sticky");
+  expect(
+    screen.getByText("Scope", { selector: '[data-markdown-heading="h2"]' }).closest(".markdown")
+      ?.parentElement,
+  ).toHaveClass("max-w-[72ch]");
+  await user.keyboard("{ArrowRight}");
+  expect(new URL(location.href).searchParams.get("tab")).toBe("tickets");
+  const tickets = within(screen.getByRole("tabpanel"));
+  for (const name of ["Next", "Ready", "Blocked", "Done"])
+    expect(tickets.getByText(new RegExp(`\\d+ · ${name}`))).toBeInTheDocument();
+  expect(screen.queryByText("Ready body")).not.toBeInTheDocument();
+  await user.click(screen.getByText("02 · Ready"));
+  expect(screen.getByText("Ready body")).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "Start stint" })).toHaveLength(2);
+  for (const name of ["01 · Next", "03 · Blocked", "04 · Done"]) {
+    await user.click(tickets.getByText(name));
+    expect(screen.getAllByRole("button", { name: "Start stint" })).toHaveLength(1);
+  }
+});
+
+test("spec URL opens Spec and Quick omits Tickets", () => {
+  window.history.replaceState(null, "", "/?item=first&tab=spec");
+  const item = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/spec.md": "# First\n\n## Scope",
+      ".scratch/first/workflow.yaml": "workflow: quick\nstage: do",
+    }),
+    { name: "Project" },
+  ).workItems[0];
+  render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  expect(screen.getByRole("tab", { name: "Spec" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.queryByRole("tab", { name: "Tickets" })).not.toBeInTheDocument();
+});
+
+test("detail tabs keep their content in a scrollable flex column", async () => {
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const { container } = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+  const drawer = screen.getByRole("dialog", { name: "First" });
+  const root = drawer.querySelector('[data-slot="tabs"]');
+  expect(root).toHaveClass("min-h-0", "flex-1", "flex-col");
+  const meta = drawer.querySelector(".drawer-identity p[data-truncate]");
+  expect(meta).toHaveAttribute("title", meta?.textContent);
+  const tabs = within(drawer).getByRole("tablist");
+  expect(tabs).toHaveClass("shrink-0", "border-b");
+  for (const name of ["Overview", "Spec", "Tickets", "Stints"]) {
+    await userEvent.click(within(drawer).getByRole("tab", { name }));
+    expect(within(drawer).getByRole("tabpanel")).toHaveClass(
+      "flex-1",
+      "min-h-0",
+      "overflow-y-auto",
+    );
+  }
+  expect(container).not.toContainElement(drawer);
+});
+
+test.each([
+  ["en", "Tickets", "Ready for agent", "Resolved", "Blocked by"],
+  ["zh-CN", "工单", "待 Agent 处理", "已解决", "受阻于"],
+])(
+  "%s ticket rows localize statuses and omit resolved blockers",
+  async (language, tabName, ready, resolved, blockedBy) => {
+    localStorage.setItem(languageStorageKey, language);
+    const item = indexProject(
+      createMemoryRepoFiles({
+        ".scratch/first/spec.md": "# First",
+        ".scratch/first/issues/01-ready.md":
+          "# Ready ticket\nStatus: ready-for-agent\nBlocked by: none",
+        ".scratch/first/issues/02-done.md": "# Done ticket\nStatus: resolved\nBlocked by: 01",
+      }),
+      { name: "Project" },
+    ).workItems[0];
+    render(
+      <LanguageProvider>
+        <WorkItemDrawer item={item} onClose={() => {}} />
+      </LanguageProvider>,
+    );
+    await userEvent.click(screen.getByRole("tab", { name: tabName }));
+    const panel = within(screen.getByRole("tabpanel"));
+    const readyRow = panel.getByText("01 · Ready ticket").closest("li");
+    const doneRow = panel.getByText("02 · Done ticket").closest("li");
+    expect(readyRow).toHaveTextContent(ready);
+    expect(doneRow).toHaveTextContent(resolved);
+    expect(doneRow).not.toHaveTextContent(blockedBy);
+    localStorage.removeItem(languageStorageKey);
+  },
+);

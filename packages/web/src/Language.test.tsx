@@ -193,9 +193,11 @@ test("Settings persists language and the drawer remains reachable in each langua
     await user.click(screen.getByRole("button", { name: /Open example:|打开 example：/ }));
     const drawer = await screen.findByRole("dialog", { name: "Repo title 中文" });
     expect(within(drawer).queryByRole("button", { name: /Language|语言/ })).not.toBeInTheDocument();
+    await user.click(within(drawer).getByRole("tab", { name: /Tickets|工单/ }));
     await user.click(within(drawer).getByText("01 · Repo ticket 中文"));
-    expect(within(drawer).getByText("01 · Repo ticket 中文").closest("details")).toHaveAttribute(
-      "open",
+    expect(within(drawer).getByText("01 · Repo ticket 中文").closest("button")).toHaveAttribute(
+      "aria-expanded",
+      "true",
     );
     await user.click(within(drawer).getByRole("button", { name: /Close work item|关闭工作项/ }));
     const choices = screen.getByRole("button", {
@@ -212,6 +214,7 @@ test("Settings persists language and the drawer remains reachable in each langua
     expect(localStorage.getItem(languageStorageKey)).toBe(language);
     await user.click(screen.getByRole("button", { name: /Open example:|打开 example：/ }));
     const reopened = await screen.findByRole("dialog", { name: "Repo title 中文" });
+    await user.click(within(reopened).getByRole("tab", { name: /Tickets|工单/ }));
     expect(within(reopened).getByText("01 · Repo ticket 中文")).toBeInTheDocument();
     expect(new URL(window.location.href).searchParams.get("item")).toBe("example");
     await user.click(within(reopened).getByRole("button", { name: /Close work item|关闭工作项/ }));

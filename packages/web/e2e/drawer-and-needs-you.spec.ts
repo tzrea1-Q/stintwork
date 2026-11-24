@@ -146,10 +146,25 @@ for (const language of ["en", "zh-CN"] as const) {
         expect(warningText.left).toBeGreaterThanOrEqual(insets.left - 1);
         expect(warningText.right).toBeLessThanOrEqual(insets.right + 1);
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-error");
-        const content = sheet.locator(".drawer-content");
-        await sheet.locator(".drawer-ticket summary").click();
+        for (const tab of ["overview", "spec", "tickets", "stints"] as const) {
+          await sheet.getByRole("tab", { name: t.detailTabs[tab], exact: true }).click();
+          await assertLayout(page, { region: ".work-item-drawer" });
+          const panel = sheet.getByRole("tabpanel");
+          expect(
+            await panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
+          ).toBe(true);
+        }
+        await sheet.getByRole("tab", { name: t.detailTabs.spec }).click();
+        const content = sheet.getByRole("tabpanel");
         await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(0);
+        const header = sheet.locator(".drawer-header");
+        const headerBefore = await header.boundingBox();
         await scrollContent(content);
+        const headerAfter = await header.boundingBox();
+        expect(
+          headerBefore && headerAfter && Math.abs(headerBefore.y - headerAfter.y) < 1,
+        ).toBeTruthy();
+        await expect(header).toBeInViewport();
         const code = content.locator(".markdown pre").first();
         await code.scrollIntoViewIfNeeded();
         await code.evaluate((element) => {
@@ -229,11 +244,14 @@ for (const language of ["en", "zh-CN"] as const) {
         snapshot.attentionItems = [];
         await page.reload();
         await trigger.click();
+        await sheet.getByRole("tab", { name: t.detailTabs.spec }).click();
         await expect(sheet.getByText(t.stints.noSpec, { exact: true })).toBeVisible();
+        await sheet.getByRole("tab", { name: t.detailTabs.tickets }).click();
         await expect(sheet.getByText(t.stints.noTickets, { exact: true })).toBeVisible();
+        await sheet.getByRole("tab", { name: t.detailTabs.stints }).click();
         await expect(sheet.getByText(t.stints.noStints, { exact: true })).toBeVisible();
         await captureSheet(page, testInfo, ".work-item-drawer", "drawer-empty");
-        await sheet.getByRole("link", { name: t.stints.spec, exact: true }).focus();
+        await sheet.getByRole("tab", { name: t.detailTabs.spec, exact: true }).focus();
         await page.keyboard.press("Escape");
         await expect(sheet).not.toBeVisible();
         await expect(trigger).toBeFocused();
@@ -526,3 +544,39 @@ for (const language of ["en", "zh-CN"] as const) {
     }
   }
 }
+
+test("detail resizing persists and full screen fills the board area", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openFixture(page, "en");
+  await page.goto("/?view=pipeline");
+  await page.locator('.board-scroll [data-work-item="long-title"]').click();
+  const drawer = page.locator(".work-item-drawer");
+  await expect(drawer).toHaveCSS("width", "560px");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const handle = drawer.getByRole("separator", { name: en.stints.resizeDetail });
+  const bounds = await handle.boundingBox();
+  if (!bounds) throw new Error("Resize handle is not visible");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 - 200, bounds.y + bounds.height / 2);
+  await page.mouse.up();
+  await expect(drawer).toHaveCSS("width", "760px");
+  await handle.focus();
+  await page.keyboard.press("End");
+  await expect(drawer).toHaveCSS("width", "864px");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.reload();
+  await expect(drawer).toHaveCSS("width", "864px");
+  await drawer.getByRole("button", { name: en.stints.expandDetail }).click();
+  await expect(page.locator(".pipeline-main")).toBeHidden();
+  const fullBounds = await drawer.boundingBox();
+  const topBarBounds = await page.locator(".top-bar").boundingBox();
+  if (!fullBounds || !topBarBounds) throw new Error("Expected detail and top bar bounds");
+  expect(fullBounds.width).toBe(1440);
+  expect(fullBounds.y).toBe(topBarBounds.y + topBarBounds.height);
+  expect(fullBounds.y + fullBounds.height).toBe(900);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(drawer.getByRole("button", { name: en.stints.collapseDetail })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: en.stints.expandDetail })).toHaveCount(0);
+});

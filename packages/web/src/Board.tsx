@@ -40,6 +40,9 @@ export function Board({
   const [openSlug, setOpenSlug] = useState<string | null>(() =>
     new URL(window.location.href).searchParams.get("item"),
   );
+  const [fullDetail, setFullDetail] = useState(
+    () => new URL(window.location.href).searchParams.get("detail") === "full",
+  );
   const [view, setView] = useState<"overview" | "pipeline">(() =>
     viewFromSearch(window.location.search),
   );
@@ -101,7 +104,11 @@ export function Board({
   useEffect(() => {
     const url = new URL(window.location.href);
     if (openSlug && (openItem || verifyingItem)) url.searchParams.set("item", openSlug);
-    else url.searchParams.delete("item");
+    else {
+      url.searchParams.delete("item");
+      url.searchParams.delete("detail");
+      url.searchParams.delete("tab");
+    }
     window.history.replaceState(window.history.state, "", url);
 
     if (!openItem && !verifyingItem && previousItem.current) {
@@ -178,7 +185,9 @@ export function Board({
       target?.focus();
     }
     function handlePopstate() {
-      setOpenSlug(new URL(window.location.href).searchParams.get("item"));
+      const params = new URL(window.location.href).searchParams;
+      setOpenSlug(params.get("item"));
+      setFullDetail(params.get("detail") === "full");
     }
     document.addEventListener("keydown", handleKeydown);
     window.addEventListener("popstate", handlePopstate);
@@ -204,7 +213,7 @@ export function Board({
   }, []);
 
   return (
-    <div className="pipeline-app flex h-dvh min-w-0 flex-col">
+    <div className="pipeline-app flex h-dvh w-full min-w-0 max-w-full flex-col">
       <TopBar
         snapshot={snapshot}
         view={view}
@@ -245,7 +254,7 @@ export function Board({
       >
         <main
           hidden={view === "overview"}
-          className={`pipeline-main ${view === "overview" ? "hidden" : "flex"} min-h-0 min-w-0 flex-1 flex-col`}
+          className={`pipeline-main ${view === "overview" ? "hidden" : "flex"} ${fullDetail && openItem ? "lg:hidden" : ""} min-h-0 min-w-0 flex-1 flex-col`}
         >
           <BoardWorkflowFilter snapshot={snapshot} items={visible} openSlug={openSlug}>
             {(filtered, workflowPicker) => {
@@ -263,7 +272,7 @@ export function Board({
                       {t.board.lastAvailable}
                     </p>
                   )}
-                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-4 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-4 text-xs text-muted-foreground lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:px-6">
                     <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
                       <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
                         <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
@@ -392,7 +401,7 @@ export function Board({
                     <GithubStatus github={snapshot.github} />
                   )}
                   <section
-                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
                     onScroll={(event) => {
                       const grid = event.currentTarget.querySelector(".stage-grid");
                       event.currentTarget.dataset.scrolled = String(
@@ -577,7 +586,18 @@ export function Board({
             }
             agents={snapshot.agents}
             milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
-            onClose={() => setOpenSlug(null)}
+            full={fullDetail}
+            onFullChange={(full) => {
+              setFullDetail(full);
+              const url = new URL(window.location.href);
+              if (full) url.searchParams.set("detail", "full");
+              else url.searchParams.delete("detail");
+              window.history.replaceState(window.history.state, "", url);
+            }}
+            onClose={() => {
+              setFullDetail(false);
+              setOpenSlug(null);
+            }}
             onCustomiseWorkflow={setCustomiseId}
           />
         )}

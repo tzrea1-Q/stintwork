@@ -17,7 +17,6 @@ import { HandoffCard } from "./HandoffCard";
 import {
   CoreTextError,
   readResponseJson,
-  ticketStatus,
   translateCoreText,
   useErrorText,
   useLanguage,
@@ -182,14 +181,6 @@ export function GateView({
         total={item.tickets.length}
         label={t.stints.ticketsResolved.trim()}
       />
-      <ul>
-        {item.tickets.map((ticket) => (
-          <li key={ticket.path}>
-            {github ? `#${ticket.number}` : String(ticket.number).padStart(2, "0")} · {ticket.title}{" "}
-            · {ticketStatus(ticket.status, t, ticket.resolved)}
-          </li>
-        ))}
-      </ul>
       <PropertyList>
         <PropertyRow
           icon={GitCommitHorizontal}

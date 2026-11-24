@@ -443,3 +443,23 @@ test("failed preparation preserves the finished stage evidence", () => {
   ];
   expect(gateReadiness(workItem)).toMatchObject({ ready: true, stageStint: finished });
 });
+
+test("implement gate tracks ticket resolution as a condition", () => {
+  const workItem = item("implement");
+  workItem.tickets = Array.from({ length: 6 }, (_, index) => ({
+    ...workItem.tickets[0],
+    number: index + 1,
+    resolved: index < 5,
+  }));
+  let gate = gateReadiness(workItem);
+  expect(gate.ready).toBe(false);
+  expect(gate.conditions.find((condition) => condition.id === "ticket-resolution")?.ready).toBe(
+    false,
+  );
+  workItem.tickets[5].resolved = true;
+  gate = gateReadiness(workItem);
+  expect(gate.ready).toBe(true);
+  expect(gate.conditions.find((condition) => condition.id === "ticket-resolution")?.ready).toBe(
+    true,
+  );
+});
