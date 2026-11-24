@@ -205,6 +205,11 @@ export const coreTextEnglish = {
   "server.jsonWorkItem": "A JSON work item creation is required.",
   "server.jsonWorkflow": "A JSON workflow action is required.",
   "stint.alreadyActive": "A stint is already active for this work item.",
+  "outside.worktree":
+    "This work item has a Stintwork worktree. Ship it, or remove the worktree first.",
+  "outside.github": "GitHub-tracked work items cannot be marked as shipped here.",
+  "outside.unknownCommit": "The commit could not be resolved.",
+  "outside.unreachable": "The commit is not reachable from the main checkout HEAD.",
   "ship.running": "A stint is running on this work item. Finish or stop it before shipping.",
   "memory.activeWrite": "A stint or review write is active for this work item.",
   "agent.activeWrite": "A stint or workflow write is already active for this work item.",

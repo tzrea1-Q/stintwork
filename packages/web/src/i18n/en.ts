@@ -728,6 +728,16 @@ export const en = {
       },
     },
   },
+  markShipped: {
+    mark: "Mark as shipped",
+    explanation: "Record a merge made outside Stintwork. This commits the work item workflow file.",
+    commit: "Merge commit",
+    cancel: "Cancel",
+    confirm: "Mark as shipped",
+    success: "Work item marked as shipped.",
+    outside: "Merged outside Stintwork",
+    error: "Could not mark the work item as shipped.",
+  },
   detailPanel: { stage: "Stage", branch: "Branch", pullRequest: "Pull request" },
   stints: {
     copied: "Copied",

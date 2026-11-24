@@ -30,6 +30,7 @@ import { stageName, workflowName } from "./i18n/workflow-names";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { ReviewOverlay } from "./ReviewOverlay";
 import { ShipActions } from "./ShipActions";
+import { MarkShipped } from "./MarkShipped";
 import { StageAgentRail } from "./StageAgentRail";
 import { StintHistory } from "./StintHistory";
 import { recoveryStatus } from "./StintRecovery";
@@ -96,6 +97,8 @@ function FilePath({ path, compact = false }: { path: string; compact?: boolean }
 
 export function WorkItemDrawer({
   item,
+  mainHead,
+  localTracker = true,
   milestone,
   onClose,
   agents = [],
@@ -109,6 +112,8 @@ export function WorkItemDrawer({
   onOpenNeedsYou,
 }: {
   item: BoardWorkItem;
+  mainHead?: string;
+  localTracker?: boolean;
   pendingPermissions?: boolean;
   attentionCount?: number;
   onOpenNeedsYou?: () => void;
@@ -443,6 +448,14 @@ export function WorkItemDrawer({
             />
           </section>
         )}
+        {item.merged?.outside && (
+          <div className="flex min-w-0 items-center gap-2 py-2 text-[11px] text-muted-foreground">
+            <GitBranch aria-hidden="true" className="size-4 shrink-0" />
+            <span>
+              {t.markShipped.outside} · {item.merged.commit.slice(0, 7)}
+            </span>
+          </div>
+        )}
         <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dt]:text-[11px] [&_dd]:text-[11px] [&_dd]:whitespace-normal">
           {stage && (
             <PropertyRow
@@ -701,6 +714,14 @@ export function WorkItemDrawer({
                 />
               </div>
             )}
+            {localTracker &&
+              !item.github &&
+              !item.worktreePath &&
+              !item.merged &&
+              item.activeStint?.status !== "running" &&
+              !item.stints.some((stint) => stint.status === "running") && (
+                <MarkShipped slug={item.slug} head={mainHead} />
+              )}
             {item.worktreePath && (
               <Button
                 variant={reviewPrimary ? "primary" : "secondary"}

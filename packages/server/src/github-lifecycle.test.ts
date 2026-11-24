@@ -71,6 +71,7 @@ test("every registered write route has an identity classification", async () => 
       "/api/work-items/:slug/risky-paths/accept",
       "/api/work-items/:slug/memory-proposals/decision",
       "/api/work-items/:slug/checks",
+      "/api/work-items/:slug/mark-shipped",
       "/api/work-items/:slug/ship/merge-local",
       "/api/work-items/:slug/ship/send-back",
       "/api/work-items/:slug/ship/open-pr",
