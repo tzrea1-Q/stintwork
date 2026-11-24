@@ -887,3 +887,48 @@ test.each([
     localStorage.removeItem(languageStorageKey);
   },
 );
+
+test("docked Escape collapses full screen before closing and restores focus", async () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const onClose = vi.fn();
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  function Example() {
+    const [open, setOpen] = useState(false);
+    const [full, setFull] = useState(false);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          Open
+        </button>
+        {open && (
+          <WorkItemDrawer
+            item={item}
+            full={full}
+            onFullChange={setFull}
+            onClose={() => {
+              onClose();
+              setOpen(false);
+            }}
+          />
+        )}
+      </>
+    );
+  }
+  const user = userEvent.setup();
+  render(<Example />);
+  const opener = screen.getByRole("button", { name: "Open" });
+  await user.click(opener);
+  await user.click(screen.getByRole("button", { name: "Expand to full screen" }));
+  await user.keyboard("{Escape}");
+  expect(screen.getByRole("button", { name: "Expand to full screen" })).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+  await user.keyboard("{Escape}");
+  expect(onClose).toHaveBeenCalledOnce();
+  await waitFor(() => expect(opener).toHaveFocus());
+});

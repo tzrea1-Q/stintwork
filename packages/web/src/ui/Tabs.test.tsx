@@ -32,10 +32,7 @@ test("exposes line list variant", () => {
   const active = screen.getByRole("tab", { name: "A" });
   expect(active).toHaveAttribute("data-state", "active");
   expect(active).toHaveClass("data-[state=active]:text-foreground");
-  expect(active).toHaveClass(
-    "group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100",
-  );
-  expect(active).toHaveClass("group-data-[orientation=horizontal]/tabs:after:h-0.5");
+  expect(active.querySelectorAll("[data-slot=tabs-indicator]")).toHaveLength(1);
 });
 
 test("moves focus down in vertical tabs", async () => {
@@ -52,4 +49,54 @@ test("moves focus down in vertical tabs", async () => {
   await user.keyboard("{ArrowDown}");
   expect(screen.getByRole("tab", { name: "B" })).toHaveFocus();
   expect(screen.getByRole("tab", { name: "B" })).toHaveAttribute("aria-selected", "true");
+});
+
+test.each(["line", "default"] as const)(
+  "indicator follows click and keyboard in %s tabs",
+  async (variant) => {
+    const user = userEvent.setup();
+    const { container } = render(
+      <Tabs defaultValue="a">
+        <TabsList variant={variant}>
+          <TabsTrigger value="a">A</TabsTrigger>
+          <TabsTrigger value="b">B</TabsTrigger>
+        </TabsList>
+        <TabsContent value="a">First</TabsContent>
+        <TabsContent value="b">Second</TabsContent>
+      </Tabs>,
+    );
+    const a = screen.getByRole("tab", { name: "A" });
+    const b = screen.getByRole("tab", { name: "B" });
+    await user.click(b);
+    expect(screen.getByText("Second")).toBeVisible();
+    expect(container.querySelectorAll('[data-slot="tabs-indicator"]')).toHaveLength(1);
+    expect(b.querySelector('[data-slot="tabs-indicator"]')).toBeInTheDocument();
+    await user.keyboard("{ArrowLeft}");
+    expect(screen.getByText("First")).toBeVisible();
+    expect(a.querySelector('[data-slot="tabs-indicator"]')).toBeInTheDocument();
+  },
+);
+
+test("each tab list owns its indicator", () => {
+  const { container } = render(
+    <>
+      <Tabs defaultValue="a">
+        <TabsList>
+          <TabsTrigger value="a">One</TabsTrigger>
+        </TabsList>
+      </Tabs>
+      <Tabs defaultValue="a">
+        <TabsList>
+          <TabsTrigger value="a">Two</TabsTrigger>
+        </TabsList>
+      </Tabs>
+    </>,
+  );
+  expect(container.querySelectorAll('[data-slot="tabs-indicator"]')).toHaveLength(2);
+  expect(
+    screen.getByRole("tab", { name: "One" }).querySelector('[data-slot="tabs-indicator"]'),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("tab", { name: "Two" }).querySelector('[data-slot="tabs-indicator"]'),
+  ).toBeInTheDocument();
 });

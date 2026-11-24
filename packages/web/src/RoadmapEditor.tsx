@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+import { m } from "motion/react";
+import { useId } from "react";
+import { spring, useReducedMotionSafe } from "./ui/motion";
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -31,6 +34,8 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
   const { t } = useLanguage();
   const labels = t.planning.roadmap;
   const [milestones, setMilestones] = useState(snapshot.milestones);
+  const indicatorId = useId();
+  const reduced = useReducedMotionSafe();
   const [selected, setSelected] = useState(snapshot.milestones[0]?.id ?? "");
   const milestone = milestones.find((item) => item.id === selected);
   const [name, setName] = useState(milestone?.name ?? "");
@@ -256,7 +261,9 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
                       item.workItemSlugs.includes(workItem.slug) && workItemDone(workItem),
                   ).length;
                   return (
-                    <section
+                    <m.section
+                      layout={!reduced}
+                      transition={spring.layout}
                       key={item.id}
                       aria-label={item.name}
                       className="flex min-w-0 items-center gap-1 border-b border-border py-0.5"
@@ -266,8 +273,17 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
                         aria-pressed={selected === item.id}
                         disabled={saving}
                         onClick={() => select(item.id)}
-                        className="flex min-w-0 flex-1 items-center gap-1 rounded-sm text-left aria-pressed:bg-accent"
+                        className="relative isolate flex min-w-0 flex-1 items-center gap-1 rounded-sm text-left"
                       >
+                        {selected === item.id && (
+                          <m.span
+                            aria-hidden="true"
+                            data-slot="milestone-indicator"
+                            layoutId={reduced ? undefined : indicatorId}
+                            transition={spring.selection}
+                            className="absolute inset-0 -z-10 rounded-sm bg-accent"
+                          />
+                        )}
                         <span
                           className="min-w-0 flex-1 truncate font-semibold"
                           data-truncate
@@ -333,7 +349,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
                           </Tooltip>
                         );
                       })}
-                    </section>
+                    </m.section>
                   );
                 })}
               </TooltipProvider>
@@ -367,7 +383,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
                     <ToggleGroupItem
                       key={value}
                       value={value}
-                      className="rounded-full text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                      className="rounded-full text-muted-foreground data-[state=on]:text-primary-foreground [&_[data-slot=toggle-indicator]]:bg-primary"
                     >
                       {labels[value]}
                     </ToggleGroupItem>

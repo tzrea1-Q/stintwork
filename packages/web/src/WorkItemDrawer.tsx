@@ -22,6 +22,8 @@ import {
   Minimize2,
   X,
 } from "lucide-react";
+import { AnimatePresence, m, MotionGlobalConfig } from "motion/react";
+import { spring, tween, useReducedMotionSafe } from "./ui/motion";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { ChecksPanel } from "./ChecksPanel";
@@ -137,6 +139,12 @@ export function WorkItemDrawer({
   onCustomiseWorkflow?: (id: string) => void;
 }) {
   const { t } = useLanguage();
+  const reduced = useReducedMotionSafe();
+  const [closing, setClosing] = useState(false);
+  const close = useCallback(() => {
+    if (MotionGlobalConfig.skipAnimations) onClose();
+    else setClosing(true);
+  }, [onClose]);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [refreshError, setRefreshError] = useErrorText();
@@ -213,7 +221,7 @@ export function WorkItemDrawer({
       /* Storage may be blocked. */
     }
   }
-  const dismiss = () => (full ? onFullChange?.(false) : onClose());
+  const dismiss = () => (full ? onFullChange?.(false) : close());
   const [docked, setDocked] = useState(
     () =>
       typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches,
@@ -255,11 +263,11 @@ export function WorkItemDrawer({
       )
         return;
       if (full) onFullChange?.(false);
-      else onClose();
+      else close();
     };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [docked, onClose, onFullChange, full, reviewOpen]);
+  }, [docked, close, onFullChange, full, reviewOpen]);
   const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
@@ -390,7 +398,10 @@ export function WorkItemDrawer({
           {t.needsYou.pendingPermissions}
         </button>
       )}
-      <header className="drawer-header relative max-h-[35%] shrink-0 overflow-y-auto px-4 py-4 sm:px-7">
+      <m.header
+        layout="position"
+        className="drawer-header relative max-h-[35%] shrink-0 overflow-y-auto px-4 py-4 sm:px-7"
+      >
         <div className="flex min-w-0 items-center gap-2">
           <code
             className="min-w-0 truncate font-mono text-[11px] text-muted-foreground"
@@ -459,7 +470,7 @@ export function WorkItemDrawer({
                 className="size-10 shrink-0"
                 ref={closeButton}
                 aria-label={t.stints.closeWorkItem}
-                onClick={onClose}
+                onClick={docked ? close : onClose}
               >
                 <X aria-hidden="true" />
               </Button>
@@ -539,341 +550,352 @@ export function WorkItemDrawer({
             )}
           </div>
         </div>
-      </header>
-      <Tabs
-        value={activeTab}
-        onValueChange={changeTab}
-        className="min-h-0 min-w-0 flex-1 flex-col gap-0"
-      >
-        <TabsList
-          variant="line"
-          aria-label={t.stints.sections}
-          className="w-full shrink-0 justify-start overflow-x-auto border-b border-border px-4 sm:px-7"
+      </m.header>
+      <m.div layout="position" className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={changeTab}
+          className="min-h-0 min-w-0 flex-1 flex-col gap-0"
         >
-          {tabs.map((value) => (
-            <TabsTrigger key={value} value={value} className="flex-none">
-              {t.detailTabs[value as keyof typeof t.detailTabs]}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent
-          value="overview"
-          className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5 [&_.drawer-section-heading]:text-sm [&_.drawer-section-heading]:font-medium"
-        >
-          {item.activeStint && (
-            <section aria-labelledby="drawer-live-stint-title">
-              <h3
-                id="drawer-live-stint-title"
-                className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
-              >
-                {t.stints.liveStint}
-              </h3>
-              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                <p role="status">
-                  {activeProfile?.displayName ?? item.activeStint.agent}
-                  {item.activeStint.ticket !== null && (
-                    <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
-                  )}{" "}
-                  · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
-                </p>
-                <StopStint
-                  key={`stop:${item.activeStint.id}`}
-                  stintId={item.activeStint.id}
-                  recovering={!!item.activeStint.recovery?.state}
+          <TabsList
+            variant="line"
+            aria-label={t.stints.sections}
+            className="w-full shrink-0 justify-start overflow-x-auto border-b border-border px-4 sm:px-7"
+          >
+            {tabs.map((value) => (
+              <TabsTrigger key={value} value={value} className="flex-none">
+                {t.detailTabs[value as keyof typeof t.detailTabs]}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+          <TabsContent
+            value="overview"
+            className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5 [&_.drawer-section-heading]:text-sm [&_.drawer-section-heading]:font-medium"
+          >
+            {item.activeStint && (
+              <section aria-labelledby="drawer-live-stint-title">
+                <h3
+                  id="drawer-live-stint-title"
+                  className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+                >
+                  {t.stints.liveStint}
+                </h3>
+                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                  <p role="status">
+                    {activeProfile?.displayName ?? item.activeStint.agent}
+                    {item.activeStint.ticket !== null && (
+                      <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
+                    )}{" "}
+                    · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
+                  </p>
+                  <StopStint
+                    key={`stop:${item.activeStint.id}`}
+                    stintId={item.activeStint.id}
+                    recovering={!!item.activeStint.recovery?.state}
+                  />
+                </div>
+                <StintStream
+                  key={`stream:${item.activeStint.id}`}
+                  stint={item.activeStint}
+                  profile={activeProfile}
                 />
+              </section>
+            )}
+            {item.merged?.outside && (
+              <div className="flex min-w-0 items-center gap-2 py-2 text-[11px] text-muted-foreground">
+                <GitBranch aria-hidden="true" className="size-4 shrink-0" />
+                <span>
+                  {t.markShipped.outside} · {item.merged.commit.slice(0, 7)}
+                </span>
               </div>
-              <StintStream
-                key={`stream:${item.activeStint.id}`}
-                stint={item.activeStint}
-                profile={activeProfile}
-              />
-            </section>
-          )}
-          {item.merged?.outside && (
-            <div className="flex min-w-0 items-center gap-2 py-2 text-[11px] text-muted-foreground">
-              <GitBranch aria-hidden="true" className="size-4 shrink-0" />
-              <span>
-                {t.markShipped.outside} · {item.merged.commit.slice(0, 7)}
-              </span>
-            </div>
-          )}
-          <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dt]:text-[11px] [&_dd]:text-[11px] [&_dd]:whitespace-normal">
-            {stage && (
-              <PropertyRow
-                icon={LayoutGrid}
-                label={t.detailPanel.stage}
-                value={stageName(workflow, stage, t)}
-              />
             )}
-            {item.worktreePath && (
-              <PropertyRow
-                icon={FolderGit2}
-                label={t.stints.worktreeFiles}
-                value={<FilePath path={item.worktreePath} compact />}
-              />
-            )}
-            {item.pullRequest && (
-              <>
+            <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dt]:text-[11px] [&_dd]:text-[11px] [&_dd]:whitespace-normal">
+              {stage && (
                 <PropertyRow
-                  icon={GitBranch}
-                  label={t.detailPanel.branch}
-                  value={
-                    <span className="block truncate" data-truncate title={item.pullRequest.branch}>
-                      {item.pullRequest.branch}
-                    </span>
-                  }
-                  fullText={item.pullRequest.branch}
+                  icon={LayoutGrid}
+                  label={t.detailPanel.stage}
+                  value={stageName(workflow, stage, t)}
                 />
+              )}
+              {item.worktreePath && (
                 <PropertyRow
-                  icon={GitPullRequest}
-                  label={t.detailPanel.pullRequest}
-                  value={
-                    <a
-                      className="block truncate"
-                      data-truncate
-                      title={item.pullRequest.url}
-                      href={item.pullRequest.url}
-                    >
-                      {item.pullRequest.url}
-                    </a>
-                  }
-                  fullText={item.pullRequest.url}
+                  icon={FolderGit2}
+                  label={t.stints.worktreeFiles}
+                  value={<FilePath path={item.worktreePath} compact />}
                 />
-              </>
-            )}
-            {item.pullRequestChecks && (
-              <PropertyRow
-                icon={CheckCircle2}
-                label={t.stints.checks}
-                value={`${item.pullRequestChecks.checks.filter((check) => check.bucket === "pass").length}/${item.pullRequestChecks.checks.length} ${t.review.visualRefresh07.passing}`}
-              />
-            )}
-            {item.stage && !item.merged && (
-              <StageAgentRail
-                key={item.slug}
-                item={item}
-                workflows={workflows}
-                onAgentChange={(agent) =>
-                  setAgentChoice({ source: item.stages, slug: item.slug, agent })
-                }
-              />
-            )}
-          </PropertyList>
-          {!item.stage && !item.merged ? (
-            <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
-              {t.stints.noStage}
-            </p>
-          ) : null}
-          <ShipActions item={item} workflows={workflows} onPausePolling={setShipPaused} />
-          {!item.merged && (
-            <GateView
-              key={item.github ? item.slug : `${item.slug}:${item.stage}`}
-              item={item}
-              warnings={warnings}
-              githubReadOnly={githubReadOnly}
-              workflows={workflows}
-            />
-          )}
-        </TabsContent>
-        <TabsContent
-          value="spec"
-          className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7"
-        >
-          <div ref={captureSpec} className="@container">
-            <section
-              id="drawer-spec"
-              aria-labelledby="drawer-spec-title"
-              className={
-                headings.length ? "grid gap-4 @[960px]:grid-cols-[220px_minmax(0,1fr)]" : undefined
-              }
-            >
-              <h3 id="drawer-spec-title" className="sr-only">
-                {t.stints.spec}
-              </h3>
-              {item.spec ? (
+              )}
+              {item.pullRequest && (
                 <>
-                  {headings.length > 0 && (
-                    <>
-                      <details className="text-xs text-muted-foreground @[960px]:hidden">
-                        <summary className="cursor-pointer">{t.detailTabs.contents}</summary>
+                  <PropertyRow
+                    icon={GitBranch}
+                    label={t.detailPanel.branch}
+                    value={
+                      <span
+                        className="block truncate"
+                        data-truncate
+                        title={item.pullRequest.branch}
+                      >
+                        {item.pullRequest.branch}
+                      </span>
+                    }
+                    fullText={item.pullRequest.branch}
+                  />
+                  <PropertyRow
+                    icon={GitPullRequest}
+                    label={t.detailPanel.pullRequest}
+                    value={
+                      <a
+                        className="block truncate"
+                        data-truncate
+                        title={item.pullRequest.url}
+                        href={item.pullRequest.url}
+                      >
+                        {item.pullRequest.url}
+                      </a>
+                    }
+                    fullText={item.pullRequest.url}
+                  />
+                </>
+              )}
+              {item.pullRequestChecks && (
+                <PropertyRow
+                  icon={CheckCircle2}
+                  label={t.stints.checks}
+                  value={`${item.pullRequestChecks.checks.filter((check) => check.bucket === "pass").length}/${item.pullRequestChecks.checks.length} ${t.review.visualRefresh07.passing}`}
+                />
+              )}
+              {item.stage && !item.merged && (
+                <StageAgentRail
+                  key={item.slug}
+                  item={item}
+                  workflows={workflows}
+                  onAgentChange={(agent) =>
+                    setAgentChoice({ source: item.stages, slug: item.slug, agent })
+                  }
+                />
+              )}
+            </PropertyList>
+            {!item.stage && !item.merged ? (
+              <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
+                {t.stints.noStage}
+              </p>
+            ) : null}
+            <ShipActions item={item} workflows={workflows} onPausePolling={setShipPaused} />
+            {!item.merged && (
+              <GateView
+                key={item.github ? item.slug : `${item.slug}:${item.stage}`}
+                item={item}
+                warnings={warnings}
+                githubReadOnly={githubReadOnly}
+                workflows={workflows}
+              />
+            )}
+          </TabsContent>
+          <TabsContent
+            value="spec"
+            className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7"
+          >
+            <div ref={captureSpec} className="@container">
+              <section
+                id="drawer-spec"
+                aria-labelledby="drawer-spec-title"
+                className={
+                  headings.length
+                    ? "grid gap-4 @[960px]:grid-cols-[220px_minmax(0,1fr)]"
+                    : undefined
+                }
+              >
+                <h3 id="drawer-spec-title" className="sr-only">
+                  {t.stints.spec}
+                </h3>
+                {item.spec ? (
+                  <>
+                    {headings.length > 0 && (
+                      <>
+                        <details className="text-xs text-muted-foreground @[960px]:hidden">
+                          <summary className="cursor-pointer">{t.detailTabs.contents}</summary>
+                          <nav
+                            aria-label={t.detailTabs.contents}
+                            className="flex flex-col items-start [&>button]:!min-h-7"
+                          >
+                            {contents}
+                          </nav>
+                        </details>
                         <nav
                           aria-label={t.detailTabs.contents}
-                          className="flex flex-col items-start [&>button]:!min-h-7"
+                          className="hidden min-w-0 flex-col items-start gap-1 text-xs text-muted-foreground @[960px]:sticky @[960px]:top-0 @[960px]:flex @[960px]:self-start"
                         >
                           {contents}
                         </nav>
-                      </details>
-                      <nav
-                        aria-label={t.detailTabs.contents}
-                        className="hidden min-w-0 flex-col items-start gap-1 text-xs text-muted-foreground @[960px]:sticky @[960px]:top-0 @[960px]:flex @[960px]:self-start"
-                      >
-                        {contents}
-                      </nav>
-                    </>
-                  )}
-                  <div className="min-w-0 max-w-[72ch]">
-                    <FilePath path={item.spec.path} />
-                    <Markdown>{item.spec.text}</Markdown>
-                  </div>
-                </>
-              ) : missingShippedDetail ? (
-                <p className="muted text-muted-foreground">
-                  {t.board.githubStatus.detailUnavailable}
-                </p>
-              ) : (
-                <p className="muted text-muted-foreground">{t.stints.noSpec}</p>
-              )}
-            </section>
-          </div>
-        </TabsContent>
-        {hasTickets && (
-          <TabsContent
-            value="tickets"
-            className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7"
-          >
-            <section id="drawer-tickets" aria-labelledby="drawer-tickets-title">
-              <h3 id="drawer-tickets-title" className="sr-only">
-                {t.stints.tickets}{" "}
-                <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
-                  {item.tickets.length}
-                </span>
-              </h3>
-              {item.tickets.length ? (
-                <>
-                  <ol className="drawer-tickets">
-                    {item.tickets.map((ticket) => {
-                      const blocked = ticket.blocked && ticket.status !== "unknown";
-                      const StatusIcon = ticket.resolved
-                        ? CheckCircle2
-                        : blocked
-                          ? LockKeyhole
-                          : Circle;
-                      return (
-                        <li key={ticket.path}>
-                          <div className="drawer-ticket rounded-md border border-border p-3">
-                            <button
-                              type="button"
-                              className="flex w-full items-start gap-3 text-left"
-                              aria-expanded={ticketSelection === ticket.number}
-                              onClick={() =>
-                                setTicketSelection(
-                                  ticketSelection === ticket.number ? undefined : ticket.number,
-                                )
-                              }
-                            >
-                              <StatusIcon
-                                className={
-                                  ticket.resolved
-                                    ? "size-icon-sm shrink-0 text-success-foreground"
-                                    : blocked
-                                      ? "size-icon-sm shrink-0 text-attention-foreground"
-                                      : "size-icon-sm shrink-0 text-muted-foreground"
+                      </>
+                    )}
+                    <div className="min-w-0 max-w-[72ch]">
+                      <FilePath path={item.spec.path} />
+                      <Markdown>{item.spec.text}</Markdown>
+                    </div>
+                  </>
+                ) : missingShippedDetail ? (
+                  <p className="muted text-muted-foreground">
+                    {t.board.githubStatus.detailUnavailable}
+                  </p>
+                ) : (
+                  <p className="muted text-muted-foreground">{t.stints.noSpec}</p>
+                )}
+              </section>
+            </div>
+          </TabsContent>
+          {hasTickets && (
+            <TabsContent
+              value="tickets"
+              className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7"
+            >
+              <section id="drawer-tickets" aria-labelledby="drawer-tickets-title">
+                <h3 id="drawer-tickets-title" className="sr-only">
+                  {t.stints.tickets}{" "}
+                  <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
+                    {item.tickets.length}
+                  </span>
+                </h3>
+                {item.tickets.length ? (
+                  <>
+                    <ol className="drawer-tickets">
+                      {item.tickets.map((ticket) => {
+                        const blocked = ticket.blocked && ticket.status !== "unknown";
+                        const StatusIcon = ticket.resolved
+                          ? CheckCircle2
+                          : blocked
+                            ? LockKeyhole
+                            : Circle;
+                        return (
+                          <li key={ticket.path}>
+                            <div className="drawer-ticket rounded-md border border-border p-3">
+                              <button
+                                type="button"
+                                className="flex w-full items-start gap-3 text-left"
+                                aria-expanded={ticketSelection === ticket.number}
+                                onClick={() =>
+                                  setTicketSelection(
+                                    ticketSelection === ticket.number ? undefined : ticket.number,
+                                  )
                                 }
-                                aria-hidden="true"
-                              />
-                              <span className="ticket-title grid min-w-0 gap-1 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
-                                <strong>
-                                  {ticketNumber(ticket.number)} · {ticket.title}
-                                </strong>
-                                <small
+                              >
+                                <StatusIcon
                                   className={
-                                    blocked
-                                      ? "warning text-attention-foreground"
-                                      : "muted text-muted-foreground"
+                                    ticket.resolved
+                                      ? "size-icon-sm shrink-0 text-success-foreground"
+                                      : blocked
+                                        ? "size-icon-sm shrink-0 text-attention-foreground"
+                                        : "size-icon-sm shrink-0 text-muted-foreground"
                                   }
-                                >
-                                  <Badge
-                                    variant={
-                                      ticket.resolved
-                                        ? "success"
-                                        : blocked
-                                          ? "warning"
-                                          : "secondary"
+                                  aria-hidden="true"
+                                />
+                                <span className="ticket-title grid min-w-0 gap-1 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
+                                  <strong>
+                                    {ticketNumber(ticket.number)} · {ticket.title}
+                                  </strong>
+                                  <small
+                                    className={
+                                      blocked
+                                        ? "warning text-attention-foreground"
+                                        : "muted text-muted-foreground"
                                     }
                                   >
-                                    {ticketStatus(ticket.status, t, ticket.resolved)}
-                                  </Badge>
-                                  {!ticket.resolved &&
-                                    ticket.status !== "unknown" &&
-                                    ticket.blockedBy.length > 0 && (
-                                      <>
-                                        {" "}
-                                        {t.stints.blockedBy}{" "}
-                                        {ticket.blockedBy.map(ticketNumber).join(", ")}
-                                      </>
-                                    )}
-                                </small>
-                              </span>
-                            </button>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                  {selected && (
-                    <div>
-                      <Markdown>{selected.body}</Markdown>
-                      <FilePath path={selected.path} />
-                      {!item.merged &&
-                        !selected.resolved &&
-                        !selected.blocked &&
-                        selected !== nextTicket && (
-                          <TicketBriefPreview
-                            item={item}
-                            ticket={selected}
-                            workflows={workflows}
-                            githubReadOnly={githubReadOnly}
-                          />
-                        )}
-                    </div>
-                  )}
-                </>
-              ) : missingShippedDetail ? (
-                <p className="muted text-muted-foreground">
-                  {t.board.githubStatus.detailUnavailable}
-                </p>
-              ) : (
-                <p className="muted text-muted-foreground">{t.stints.noTickets}</p>
-              )}
-            </section>
-          </TabsContent>
-        )}
-        <TabsContent
-          value="stints"
-          className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5"
-        >
-          <section aria-labelledby="drawer-stint-history-title">
-            <h3 id="drawer-stint-history-title" className="sr-only">
-              {t.stints.history}
-            </h3>
-            <StintHistory stints={item.stints} github={!!item.github} />
-          </section>
-          {item.merged && (
-            <>
-              <section aria-label={t.stints.reviewFindings}>
-                <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
-                  {t.stints.reviewFindings}
-                </h3>
-                <FindingsRail {...archived} anchor={(finding) => `archived-${finding.id}`} />
-                {archived.findings.map((finding) => (
-                  <FindingCard
-                    key={finding.id}
-                    finding={finding}
-                    anchor={`archived-${finding.id}`}
-                  />
-                ))}
+                                    <Badge
+                                      variant={
+                                        ticket.resolved
+                                          ? "success"
+                                          : blocked
+                                            ? "warning"
+                                            : "secondary"
+                                      }
+                                    >
+                                      {ticketStatus(ticket.status, t, ticket.resolved)}
+                                    </Badge>
+                                    {!ticket.resolved &&
+                                      ticket.status !== "unknown" &&
+                                      ticket.blockedBy.length > 0 && (
+                                        <>
+                                          {" "}
+                                          {t.stints.blockedBy}{" "}
+                                          {ticket.blockedBy.map(ticketNumber).join(", ")}
+                                        </>
+                                      )}
+                                  </small>
+                                </span>
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {selected && (
+                      <div>
+                        <Markdown>{selected.body}</Markdown>
+                        <FilePath path={selected.path} />
+                        {!item.merged &&
+                          !selected.resolved &&
+                          !selected.blocked &&
+                          selected !== nextTicket && (
+                            <TicketBriefPreview
+                              item={item}
+                              ticket={selected}
+                              workflows={workflows}
+                              githubReadOnly={githubReadOnly}
+                            />
+                          )}
+                      </div>
+                    )}
+                  </>
+                ) : missingShippedDetail ? (
+                  <p className="muted text-muted-foreground">
+                    {t.board.githubStatus.detailUnavailable}
+                  </p>
+                ) : (
+                  <p className="muted text-muted-foreground">{t.stints.noTickets}</p>
+                )}
               </section>
-              <section aria-label={t.stints.recordedChecks}>
-                <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
-                  {t.stints.checks}
-                </h3>
-                <ChecksPanel item={item} shipPaused={shipPaused} />
-              </section>
-            </>
+            </TabsContent>
           )}
-        </TabsContent>
-      </Tabs>
-      <footer className="drawer-footer relative max-h-[40%] shrink-0 overflow-y-auto border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7">
+          <TabsContent
+            value="stints"
+            className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5"
+          >
+            <section aria-labelledby="drawer-stint-history-title">
+              <h3 id="drawer-stint-history-title" className="sr-only">
+                {t.stints.history}
+              </h3>
+              <StintHistory stints={item.stints} github={!!item.github} />
+            </section>
+            {item.merged && (
+              <>
+                <section aria-label={t.stints.reviewFindings}>
+                  <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
+                    {t.stints.reviewFindings}
+                  </h3>
+                  <FindingsRail {...archived} anchor={(finding) => `archived-${finding.id}`} />
+                  {archived.findings.map((finding) => (
+                    <FindingCard
+                      key={finding.id}
+                      finding={finding}
+                      anchor={`archived-${finding.id}`}
+                    />
+                  ))}
+                </section>
+                <section aria-label={t.stints.recordedChecks}>
+                  <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
+                    {t.stints.checks}
+                  </h3>
+                  <ChecksPanel item={item} shipPaused={shipPaused} />
+                </section>
+              </>
+            )}
+          </TabsContent>
+        </Tabs>
+      </m.div>
+      <m.footer
+        layout="position"
+        className="drawer-footer relative max-h-[40%] shrink-0 overflow-y-auto border-t border-border px-4 py-3 text-xs text-muted-foreground sm:px-7"
+      >
         <div>
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 [&_.brief-action]:contents [&_.brief-action>p]:order-last [&_.brief-action>p]:min-w-0 [&_.brief-action>p]:basis-full [&_.brief-action>p]:truncate [&_.brief-action>p]:text-xs">
             {showStageAction && (
@@ -946,7 +968,7 @@ export function WorkItemDrawer({
             </span>
           </div>
         </div>
-      </footer>
+      </m.footer>
       {reviewOpen && (
         <ReviewOverlay
           reviewStageId={reviewStageId}
@@ -961,37 +983,55 @@ export function WorkItemDrawer({
   return (
     <TooltipProvider>
       {docked ? (
-        <aside
-          ref={panel}
-          aria-label={item.title}
-          className="work-item-drawer relative flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
+        <div
+          className="min-h-0 min-w-0 shrink-0 overflow-hidden rounded-2xl"
           style={{ width: full ? "100%" : width }}
-          onKeyDown={(event) => {
-            if (
-              event.key === "Escape" &&
-              !event.defaultPrevented &&
-              !reviewOpen &&
-              !(
-                event.target instanceof Element &&
-                event.target.closest('[role="dialog"], [role="listbox"], [role="menu"]')
-              )
-            ) {
-              event.preventDefault();
-              dismiss();
-            }
-          }}
         >
-          {!full && (
-            <ResizeHandle
-              value={width}
-              min={400}
-              max={maximum}
-              onChange={changeWidth}
-              label={t.stints.resizeDetail}
-            />
-          )}
-          {content}
-        </aside>
+          <AnimatePresence onExitComplete={onClose}>
+            {!closing && (
+              <m.aside
+                ref={panel}
+                layout={!reduced}
+                layoutDependency={full}
+                initial={reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{
+                  ...(reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }),
+                  transition: tween.dismiss,
+                }}
+                transition={{ ...tween.sheet, layout: spring.layout }}
+                aria-label={item.title}
+                className="work-item-drawer relative flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
+                style={{ width: full ? "100%" : width, height: "100%" }}
+                onKeyDown={(event) => {
+                  if (
+                    event.key === "Escape" &&
+                    !event.defaultPrevented &&
+                    !reviewOpen &&
+                    !(
+                      event.target instanceof Element &&
+                      event.target.closest('[role="dialog"], [role="listbox"], [role="menu"]')
+                    )
+                  ) {
+                    event.preventDefault();
+                    dismiss();
+                  }
+                }}
+              >
+                {!full && (
+                  <ResizeHandle
+                    value={width}
+                    min={400}
+                    max={maximum}
+                    onChange={changeWidth}
+                    label={t.stints.resizeDetail}
+                  />
+                )}
+                {content}
+              </m.aside>
+            )}
+          </AnimatePresence>
+        </div>
       ) : (
         <Sheet
           open
