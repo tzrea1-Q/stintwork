@@ -11,7 +11,6 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle, Eyebrow } from ".
 import { Empty, EmptyContent, EmptyHeader, EmptyTitle } from "./ui/Empty";
 import { IconChip } from "./ui/IconChip";
 import { Item, ItemContent, ItemMedia } from "./ui/Item";
-import { PageHeader } from "./ui/PageHeader";
 import { Progress } from "./ui/Progress";
 import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { StatusChip } from "./ui/StatusChip";
@@ -97,25 +96,7 @@ export function Overview({
     </Item>
   );
   return (
-    <main className="min-w-0 flex-1 overflow-auto px-4 pt-[42px] pb-5 min-[700px]:px-7 min-[700px]:pt-[65px] [&>header]:mx-auto [&>header]:max-w-[1320px] [&>div]:mx-auto [&>div]:max-w-[1320px]">
-      <PageHeader
-        eyebrow={`${snapshot.name} / ${t.viewNavigation.overview}`}
-        title={t.viewNavigation.overview}
-        description={t.overview.description}
-        actions={
-          <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className={`size-1 rounded-full ${connection === "live" ? "bg-success" : "bg-attention"}`}
-            />
-            {connection === "live"
-              ? t.board.live
-              : connection === "connecting"
-                ? t.board.connecting
-                : t.board.reconnecting}
-          </p>
-        }
-      />
+    <main className="min-w-0 flex-1 overflow-auto px-4 pt-5 pb-5 min-[700px]:px-7 [&>div]:mx-auto [&>div]:max-w-[1320px]">
       {error && (
         <p
           role="alert"
@@ -125,6 +106,19 @@ export function Overview({
           {t.board.lastAvailable}
         </p>
       )}
+      <div className="mb-3 flex justify-end">
+        <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className={`size-1 rounded-full ${connection === "live" ? "bg-success" : "bg-attention"}`}
+          />
+          {connection === "live"
+            ? t.board.live
+            : connection === "connecting"
+              ? t.board.connecting
+              : t.board.reconnecting}
+        </p>
+      </div>
       <div className="grid min-w-0 grid-cols-1 gap-4 min-[769px]:grid-cols-2 min-[1280px]:grid-cols-[1fr_1.15fr_.95fr]">
         {!snapshot.workItems.length && (
           <Card className="min-[769px]:col-span-2 min-[1280px]:col-span-3">

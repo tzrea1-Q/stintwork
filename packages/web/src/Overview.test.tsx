@@ -16,7 +16,9 @@ test("Overview opens a work item in Pipeline with keyboard and restores view on 
   window.history.replaceState(null, "", "/");
   const user = userEvent.setup();
   render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
-  expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeVisible();
+  expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: /breadcrumb/i })).not.toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent("Live");
   const next = screen.getByRole("heading", { name: "One" }).closest('[data-slot="card"]');
   if (!(next instanceof HTMLElement)) throw new Error("Missing Next up card");
   const button = within(next).getByRole("button", { name: "Open" });

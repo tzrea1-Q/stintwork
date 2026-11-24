@@ -50,7 +50,6 @@ export const en = {
     workItems: "work items",
     progressIncomplete: "Progress may be incomplete",
     unavailable: "Unavailable",
-    description: "A view of your project’s work.",
     open: "Open",
     tickets: "Tickets resolved",
     moreMilestone: "more milestone",
@@ -119,8 +118,6 @@ export const en = {
   },
   board: {
     workbench: "Stintwork · Project workbench",
-    pipeline: "Pipeline",
-    description: "Your work, from first question to shipped.",
     live: "Live",
     connecting: "Connecting live updates",
     reconnecting: "Reconnecting · Reading project periodically",

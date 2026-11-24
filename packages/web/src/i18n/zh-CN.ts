@@ -65,7 +65,6 @@ export const zhCN: Catalog = {
     workItems: "个工作项",
     progressIncomplete: "进度可能不完整",
     unavailable: "不可用",
-    description: "查看项目的工作进展。",
     open: "打开",
     tickets: "已解决的工单",
     moreMilestone: "个其他里程碑",
@@ -134,8 +133,6 @@ export const zhCN: Catalog = {
   },
   board: {
     workbench: "Stintwork · 项目工作台",
-    pipeline: "流水线",
-    description: "从最初的问题到已交付，掌握每个工作项的进展。",
     live: "实时更新中",
     connecting: "正在连接实时更新",
     reconnecting: "正在重新连接 · 定期读取项目",

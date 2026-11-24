@@ -11,6 +11,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { attentionSnapshot } from "./attention-test-fixtures";
+import { en } from "./i18n/en";
+import { zhCN } from "./i18n/zh-CN";
 import { WorkItemCard } from "./WorkItemCard";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
@@ -52,6 +54,29 @@ beforeEach(() => {
 afterEach(() => {
   window.history.replaceState(null, "", "/");
   vi.restoreAllMocks();
+});
+
+test.each([
+  ["en", en],
+  ["zh-CN", zhCN],
+] as const)("shows toolbar status and counts in %s without a page header", (language, t) => {
+  localStorage.setItem(languageStorageKey, language);
+  const snapshot = project();
+  const { unmount } = render(
+    <LanguageProvider>
+      <Board snapshot={snapshot} connection="reconnecting" />
+    </LanguageProvider>,
+  );
+  expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+  expect(screen.queryByRole("navigation", { name: /breadcrumb/i })).not.toBeInTheDocument();
+  const toolbar = document.querySelector(".board-toolbar") as HTMLElement;
+  const shipped = snapshot.workItems.filter((item) => item.merged).length;
+  expect(
+    within(toolbar).getByText(t.board.counts(snapshot.workItems.length - shipped, shipped)),
+  ).toBeVisible();
+  expect(within(toolbar).getByRole("status")).toHaveTextContent(t.board.reconnecting);
+  unmount();
+  localStorage.removeItem(languageStorageKey);
 });
 
 test("renders cards in the column of their stage", () => {

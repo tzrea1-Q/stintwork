@@ -7,6 +7,7 @@ import { App } from "./App";
 import { Board } from "./Board";
 import { CommandPalette } from "./CommandPalette";
 import { LanguageProvider, languageStorageKey, useErrorText, useLanguage } from "./i18n/language";
+import { en } from "./i18n/en";
 import { zhCN } from "./i18n/zh-CN";
 import { RoadmapEditor } from "./RoadmapEditor";
 
@@ -127,14 +128,14 @@ test.each(["zh-Hans", "zh-SG", "ZH-hk"])(
         <Board snapshot={project()} />
       </LanguageProvider>,
     );
-    expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: zhCN.board.stages })).toBeInTheDocument();
   },
 );
 
 test.each([
-  ["en", "zh-TW", "Pipeline"],
-  ["zh-CN", "en-GB", "流水线"],
-])("stored %s overrides browser %s", (choice, preference, heading) => {
+  ["en", "zh-TW", en.board.stages],
+  ["zh-CN", "en-GB", zhCN.board.stages],
+])("stored %s overrides browser %s", (choice, preference, landmark) => {
   localStorage.setItem(languageStorageKey, choice);
   vi.spyOn(navigator, "languages", "get").mockReturnValue([preference]);
   render(
@@ -142,7 +143,7 @@ test.each([
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("heading", { name: new RegExp(`^${heading}`) })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: landmark })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", choice);
 });
 
@@ -156,7 +157,7 @@ test.each(["unknown", "zh-TW", "", "null"])(
         <Board snapshot={project()} />
       </LanguageProvider>,
     );
-    expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: zhCN.board.stages })).toBeInTheDocument();
   },
 );
 
@@ -174,10 +175,10 @@ test("blocked localStorage reads and writes still render and switch", async () =
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("heading", { name: /^流水线/ })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: zhCN.board.stages })).toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "设置" }));
   await user.click(await screen.findByRole("menuitemradio", { name: "English" }));
-  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: en.board.stages })).toBeInTheDocument();
   expect(document.documentElement).toHaveAttribute("lang", "en");
 });
 
@@ -222,7 +223,7 @@ test("Settings persists language and the drawer remains reachable in each langua
       <Board snapshot={project()} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("heading", { name: /^Pipeline/ })).toBeInTheDocument();
+  expect(screen.getByRole("region", { name: en.board.stages })).toBeInTheDocument();
 });
 
 test.each(["team", "feature", "constructor"])(

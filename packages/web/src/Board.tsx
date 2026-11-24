@@ -16,7 +16,6 @@ import { viewFromSearch, workItemDone } from "./overview-data";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
 import { Button } from "./ui/Button";
-import { PageHeader } from "./ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
@@ -51,7 +50,6 @@ export function Board({
   const alerts = useAttentionAlerts(snapshot);
   const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
-  const stageScroll = useRef<HTMLDivElement>(null);
   const openItem = snapshot.workItems.find((item) => item.slug === openSlug);
   const verifyingItem = !!openSlug && githubTracker && !!snapshot.github?.verifying && !openItem;
   const milestone = snapshot.milestones.some((entry) => entry.id === selectedMilestone)
@@ -65,7 +63,7 @@ export function Board({
   const selected = snapshot.milestones.find((entry) => entry.id === milestone);
 
   function scrollStages(direction: -1 | 1) {
-    const viewport = stageScroll.current;
+    const viewport = scroll.current;
     const columns = viewport?.querySelectorAll<HTMLElement>(".stage-column");
     if (viewport && columns && columns.length > 1)
       viewport.scrollBy({ left: direction * (columns[1].offsetLeft - columns[0].offsetLeft) });
@@ -239,35 +237,6 @@ export function Board({
               const filteredUnstaged = unstaged.filter((item) => filtered.includes(item));
               return (
                 <>
-                  <div className="pipeline-heading w-full px-4 pt-5 lg:px-6">
-                    <PageHeader
-                      eyebrow={`${snapshot.name} / ${t.board.pipeline}`}
-                      title={
-                        <>
-                          {t.board.pipeline}{" "}
-                          <span className="heading-count inline-grid min-w-6 place-items-center rounded-sm border border-input px-1 text-xs tabular-nums text-muted-foreground">
-                            {filtered.length}
-                          </span>
-                        </>
-                      }
-                      description={t.board.description}
-                      actions={
-                        <p
-                          className="connection-status flex items-center gap-2 text-xs text-muted-foreground"
-                          role="status"
-                        >
-                          <span
-                            className={`status-dot size-1 rounded-full ${connection === "live" ? "is-live bg-success" : "is-reconnecting bg-attention"}`}
-                          />
-                          {connection === "live"
-                            ? t.board.live
-                            : connection === "connecting"
-                              ? t.board.connecting
-                              : t.board.reconnecting}
-                        </p>
-                      }
-                    />
-                  </div>
                   {error && (
                     <p
                       className="connection-error bg-attention-soft px-4 py-3 text-xs text-attention-foreground sm:px-6"
@@ -324,6 +293,17 @@ export function Board({
                         </Select>
                       </div>
                       {workflowPicker}
+                      <p className="connection-status flex items-center gap-2" role="status">
+                        <span
+                          aria-hidden="true"
+                          className={`size-1 rounded-full ${connection === "live" ? "bg-success" : "bg-attention"}`}
+                        />
+                        {connection === "live"
+                          ? t.board.live
+                          : connection === "connecting"
+                            ? t.board.connecting
+                            : t.board.reconnecting}
+                      </p>
                       {!snapshot.github?.verifying && (
                         <span className="board-stats whitespace-nowrap">
                           {t.board.counts(filteredActive.length, filteredShipped.length)}
@@ -395,7 +375,15 @@ export function Board({
                     <GithubStatus github={snapshot.github} />
                   )}
                   <section
-                    className="board-scroll min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
+                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                    onScroll={(event) => {
+                      const grid = event.currentTarget.querySelector(".stage-grid");
+                      event.currentTarget.dataset.scrolled = String(
+                        !!grid &&
+                          grid.getBoundingClientRect().top <
+                            event.currentTarget.getBoundingClientRect().top,
+                      );
+                    }}
                     ref={scroll}
                     aria-label={t.board.stages}
                   >
@@ -438,29 +426,24 @@ export function Board({
                             {t.board.emptyMilestone}
                           </p>
                         )}
-                        <div className="stage-board min-w-0 w-full max-w-full overflow-hidden rounded-3xl bg-card p-3 shadow-card">
-                          <div
-                            className="stage-scroll relative min-w-0 w-full max-w-full overflow-x-auto overscroll-x-contain max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
-                            ref={stageScroll}
-                          >
-                            <div className="stage-grid flex min-h-[360px] justify-start gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
-                              {builtInWorkflows.feature.stages.map((stage) => (
-                                <Column
-                                  key={stage.id}
-                                  id={stage.column}
-                                  name={stageName(builtInWorkflows.feature, stage, t)}
-                                  items={filteredActive.filter(
-                                    (item) => item.column === stage.column,
-                                  )}
-                                  milestones={snapshot.milestones}
-                                  workflows={snapshot.workflows}
-                                  attentionItems={snapshot.attentionItems}
-                                  agents={snapshot.agents}
-                                  selectedSlug={openSlug}
-                                  onOpen={openWorkItem}
-                                />
-                              ))}
-                            </div>
+                        <div className="stage-board min-w-0 w-full rounded-3xl bg-card p-3 shadow-card max-lg:w-max max-lg:min-w-full">
+                          <div className="stage-grid flex min-h-[360px] justify-start gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
+                            {builtInWorkflows.feature.stages.map((stage) => (
+                              <Column
+                                key={stage.id}
+                                id={stage.column}
+                                name={stageName(builtInWorkflows.feature, stage, t)}
+                                items={filteredActive.filter(
+                                  (item) => item.column === stage.column,
+                                )}
+                                milestones={snapshot.milestones}
+                                workflows={snapshot.workflows}
+                                attentionItems={snapshot.attentionItems}
+                                agents={snapshot.agents}
+                                selectedSlug={openSlug}
+                                onOpen={openWorkItem}
+                              />
+                            ))}
                           </div>
                         </div>
                         {filteredUnstaged.length > 0 && (
