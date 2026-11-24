@@ -9,6 +9,33 @@ import { richClock, richSnapshot } from "./rich.fixture";
 
 for (const language of ["en", "zh-CN"] as const) {
   const t = language === "en" ? en : zhCN;
+  test(`balanced empty and busy stages 1440px ${language}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(
+      (choice) => localStorage.setItem("stintwork.language", choice),
+      language,
+    );
+    const snapshot = structuredClone(richSnapshot);
+    const item = snapshot.workItems.find((entry) => entry.column && !entry.merged);
+    if (!item) throw new Error("Missing staged item");
+    snapshot.workItems = Array.from({ length: 12 }, (_, index) => ({
+      ...structuredClone(item),
+      slug: `busy-${index}`,
+    }));
+    await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+    await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
+    await page.goto("/?view=pipeline");
+    const rails = page.locator('.stage-column[data-layout="rail"]');
+    await expect(rails).toHaveCount(5);
+    for (const rail of await rails.all())
+      expect((await rail.boundingBox())?.width).toBeLessThanOrEqual(64);
+    const busy = page.locator('.stage-column[data-layout="grid"]');
+    await expect(busy).toHaveCount(1);
+    const positions = await busy
+      .locator(".work-item")
+      .evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().x));
+    expect(new Set(positions).size).toBeGreaterThanOrEqual(2);
+  });
   for (const width of [1440, 1024, 768, 390]) {
     test(`sticky stage headers and page width ${width}px ${language}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });

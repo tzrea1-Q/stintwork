@@ -110,6 +110,42 @@ test("renders cards in the column of their stage", () => {
   ).toHaveAccessibleName(/^effort:/);
 });
 
+test("empty stages expand by keyboard and collapse; populated stages stay columns with a panel open", async () => {
+  const user = userEvent.setup();
+  const snapshot = project();
+  snapshot.workItems = snapshot.workItems.filter((item) => item.column !== "clarify");
+  render(<Board snapshot={snapshot} />);
+  const rail = screen.getByRole("region", { name: "Clarify" });
+  expect(rail).toHaveAttribute("data-layout", "rail");
+  const expand = within(rail).getByRole("button", { name: "Expand Clarify, 0 work items" });
+  expand.focus();
+  await user.keyboard("{Enter}");
+  expect(rail).toHaveAttribute("data-layout", "single");
+  const collapse = within(rail).getByRole("button", { name: "Collapse Clarify" });
+  expect(collapse).toHaveFocus();
+  await user.click(collapse);
+  expect(rail).toHaveAttribute("data-layout", "rail");
+  expect(within(rail).getByRole("button", { name: "Expand Clarify, 0 work items" })).toHaveFocus();
+  const populated = screen.getByRole("region", { name: "Review" });
+  expect(populated).not.toHaveAttribute("data-layout", "rail");
+  await user.click(within(populated).getByRole("button", { name: /Open ready/ }));
+  expect(populated).toHaveAttribute("data-layout", "single");
+});
+
+test("busy stages use a single layout when the detail panel is open", async () => {
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.column === "review");
+  if (!item) throw new Error("Missing review item");
+  snapshot.workItems.push(
+    ...Array.from({ length: 7 }, (_, index) => ({ ...item, slug: `review-${index}` })),
+  );
+  render(<Board snapshot={snapshot} />);
+  const review = screen.getByRole("region", { name: "Review" });
+  expect(review).toHaveAttribute("data-layout", "grid");
+  await userEvent.setup().click(within(review).getByRole("button", { name: /Open ready/ }));
+  expect(review).toHaveAttribute("data-layout", "single");
+});
+
 test("stage navigation describes its keyboard controls without moving focus", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
@@ -142,6 +178,23 @@ test("stage navigation targets column snap positions", async () => {
   scroller.scrollLeft = 176;
   await user.click(within(navigation).getByRole("button", { name: "Previous stages" }));
   expect(scrollTo).toHaveBeenLastCalledWith({ left: 0 });
+});
+
+test("stage navigation skips collapsed rails", async () => {
+  const snapshot = project();
+  snapshot.workItems = snapshot.workItems.filter(
+    (item) => item.column === "implement" || item.column === "ship",
+  );
+  const { container } = render(<Board snapshot={snapshot} />);
+  const scroller = container.querySelector<HTMLElement>(".board-scroll");
+  if (!scroller) throw new Error("Board scroller is missing");
+  scroller.style.scrollPaddingLeft = "28px";
+  container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
+    Object.defineProperty(column, "offsetLeft", { value: 28 + index * 100 });
+  });
+  scroller.scrollTo = vi.fn();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Next stages" }));
+  expect(scroller.scrollTo).toHaveBeenCalledWith({ left: 300 });
 });
 
 test("milestone filter counts resolved local tickets without a merge", async () => {
@@ -1093,9 +1146,9 @@ test("card tint, status and segmented progress follow snapshot state", () => {
 test("empty stages remain named, counted and focusable", () => {
   render(<Board snapshot={project({ ".scratch/one/spec.md": "# One" })} />);
   const column = screen.getByRole("region", { name: "Ship" });
-  expect(column).toHaveClass("flex-1", "min-w-[150px]");
+  expect(column).toHaveAttribute("data-layout", "rail");
   expect(within(column).getAllByRole("heading")).toHaveLength(1);
-  expect(column).toHaveAttribute("tabindex", "0");
+  expect(within(column).getByRole("button", { name: "Expand Ship, 0 work items" })).toBeEnabled();
   expect(within(column).getByText("0")).toBeInTheDocument();
 });
 

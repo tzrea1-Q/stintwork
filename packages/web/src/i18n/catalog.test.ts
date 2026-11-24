@@ -41,6 +41,8 @@ const samples: Record<string, unknown[][]> = {
   ],
   "board.unstagedCount": [[0], [1], [2]],
   "column.empty": [["Stage 名称"]],
+  "column.expand": [["Stage 名称", 0]],
+  "column.collapse": [["Stage 名称"]],
   "card.open": [["repo/中文", "Repo title 原文"]],
   "card.attention": [[0], [1], [2]],
   "card.needsYou": [[0], [1], [2]],

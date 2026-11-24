@@ -7,6 +7,7 @@ import type {
   WorkflowDefinitions,
 } from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { useLanguage } from "./i18n/language";
 import { IconChip } from "./ui/IconChip";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";
@@ -30,6 +31,9 @@ export function Column({
   attentionItems = [],
   agents,
   selectedSlug,
+  expanded,
+  onToggle,
+  panelOpen,
 }: {
   id: BoardColumn;
   name: string;
@@ -40,8 +44,19 @@ export function Column({
   attentionItems?: AttentionItem[];
   agents: AgentProfile[];
   selectedSlug: string | null;
+  expanded: boolean;
+  onToggle: () => void;
+  panelOpen: boolean;
 }) {
   const { t } = useLanguage();
+  const section = useRef<HTMLElement>(null);
+  const toggled = useRef(false);
+  useLayoutEffect(() => {
+    if (toggled.current) section.current?.querySelector<HTMLButtonElement>("button")?.focus();
+    toggled.current = false;
+  });
+  const rail = !items.length && !expanded;
+  const grid = items.length > 6 && !panelOpen;
   const Icon = presentation[id];
   const running = items.filter((item) => item.activeStint?.status === "running").length;
   const waiting = items.filter((item) =>
@@ -50,26 +65,70 @@ export function Column({
   const stats = `${running} ${t.pipelineBoard.running} · ${waiting} ${t.pipelineBoard.waiting}`;
   return (
     <section
-      className="stage-column relative min-w-[150px] max-w-[340px] flex-1 snap-start"
+      ref={section}
+      className={`stage-column relative snap-start ${rail ? "w-14 shrink-0" : "min-w-[220px] flex-1"}`}
       data-card-column={id}
+      data-layout={rail ? "rail" : grid ? "grid" : "single"}
       aria-labelledby={`stage-${id}`}
-      tabIndex={items.length ? undefined : 0}
     >
       <header className="stage-header sticky top-0 z-20 bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
-        <div className="flex flex-wrap items-center gap-2">
-          <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
-          <h2
-            id={`stage-${id}`}
-            title={name}
-            className="min-w-0 flex-1 break-words text-[13px] font-semibold"
+        {rail ? (
+          <button
+            type="button"
+            className="flex w-full flex-col items-center gap-2 rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
+            aria-label={t.column.expand(name, items.length)}
+            onClick={() => {
+              toggled.current = true;
+              onToggle();
+            }}
           >
-            {name}
-          </h2>
-          <span className="count tabular-nums text-xs text-muted-foreground">{items.length}</span>
-        </div>
-        <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
+            <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
+            <h2
+              id={`stage-${id}`}
+              className="text-[13px] font-semibold [writing-mode:vertical-rl] [text-orientation:mixed]"
+            >
+              {name}
+            </h2>
+            <span className="count tabular-nums text-xs text-muted-foreground">{items.length}</span>
+          </button>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
+              <h2
+                id={`stage-${id}`}
+                title={name}
+                className="min-w-0 flex-1 break-words text-[13px] font-semibold"
+              >
+                {name}
+              </h2>
+              <span className="count tabular-nums text-xs text-muted-foreground">
+                {items.length}
+              </span>
+              {!items.length && (
+                <button
+                  type="button"
+                  className="rounded text-xs text-muted-foreground focus-visible:outline-2 focus-visible:outline-ring"
+                  onClick={() => {
+                    toggled.current = true;
+                    onToggle();
+                  }}
+                >
+                  {t.column.collapse(name)}
+                </button>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
+          </>
+        )}
       </header>
-      <div className="flex flex-col gap-3">
+      <div
+        className={
+          grid
+            ? "flex flex-col gap-3 lg:grid lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:content-start"
+            : "flex flex-col gap-3"
+        }
+      >
         {items.length ? (
           items.map((item) => (
             <WorkItemCard

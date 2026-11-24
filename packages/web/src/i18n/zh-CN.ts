@@ -197,6 +197,8 @@ export const zhCN: Catalog = {
       ship: "准备合并",
     },
     empty: (name) => joinChinese("“", name, "”阶段中没有工作项。"),
+    expand: (name, count) => joinChinese("展开", name, "，", count, "个工作项"),
+    collapse: (name) => joinChinese("收起", name),
   },
   card: {
     feature: "功能",

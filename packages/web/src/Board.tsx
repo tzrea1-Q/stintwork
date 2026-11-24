@@ -47,6 +47,7 @@ export function Board({
   const [createOpen, setCreateOpen] = useState(false);
   const [customiseId, setCustomiseId] = useState<string | null>(null);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
+  const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const alerts = useAttentionAlerts(snapshot);
   const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
@@ -64,10 +65,14 @@ export function Board({
 
   function scrollStages(direction: -1 | 1) {
     const viewport = scroll.current;
-    const columns = Array.from(viewport?.querySelectorAll<HTMLElement>(".stage-column") ?? []);
-    if (!viewport || columns.length < 2) return;
+    const columns = Array.from(
+      viewport?.querySelectorAll<HTMLElement>('.stage-column:not([data-layout="rail"])') ?? [],
+    );
+    if (!viewport || !columns.length) return;
     const padding = Number.parseFloat(getComputedStyle(viewport).scrollPaddingLeft) || 0;
-    const positions = columns.map((column) => Math.max(0, column.offsetLeft - padding));
+    const positions = Array.from(
+      new Set([0, ...columns.map((column) => Math.max(0, column.offsetLeft - padding))]),
+    );
     const current = positions.reduce(
       (nearest, position, index) =>
         Math.abs(position - viewport.scrollLeft) <
@@ -438,8 +443,8 @@ export function Board({
                             {t.board.emptyMilestone}
                           </p>
                         )}
-                        <div className="stage-board min-w-0 w-full rounded-3xl bg-card p-3 shadow-card max-lg:w-max max-lg:min-w-full">
-                          <div className="stage-grid flex min-h-[360px] justify-start gap-2 max-lg:min-w-[900px] [&>.stage-column]:snap-start">
+                        <div className="stage-board w-full min-w-max rounded-3xl bg-card p-3 shadow-card">
+                          <div className="stage-grid flex min-h-[360px] justify-start gap-2 [&>.stage-column]:snap-start">
                             {builtInWorkflows.feature.stages.map((stage) => (
                               <Column
                                 key={stage.id}
@@ -453,6 +458,15 @@ export function Board({
                                 attentionItems={snapshot.attentionItems}
                                 agents={snapshot.agents}
                                 selectedSlug={openSlug}
+                                expanded={expandedStages.includes(stage.column)}
+                                onToggle={() =>
+                                  setExpandedStages((current) =>
+                                    current.includes(stage.column)
+                                      ? current.filter((id) => id !== stage.column)
+                                      : [...current, stage.column],
+                                  )
+                                }
+                                panelOpen={!!openItem}
                                 onOpen={openWorkItem}
                               />
                             ))}

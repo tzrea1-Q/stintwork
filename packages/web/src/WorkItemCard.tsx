@@ -98,9 +98,9 @@ export function WorkItemCard({
       className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring ${running ? "bg-running-soft" : attentionCount > 0 ? "bg-attention-soft" : blocked ? "bg-blocked-soft" : "bg-muted"} ${selected ? "ring-2 ring-ring" : ""}`}
       aria-label={`${item.slug}: ${item.title}`}
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <span
-          className="work-item-id inline-flex min-w-0 items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
+          className="work-item-id inline-flex max-w-full flex-none items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
           title={typeName}
         >
           <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />

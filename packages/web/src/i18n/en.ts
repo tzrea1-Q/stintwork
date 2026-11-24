@@ -184,6 +184,8 @@ export const en = {
       ship: "Ready to merge",
     },
     empty: (name: string) => `No work items in ${name}.`,
+    expand: (name: string, count: number) => `Expand ${name}, ${count} work items`,
+    collapse: (name: string) => `Collapse ${name}`,
   },
   card: {
     feature: "Feature",
