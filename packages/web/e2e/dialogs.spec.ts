@@ -245,7 +245,7 @@ for (const language of ["en", "zh-CN"] as const) {
           ).toBeFocused();
         });
 
-        test("fourteen collapsed milestones fit in the viewport", async ({ page }, testInfo) => {
+        test("fourteen milestones fit in the viewport", async ({ page }, testInfo) => {
           snapshot = {
             ...dialogSnapshot,
             milestones: Array.from({ length: 14 }, (_, index) => ({
@@ -259,7 +259,12 @@ for (const language of ["en", "zh-CN"] as const) {
           await page.getByRole("button", { name: t.planning.roadmap.title }).click();
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
           const last = dialog.getByRole("region", { name: "Milestone 14" });
-          await expect(last.getByRole("button", { expanded: false })).toBeVisible();
+          if (width >= 768)
+            await expect(last.getByRole("button", { pressed: false })).toBeVisible();
+          else
+            await expect(
+              dialog.getByRole("combobox", { name: t.planning.roadmap.milestones }),
+            ).toBeVisible();
           if (width === 1440) {
             const bounds = await last.boundingBox();
             if (!bounds) throw new Error("Last milestone has no bounds");
@@ -290,28 +295,18 @@ for (const language of ["en", "zh-CN"] as const) {
           await trigger.click();
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
           await capture(page, dialog, testInfo, "roadmap-long");
-          await dialog
-            .getByRole("region", { name: snapshot.milestones[0].name })
-            .getByRole("button", { expanded: false })
-            .click();
-          for (const label of [
-            t.planning.roadmap.status(snapshot.milestones[0].name),
-            t.planning.roadmap.workItem,
-            t.planning.roadmap.destination,
-          ]) {
-            const picker = dialog.getByRole("combobox", { name: label, exact: true });
+          const picker =
+            width < 768
+              ? dialog.getByRole("combobox", { name: t.planning.roadmap.milestones })
+              : dialog.getByRole("combobox").first();
+          if (await picker.count()) {
             await picker.scrollIntoViewIfNeeded();
             await picker.click();
-            await capture(
-              page,
-              page.getByRole("listbox"),
-              testInfo,
-              `roadmap-select-${label === t.planning.roadmap.workItem ? "work-item" : label === t.planning.roadmap.destination ? "destination" : "status"}`,
-            );
+            await capture(page, page.getByRole("listbox"), testInfo, "roadmap-select");
             await page.keyboard.press("Escape");
             await expect(picker).toBeFocused();
-            await expect(dialog).toBeVisible();
           }
+          await dialog.getByRole("button", { name: t.planning.roadmap.newMilestone }).click();
           await dialog
             .getByRole("textbox", { name: t.planning.roadmap.newName })
             .fill("New milestone 原文");
@@ -340,9 +335,9 @@ for (const language of ["en", "zh-CN"] as const) {
           snapshot = { ...dialogSnapshot, milestones: [], workItems: [], attentionItems: [] };
           await page.reload();
           await trigger.click();
-          await expect(
-            dialog.getByRole("button", { name: t.planning.roadmap.move }),
-          ).toBeDisabled();
+          await expect(dialog.getByRole("button", { name: t.planning.roadmap.save })).toHaveCount(
+            0,
+          );
           await capture(page, dialog, testInfo, "roadmap-empty");
           await page
             .locator('.bg-backdrop[data-state="open"]')

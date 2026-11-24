@@ -197,3 +197,30 @@ test.each(["## Broken\nId: broken\n", "## Broken\nId: broken\nStatus: planned\nI
 test("refuses to discard milestone notes through the serializer", () => {
   expect(() => serializeRoadmap(roadmap, [])).toThrow("discard hand-written text");
 });
+
+test("applies a milestone batch together and rejects invalid batches atomically", () => {
+  const changes = [
+    { kind: "rename", id: "first", name: "Renamed" },
+    { kind: "update", id: "first", status: "shipped", target: "2027-01-02" },
+    { kind: "move", workItem: "board", milestone: "second" },
+  ];
+  const result = editRoadmap(roadmap, { kind: "batch", id: "first", changes });
+  expect(result.text).toBe(
+    roadmap
+      .replace("## First", "## Renamed")
+      .replace("Status: active", "Status: shipped")
+      .replace("2026-12-01", "2027-01-02")
+      .replace("* board\n", "")
+      .replace("- next\n", "- next\n- board\n"),
+  );
+  expect(() =>
+    editRoadmap(roadmap, {
+      kind: "batch",
+      id: "first",
+      changes: [...changes, { kind: "update", id: "first", target: "invalid" }],
+    }),
+  ).toThrow();
+  expect(editRoadmap(roadmap, { kind: "update", id: "first", status: "active" }).text).toBe(
+    roadmap,
+  );
+});

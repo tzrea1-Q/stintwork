@@ -1,18 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { workItemDone } from "./overview-data";
 import { Button } from "./ui/Button";
-import { Eyebrow } from "./ui/Card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { Progress } from "./ui/Progress";
 import { SelectField } from "./ui/SelectField";
 import { StatusChip } from "./ui/StatusChip";
+import { ToggleGroup, ToggleGroupItem } from "./ui/ToggleGroup";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
@@ -23,32 +22,61 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
       <Button variant="secondary" aria-haspopup="dialog" onClick={() => setOpen(true)}>
         {t.planning.roadmap.title}
       </Button>
-      {open && (
-        <RoadmapSheet
-          snapshot={snapshot}
-          onClose={() => {
-            setOpen(false);
-          }}
-        />
-      )}
+      {open && <RoadmapSheet snapshot={snapshot} onClose={() => setOpen(false)} />}
     </>
   );
 }
 
 function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClose: () => void }) {
   const { t } = useLanguage();
-  const selectId = useId();
+  const labels = t.planning.roadmap;
   const [milestones, setMilestones] = useState(snapshot.milestones);
-  const [name, setName] = useState("");
-  const [workItem, setWorkItem] = useState(snapshot.workItems[0]?.slug ?? "");
-  const [destination, setDestination] = useState("");
+  const [selected, setSelected] = useState(snapshot.milestones[0]?.id ?? "");
+  const milestone = milestones.find((item) => item.id === selected);
+  const [name, setName] = useState(milestone?.name ?? "");
+  const [status, setStatus] = useState<Milestone["status"]>(milestone?.status ?? "planned");
+  const [target, setTarget] = useState(milestone?.target ?? "");
+  const [moves, setMoves] = useState<Record<string, string>>({});
+  const [newName, setNewName] = useState("");
+  const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useErrorText();
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<"committed" | "unchanged" | "">("");
   useEffect(() => {
     setMilestones(snapshot.milestones);
   }, [snapshot.milestones]);
-
+  useEffect(() => {
+    if (!selected && milestones.length) {
+      const first = milestones[0];
+      setSelected(first.id);
+      setName(first.name);
+      setStatus(first.status);
+      setTarget(first.target ?? "");
+    }
+  }, [milestones, selected]);
+  const dirty =
+    !!milestone &&
+    (name !== milestone.name ||
+      status !== milestone.status ||
+      target !== (milestone.target ?? "") ||
+      Object.keys(moves).length > 0);
+  function discard() {
+    return !dirty || window.confirm(labels.discardConfirm);
+  }
+  function select(id: string) {
+    if (id !== selected && discard()) {
+      const next = milestones.find((entry) => entry.id === id);
+      if (!next) return;
+      setSelected(id);
+      setName(next.name);
+      setStatus(next.status);
+      setTarget(next.target ?? "");
+      setMoves({});
+    }
+  }
+  function close() {
+    if (!saving && discard()) onClose();
+  }
   async function save(change: RoadmapChange) {
     if (saving) return;
     setSaving(true);
@@ -63,7 +91,19 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
       const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, en.planning.roadmap.errors.save);
       setMilestones(result.milestones);
-      if (change.kind === "add") setName("");
+      if (change.kind === "batch") {
+        const saved = (result.milestones as Milestone[]).find((entry) => entry.id === change.id);
+        if (saved) {
+          setName(saved.name);
+          setStatus(saved.status);
+          setTarget(saved.target ?? "");
+        }
+        setMoves({});
+      }
+      if (change.kind === "add") {
+        setNewName("");
+        setAdding(false);
+      }
       setMessage(result.commit ? "committed" : "unchanged");
       toast.success(t.actionToast.roadmapSaved);
     } catch (cause) {
@@ -73,304 +113,336 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
       setSaving(false);
     }
   }
-
   function reorder(index: number, offset: number) {
     const ids = milestones.map(({ id }) => id);
     [ids[index], ids[index + offset]] = [ids[index + offset], ids[index]];
     void save({ kind: "reorder", ids });
   }
-
+  function saveMilestone() {
+    if (!milestone) return;
+    const changes: Extract<RoadmapChange, { kind: "batch" }>["changes"] = [];
+    if (name !== milestone.name) changes.push({ kind: "rename", id: selected, name });
+    if (status !== milestone.status || target !== (milestone.target ?? ""))
+      changes.push({ kind: "update", id: selected, status, target: target || null });
+    for (const [workItem, destination] of Object.entries(moves))
+      changes.push({ kind: "move", workItem, milestone: destination || null });
+    void save({ kind: "batch", id: selected, changes });
+  }
   return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open) close();
       }}
     >
       <DialogContent
-        className="roadmap-editor w-3xl [&_fieldset]:mt-5 [&_fieldset]:min-w-0 [&_form]:mb-3 [&_form]:flex [&_form]:flex-wrap [&_form]:items-end [&_form]:gap-3 [&_label]:grid [&_label]:min-w-0 [&_label]:flex-1 [&_label]:basis-48 [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_button]:max-w-full [&_button]:h-auto [&_button]:min-h-8 [&_button]:whitespace-normal [&_button]:py-1"
+        className="roadmap-editor w-[960px] [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2"
         onEscapeKeyDown={(event) => {
-          if (saving) event.preventDefault();
+          if (saving || adding) event.preventDefault();
+          if (adding && !saving) {
+            setAdding(false);
+            setNewName("");
+          }
         }}
         onPointerDownOutside={(event) => {
           if (saving) event.preventDefault();
         }}
       >
-        <header className="mb-3 flex flex-wrap items-center justify-between gap-3">
-          <DialogTitle className="text-xl font-medium">{t.planning.roadmap.title}</DialogTitle>
-          <Button disabled={saving} onClick={onClose}>
-            {t.planning.roadmap.close}
+        <header className="mb-2 flex items-center justify-between gap-3">
+          <DialogTitle className="text-xl font-medium">{labels.title}</DialogTitle>
+          <Button disabled={saving} onClick={close}>
+            {labels.close}
           </Button>
         </header>
         <DialogDescription className="text-muted-foreground">
-          {t.planning.roadmap.description}
+          {labels.description}
         </DialogDescription>
         {error && (
-          <p role="alert" className="warning text-attention-foreground">
+          <p role="alert" className="text-attention-foreground">
             {Object.entries(en.planning.roadmap.errors).reduce(
-              (message, [key, original]) =>
-                message === original
-                  ? t.planning.roadmap.errors[key as keyof typeof en.planning.roadmap.errors]
-                  : message,
+              (text, [key, original]) =>
+                text === original
+                  ? labels.errors[key as keyof typeof en.planning.roadmap.errors]
+                  : text,
               error,
             )}
           </p>
         )}
-        {message && <p role="status">{t.planning.roadmap[message as "committed" | "unchanged"]}</p>}
-        <fieldset disabled={saving}>
-          <legend>
-            <Eyebrow>{t.planning.roadmap.milestones}</Eyebrow>
-          </legend>
-          <TooltipProvider>
-            {milestones.map((milestone, index) => (
-              <MilestoneFields
-                key={milestone.id}
-                milestone={milestone}
-                workItems={snapshot.workItems}
-                first={index === 0}
-                last={index === milestones.length - 1}
-                onSave={save}
-                onReorder={(offset) => reorder(index, offset)}
-              />
-            ))}
-          </TooltipProvider>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void save({ kind: "add", name });
-            }}
-          >
-            <label>
-              {t.planning.roadmap.newName}
-              <input required value={name} onChange={(event) => setName(event.target.value)} />
-            </label>
-            <Button variant="primary" type="submit" disabled={!name.trim()}>
-              {t.planning.roadmap.add}
-            </Button>
-          </form>
-        </fieldset>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void save({ kind: "move", workItem, milestone: destination || null });
-          }}
-        >
-          <fieldset disabled={saving || !snapshot.workItems.length}>
-            <legend>{t.planning.roadmap.moveHeading}</legend>
-            <label htmlFor={`${selectId}-workItem`}>
-              {t.planning.roadmap.workItem}
+        {message && <p role="status">{labels[message]}</p>}
+        <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <div className="min-w-0">
+            {adding ? (
+              <form
+                className="mb-2 flex flex-wrap items-end gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void save({ kind: "add", name: newName });
+                }}
+              >
+                <label className="min-w-0 flex-1 text-sm">
+                  {labels.newName}
+                  <input
+                    required
+                    disabled={saving}
+                    value={newName}
+                    onChange={(event) => setNewName(event.target.value)}
+                  />
+                </label>
+                <Button disabled={saving || !newName.trim()} type="submit">
+                  {labels.add}
+                </Button>
+                <Button
+                  disabled={saving}
+                  onClick={() => {
+                    setAdding(false);
+                    setNewName("");
+                  }}
+                >
+                  {labels.cancel}
+                </Button>
+              </form>
+            ) : (
+              <Button className="mb-2" disabled={saving} onClick={() => setAdding(true)}>
+                {labels.newMilestone}
+              </Button>
+            )}
+            <div className="flex items-center gap-1 md:hidden">
               <SelectField
-                id={`${selectId}-workItem`}
-                aria-label={t.planning.roadmap.workItem}
-                value={workItem}
-                onValueChange={setWorkItem}
-                disabled={saving || !snapshot.workItems.length}
-                options={snapshot.workItems.map((item) => ({
-                  value: item.slug,
-                  label: item.title,
-                }))}
+                aria-label={labels.milestones}
+                value={selected}
+                onValueChange={select}
+                options={milestones.map(({ id, name }) => ({ value: id, label: name }))}
+                disabled={saving || !milestones.length}
               />
-            </label>
-            <label htmlFor={`${selectId}-destination`}>
-              {t.planning.roadmap.destination}
-              <SelectField
-                id={`${selectId}-destination`}
-                aria-label={t.planning.roadmap.destination}
-                value={destination}
-                onValueChange={setDestination}
-                disabled={saving || !snapshot.workItems.length}
-                options={[
-                  { value: "", label: t.planning.roadmap.noMilestone },
-                  ...milestones.map((milestone) => ({
-                    value: milestone.id,
-                    label: milestone.name,
-                  })),
-                ]}
-              />
-            </label>
-            <Button type="submit">{t.planning.roadmap.move}</Button>
-          </fieldset>
-        </form>
+              {milestone && (
+                <TooltipProvider>
+                  {([-1, 1] as const).map((offset) => {
+                    const index = milestones.findIndex((entry) => entry.id === selected);
+                    const label =
+                      offset < 0 ? labels.up(milestone.name) : labels.down(milestone.name);
+                    return (
+                      <Tooltip key={offset}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={label}
+                            disabled={
+                              saving || (offset < 0 ? index === 0 : index === milestones.length - 1)
+                            }
+                            onClick={() => reorder(index, offset)}
+                          >
+                            {offset < 0 ? (
+                              <ChevronUp aria-hidden="true" />
+                            ) : (
+                              <ChevronDown aria-hidden="true" />
+                            )}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{label}</TooltipContent>
+                      </Tooltip>
+                    );
+                  })}
+                </TooltipProvider>
+              )}
+            </div>
+            <div className="hidden md:block">
+              <TooltipProvider>
+                {milestones.map((item, index) => {
+                  const total = item.workItemSlugs.length;
+                  const done = snapshot.workItems.filter(
+                    (workItem) =>
+                      item.workItemSlugs.includes(workItem.slug) && workItemDone(workItem),
+                  ).length;
+                  return (
+                    <section
+                      key={item.id}
+                      aria-label={item.name}
+                      className="flex min-w-0 items-center gap-1 border-b border-border py-0.5"
+                    >
+                      <button
+                        type="button"
+                        aria-pressed={selected === item.id}
+                        disabled={saving}
+                        onClick={() => select(item.id)}
+                        className="flex min-w-0 flex-1 items-center gap-1 rounded-sm text-left aria-pressed:bg-accent"
+                      >
+                        <span
+                          className="min-w-0 flex-1 truncate font-semibold"
+                          data-truncate
+                          title={item.name}
+                        >
+                          {item.name}
+                        </span>
+                        <small
+                          className="max-w-16 truncate text-muted-foreground"
+                          data-truncate
+                          title={item.id}
+                        >
+                          {item.id}
+                        </small>
+                        <StatusChip
+                          status={
+                            item.status === "shipped"
+                              ? "success"
+                              : item.status === "active"
+                                ? "running"
+                                : "stopped"
+                          }
+                        >
+                          {labels[item.status]}
+                        </StatusChip>
+                      </button>
+                      {total > 0 && (
+                        <div className="flex items-center gap-1">
+                          <Progress
+                            value={done}
+                            max={total}
+                            aria-label={item.name}
+                            className="w-8 [&_[data-slot=progress-indicator]]:bg-running"
+                          />
+                          <span className="text-xs tabular-nums">
+                            {done}/{total}
+                          </span>
+                        </div>
+                      )}
+                      {([-1, 1] as const).map((offset) => {
+                        const label = offset < 0 ? labels.up(item.name) : labels.down(item.name);
+                        return (
+                          <Tooltip key={offset}>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label={label}
+                                disabled={
+                                  saving ||
+                                  (offset < 0 ? index === 0 : index === milestones.length - 1)
+                                }
+                                onClick={() => reorder(index, offset)}
+                              >
+                                {offset < 0 ? (
+                                  <ChevronUp aria-hidden="true" />
+                                ) : (
+                                  <ChevronDown aria-hidden="true" />
+                                )}
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>{label}</TooltipContent>
+                          </Tooltip>
+                        );
+                      })}
+                    </section>
+                  );
+                })}
+              </TooltipProvider>
+            </div>
+          </div>
+          {milestone && (
+            <fieldset disabled={saving} className="min-w-0 space-y-3">
+              <legend className="font-semibold">{milestone.name}</legend>
+              <label className="block text-sm">
+                {labels.nameLabel}
+                <input
+                  aria-label={labels.name(milestone.name)}
+                  required
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <div>
+                <span className="text-sm">{labels.statusLabel}</span>
+                <ToggleGroup
+                  type="single"
+                  className="rounded-full border border-border bg-card p-1"
+                  spacing={1}
+                  aria-label={labels.status(milestone.name)}
+                  value={status}
+                  onValueChange={(value) => {
+                    if (value) setStatus(value as Milestone["status"]);
+                  }}
+                >
+                  {(["planned", "active", "shipped"] as const).map((value) => (
+                    <ToggleGroupItem
+                      key={value}
+                      value={value}
+                      className="rounded-full text-muted-foreground data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                    >
+                      {labels[value]}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
+              <label className="block text-sm">
+                {labels.targetLabel}
+                <input
+                  type="date"
+                  aria-label={labels.target(milestone.name)}
+                  value={target}
+                  onChange={(event) => setTarget(event.target.value)}
+                />
+              </label>
+              <div>
+                <h3 className="font-semibold">{labels.workItems}</h3>
+                {snapshot.workItems
+                  .filter(
+                    (item) =>
+                      milestone.workItemSlugs.includes(item.slug) ||
+                      !milestones.some((entry) => entry.workItemSlugs.includes(item.slug)),
+                  )
+                  .map((item) => {
+                    const original =
+                      milestones.find((entry) => entry.workItemSlugs.includes(item.slug))?.id ?? "";
+                    return (
+                      <div key={item.slug} className="flex flex-wrap items-center gap-2 py-1">
+                        <span className="min-w-0 flex-1 truncate" data-truncate title={item.title}>
+                          {item.title}
+                        </span>
+                        <span className="text-sm">{labels.moveTo}</span>
+                        <SelectField
+                          className="w-44"
+                          aria-label={labels.moveItem(item.title, milestone.name)}
+                          value={moves[item.slug] ?? original}
+                          onValueChange={(value) =>
+                            setMoves((previous) => {
+                              const next = { ...previous };
+                              if (value === original) delete next[item.slug];
+                              else next[item.slug] = value;
+                              return next;
+                            })
+                          }
+                          options={[
+                            { value: "", label: labels.noMilestone },
+                            ...milestones
+                              .filter((entry) => original || entry.id === selected)
+                              .map((entry) => ({ value: entry.id, label: entry.name })),
+                          ]}
+                        />
+                      </div>
+                    );
+                  })}
+              </div>
+              <div className="flex gap-2">
+                <Button variant="primary" disabled={!dirty || !name.trim()} onClick={saveMilestone}>
+                  {labels.save}
+                </Button>
+                <Button
+                  variant="secondary"
+                  disabled={!dirty}
+                  onClick={() => {
+                    setName(milestone.name);
+                    setStatus(milestone.status);
+                    setTarget(milestone.target ?? "");
+                    setMoves({});
+                  }}
+                >
+                  {labels.cancel}
+                </Button>
+              </div>
+            </fieldset>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
-  );
-}
-
-function MilestoneFields({
-  milestone,
-  workItems,
-  first,
-  last,
-  onSave,
-  onReorder,
-}: {
-  milestone: Milestone;
-  workItems: ProjectSnapshot["workItems"];
-  first: boolean;
-  last: boolean;
-  onSave: (change: RoadmapChange) => Promise<void>;
-  onReorder: (offset: number) => void;
-}) {
-  const { t } = useLanguage();
-  const [name, setName] = useState(milestone.name);
-  const selectId = useId();
-  const [expanded, setExpanded] = useState(false);
-  const [status, setStatus] = useState(milestone.status);
-  const [target, setTarget] = useState(milestone.target ?? "");
-  const total = milestone.workItemSlugs.length;
-  const done = workItems.filter(
-    (item) => milestone.workItemSlugs.includes(item.slug) && workItemDone(item),
-  ).length;
-  useEffect(() => {
-    setName(milestone.name);
-    setStatus(milestone.status);
-    setTarget(milestone.target ?? "");
-  }, [milestone.name, milestone.status, milestone.target]);
-  return (
-    <section className="roadmap-milestone border-b border-border" aria-label={milestone.name}>
-      <div className="flex min-w-0 items-center gap-1 py-0.5">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          onClick={() => setExpanded(!expanded)}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-ring"
-        >
-          <ChevronDown
-            aria-hidden="true"
-            className={`size-icon-sm shrink-0 ${expanded ? "rotate-180" : ""}`}
-          />
-          <span
-            className="min-w-0 flex-1 truncate font-semibold"
-            data-truncate
-            title={milestone.name}
-          >
-            {milestone.name}
-          </span>
-          <small
-            className="hidden max-w-24 truncate text-muted-foreground sm:inline"
-            data-truncate
-            title={milestone.id}
-          >
-            {milestone.id}
-          </small>
-          <StatusChip
-            status={
-              milestone.status === "shipped"
-                ? "success"
-                : milestone.status === "active"
-                  ? "running"
-                  : "stopped"
-            }
-          >
-            {t.planning.roadmap[milestone.status]}
-          </StatusChip>
-          {milestone.target && (
-            <time className="shrink-0 text-xs text-muted-foreground" dateTime={milestone.target}>
-              {milestone.target}
-            </time>
-          )}
-        </button>
-        {total > 0 && (
-          <div className="flex shrink-0 items-center gap-1">
-            <Progress
-              value={done}
-              max={total}
-              aria-label={milestone.name}
-              className="w-10 sm:w-16 [&_[data-slot=progress-indicator]]:bg-running"
-            />
-            <span className="text-xs tabular-nums text-muted-foreground">
-              {done}/{total}
-            </span>
-          </div>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t.planning.roadmap.up(milestone.name)}
-              disabled={first}
-              onClick={() => onReorder(-1)}
-            >
-              <ChevronUp aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t.planning.roadmap.up(milestone.name)}</TooltipContent>
-        </Tooltip>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              aria-label={t.planning.roadmap.down(milestone.name)}
-              disabled={last}
-              onClick={() => onReorder(1)}
-            >
-              <ChevronDown aria-hidden="true" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t.planning.roadmap.down(milestone.name)}</TooltipContent>
-        </Tooltip>
-      </div>
-      {expanded && (
-        <div className="px-2 pb-2">
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void onSave({ kind: "rename", id: milestone.id, name });
-            }}
-          >
-            <label>
-              {t.planning.roadmap.name(milestone.name)}
-              <input required value={name} onChange={(event) => setName(event.target.value)} />
-            </label>
-            <Button type="submit" disabled={!name.trim() || name === milestone.name}>
-              {t.planning.roadmap.rename(milestone.name)}
-            </Button>
-          </form>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void onSave({ kind: "update", id: milestone.id, status });
-            }}
-          >
-            <label htmlFor={`${selectId}-status`}>
-              {t.planning.roadmap.status(milestone.name)}
-              <SelectField
-                id={`${selectId}-status`}
-                aria-label={t.planning.roadmap.status(milestone.name)}
-                value={status}
-                onValueChange={(value) => setStatus(value as Milestone["status"])}
-                options={(["planned", "active", "shipped"] as const).map((value) => ({
-                  value,
-                  label: t.planning.roadmap[value],
-                }))}
-              />
-            </label>
-            <Button type="submit" disabled={status === milestone.status}>
-              {t.planning.roadmap.setStatus(milestone.name)}
-            </Button>
-          </form>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              void onSave({ kind: "update", id: milestone.id, target: target || null });
-            }}
-          >
-            <label>
-              {t.planning.roadmap.target(milestone.name)}
-              <input
-                type="date"
-                value={target}
-                onChange={(event) => setTarget(event.target.value)}
-              />
-            </label>
-            <Button type="submit" disabled={target === (milestone.target ?? "")}>
-              {t.planning.roadmap.setTarget(milestone.name)}
-            </Button>
-          </form>
-        </div>
-      )}
-    </section>
   );
 }

@@ -7,7 +7,12 @@ export type RoadmapChange =
   | { kind: "rename"; id: string; name: string }
   | { kind: "reorder"; ids: string[] }
   | { kind: "update"; id: string; status?: Milestone["status"]; target?: string | null }
-  | { kind: "move"; workItem: string; milestone: string | null };
+  | { kind: "move"; workItem: string; milestone: string | null }
+  | {
+      kind: "batch";
+      id: string;
+      changes: Exclude<RoadmapChange, { kind: "batch" | "add" | "reorder" }>[];
+    };
 
 function singleLine(value: unknown, label: string): string {
   if (typeof value !== "string" || !value.trim() || /[\p{Cc}\u2028\u2029\uFFFD]/u.test(value))
@@ -120,6 +125,47 @@ export function editRoadmap(text: string, change: unknown) {
   const parsed = parseRoadmap(text);
   if (parsed.warnings.length) throw new CoreTextError({ code: "roadmap.fixWarnings" });
   let milestones = parsed.milestones;
+  if (change.kind === "batch") {
+    if (
+      !("id" in change) ||
+      typeof change.id !== "string" ||
+      !milestones.some(({ id }) => id === change.id) ||
+      !("changes" in change) ||
+      !Array.isArray(change.changes) ||
+      !change.changes.length
+    )
+      throw new CoreTextError({ code: "roadmap.actionRequired" });
+    for (const entry of change.changes) {
+      if (
+        !entry ||
+        typeof entry !== "object" ||
+        !(
+          ((entry.kind === "rename" || entry.kind === "update") && entry.id === change.id) ||
+          (entry.kind === "move" &&
+            (entry.milestone === change.id ||
+              milestones
+                .find(({ id }) => id === change.id)
+                ?.workItemSlugs.includes(entry.workItem)))
+        )
+      )
+        throw new CoreTextError({ code: "roadmap.actionRequired" });
+      milestones = applyChange(milestones, entry).milestones;
+    }
+    return {
+      text: serializeRoadmap(text, milestones),
+      milestones,
+      message: `Update roadmap: Edit milestone ${change.id}`,
+    };
+  }
+  const edited = applyChange(milestones, change);
+  return {
+    text: serializeRoadmap(text, edited.milestones),
+    ...edited,
+    message: `Update roadmap: ${edited.message}`,
+  };
+}
+
+function applyChange(milestones: Milestone[], change: object & { kind: unknown }) {
   let message: string;
   switch (change.kind) {
     case "add": {
@@ -210,9 +256,5 @@ export function editRoadmap(text: string, change: unknown) {
     default:
       throw new CoreTextError({ code: "roadmap.unknownAction" });
   }
-  return {
-    text: serializeRoadmap(text, milestones),
-    milestones,
-    message: `Update roadmap: ${message}`,
-  };
+  return { milestones, message };
 }
