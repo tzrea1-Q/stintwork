@@ -131,7 +131,7 @@ export function GateView({
   return (
     <section
       aria-label={t.stints.gate(stageName(workflows[item.workflow], current, t))}
-      className="handoff-card my-3 rounded-2xl border border-border bg-card p-4 [overflow-wrap:anywhere] [&_h4]:font-semibold [&>p]:mt-2"
+      className="handoff-card my-3 rounded-2xl border border-border bg-card p-4 [overflow-wrap:anywhere] [&_h4]:font-semibold [&>h4]:mt-2 [&>p]:mt-2"
     >
       <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {t.stints.gate(stageName(workflows[item.workflow], current, t))}

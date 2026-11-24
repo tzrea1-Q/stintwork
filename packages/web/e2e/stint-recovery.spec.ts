@@ -242,6 +242,7 @@ for (const language of ["en", "zh-CN"] as const) {
           live.getByRole("log").getByText("Agent content 原文", { exact: true }),
         ).toHaveCount(1);
         await capture(page, info, "resumed-stream", ".work-item-drawer");
+        await drawer.getByRole("tab", { name: t.detailTabs.stints, exact: true }).click();
         const history = drawer.locator('section[aria-labelledby="drawer-stint-history-title"]');
         let historyReads = 0;
         let release!: () => void;
@@ -315,6 +316,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           drawer.getByRole("button", { name: t.stints.startNewStint, exact: true }),
         ).toBeEnabled();
+        await drawer.getByRole("tab", { name: t.detailTabs.stints, exact: true }).click();
         await history.scrollIntoViewIfNeeded();
         await expect(
           history.getByText(t.stints.recovery.saved("abc123"), { exact: true }),

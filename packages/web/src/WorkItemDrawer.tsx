@@ -359,6 +359,26 @@ export function WorkItemDrawer({
     window.history.replaceState(window.history.state, "", url);
   }
 
+  const contents = headings.map((heading) => (
+    <button
+      type="button"
+      key={heading.id}
+      className={`text-left hover:text-foreground focus-visible:text-foreground ${heading.level === "h3" ? "pl-4" : ""}`}
+      onClick={() => {
+        const target = specPanel.current?.querySelectorAll(
+          '[data-markdown-heading="h2"], [data-markdown-heading="h3"]',
+        )[heading.id] as HTMLElement | undefined;
+        if (target && specPanel.current?.parentElement) {
+          const scroll = specPanel.current.parentElement;
+          scroll.scrollTop +=
+            target.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+        }
+      }}
+    >
+      {heading.text}
+    </button>
+  ));
+
   const content = (
     <>
       {pendingPermissions && !docked && (
@@ -538,7 +558,7 @@ export function WorkItemDrawer({
         </TabsList>
         <TabsContent
           value="overview"
-          className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 sm:px-7 [&_section+section]:mt-5 [&_.drawer-section-heading]:text-sm [&_.drawer-section-heading]:font-medium"
+          className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5 [&_.drawer-section-heading]:text-sm [&_.drawer-section-heading]:font-medium"
         >
           {item.activeStint && (
             <section aria-labelledby="drawer-live-stint-title">
@@ -657,7 +677,7 @@ export function WorkItemDrawer({
         </TabsContent>
         <TabsContent
           value="spec"
-          className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 sm:px-7"
+          className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7"
         >
           <div ref={captureSpec} className="@container">
             <section
@@ -673,31 +693,23 @@ export function WorkItemDrawer({
               {item.spec ? (
                 <>
                   {headings.length > 0 && (
-                    <nav
-                      aria-label={t.detailTabs.contents}
-                      className="flex min-w-0 flex-col items-start gap-1 text-xs text-muted-foreground @[960px]:sticky @[960px]:top-0 @[960px]:self-start"
-                    >
-                      {headings.map((heading) => (
-                        <button
-                          type="button"
-                          key={heading.id}
-                          className={`text-left hover:text-foreground focus-visible:text-foreground ${heading.level === "h3" ? "pl-4" : ""}`}
-                          onClick={() => {
-                            const target = specPanel.current?.querySelectorAll(
-                              '[data-markdown-heading="h2"], [data-markdown-heading="h3"]',
-                            )[heading.id] as HTMLElement | undefined;
-                            if (target && specPanel.current?.parentElement) {
-                              const scroll = specPanel.current.parentElement;
-                              scroll.scrollTop +=
-                                target.getBoundingClientRect().top -
-                                scroll.getBoundingClientRect().top;
-                            }
-                          }}
+                    <>
+                      <details className="text-xs text-muted-foreground @[960px]:hidden">
+                        <summary className="cursor-pointer">{t.detailTabs.contents}</summary>
+                        <nav
+                          aria-label={t.detailTabs.contents}
+                          className="flex flex-col items-start [&>button]:!min-h-7"
                         >
-                          {heading.text}
-                        </button>
-                      ))}
-                    </nav>
+                          {contents}
+                        </nav>
+                      </details>
+                      <nav
+                        aria-label={t.detailTabs.contents}
+                        className="hidden min-w-0 flex-col items-start gap-1 text-xs text-muted-foreground @[960px]:sticky @[960px]:top-0 @[960px]:flex @[960px]:self-start"
+                      >
+                        {contents}
+                      </nav>
+                    </>
                   )}
                   <div className="min-w-0 max-w-[72ch]">
                     <FilePath path={item.spec.path} />
@@ -717,7 +729,7 @@ export function WorkItemDrawer({
         {hasTickets && (
           <TabsContent
             value="tickets"
-            className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 sm:px-7"
+            className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7"
           >
             <section id="drawer-tickets" aria-labelledby="drawer-tickets-title">
               <h3 id="drawer-tickets-title" className="sr-only">
@@ -828,7 +840,7 @@ export function WorkItemDrawer({
         )}
         <TabsContent
           value="stints"
-          className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pb-4 sm:px-7 [&_section+section]:mt-5"
+          className="drawer-content min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5"
         >
           <section aria-labelledby="drawer-stint-history-title">
             <h3 id="drawer-stint-history-title" className="sr-only">

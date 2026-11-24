@@ -781,15 +781,29 @@ test("tabs navigate by keyboard, show contents and select startable tickets", as
   overview.focus();
   await user.keyboard("{ArrowRight}");
   expect(new URL(location.href).searchParams.get("tab")).toBe("spec");
-  const contents = screen.getByRole("navigation", { name: "Contents" });
+  const disclosure = screen.getByText("Contents", { selector: "summary" }).parentElement;
+  if (!disclosure) throw new Error("Missing contents disclosure");
+  expect(disclosure).not.toHaveAttribute("open");
+  await user.click(within(disclosure).getByText("Contents"));
+  expect(disclosure).toHaveAttribute("open");
+  const contents = within(disclosure).getByRole("navigation", { name: "Contents" });
   expect(within(contents).getByRole("button", { name: "Scope" })).toBeInTheDocument();
   expect(within(contents).getByRole("button", { name: "Outcome" })).toBeInTheDocument();
   expect(within(contents).getByRole("button", { name: "Details" })).toHaveClass("pl-4");
-  expect(contents).toHaveClass("@[960px]:sticky");
+  const sideContents = screen.getAllByRole("navigation", { name: "Contents" })[1];
+  expect(sideContents).toHaveClass("@[960px]:sticky");
+  const heading = screen.getByText("Scope", { selector: '[data-markdown-heading="h2"]' });
+  const scroll = disclosure.closest(".drawer-content");
+  if (!scroll) throw new Error("Missing spec scroll container");
+  vi.spyOn(heading, "getBoundingClientRect").mockReturnValue({ top: 200 } as DOMRect);
+  vi.spyOn(scroll, "getBoundingClientRect").mockReturnValue({ top: 50 } as DOMRect);
+  await user.click(within(contents).getByRole("button", { name: "Scope" }));
+  expect(scroll.scrollTop).toBe(150);
   expect(
     screen.getByText("Scope", { selector: '[data-markdown-heading="h2"]' }).closest(".markdown")
       ?.parentElement,
   ).toHaveClass("max-w-[72ch]");
+  screen.getByRole("tab", { name: "Spec" }).focus();
   await user.keyboard("{ArrowRight}");
   expect(new URL(location.href).searchParams.get("tab")).toBe("tickets");
   const tickets = within(screen.getByRole("tabpanel"));
