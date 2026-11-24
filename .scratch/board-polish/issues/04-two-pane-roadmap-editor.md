@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 04 — Two-pane roadmap editor
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -20,10 +20,16 @@ Scope: `RoadmapEditor.tsx`, `roadmap-editing` in core if needed, the server rout
 
 ## Acceptance criteria
 
-- [ ] With this repository's 15 milestones at 1440x900 the list and the selected milestone are visible without scrolling the Dialog.
-- [ ] Rename, status, target, reorder, add and move each work by keyboard and pointer; one Save creates one commit.
-- [ ] Pending changes are discarded only after the developer confirms, when switching milestones or closing.
-- [ ] The browser suite passes at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN`, with light and dark at 1440 and 390px.
-- [ ] Comments include screenshots at 1440 and 390px in both languages on the e2e fixture and this repository's data.
+- [x] With this repository's 15 milestones at 1440x900 the list and the selected milestone are visible without scrolling the Dialog.
+- [x] Rename, status, target, reorder, add and move each work by keyboard and pointer; one Save creates one commit.
+- [x] Pending changes are discarded only after the developer confirms, when switching milestones or closing.
+- [x] The browser suite passes at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN`, with light and dark at 1440 and 390px.
+- [x] Comments include screenshots at 1440 and 390px in both languages on the e2e fixture and this repository's data.
 
 ## Comments
+
+**Coordinator, 2026-11-23:** Verification.
+
+- Codex implemented it with a batched core edit (`kind: "batch"`, one commit per Save). Review asked for a clear segmented status, the shared progress styling, Save-based intro copy and a compact New milestone button. The full suites then required unit and e2e selector updates for the new controls.
+- Real browser on this repository's 16 milestones: at 1440x900 the list and the selected milestone fit without scrolling the dialog. At 390px zh-CN the reorder buttons overflowed the content box and work item titles truncated; both fixed, with an e2e case at 390 and 360px.
+- Final runs on the integration branch: `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck` and `pnpm build` passed. `pnpm test`: 3,462 passed; two server tests (`stint-permissions` twenty immediate answers, `work-item-files` watcher reindex) failed only under machine load and pass when rerun alone. `index.test.ts` "watching discovers project directories that do not exist at startup" also fails alone on `main`, so it is pre-existing and not caused by this milestone. `PLAYWRIGHT_CHROME_CHANNEL=chrome pnpm test:e2e`: 508 passed before the last two fixes; after them `e2e/board.spec.ts` (54) and `e2e/dialogs.spec.ts` (140) passed in full.

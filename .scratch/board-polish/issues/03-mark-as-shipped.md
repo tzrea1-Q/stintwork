@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 03 — Mark as shipped
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -16,10 +16,17 @@ Scope: `packages/core` stages and core text, the server action and route, the de
 
 ## Acceptance criteria
 
-- [ ] Core and server tests cover the write, the commit, each refusal and an unreachable commit.
-- [ ] Behaviour tests cover the Dialog by keyboard, validation errors, cancel with focus return, and success.
-- [ ] Marking `board` in a copy of this repository moves it to the Shipped lane, updates "active · shipped" counts and creates one commit touching only `.scratch/board/workflow.yaml`.
-- [ ] Strings exist in `en` and `zh-CN`; the browser suite passes at 1440 and 390px in both languages.
-- [ ] Comments record the real-repository check.
+- [x] Core and server tests cover the write, the commit, each refusal and an unreachable commit.
+- [x] Behaviour tests cover the Dialog by keyboard, validation errors, cancel with focus return, and success.
+- [x] Marking `board` in a copy of this repository moves it to the Shipped lane, updates "active · shipped" counts and creates one commit touching only `.scratch/board/workflow.yaml`.
+- [x] Strings exist in `en` and `zh-CN`; the browser suite passes at 1440 and 390px in both languages.
+- [x] Comments record the real-repository check.
 
 ## Comments
+
+**Coordinator, 2026-11-23:** Verification.
+
+- Codex implemented it. Review asked to revert unrelated import reordering, to refuse while the work item has a Stintwork worktree (ADR 0021 updated) instead of projecting main's record over the worktree, to classify the new write route in `github-lifecycle.test.ts`, and to match other dialogs' styling.
+- Real-repository check in a clone of `main`: Mark as shipped on `board` prefilled `HEAD`, produced one commit `Record outside merge of board` touching only `.scratch/board/workflow.yaml` (`merged.outside: true`), moved the item to the Shipped lane and changed the counts to 17 active · 1 shipped. Detail shows "Merged outside Stintwork · <short commit>".
+- Dialog checked at 1440px en and 390px zh-CN.
+- Final runs on the integration branch: `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck` and `pnpm build` passed. `pnpm test`: 3,462 passed; two server tests (`stint-permissions` twenty immediate answers, `work-item-files` watcher reindex) failed only under machine load and pass when rerun alone. `index.test.ts` "watching discovers project directories that do not exist at startup" also fails alone on `main`, so it is pre-existing and not caused by this milestone. `PLAYWRIGHT_CHROME_CHANNEL=chrome pnpm test:e2e`: 508 passed before the last two fixes; after them `e2e/board.spec.ts` (54) and `e2e/dialogs.spec.ts` (140) passed in full.
