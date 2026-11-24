@@ -11,7 +11,7 @@ import {
   type StintLogEvent,
   summarizeStint,
 } from "@stintwork/core";
-import { act, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
@@ -337,6 +337,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState(null, "", "/");
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -389,9 +390,10 @@ test("an open GitHub drawer applies refreshed live evidence and clears pending s
   act(() => TestSocket.instances[0].sendSnapshot(updated));
   vi.mocked(fetch).mockResolvedValue(response(updated));
   await act(async () => finish(response(updated)));
-  const gate = screen.getByRole("region", { name: /spec gate/i });
-  expect(within(gate).getByText(/1472 · Ticket 1472 · Cancelled/i)).toBeInTheDocument();
   expect(button).toBeEnabled();
+  await userEvent.click(screen.getByRole("tab", { name: "Tickets" }));
+  const ticket = screen.getByRole("button", { name: /1472 · Ticket 1472/i });
+  expect(ticket).toHaveTextContent(/cancelled/i);
 });
 
 test("a finished GitHub refresh reloads the snapshot when no live update arrives", async () => {
@@ -433,7 +435,10 @@ test("a finished GitHub refresh reloads the snapshot when no live update arrives
     </LanguageProvider>,
   );
   await userEvent.click(await screen.findByRole("button", { name: "Refresh GitHub evidence" }));
-  expect(await screen.findByText(/1472 · Refreshed ticket · cancelled/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("tab", { name: "Tickets" }));
+  expect(await screen.findByText(/1472 · Refreshed ticket/i)).toBeInTheDocument();
+  expect(screen.getByText(/cancelled/i)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("tab", { name: "Overview" }));
   expect(screen.getByRole("button", { name: "Refresh GitHub evidence" })).toBeEnabled();
 });
 

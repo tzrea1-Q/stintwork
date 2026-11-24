@@ -128,7 +128,9 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           live.getByRole("button", { name: t.stints.stopStint, exact: true }),
         ).toBeEnabled();
-        const contentBounds = await drawer.locator(".drawer-content").boundingBox();
+        const contentBounds = await drawer
+          .locator('[role="tabpanel"][data-state="active"]')
+          .boundingBox();
         for (const element of [
           live.getByRole("heading", { name: t.stints.liveStint, exact: true }),
           live
@@ -144,7 +146,9 @@ for (const language of ["en", "zh-CN"] as const) {
           ).toBeTruthy();
         }
         expect(
-          await drawer.locator(".drawer-content").evaluate((element) => element.scrollTop),
+          await drawer
+            .locator('[role="tabpanel"][data-state="active"]')
+            .evaluate((element) => element.scrollTop),
         ).toBe(0);
         await drawer.getByText(t.drawerIdentity.agentsByStage).click();
         for (const picker of await drawer.locator(".stage-rail").getByRole("combobox").all())

@@ -138,7 +138,9 @@ for (const language of ["en", "zh-CN"] as const) {
           const gateTitle = t.stints.gate(language === "en" ? "Implement" : "实现");
           const gate = panel.getByRole("region", { name: gateTitle });
           await expect(gate).toBeVisible();
-          const viewport = await panel.locator(".drawer-content").boundingBox();
+          const viewport = await panel
+            .locator('[role="tabpanel"][data-state="active"]')
+            .boundingBox();
           for (const element of [
             gate.getByRole("heading", { name: gateTitle, level: 3 }),
             gate.getByRole("list").first().getByRole("listitem").first(),
@@ -152,7 +154,11 @@ for (const language of ["en", "zh-CN"] as const) {
                 bounds.y + bounds.height <= viewport.y + viewport.height,
             ).toBeTruthy();
           }
-          expect(await panel.locator(".drawer-content").evaluate((el) => el.scrollTop)).toBe(0);
+          expect(
+            await panel
+              .locator('[role="tabpanel"][data-state="active"]')
+              .evaluate((el) => el.scrollTop),
+          ).toBe(0);
           await assertLayout(page);
           await page.screenshot({ path: info.outputPath("rich-detail.png"), fullPage: true });
         });

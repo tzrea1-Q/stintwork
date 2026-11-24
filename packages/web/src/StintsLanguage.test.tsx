@@ -13,7 +13,6 @@ import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { codexProfile } from "../../agents/src/profiles";
-import { GateView } from "./GateView";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import { StintHistory } from "./StintHistory";
 import { StintStream } from "./StintStream";
@@ -71,6 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState(null, "", "/");
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -90,14 +90,17 @@ test("Chinese drawer sections, stage agents and Stop keep repo content verbatim"
     </LanguageProvider>,
   );
   const drawer = within(screen.getByRole("dialog", { name: "Repo title 原文" }));
-  const sections = within(drawer.getByRole("navigation", { name: "工作项章节" }));
-  expect(sections.getByRole("link", { name: "规格说明" })).toHaveAttribute("href", "#drawer-spec");
-  expect(sections.getByRole("link", { name: "工单 1" })).toHaveAttribute("href", "#drawer-tickets");
+  const sections = within(drawer.getByRole("tablist", { name: "工作项章节" }));
+  expect(sections.getByRole("tab", { name: "规格" })).toBeVisible();
+  expect(sections.getByRole("tab", { name: "工单" })).toBeVisible();
   expect(drawer.getByRole("list", { name: "功能工作流阶段" })).toHaveTextContent("实现");
   expect(await drawer.findByRole("combobox", { name: "实现 Agent" })).toHaveTextContent("Codex");
+  await user.click(sections.getByRole("tab", { name: "工单" }));
   expect(drawer.getByText("01 · Ticket title 原文")).toBeInTheDocument();
+  await user.click(sections.getByRole("tab", { name: "规格" }));
   expect(drawer.getByText("Spec body café 中文")).toBeInTheDocument();
-  expect(drawer.getByRole("button", { name: "开始 Stint" })).toBeDisabled();
+  await user.click(sections.getByRole("tab", { name: "概览" }));
+  expect(drawer.queryByRole("button", { name: "开始 Stint" })).not.toBeInTheDocument();
   await user.click(drawer.getByRole("button", { name: "停止" }));
   expect(fetch).toHaveBeenCalledWith("/api/stints/stint-%E4%B8%AD%E6%96%87/stop", {
     method: "POST",
@@ -389,37 +392,28 @@ test.each(["drawer", "gate"])(
     render(
       <LanguageProvider>
         <LanguageDriver />
-        {view === "drawer" ? (
-          <WorkItemDrawer item={withTickets} onClose={() => {}} />
-        ) : (
-          <GateView item={withTickets} />
-        )}
+        <WorkItemDrawer item={withTickets} onClose={() => {}} />
       </LanguageProvider>,
     );
-    const list = within(
-      view === "drawer"
-        ? screen.getByRole("region", { name: "工单 6" })
-        : screen.getByRole("region", { name: "实现关卡" }),
-    );
+    if (view === "gate") expect(screen.getByRole("region", { name: "实现关卡" })).toBeVisible();
+    await userEvent.click(screen.getByRole("tab", { name: "工单" }));
+    const list = within(screen.getByRole("region", { name: "工单 6" }));
     for (const [index, [, label]] of statuses.entries()) {
       const number = index + 1;
-      expect(
-        list.getByText(
-          view === "drawer"
-            ? label
-            : `${String(number).padStart(2, "0")} · Ticket ${number} 原文 · ${label}`,
-        ),
-      ).toBeInTheDocument();
-      if (view === "drawer")
-        expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
+      expect(list.getByText(label)).toBeInTheDocument();
+      expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
     }
     act(() => changeLanguage("en"));
-    for (const [index, [status]] of statuses.entries())
+    for (const [status] of statuses)
       expect(
         list.getByText(
-          view === "drawer"
-            ? status
-            : `${String(index + 1).padStart(2, "0")} · Ticket ${index + 1} 原文 · ${status === "resolved" ? "Resolved" : status}`,
+          status === "resolved"
+            ? "Resolved"
+            : status === "ready-for-agent"
+              ? "Ready for agent"
+              : status === "deferred"
+                ? "Deferred"
+                : status,
         ),
       ).toBeInTheDocument();
   },
@@ -433,9 +427,10 @@ test("Chinese gate approval keeps ticket titles, warning paths and warning messa
   );
   render(
     <LanguageProvider>
-      <GateView
+      <WorkItemDrawer
         item={{ ...item, tickets: item.tickets.map((ticket) => ({ ...ticket, resolved: true })) }}
         warnings={[{ path: ".scratch/中文/spec.md", message: "Core warning 原文" }]}
+        onClose={() => {}}
       />
     </LanguageProvider>,
   );
@@ -443,9 +438,13 @@ test("Chinese gate approval keeps ticket titles, warning paths and warning messa
   expect(gate.getByText("Core warning 原文", { exact: false })).toHaveTextContent(
     ".scratch/中文/spec.md",
   );
-  expect(gate.getByText("01 · Ticket title 原文 · 已解决")).toBeInTheDocument();
-  await user.click(gate.getByRole("button", { name: "批准实现" }));
-  expect(await gate.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "工单" }));
+  expect(screen.getByText("01 · Ticket title 原文")).toBeInTheDocument();
+  expect(screen.getByText("已解决")).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "概览" }));
+  const reopenedGate = within(screen.getByRole("region", { name: "实现关卡" }));
+  await user.click(reopenedGate.getByRole("button", { name: "批准实现" }));
+  expect(await reopenedGate.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
 });
 
 test("Chinese rail localizes chrome while custom workflow and stage names remain verbatim", async () => {

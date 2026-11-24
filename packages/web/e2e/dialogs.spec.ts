@@ -132,7 +132,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await page.goto("/?view=pipeline");
           await expect(page.getByText(t.board.githubStatus.errors.incomplete)).toBeVisible();
           await page.getByRole("button", { name: t.board.githubStatus.loadMore }).click();
-          expect(requested).toBe(true);
+          await expect.poll(() => requested).toBe(true);
           await assertLayout(page);
           await page.screenshot({
             path: testInfo.outputPath("github-partial.png"),

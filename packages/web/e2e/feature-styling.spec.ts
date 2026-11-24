@@ -306,6 +306,7 @@ for (const language of ["en", "zh-CN"] as const) {
           ).toBeEnabled();
           await scrollCode(page, gate.locator("pre").first());
           await capture(page, drawer, info, "gate-handoff");
+          await drawer.getByRole("tab", { name: t.detailTabs.stints }).click();
           const history = drawer.getByRole("list", { name: t.stints.history });
           const replay = history.getByRole("button", { name: t.stints.openStint(recorded.id) });
           await replay.click();
@@ -315,6 +316,7 @@ for (const language of ["en", "zh-CN"] as const) {
           for (const code of await history.locator("pre").all()) await scrollCode(page, code);
           await capture(page, drawer, info, "stint-replay-details");
           await history.getByRole("button", { name: t.stints.closeStint(recorded.id) }).click();
+          await drawer.getByRole("tab", { name: t.detailTabs.overview }).click();
           const approve = gate.getByRole("button", {
             name: t.stints.approve(t.workflows.feature.stages.spec),
           });

@@ -368,7 +368,7 @@ test("the identity shows work item context and the current inferred agent", asyn
     />,
   );
   expect(screen.getByRole("heading", { name: "First", level: 2 })).toBeVisible();
-  expect(screen.getByText("Feature · Milestone one")).toBeVisible();
+  expect(screen.getByText("Feature · Milestone one · Implement")).toBeVisible();
   expect(screen.getAllByText("feature/first").length).toBeGreaterThan(0);
   const row = screen.getByText("Agent for this stage").closest('[role="group"]');
   await waitFor(() => expect(row).toHaveTextContent("Claude Code"));

@@ -44,7 +44,10 @@ const started: StintLogEntry = {
     brief,
   },
 };
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+  vi.unstubAllGlobals();
+});
 
 test("the picker renders registry names and posts the selected registered agent id", async () => {
   const user = userEvent.setup();
@@ -190,6 +193,7 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
       onClose={() => {}}
     />,
   );
+  await user.click(screen.getByRole("tab", { name: "Stints" }));
   const history = screen.getByRole("list", { name: "Stint history" });
   expect(history).toHaveTextContent("codex · Ticket 01 · finished");
   expect(history).toHaveTextContent("Started 2026-10-09T10:00:00Z · Ended 2026-10-09T10:01:00Z");
@@ -202,7 +206,7 @@ test("Start posts ticket selection, closes the preview, and the drawer streams c
   expect(screen.getByRole("button", { name: "Start stint" })).toBeEnabled();
 });
 
-test("history renders an explicit no-handoff card when the stint has none", () => {
+test("history renders an explicit no-handoff card when the stint has none", async () => {
   const stint = applyStintLogEntry(applyStintLogEntry(null, started), {
     type: "ended",
     at: "2026-10-09T10:01:00Z",
@@ -210,6 +214,7 @@ test("history renders an explicit no-handoff card when the stint has none", () =
     handoff: null,
   }) as Stint;
   render(<WorkItemDrawer item={{ ...item, stints: [summarizeStint(stint)] }} onClose={() => {}} />);
+  await userEvent.click(screen.getByRole("tab", { name: "Stints" }));
   const card = screen.getByRole("article", { name: "Handoff" });
   expect(card).toHaveTextContent("No handoff was given.");
   expect(card).toHaveTextContent("No checkpoint recorded.");

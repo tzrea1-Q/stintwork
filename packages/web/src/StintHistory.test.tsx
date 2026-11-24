@@ -117,9 +117,12 @@ function stint(id: string, status: StintStatus = "finished", ticket: number | nu
   return foldStintLog(entries) as Stint;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+  vi.unstubAllGlobals();
+});
 
-test("the drawer lists every stint in snapshot order with agent, ticket, status, times and checkpoint", () => {
+test("the drawer lists every stint in snapshot order with agent, ticket, status, times and checkpoint", async () => {
   const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
     name: "Project",
   }).workItems[0];
@@ -133,6 +136,7 @@ test("the drawer lists every stint in snapshot order with agent, ticket, status,
   render(
     <WorkItemDrawer item={{ ...item, stints: stints.map(summarizeStint) }} onClose={() => {}} />,
   );
+  await userEvent.click(screen.getByRole("tab", { name: "Stints" }));
   const rows = within(screen.getByRole("list", { name: "Stint history" })).getAllByRole("listitem");
   expect(rows).toHaveLength(stints.length);
   for (const [index, recorded] of stints.entries()) {

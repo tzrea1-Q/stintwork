@@ -115,6 +115,7 @@ function previewFetch(preview = brief) {
 }
 
 afterEach(() => {
+  window.history.replaceState(null, "", "/");
   localStorage.removeItem(languageStorageKey);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -310,21 +311,13 @@ test("blocked and resolved implementation tickets show disabled reasons, and Shi
   const fetch = previewFetch();
   vi.stubGlobal("fetch", fetch);
   const { rerender } = render(
-    <WorkItemDrawer
-      item={{ ...item, tickets: [{ ...ticket, blocked: true, blockedBy: [1] }] }}
-      onClose={vi.fn()}
-    />,
+    <TicketBriefPreview item={item} ticket={{ ...ticket, blocked: true, blockedBy: [1] }} />,
   );
   expect(screen.getByRole("button", { name: "Start stint" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(
     "Blocked by ticket 01.",
   );
-  rerender(
-    <WorkItemDrawer
-      item={{ ...item, tickets: [{ ...ticket, resolved: true }] }}
-      onClose={vi.fn()}
-    />,
-  );
+  rerender(<TicketBriefPreview item={item} ticket={{ ...ticket, resolved: true }} />);
   expect(screen.getByRole("button", { name: "Start stint" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Start stint" })).toHaveAccessibleDescription(
     "This ticket is resolved.",
@@ -394,7 +387,9 @@ test("closing during loading cancels the preview request, and a live resolved ti
     />,
   );
   expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Start stint" })).toBeDisabled();
+  await user.click(screen.getByRole("tab", { name: "Tickets" }));
+  expect(screen.getByText("Resolved")).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Start stint" })).not.toBeInTheDocument();
   rerender(<WorkItemDrawer item={item} onClose={vi.fn()} />);
   expect(screen.getByRole("button", { name: "Start stint" })).toBeEnabled();
   expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();

@@ -9,6 +9,7 @@ import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 afterEach(() => {
+  window.history.replaceState(null, "", "/");
   vi.unstubAllGlobals();
   localStorage.clear();
 });
@@ -399,6 +400,7 @@ test.each(["en", "zh-CN"] as const)(
     );
     expect(screen.getByRole("button", { name: t.stints.startNewStint })).toBeEnabled();
     expect(screen.queryByRole("button", { name: t.stints.stopStint })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: t.detailTabs.stints }));
     expect(screen.getByText(t.stints.recovery.saved("abc123"))).toBeVisible();
   },
 );
@@ -448,10 +450,13 @@ test.each(["en", "zh-CN"] as const)(
       </LanguageProvider>,
     );
     const live = document.querySelector('section[aria-labelledby="drawer-live-stint-title"]');
-    const spec = document.querySelector("#drawer-spec");
-    if (!live || !spec) throw new Error("Expected active stint and planning sections");
-    expect(live.compareDocumentPosition(spec) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(live.querySelectorAll(".stint-stream > .stint-recovery")).toHaveLength(1);
+    expect(live?.querySelectorAll(".stint-stream > .stint-recovery")).toHaveLength(1);
+    expect(document.querySelector("#drawer-spec")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("tab", { name: language === "en" ? "Spec" : "规格" }));
+    expect(document.querySelector("#drawer-spec")).toBeInTheDocument();
+    expect(
+      document.querySelector('section[aria-labelledby="drawer-live-stint-title"]'),
+    ).not.toBeInTheDocument();
   },
 );
 
@@ -476,6 +481,7 @@ test.each(["en", "zh-CN"] as const)(
         <WorkItemDrawer item={item} onClose={() => {}} />
       </LanguageProvider>,
     );
+    await userEvent.click(screen.getByRole("tab", { name: t.detailTabs.stints }));
     expect(
       screen.getByText(t.stints.recovery.checkpointFailed(recoveryPath, stint.error), {
         exact: true,

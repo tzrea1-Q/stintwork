@@ -36,7 +36,10 @@ const stint = applyStintLogEntry(null, {
   },
 }) as Stint;
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+  vi.unstubAllGlobals();
+});
 
 test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows stopped history with its checkpoint and handoff", async () => {
   const success = vi.spyOn(toast, "success");
@@ -91,6 +94,7 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
     />,
   );
   expect(screen.queryByRole("button", { name: /Stop/ })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Stints" }));
   const history = screen.getByRole("list", { name: "Stint history" });
   expect(history).toHaveTextContent("codex · Ticket 05 · stopped");
   expect(within(history).getByRole("article", { name: "Handoff" })).toHaveTextContent(
@@ -121,7 +125,7 @@ test("a failed Stop displays its error and lets the developer retry", async () =
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-test("a failed stint shows its error in history and in the stream, with its checkpoint and no handoff", () => {
+test("a failed stint shows its error in history and in the stream, with its checkpoint and no handoff", async () => {
   const failed = applyStintLogEntry(stint, {
     type: "ended",
     at: "2026-10-09T10:01:00Z",
@@ -133,6 +137,7 @@ test("a failed stint shows its error in history and in the stream, with its chec
   render(
     <WorkItemDrawer item={{ ...item, stints: [summarizeStint(failed)] }} onClose={() => {}} />,
   );
+  await userEvent.click(screen.getByRole("tab", { name: "Stints" }));
   const history = screen.getByRole("list", { name: "Stint history" });
   expect(history).toHaveTextContent("codex · Ticket 05 · failed");
   expect(within(history).getByRole("alert")).toHaveTextContent(failed.error as string);

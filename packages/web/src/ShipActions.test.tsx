@@ -253,6 +253,7 @@ test("Ship is not Shipped until merged; the drawer then retains history, finding
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
   expect(screen.getByRole("region", { name: "Ship actions" })).toHaveTextContent("Shipped");
   expect(screen.getByText(item.merged.commit)).toBeInTheDocument();
+  await user.click(screen.getByRole("tab", { name: "Stints" }));
   expect(screen.getByRole("list", { name: "Stint history" })).toHaveTextContent("Review finished");
   const finding = screen.getByRole("article", { name: "Kept finding" });
   expect(finding).toHaveTextContent("Finding explanation");
