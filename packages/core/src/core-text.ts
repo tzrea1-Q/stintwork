@@ -79,6 +79,7 @@ export const coreTextEnglish = {
   "workItem.shipped": "This work item is shipped.",
   "gate.noApproval": "This stage has no approval gate.",
   "gate.running": "A stint is running on this work item. Finish or stop it before approving.",
+  "gate.ticketResolution": "Tickets resolved",
   "gate.ticketsUnresolved": "Every ticket must be resolved before approving.",
   "gate.stintUnfinished": "The stage stint must finish before approving.",
   "gate.reviewRestart": "Start a new Review stint after reopening or entering Review.",

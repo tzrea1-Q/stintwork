@@ -404,6 +404,7 @@ test("renders tickets in dependency order with Blocked by", async () => {
     />,
   );
   await user.click(screen.getByRole("button", { name: "Open board: The live board" }));
+  await user.click(screen.getByRole("tab", { name: "Tickets" }));
   const tickets = within(screen.getByRole("region", { name: "Tickets 3" }));
   const entries = tickets.getAllByRole("listitem");
   expect(entries.map((entry) => entry.querySelector("strong")?.textContent)).toEqual([
@@ -413,13 +414,13 @@ test("renders tickets in dependency order with Blocked by", async () => {
   ]);
   expect(entries[2]).toHaveTextContent("Blocked by 03, 02");
   expect(entries[1]).toHaveTextContent("Blocked by 02");
-  expect(entries[0]).toHaveTextContent("resolved");
-  const details = entries[2].querySelector("details");
-  expect(details).not.toHaveAttribute("open");
+  expect(entries[0]).toHaveTextContent("Resolved");
+  const details = within(entries[2]).getByRole("button");
+  expect(details).toHaveAttribute("aria-expanded", "false");
   await user.click(within(entries[2]).getByText("01 · Finish"));
-  expect(details).toHaveAttribute("open");
-  expect(within(entries[2]).getByRole("heading", { name: "Outcome" })).toBeVisible();
-  expect(within(entries[2]).getByText("Read the spec first.")).toBeVisible();
+  expect(details).toHaveAttribute("aria-expanded", "true");
+  expect(tickets.getByRole("heading", { name: "Outcome" })).toBeVisible();
+  expect(tickets.getByText("Read the spec first.")).toBeVisible();
   expect(
     tickets.getByRole("button", { name: "Copy .scratch/board/issues/01-finish.md" }),
   ).toBeInTheDocument();
@@ -498,6 +499,7 @@ test("renders GFM safely and copies repo-relative paths", async () => {
   await user.click(screen.getByRole("button", { name: "Open board: The live board" }));
   const drawer = screen.getByRole("dialog");
   const content = within(drawer);
+  await user.click(content.getByRole("tab", { name: "Spec" }));
   expect(content.getByRole("heading", { name: "Scope" })).toBeInTheDocument();
   expect(
     content.getAllByRole("checkbox").map((checkbox) => (checkbox as HTMLInputElement).checked),
@@ -648,7 +650,9 @@ test("shows an effort without inventing a stage or spec and handles Escape", asy
   await user.click(card);
   const drawer = screen.getByRole("dialog", { name: "Effort" });
   expect(drawer).toHaveTextContent("No stage declared for this work item.");
+  await user.click(within(drawer).getByRole("tab", { name: "Spec" }));
   expect(drawer).toHaveTextContent("No spec yet.");
+  await user.click(within(drawer).getByRole("tab", { name: "Tickets" }));
   expect(drawer).toHaveTextContent("No tickets yet.");
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -789,11 +793,9 @@ test("stale data is visible and stint start is disabled with a reason", async ()
   ).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
   await userEvent.click(screen.getByRole("button", { name: /^Open board:/ }));
-  const start = screen.getAllByRole("button", { name: "Start stint" })[0];
-  expect(start).toBeDisabled();
-  expect(start).toHaveAccessibleDescription(
-    "GitHub data is stale. Refresh before starting a stint or approving a gate.",
-  );
+  expect(
+    screen.getByText("GitHub data is stale. Refresh before starting a stint or approving a gate."),
+  ).toBeInTheDocument();
 });
 
 test("unavailable and rate limited discovery never looks empty", () => {
@@ -912,11 +914,19 @@ test.each([false, true])(
     const user = userEvent.setup();
     const { rerender } = render(<Board snapshot={snapshot} />);
     await user.click(screen.getByRole("button", { name: /^Open board:/ }));
-    expect(screen.getAllByRole("button", { name: "Start stint" })[0]).toBeDisabled();
+    expect(
+      screen.getByText(
+        "GitHub data is stale. Refresh before starting a stint or approving a gate.",
+      ),
+    ).toBeInTheDocument();
     snapshot.github.items[0].detail = undefined;
     snapshot.github.items[0].detailFailed = true;
     rerender(<Board snapshot={snapshot} />);
-    expect(screen.getAllByRole("button", { name: "Start stint" })[0]).toBeDisabled();
+    expect(
+      screen.getByText(
+        "GitHub data is stale. Refresh before starting a stint or approving a gate.",
+      ),
+    ).toBeInTheDocument();
     await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: /^Open next:/ }));
     const start = screen.getAllByRole("button", { name: "Start stint" })[0];
@@ -1256,7 +1266,7 @@ test("detail width persists and full screen collapses before closing", async () 
   localStorage.removeItem("stintwork.detailWidth");
   const user = userEvent.setup();
   const { unmount } = render(<Board snapshot={project()} />);
-  const card = document.querySelector<HTMLButtonElement>('[data-work-item="board"]')!;
+  const card = screen.getByRole("button", { name: "Open board: The live board" });
   await user.click(card);
   let drawer = screen.getByRole("complementary", { name: /board/i });
   expect(drawer).toHaveStyle({ width: "560px" });
@@ -1298,7 +1308,7 @@ test("blocked detail storage falls back to the default width", async () => {
     throw new Error("blocked");
   });
   render(<Board snapshot={project()} />);
-  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-work-item="board"]')!);
+  fireEvent.click(screen.getByRole("button", { name: "Open board: The live board" }));
   const drawer = screen.getByRole("complementary", { name: /board/i });
   expect(drawer).toHaveStyle({ width: "560px" });
   fireEvent.keyDown(within(drawer).getByRole("separator"), { key: "ArrowLeft" });

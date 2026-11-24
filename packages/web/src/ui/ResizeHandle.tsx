@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./Tooltip";
 
 export function ResizeHandle({
@@ -15,19 +15,22 @@ export function ResizeHandle({
   onChange: (value: number) => void;
   label: string;
 }) {
-  const drag = useRef<{ x: number; value: number } | null>(null);
+  const stopDrag = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopDrag.current?.(), []);
   const resize = (next: number) => onChange(Math.max(min, Math.min(max, next)));
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <hr
+        {/* biome-ignore lint/a11y/useSemanticElements: A draggable separator needs a reliable pointer hit area. */}
+        <div
+          role="separator"
           aria-label={label}
           aria-orientation="vertical"
           aria-valuemin={min}
           aria-valuemax={max}
           aria-valuenow={value}
           tabIndex={0}
-          className="absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize touch-none rounded border-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+          className="absolute inset-y-0 left-0 z-10 w-3 cursor-col-resize touch-none rounded border-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
           onKeyDown={(event) => {
             const step = event.shiftKey ? 64 : 16;
             if (event.key === "ArrowLeft") resize(value + step);
@@ -38,20 +41,25 @@ export function ResizeHandle({
             event.preventDefault();
           }}
           onPointerDown={(event) => {
-            drag.current = { x: event.clientX, value };
-            event.currentTarget.setPointerCapture(event.pointerId);
-          }}
-          onPointerMove={(event) => {
-            if (drag.current) resize(drag.current.value + drag.current.x - event.clientX);
-          }}
-          onPointerUp={() => {
-            drag.current = null;
-          }}
-          onPointerCancel={() => {
-            drag.current = null;
-          }}
-          onLostPointerCapture={() => {
-            drag.current = null;
+            if (event.button !== 0) return;
+            event.preventDefault();
+            stopDrag.current?.();
+            const { clientX, pointerId } = event;
+            const move = (next: PointerEvent) => {
+              if (next.pointerId === pointerId) resize(value + clientX - next.clientX);
+            };
+            const stop = (next: PointerEvent) => {
+              if (next.pointerId === pointerId) stopDrag.current?.();
+            };
+            stopDrag.current = () => {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", stop);
+              window.removeEventListener("pointercancel", stop);
+              stopDrag.current = null;
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", stop);
+            window.addEventListener("pointercancel", stop);
           }}
         />
       </TooltipTrigger>

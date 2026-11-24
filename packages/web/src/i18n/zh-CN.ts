@@ -759,6 +759,13 @@ export const zhCN: Catalog = {
     outside: "在 Stintwork 外合并",
     error: "无法将工作项标记为已交付。",
   },
+  detailTabs: {
+    overview: "概览",
+    spec: "规格",
+    tickets: "工单",
+    stints: "Stint",
+    contents: "目录",
+  },
   detailPanel: { stage: "阶段", branch: "分支", pullRequest: "拉取请求" },
   stints: {
     copied: "已复制",
@@ -1097,6 +1104,7 @@ export const zhCN: Catalog = {
     "workItem.shipped": "此工作项已交付。",
     "gate.noApproval": "此阶段没有批准关卡。",
     "gate.running": "此工作项有正在运行的 Stint。请先结束或停止，再批准。",
+    "gate.ticketResolution": "工单已解决",
     "gate.ticketsUnresolved": "所有工单都必须解决后才能批准。",
     "gate.stintUnfinished": "阶段 Stint 必须结束后才能批准。",
     "gate.reviewRestart": "重新开启或进入审查后，请启动新的审查 Stint。",

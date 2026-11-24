@@ -30,10 +30,11 @@ test("resizes with keyboard and pointer within the bounds", () => {
   expect(handle).toHaveAttribute("aria-valuenow", "864");
   fireEvent.keyDown(handle, { key: "Home" });
   vi.stubGlobal("PointerEvent", MouseEvent);
-  handle.setPointerCapture = vi.fn();
   fireEvent.pointerDown(handle, { pointerId: 1, clientX: 500 });
-  fireEvent.pointerMove(handle, { pointerId: 1, clientX: 300 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 300 });
   expect(handle).toHaveAttribute("aria-valuenow", "600");
-  fireEvent.pointerUp(handle, { pointerId: 1 });
+  fireEvent.pointerUp(window, { pointerId: 1 });
+  fireEvent.pointerMove(window, { pointerId: 1, clientX: 100 });
+  expect(handle).toHaveAttribute("aria-valuenow", "600");
   vi.unstubAllGlobals();
 });

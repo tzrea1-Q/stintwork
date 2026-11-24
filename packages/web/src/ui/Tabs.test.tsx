@@ -29,6 +29,13 @@ test("exposes line list variant", () => {
     </Tabs>,
   );
   expect(screen.getByRole("tablist")).toHaveAttribute("data-variant", "line");
+  const active = screen.getByRole("tab", { name: "A" });
+  expect(active).toHaveAttribute("data-state", "active");
+  expect(active).toHaveClass("data-[state=active]:text-foreground");
+  expect(active).toHaveClass(
+    "group-data-[variant=line]/tabs-list:data-[state=active]:after:opacity-100",
+  );
+  expect(active).toHaveClass("group-data-[orientation=horizontal]/tabs:after:h-0.5");
 });
 
 test("moves focus down in vertical tabs", async () => {

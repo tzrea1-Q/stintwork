@@ -748,6 +748,13 @@ export const en = {
     outside: "Merged outside Stintwork",
     error: "Could not mark the work item as shipped.",
   },
+  detailTabs: {
+    overview: "Overview",
+    spec: "Spec",
+    tickets: "Tickets",
+    stints: "Stints",
+    contents: "Contents",
+  },
   detailPanel: { stage: "Stage", branch: "Branch", pullRequest: "Pull request" },
   stints: {
     copied: "Copied",
@@ -1011,9 +1018,9 @@ export const en = {
       session_message_chunk: "session message chunk",
     },
     ticketStatuses: {
-      resolved: "resolved",
-      "ready-for-agent": "ready-for-agent",
-      deferred: "deferred",
+      resolved: "Resolved",
+      "ready-for-agent": "Ready for agent",
+      deferred: "Deferred",
     },
     toolOutput: "Tool output",
     fileEdit: "File edit",

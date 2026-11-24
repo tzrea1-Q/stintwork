@@ -125,12 +125,23 @@ export function gateReadiness(
       reason = coreText({ code: "gate.handoffMissing" });
   }
   const stage = stages[position];
-  const conditions: GateCondition[] =
+  const conditions: (GateCondition | (Omit<GateCondition, "id"> & { id: "ticket-resolution" }))[] =
     stage?.gate === "evidence"
       ? reviewGateConditions(item, reason, item.stage)
       : stage && stage.gate !== "merge"
         ? outputGateConditions(item, stage)
         : [];
+  if (
+    stage?.column === "implement" &&
+    stage.gate === "manual" &&
+    (item.tickets.length > 0 || !stage.skill)
+  )
+    conditions.push({
+      id: "ticket-resolution",
+      label: coreText({ code: "gate.ticketResolution" }),
+      ready: item.tickets.every(({ resolved }) => resolved),
+      action: coreText({ code: "gate.ticketsUnresolved" }),
+    });
   reason ??= conditions.find((condition) => !condition.ready)?.action ?? null;
   return {
     ready: reason === null,

@@ -102,6 +102,7 @@ export function Board({
     else {
       url.searchParams.delete("item");
       url.searchParams.delete("detail");
+      url.searchParams.delete("tab");
     }
     window.history.replaceState(window.history.state, "", url);
 
@@ -207,7 +208,7 @@ export function Board({
   }, []);
 
   return (
-    <div className="pipeline-app flex h-dvh min-w-0 flex-col">
+    <div className="pipeline-app flex h-dvh w-full min-w-0 max-w-full flex-col">
       <TopBar
         snapshot={snapshot}
         view={view}
@@ -266,7 +267,7 @@ export function Board({
                       {t.board.lastAvailable}
                     </p>
                   )}
-                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-4 text-xs text-muted-foreground lg:flex-row lg:items-center lg:justify-between lg:px-6">
+                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-4 text-xs text-muted-foreground lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:px-6">
                     <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
                       <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
                         <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
@@ -395,7 +396,7 @@ export function Board({
                     <GithubStatus github={snapshot.github} />
                   )}
                   <section
-                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
                     onScroll={(event) => {
                       const grid = event.currentTarget.querySelector(".stage-grid");
                       event.currentTarget.dataset.scrolled = String(
