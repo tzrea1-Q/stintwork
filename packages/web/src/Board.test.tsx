@@ -71,9 +71,9 @@ test.each([
   expect(screen.queryByRole("navigation", { name: /breadcrumb/i })).not.toBeInTheDocument();
   const toolbar = document.querySelector(".board-toolbar") as HTMLElement;
   const shipped = snapshot.workItems.filter((item) => item.merged).length;
-  expect(
-    within(toolbar).getByText(t.board.counts(snapshot.workItems.length - shipped, shipped)),
-  ).toBeVisible();
+  expect(toolbar.querySelector(".board-stats")).toHaveTextContent(
+    t.board.counts(snapshot.workItems.length - shipped, shipped),
+  );
   expect(within(toolbar).getByRole("status")).toHaveTextContent(t.board.reconnecting);
   unmount();
   localStorage.removeItem(languageStorageKey);
@@ -1117,7 +1117,7 @@ test.each([
         <Board snapshot={snapshot()} />
       </LanguageProvider>,
     );
-    expect(within(card()).getByText(/0\/0/)).toBeInTheDocument();
+    expect(card().querySelector(".ticket-progress")).toHaveTextContent("0/0");
     expect(within(card()).getByRole("progressbar")).toBeInTheDocument();
     localStorage.removeItem(languageStorageKey);
   },
@@ -1261,7 +1261,7 @@ test("idle card keeps its identity and progress without status rows", () => {
   expect(within(card).getByText(item.title)).toBeInTheDocument();
   expect(within(card).getByText(item.slug)).toBeInTheDocument();
   expect(within(card).getByText("m1")).toBeInTheDocument();
-  expect(within(card).getByRole("img")).toBeInTheDocument();
+  expect(within(card).getByRole("img", { name: "codex" })).toBeInTheDocument();
   expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuemax", "2");
   expect(within(card).queryByText("No active stint")).not.toBeInTheDocument();
   expect(within(card).queryByText("Inferred")).not.toBeInTheDocument();

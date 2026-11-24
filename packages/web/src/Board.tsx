@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, LayoutGroup, MotionConfig, MotionGlobalConfig, m } from "motion/react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BoardMotionContext, countBoardChanges } from "./board-motion";
+import { RollingNumber } from "./ui/RollingNumber";
+import { spring, useReducedMotionSafe } from "./ui/motion";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
 import { Column } from "./Column";
 import { CommandPalette } from "./CommandPalette";
@@ -24,6 +28,8 @@ import type { Connection } from "./useProjectSnapshot";
 import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
+let boardLoaded = false;
+
 export function Board({
   snapshot,
   connection = "live",
@@ -34,6 +40,24 @@ export function Board({
   error?: string;
 }) {
   const { t } = useLanguage();
+  const [firstLoad] = useState(() => !boardLoaded);
+  const previous = useRef<Map<string, string> | null>(null);
+  const next = new Map(
+    snapshot.workItems.map((item) => [
+      item.slug,
+      item.merged ? "shipped" : `${item.column ?? "unstaged"}:${item.stage ?? ""}`,
+    ]),
+  );
+  const prior = previous.current;
+  const reduced = useReducedMotionSafe();
+  const skip =
+    MotionGlobalConfig.skipAnimations ||
+    document.visibilityState === "hidden" ||
+    (prior !== null && countBoardChanges(prior, next) > 12);
+  useLayoutEffect(() => {
+    boardLoaded = true;
+    previous.current = next;
+  });
   const githubTracker = snapshot.setup.tracker === "github-issues";
   const repository = snapshot.github?.repository;
   const [selectedMilestone, setSelectedMilestone] = useState("");
@@ -222,7 +246,10 @@ export function Board({
   }, []);
 
   return (
-    <div className="pipeline-app flex h-dvh w-full min-w-0 max-w-full flex-col">
+    <div
+      data-first-load={firstLoad}
+      className="pipeline-app flex h-dvh w-full min-w-0 max-w-full flex-col"
+    >
       <TopBar
         snapshot={snapshot}
         view={view}
@@ -341,7 +368,20 @@ export function Board({
                       </p>
                       {!snapshot.github?.verifying && (
                         <span className="board-stats whitespace-nowrap">
-                          {t.board.counts(filteredActive.length, filteredShipped.length)}
+                          {(() => {
+                            const [before, middle, after] = t.board
+                              .counts(-12345, -67890)
+                              .split(/-12345|-67890/);
+                            return (
+                              <>
+                                {before}
+                                <RollingNumber value={filteredActive.length} />
+                                {middle}
+                                <RollingNumber value={filteredShipped.length} />
+                                {after}
+                              </>
+                            );
+                          })()}
                         </span>
                       )}
                     </div>
@@ -409,163 +449,188 @@ export function Board({
                   {githubTracker && (!snapshot.github?.verifying || snapshot.github.error) && (
                     <GithubStatus github={snapshot.github} />
                   )}
-                  <section
-                    className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
-                    onScroll={(event) => {
-                      const grid = event.currentTarget.querySelector(".stage-grid");
-                      event.currentTarget.dataset.scrolled = String(
-                        !!grid &&
-                          grid.getBoundingClientRect().top <
-                            event.currentTarget.getBoundingClientRect().top,
-                      );
-                    }}
-                    ref={scroll}
-                    aria-label={t.board.stages}
+                  <BoardMotionContext.Provider
+                    value={{ firstLoad, previous: prior, skip, reduced }}
                   >
-                    {githubTracker && snapshot.github?.verifying ? (
-                      <p className="mt-4 text-muted-foreground" role="status">
-                        {t.board.verifyingGithub}
-                      </p>
-                    ) : githubTracker &&
-                      (!snapshot.github ||
-                        (!snapshot.github.fetchedAt &&
-                          !snapshot.github.repositoryId &&
-                          !!snapshot.github.error) ||
-                        (!snapshot.github.complete &&
-                          snapshot.workItems.length === 0)) ? null : snapshot.workItems.length ===
-                      0 ? (
-                      <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
-                        <FolderOpen
-                          className="size-icon-lg muted text-muted-foreground"
-                          aria-hidden="true"
-                        />
-                        <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
-                        {!githubTracker && (
-                          <>
-                            <p className="mt-2 muted text-muted-foreground">
-                              {t.board.startWithSpec}
-                              <code>.scratch/&lt;work-item&gt;/spec.md</code>.
-                            </p>
-                            <p className="mt-2 text-xs muted text-muted-foreground">
-                              {t.board.addTickets}
-                              <code>.scratch/&lt;work-item&gt;/issues/</code>
-                              {t.board.updatesAsYouEdit}
-                            </p>
-                          </>
-                        )}
-                      </section>
-                    ) : (
-                      <>
-                        {filtered.length === 0 && (
-                          <p className="mt-4 muted text-muted-foreground" role="status">
-                            {t.board.emptyMilestone}
-                          </p>
-                        )}
-                        <div className="stage-board w-full min-w-max rounded-3xl bg-card p-3 shadow-card">
-                          <div className="stage-grid flex min-h-[360px] justify-start gap-2 [&>.stage-column]:snap-start">
-                            {builtInWorkflows.feature.stages.map((stage) => (
-                              <Column
-                                key={stage.id}
-                                id={stage.column}
-                                name={stageName(builtInWorkflows.feature, stage, t)}
-                                items={filteredActive.filter(
-                                  (item) => item.column === stage.column,
-                                )}
-                                milestones={snapshot.milestones}
-                                workflows={snapshot.workflows}
-                                attentionItems={snapshot.attentionItems}
-                                agents={snapshot.agents}
-                                selectedSlug={openSlug}
-                                expanded={expandedStages.includes(stage.column)}
-                                onToggle={() =>
-                                  setExpandedStages((current) =>
-                                    current.includes(stage.column)
-                                      ? current.filter((id) => id !== stage.column)
-                                      : [...current, stage.column],
-                                  )
-                                }
-                                panelOpen={!!openItem}
-                                onOpen={openWorkItem}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                        {filteredUnstaged.length > 0 && (
-                          <section
-                            className="unstaged mt-5"
-                            data-card-column="unstaged"
-                            aria-label={t.board.unstaged}
-                          >
-                            <h2 className="mb-3 text-xs muted text-muted-foreground">
-                              {t.board.unstagedCount(filteredUnstaged.length)}
-                            </h2>
-                            <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3">
-                              {filteredUnstaged.map((item) => (
-                                <WorkItemCard
-                                  workflow={snapshot.workflows[item.workflow]}
-                                  key={item.slug}
-                                  item={item}
-                                  agents={snapshot.agents}
-                                  selected={openSlug === item.slug}
-                                  attentionCount={
-                                    snapshot.attentionItems.filter(
-                                      (entry) => entry.workItem === item.slug,
-                                    ).length
-                                  }
-                                  milestone={snapshot.milestones.find(
-                                    (entry) => entry.id === item.milestone,
-                                  )}
-                                  onOpen={openWorkItem}
-                                />
-                              ))}
-                            </div>
-                          </section>
-                        )}
-                      </>
-                    )}
-                    <details className="shipped-lane mt-4 rounded-2xl bg-card p-4 shadow-card [&>summary]:flex [&>summary]:w-fit [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-2 [&>summary]:text-xs [&>summary::-webkit-details-marker]:hidden [&[open]_.shipped-chevron]:rotate-90">
-                      <summary>
-                        <ChevronRight className="shipped-chevron size-icon-sm" aria-hidden="true" />
-                        <CheckCheck
-                          className="size-icon-sm success text-success-foreground"
-                          aria-hidden="true"
-                        />
-                        <h2>{t.board.shipped}</h2>
-                        <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
-                          {filteredShipped.length}
-                        </span>
-                      </summary>
-                      {filteredShipped.length ? (
-                        <div
-                          className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3"
-                          data-card-column="shipped"
+                    <MotionConfig transition={skip ? { duration: 0 } : spring.layout}>
+                      <LayoutGroup>
+                        <section
+                          className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                          onScroll={(event) => {
+                            const grid = event.currentTarget.querySelector(".stage-grid");
+                            event.currentTarget.dataset.scrolled = String(
+                              !!grid &&
+                                grid.getBoundingClientRect().top <
+                                  event.currentTarget.getBoundingClientRect().top,
+                            );
+                          }}
+                          ref={scroll}
+                          aria-label={t.board.stages}
                         >
-                          {filteredShipped.map((item) => (
-                            <WorkItemCard
-                              workflow={snapshot.workflows[item.workflow]}
-                              key={item.slug}
-                              item={item}
-                              agents={snapshot.agents}
-                              selected={openSlug === item.slug}
-                              attentionCount={
-                                snapshot.attentionItems.filter(
-                                  (entry) => entry.workItem === item.slug,
-                                ).length
-                              }
-                              milestone={snapshot.milestones.find(
-                                (entry) => entry.id === item.milestone,
+                          {githubTracker && snapshot.github?.verifying ? (
+                            <p className="mt-4 text-muted-foreground" role="status">
+                              {t.board.verifyingGithub}
+                            </p>
+                          ) : githubTracker &&
+                            (!snapshot.github ||
+                              (!snapshot.github.fetchedAt &&
+                                !snapshot.github.repositoryId &&
+                                !!snapshot.github.error) ||
+                              (!snapshot.github.complete &&
+                                snapshot.workItems.length === 0)) ? null : snapshot.workItems
+                              .length === 0 ? (
+                            <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
+                              <FolderOpen
+                                className="size-icon-lg muted text-muted-foreground"
+                                aria-hidden="true"
+                              />
+                              <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
+                              {!githubTracker && (
+                                <>
+                                  <p className="mt-2 muted text-muted-foreground">
+                                    {t.board.startWithSpec}
+                                    <code>.scratch/&lt;work-item&gt;/spec.md</code>.
+                                  </p>
+                                  <p className="mt-2 text-xs muted text-muted-foreground">
+                                    {t.board.addTickets}
+                                    <code>.scratch/&lt;work-item&gt;/issues/</code>
+                                    {t.board.updatesAsYouEdit}
+                                  </p>
+                                </>
                               )}
-                              onOpen={openWorkItem}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="py-4 text-xs muted text-muted-foreground">
-                          {t.board.emptyShipped}
-                        </p>
-                      )}
-                    </details>
-                  </section>
+                            </section>
+                          ) : (
+                            <>
+                              {filtered.length === 0 && (
+                                <p className="mt-4 muted text-muted-foreground" role="status">
+                                  {t.board.emptyMilestone}
+                                </p>
+                              )}
+                              <m.div
+                                layout={!skip && !reduced ? "position" : false}
+                                transition={spring.layout}
+                                className="stage-board w-full min-w-max rounded-3xl bg-card p-3 shadow-card"
+                              >
+                                <m.div
+                                  layout={!skip && !reduced ? "position" : false}
+                                  transition={spring.layout}
+                                  className="stage-grid flex min-h-[360px] justify-start gap-2 [&>.stage-column]:snap-start"
+                                >
+                                  {builtInWorkflows.feature.stages.map((stage) => (
+                                    <Column
+                                      key={stage.id}
+                                      id={stage.column}
+                                      name={stageName(builtInWorkflows.feature, stage, t)}
+                                      items={filteredActive.filter(
+                                        (item) => item.column === stage.column,
+                                      )}
+                                      milestones={snapshot.milestones}
+                                      workflows={snapshot.workflows}
+                                      attentionItems={snapshot.attentionItems}
+                                      agents={snapshot.agents}
+                                      selectedSlug={openSlug}
+                                      expanded={expandedStages.includes(stage.column)}
+                                      onToggle={() =>
+                                        setExpandedStages((current) =>
+                                          current.includes(stage.column)
+                                            ? current.filter((id) => id !== stage.column)
+                                            : [...current, stage.column],
+                                        )
+                                      }
+                                      panelOpen={!!openItem}
+                                      onOpen={openWorkItem}
+                                    />
+                                  ))}
+                                </m.div>
+                              </m.div>
+                              {filteredUnstaged.length > 0 && (
+                                <section
+                                  className="unstaged mt-5"
+                                  data-card-column="unstaged"
+                                  aria-label={t.board.unstaged}
+                                >
+                                  <h2 className="mb-3 text-xs muted text-muted-foreground">
+                                    {t.board.unstagedCount(filteredUnstaged.length)}
+                                  </h2>
+                                  <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3">
+                                    <AnimatePresence mode="popLayout">
+                                      {filteredUnstaged.map((item, index) => (
+                                        <WorkItemCard
+                                          workflow={snapshot.workflows[item.workflow]}
+                                          key={item.slug}
+                                          item={item}
+                                          index={index}
+                                          agents={snapshot.agents}
+                                          selected={openSlug === item.slug}
+                                          attentionCount={
+                                            snapshot.attentionItems.filter(
+                                              (entry) => entry.workItem === item.slug,
+                                            ).length
+                                          }
+                                          milestone={snapshot.milestones.find(
+                                            (entry) => entry.id === item.milestone,
+                                          )}
+                                          onOpen={openWorkItem}
+                                        />
+                                      ))}
+                                    </AnimatePresence>
+                                  </div>
+                                </section>
+                              )}
+                            </>
+                          )}
+                          <details className="shipped-lane mt-4 rounded-2xl bg-card p-4 shadow-card [&>summary]:flex [&>summary]:w-fit [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-2 [&>summary]:text-xs [&>summary::-webkit-details-marker]:hidden [&[open]_.shipped-chevron]:rotate-90">
+                            <summary>
+                              <ChevronRight
+                                className="shipped-chevron size-icon-sm"
+                                aria-hidden="true"
+                              />
+                              <CheckCheck
+                                className="size-icon-sm success text-success-foreground"
+                                aria-hidden="true"
+                              />
+                              <h2>{t.board.shipped}</h2>
+                              <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
+                                {filteredShipped.length}
+                              </span>
+                            </summary>
+                            {filteredShipped.length ? (
+                              <div
+                                className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3"
+                                data-card-column="shipped"
+                              >
+                                <AnimatePresence mode="popLayout">
+                                  {filteredShipped.map((item, index) => (
+                                    <WorkItemCard
+                                      workflow={snapshot.workflows[item.workflow]}
+                                      key={item.slug}
+                                      item={item}
+                                      index={index}
+                                      agents={snapshot.agents}
+                                      selected={openSlug === item.slug}
+                                      attentionCount={
+                                        snapshot.attentionItems.filter(
+                                          (entry) => entry.workItem === item.slug,
+                                        ).length
+                                      }
+                                      milestone={snapshot.milestones.find(
+                                        (entry) => entry.id === item.milestone,
+                                      )}
+                                      onOpen={openWorkItem}
+                                    />
+                                  ))}
+                                </AnimatePresence>
+                              </div>
+                            ) : (
+                              <p className="py-4 text-xs muted text-muted-foreground">
+                                {t.board.emptyShipped}
+                              </p>
+                            )}
+                          </details>
+                        </section>
+                      </LayoutGroup>
+                    </MotionConfig>
+                  </BoardMotionContext.Provider>
                 </>
               );
             }}

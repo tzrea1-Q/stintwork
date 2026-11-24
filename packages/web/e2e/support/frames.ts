@@ -35,7 +35,17 @@ export async function sampleFrames(page: Page, selector: string, ms: number) {
             timestamp,
             left: rect.left,
             width: rect.width,
-            opacity: style.opacity,
+            opacity: String(
+              Array.from(
+                (function* () {
+                  let node: Element | null = current;
+                  while (node) {
+                    yield node;
+                    node = node.parentElement;
+                  }
+                })(),
+              ).reduce((opacity, node) => opacity * Number(getComputedStyle(node).opacity), 1),
+            ),
             transform: style.transform,
             height: style.height,
             overflow: document.documentElement.scrollWidth - innerWidth,
