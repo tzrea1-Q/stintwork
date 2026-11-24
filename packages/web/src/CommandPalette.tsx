@@ -2,6 +2,7 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { Command } from "cmdk";
 import { Check, Search, X } from "lucide-react";
+import { useLayoutEffect, useRef } from "react";
 import { useLanguage } from "./i18n/language";
 import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
@@ -31,6 +32,10 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const { t } = useLanguage();
+  const search = useRef<HTMLInputElement>(null);
+  useLayoutEffect(() => {
+    if (open) search.current?.focus();
+  }, [open]);
 
   return (
     <Dialog
@@ -54,6 +59,7 @@ export function CommandPalette({
           <div className="command-search flex items-center gap-3 border-b border-border px-4 py-2">
             <Search className="size-icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
             <Command.Input
+              ref={search}
               className="min-w-0 flex-1 bg-transparent p-2 focus-visible:outline-none"
               placeholder={t.planning.palette.placeholder}
               aria-label={t.planning.palette.search}

@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { cva, type VariantProps } from "class-variance-authority";
-import { AnimatePresence, m, MotionGlobalConfig } from "motion/react";
+import { AnimatePresence, MotionGlobalConfig, m } from "motion/react";
 import { Dialog as Primitive } from "radix-ui";
 import {
   type ComponentPropsWithoutRef,
-  type ElementRef,
   createContext,
+  type ElementRef,
   forwardRef,
-  useContext,
-  useState,
   type RefObject,
+  useContext,
   useRef,
+  useState,
 } from "react";
 import { cn } from "./cn";
 import { blur, scale, spring, tween, useReducedMotionSafe } from "./motion";
@@ -129,8 +129,14 @@ export const DialogContent = forwardRef<
                 event.stopPropagation();
               }}
               onOpenAutoFocus={(event) => {
-                previousFocus.current =
-                  document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                if (
+                  !(
+                    event.currentTarget instanceof HTMLElement &&
+                    event.currentTarget.contains(document.activeElement)
+                  )
+                )
+                  previousFocus.current =
+                    document.activeElement instanceof HTMLElement ? document.activeElement : null;
                 onOpenAutoFocus?.(event);
               }}
               onCloseAutoFocus={(event) => {
@@ -155,6 +161,7 @@ export const DialogContent = forwardRef<
               <m.div
                 className={cn(
                   contentVariants({ placement }),
+                  "data-[state=closed]:pointer-events-none",
                   side &&
                     "translate-x-0 data-[state=open]:transition-[translate] data-[state=open]:duration-(--motion-duration-sheet) data-[state=open]:ease-(--motion-ease-soft)",
                   placement === "left" && "motion-safe:starting:-translate-x-full",

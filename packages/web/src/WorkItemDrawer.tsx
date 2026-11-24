@@ -2,10 +2,10 @@
 
 import {
   type AgentProfile,
-  builtInWorkflows,
   briefAvailability,
-  stageAgent,
+  builtInWorkflows,
   type Milestone,
+  stageAgent,
   type Warning,
   type WorkflowDefinitions,
 } from "@stintwork/core";
@@ -22,8 +22,7 @@ import {
   Minimize2,
   X,
 } from "lucide-react";
-import { AnimatePresence, m, MotionGlobalConfig } from "motion/react";
-import { spring, tween, useReducedMotionSafe } from "./ui/motion";
+import { MotionGlobalConfig, m, usePresence } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { ChecksPanel } from "./ChecksPanel";
@@ -31,19 +30,20 @@ import { GateView } from "./GateView";
 import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { ticketStatus, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
+import { MarkShipped } from "./MarkShipped";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { ReviewOverlay } from "./ReviewOverlay";
 import { ShipActions } from "./ShipActions";
-import { MarkShipped } from "./MarkShipped";
 import { StageAgentRail } from "./StageAgentRail";
 import { StintHistory } from "./StintHistory";
 import { recoveryStatus } from "./StintRecovery";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
+import { AgentAvatar } from "./ui/AgentAvatar";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
-import { AgentAvatar } from "./ui/AgentAvatar";
 import { Markdown } from "./ui/Markdown";
+import { spring, tween, useReducedMotionSafe } from "./ui/motion";
 import { PropertyList, PropertyRow } from "./ui/PropertyRow";
 import { ResizeHandle } from "./ui/ResizeHandle";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
@@ -140,11 +140,11 @@ export function WorkItemDrawer({
 }) {
   const { t } = useLanguage();
   const reduced = useReducedMotionSafe();
-  const [closing, setClosing] = useState(false);
-  const close = useCallback(() => {
-    if (MotionGlobalConfig.skipAnimations) onClose();
-    else setClosing(true);
-  }, [onClose]);
+  const [isPresent, safeToRemove] = usePresence();
+  useEffect(() => {
+    if (!isPresent && MotionGlobalConfig.skipAnimations) safeToRemove?.();
+  }, [isPresent, safeToRemove]);
+  const close = onClose;
   const [refreshing, setRefreshing] = useState(false);
   const [refreshAttempt, setRefreshAttempt] = useState(0);
   const [refreshError, setRefreshError] = useErrorText();
@@ -221,8 +221,7 @@ export function WorkItemDrawer({
       /* Storage may be blocked. */
     }
   }
-  const [sheetOpen, setSheetOpen] = useState(true);
-  const dismiss = () => (full ? onFullChange?.(false) : docked ? close() : setSheetOpen(false));
+  const dismiss = () => (full ? onFullChange?.(false) : close());
   const [docked, setDocked] = useState(
     () =>
       typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches,
@@ -251,6 +250,10 @@ export function WorkItemDrawer({
     };
   }, [docked]);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewMounted, setReviewMounted] = useState(false);
+  useEffect(() => {
+    if (reviewOpen) setReviewMounted(true);
+  }, [reviewOpen]);
   const [shipPaused, setShipPaused] = useState(false);
   useEffect(() => {
     if (!docked) return;
@@ -260,7 +263,9 @@ export function WorkItemDrawer({
         event.defaultPrevented ||
         reviewOpen ||
         panel.current?.contains(event.target as Node) ||
-        document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]')
+        document.querySelector(
+          '[role="dialog"]:not([data-state="closed"]), [role="menu"], [role="listbox"], [role="tooltip"]',
+        )
       )
         return;
       if (full) onFullChange?.(false);
@@ -471,7 +476,7 @@ export function WorkItemDrawer({
                 className="size-10 shrink-0"
                 ref={closeButton}
                 aria-label={t.stints.closeWorkItem}
-                onClick={() => (docked ? close() : setSheetOpen(false))}
+                onClick={close}
               >
                 <X aria-hidden="true" />
               </Button>
@@ -970,8 +975,10 @@ export function WorkItemDrawer({
           </div>
         </div>
       </m.footer>
-      {reviewOpen && (
+      {(reviewOpen || reviewMounted) && (
         <ReviewOverlay
+          open={reviewOpen}
+          onExitComplete={() => setReviewMounted(false)}
           reviewStageId={reviewStageId}
           item={item}
           onClose={() => setReviewOpen(false)}
@@ -988,60 +995,59 @@ export function WorkItemDrawer({
           className="min-h-0 min-w-0 shrink-0 overflow-hidden rounded-2xl"
           style={{ width: full ? "100%" : width }}
         >
-          <AnimatePresence onExitComplete={onClose}>
-            {!closing && (
-              <m.aside
-                ref={panel}
-                layout={!reduced}
-                layoutDependency={full}
-                initial={reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{
-                  ...(reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }),
-                  transition: tween.dismiss,
-                }}
-                transition={{ ...tween.sheet, layout: spring.layout }}
-                aria-label={item.title}
-                className="work-item-drawer relative flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
-                style={{ width: full ? "100%" : width, height: "100%" }}
-                onKeyDown={(event) => {
-                  if (
-                    event.key === "Escape" &&
-                    !event.defaultPrevented &&
-                    !reviewOpen &&
-                    !(
-                      event.target instanceof Element &&
-                      event.target.closest('[role="dialog"], [role="listbox"], [role="menu"]')
-                    )
-                  ) {
-                    event.preventDefault();
-                    dismiss();
-                  }
-                }}
-              >
-                {!full && (
-                  <ResizeHandle
-                    value={width}
-                    min={400}
-                    max={maximum}
-                    onChange={changeWidth}
-                    label={t.stints.resizeDetail}
-                  />
-                )}
-                {content}
-              </m.aside>
+          <m.aside
+            ref={panel}
+            onAnimationComplete={() => {
+              if (!isPresent) safeToRemove?.();
+            }}
+            layout={!reduced}
+            layoutDependency={full}
+            initial={reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{
+              ...(reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }),
+              transition: tween.dismiss,
+            }}
+            transition={{ ...tween.sheet, layout: spring.layout }}
+            aria-label={item.title}
+            className="work-item-drawer relative flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
+            style={{ width: full ? "100%" : width, height: "100%" }}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Escape" &&
+                !event.defaultPrevented &&
+                !reviewOpen &&
+                !(
+                  event.target instanceof Element &&
+                  event.target.closest('[role="dialog"], [role="listbox"], [role="menu"]')
+                )
+              ) {
+                event.preventDefault();
+                dismiss();
+              }
+            }}
+          >
+            {!full && (
+              <ResizeHandle
+                value={width}
+                min={400}
+                max={maximum}
+                onChange={changeWidth}
+                label={t.stints.resizeDetail}
+              />
             )}
-          </AnimatePresence>
+            {content}
+          </m.aside>
         </div>
       ) : (
         <Sheet
-          open={sheetOpen}
+          open={isPresent}
           onOpenChange={(open) => {
-            if (!open) setSheetOpen(false);
+            if (!open) close();
           }}
         >
           <SheetContent
-            onExitComplete={onClose}
+            onExitComplete={safeToRemove ?? undefined}
             className="work-item-drawer flex min-h-0 min-w-0 w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col overflow-hidden p-0 [&_button]:min-h-10 [&_button]:min-w-10 [&_summary]:min-h-10"
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => {

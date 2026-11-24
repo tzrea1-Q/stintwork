@@ -25,11 +25,13 @@ type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
 
 export function SetupGuide({
   workflows = {},
+  open,
   onClose,
   onExitComplete,
   returnFocusRef,
 }: {
   workflows?: WorkflowDefinitions;
+  open: boolean;
   onClose: () => void;
   onExitComplete: () => void;
   returnFocusRef?: RefObject<HTMLElement>;
@@ -52,11 +54,12 @@ export function SetupGuide({
         !guide.checks.some(({ status }) => status === "needs-change")),
   );
   useEffect(() => {
+    if (!open) return;
     if (finished) closeRef.current?.focus();
     else if (confirming) reviewRef.current?.focus();
-  }, [confirming, finished]);
+  }, [confirming, finished, open]);
   useEffect(() => {
-    if (!loading) return;
+    if (!open || !loading) return;
     const controller = new AbortController();
     setError("");
     void (async () => {
@@ -87,7 +90,7 @@ export function SetupGuide({
       }
     })();
     return () => controller.abort();
-  }, [loading, setError]);
+  }, [loading, open, setError]);
 
   function installationHint(message: string) {
     const hint =

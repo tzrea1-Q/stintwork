@@ -240,7 +240,9 @@ export function ReviewDiff({
 
 export function ReviewOverlay({
   item,
+  open,
   onClose,
+  onExitComplete,
   findings,
   checks,
   lineFindings,
@@ -258,10 +260,16 @@ export function ReviewOverlay({
     stage?: string | null;
   };
   onClose: () => void;
+  open?: boolean;
+  onExitComplete?: () => void;
   reviewStageId?: string;
 } & ReviewSlots) {
   const { t } = useLanguage();
-  const [overlayOpen, setOverlayOpen] = useState(true);
+  const [internalOpen, setInternalOpen] = useState(true);
+  const close = () => {
+    setInternalOpen(false);
+    onClose();
+  };
   const closeButton = useRef<HTMLButtonElement>(null);
   const findingId = useId();
   const detailsId = useId();
@@ -396,9 +404,10 @@ export function ReviewOverlay({
   }, [item.slug, t.review.diff.readError, setError]);
 
   useEffect(() => {
+    if (!(open ?? internalOpen)) return;
     void readDiff();
     return () => request.current?.abort();
-  }, [readDiff]);
+  }, [readDiff, open, internalOpen]);
 
   const outsideFiles =
     outsideDiff ??
@@ -408,13 +417,13 @@ export function ReviewOverlay({
 
   return (
     <Dialog
-      open={overlayOpen}
+      open={open ?? internalOpen}
       onOpenChange={(open) => {
-        if (!open) setOverlayOpen(false);
+        if (!open) close();
       }}
     >
       <DialogContent
-        onExitComplete={onClose}
+        onExitComplete={onExitComplete}
         className="review-overlay flex h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[min(1600px,calc(100vw-32px))] flex-col p-0"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
@@ -501,7 +510,7 @@ export function ReviewOverlay({
               size="sm"
               className="md:min-h-8 md:px-3"
               ref={closeButton}
-              onClick={() => setOverlayOpen(false)}
+              onClick={close}
               aria-label={t.review.diff.close}
             >
               <X aria-hidden="true" /> {t.review.diff.close}

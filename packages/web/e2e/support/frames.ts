@@ -44,7 +44,10 @@ export async function sampleFrames(page: Page, selector: string, ms: number) {
                     node = node.parentElement;
                   }
                 })(),
-              ).reduce((opacity, node) => opacity * Number(getComputedStyle(node).opacity), 1),
+              ).reduce((opacity, node) => {
+                const value = Number.parseFloat(getComputedStyle(node).opacity);
+                return opacity * (Number.isFinite(value) ? value : 1);
+              }, 1),
             ),
             transform: style.transform,
             height: style.height,

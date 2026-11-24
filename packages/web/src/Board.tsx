@@ -3,10 +3,8 @@ import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { AnimatePresence, LayoutGroup, MotionConfig, MotionGlobalConfig, m } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { BoardMotionContext, countBoardChanges } from "./board-motion";
-import { RollingNumber } from "./ui/RollingNumber";
-import { spring, useReducedMotionSafe } from "./ui/motion";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
+import { BoardMotionContext, countBoardChanges } from "./board-motion";
 import { Column } from "./Column";
 import { CommandPalette } from "./CommandPalette";
 import { CreateWorkItem } from "./CreateWorkItem";
@@ -20,6 +18,8 @@ import { viewFromSearch, workItemDone } from "./overview-data";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
 import { Button } from "./ui/Button";
+import { spring, useReducedMotionSafe } from "./ui/motion";
+import { RollingNumber } from "./ui/RollingNumber";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
@@ -71,10 +71,7 @@ export function Board({
     viewFromSearch(window.location.search),
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteMounted, setPaletteMounted] = useState(false);
-  useEffect(() => {
-    if (paletteOpen) setPaletteMounted(true);
-  }, [paletteOpen]);
+  const [paletteInstance, setPaletteInstance] = useState(0);
   const [verifyingOpen, setVerifyingOpen] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMounted, setCreateMounted] = useState(false);
@@ -82,12 +79,25 @@ export function Board({
     if (createOpen) setCreateMounted(true);
   }, [createOpen]);
   const [customiseId, setCustomiseId] = useState<string | null>(null);
+  const [customiseMounted, setCustomiseMounted] = useState(false);
+  const lastCustomiseId = useRef<string | null>(null);
+  if (customiseId) lastCustomiseId.current = customiseId;
+  useEffect(() => {
+    if (customiseId) setCustomiseMounted(true);
+  }, [customiseId]);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
+  const [needsYouMounted, setNeedsYouMounted] = useState(false);
+  useEffect(() => {
+    if (needsYouOpen) setNeedsYouMounted(true);
+  }, [needsYouOpen]);
   const [expandedStages, setExpandedStages] = useState<string[]>([]);
   const alerts = useAttentionAlerts(snapshot);
   const previousItem = useRef<string | null>(null);
   const scroll = useRef<HTMLElement>(null);
   const openItem = snapshot.workItems.find((item) => item.slug === openSlug);
+  const lastItem = useRef(openItem);
+  if (openItem) lastItem.current = openItem;
+  const drawerItem = openItem ?? lastItem.current;
   const verifyingItem = !!openSlug && githubTracker && !!snapshot.github?.verifying && !openItem;
   const milestone = snapshot.milestones.some((entry) => entry.id === selectedMilestone)
     ? selectedMilestone
@@ -161,7 +171,8 @@ export function Board({
       if (createOpen || customiseId) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
         event.preventDefault();
-        setPaletteOpen((open) => !open);
+        if (!paletteOpen) setPaletteInstance((instance) => instance + 1);
+        setPaletteOpen(!paletteOpen);
         return;
       }
       if (
@@ -169,7 +180,7 @@ export function Board({
           (typeof window.matchMedia !== "function" ||
             !window.matchMedia("(min-width: 1024px)").matches ||
             (event.target instanceof Element && event.target.closest(".work-item-drawer")))) ||
-        verifyingItem ||
+        (verifyingItem && verifyingOpen) ||
         paletteOpen ||
         needsYouOpen ||
         !(event.target instanceof HTMLElement)
@@ -228,7 +239,16 @@ export function Board({
       document.removeEventListener("keydown", handleKeydown);
       window.removeEventListener("popstate", handlePopstate);
     };
-  }, [openItem, verifyingItem, paletteOpen, needsYouOpen, createOpen, customiseId, githubTracker]);
+  }, [
+    openItem,
+    verifyingItem,
+    paletteOpen,
+    needsYouOpen,
+    createOpen,
+    customiseId,
+    githubTracker,
+    verifyingOpen,
+  ]);
 
   function changeView(next: "overview" | "pipeline") {
     if (next === view) return;
@@ -255,7 +275,10 @@ export function Board({
         view={view}
         onViewChange={changeView}
         onOpenNeedsYou={() => setNeedsYouOpen(true)}
-        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenPalette={() => {
+          if (!paletteOpen) setPaletteInstance((instance) => instance + 1);
+          setPaletteOpen(true);
+        }}
       />
       {snapshot.attentionItems.some((item) => item.kind === "permission") && (
         <button
@@ -636,48 +659,54 @@ export function Board({
             }}
           </BoardWorkflowFilter>
         </main>
-        {view === "pipeline" && openItem && (
-          <WorkItemDrawer
-            mainHead={snapshot.mainHead}
-            localTracker={snapshot.setup.tracker === "local-markdown"}
-            workflows={snapshot.workflows}
-            attentionCount={
-              snapshot.attentionItems.filter((entry) => entry.workItem === openItem.slug).length
-            }
-            pendingPermissions={snapshot.attentionItems.some((item) => item.kind === "permission")}
-            onOpenNeedsYou={() => setNeedsYouOpen(true)}
-            warnings={snapshot.warnings}
-            key={openItem.slug}
-            item={openItem}
-            githubRetryAt={snapshot.github?.retryAt}
-            githubReadOnly={
-              githubTracker &&
-              (!!snapshot.github?.discoveryFailed ||
-                !!snapshot.github?.items.find((item) => item.id === openItem.github?.issueId)
-                  ?.detail?.stale ||
-                !!snapshot.github?.items.find((item) => item.id === openItem.github?.issueId)
-                  ?.detailFailed)
-            }
-            agents={snapshot.agents}
-            milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
-            full={fullDetail}
-            onFullChange={(full) => {
-              setFullDetail(full);
-              const url = new URL(window.location.href);
-              if (full) url.searchParams.set("detail", "full");
-              else url.searchParams.delete("detail");
-              window.history.replaceState(window.history.state, "", url);
-            }}
-            onClose={() => {
-              setFullDetail(false);
-              setOpenSlug(null);
-            }}
-            onCustomiseWorkflow={setCustomiseId}
-          />
-        )}
+        <AnimatePresence>
+          {view === "pipeline" && openItem && drawerItem && (
+            <WorkItemDrawer
+              mainHead={snapshot.mainHead}
+              localTracker={snapshot.setup.tracker === "local-markdown"}
+              workflows={snapshot.workflows}
+              attentionCount={
+                snapshot.attentionItems.filter((entry) => entry.workItem === openItem.slug).length
+              }
+              pendingPermissions={snapshot.attentionItems.some(
+                (item) => item.kind === "permission",
+              )}
+              onOpenNeedsYou={() => setNeedsYouOpen(true)}
+              warnings={snapshot.warnings}
+              key={openItem.slug}
+              item={drawerItem}
+              githubRetryAt={snapshot.github?.retryAt}
+              githubReadOnly={
+                githubTracker &&
+                (!!snapshot.github?.discoveryFailed ||
+                  !!snapshot.github?.items.find((item) => item.id === openItem.github?.issueId)
+                    ?.detail?.stale ||
+                  !!snapshot.github?.items.find((item) => item.id === openItem.github?.issueId)
+                    ?.detailFailed)
+              }
+              agents={snapshot.agents}
+              milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
+              full={fullDetail}
+              onFullChange={(full) => {
+                setFullDetail(full);
+                const url = new URL(window.location.href);
+                if (full) url.searchParams.set("detail", "full");
+                else url.searchParams.delete("detail");
+                window.history.replaceState(window.history.state, "", url);
+              }}
+              onClose={() => {
+                setFullDetail(false);
+                setOpenSlug(null);
+              }}
+              onCustomiseWorkflow={setCustomiseId}
+            />
+          )}
+        </AnimatePresence>
       </div>
-      {needsYouOpen && (
+      {(needsYouOpen || needsYouMounted) && (
         <NeedsYouQueue
+          open={needsYouOpen}
+          onExitComplete={() => setNeedsYouMounted(false)}
           snapshot={snapshot}
           alerts={alerts}
           openSlug={openSlug}
@@ -704,22 +733,20 @@ export function Board({
           </SheetContent>
         </Sheet>
       )}
-      {(paletteOpen || paletteMounted) && (
-        <CommandPalette
-          open={paletteOpen}
-          onExitComplete={() => setPaletteMounted(false)}
-          onCreateItem={() => setCreateOpen(true)}
-          onCustomiseWorkflow={setCustomiseId}
-          snapshot={snapshot}
-          milestone={milestone}
-          onMilestoneChange={(value) => {
-            setSelectedMilestone(value);
-            changeView("pipeline");
-          }}
-          onOpenItem={openWorkItem}
-          onClose={() => setPaletteOpen(false)}
-        />
-      )}
+      <CommandPalette
+        key={paletteInstance}
+        open={paletteOpen}
+        onCreateItem={() => setCreateOpen(true)}
+        onCustomiseWorkflow={setCustomiseId}
+        snapshot={snapshot}
+        milestone={milestone}
+        onMilestoneChange={(value) => {
+          setSelectedMilestone(value);
+          changeView("pipeline");
+        }}
+        onOpenItem={openWorkItem}
+        onClose={() => setPaletteOpen(false)}
+      />
       {(createOpen || createMounted) && !githubTracker && (
         <CreateWorkItem
           snapshot={snapshot}
@@ -732,10 +759,12 @@ export function Board({
           }}
         />
       )}
-      {customiseId && (
+      {(customiseId || customiseMounted) && lastCustomiseId.current && (
         <CustomiseWorkflow
-          key={customiseId}
-          id={customiseId}
+          key={lastCustomiseId.current}
+          id={lastCustomiseId.current}
+          open={!!customiseId}
+          onExitComplete={() => setCustomiseMounted(false)}
           onClose={() => setCustomiseId(null)}
         />
       )}

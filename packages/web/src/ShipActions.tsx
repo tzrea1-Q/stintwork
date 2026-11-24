@@ -41,9 +41,9 @@ export function ShipActions({
   const publishingTrigger = useRef<HTMLButtonElement>(null);
   const mergeTrigger = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    onPausePolling?.(busy || !!preview || !!mergeMethod);
+    onPausePolling?.(busy || previewOpen || mergeOpen);
     return () => onPausePolling?.(false);
-  }, [busy, preview, mergeMethod, onPausePolling]);
+  }, [busy, previewOpen, mergeOpen, onPausePolling]);
   const pullRequest = item.pullRequest ?? opened;
   const ci = item.pullRequestChecks;
   const stages = workflows[item.workflow].stages;

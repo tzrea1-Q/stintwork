@@ -20,20 +20,44 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/T
 export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   return (
     <>
-      <Button variant="secondary" aria-haspopup="dialog" onClick={() => setOpen(true)}>
+      <Button
+        variant="secondary"
+        aria-haspopup="dialog"
+        onClick={() => {
+          setMounted(true);
+          setOpen(true);
+        }}
+      >
         {t.planning.roadmap.title}
       </Button>
-      {open && <RoadmapSheet snapshot={snapshot} onClose={() => setOpen(false)} />}
+      {mounted && (
+        <RoadmapSheet
+          snapshot={snapshot}
+          open={open}
+          onClose={() => setOpen(false)}
+          onExitComplete={() => setMounted(false)}
+        />
+      )}
     </>
   );
 }
 
-function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClose: () => void }) {
+function RoadmapSheet({
+  snapshot,
+  open,
+  onClose,
+  onExitComplete,
+}: {
+  snapshot: ProjectSnapshot;
+  open: boolean;
+  onClose: () => void;
+  onExitComplete: () => void;
+}) {
   const { t } = useLanguage();
   const labels = t.planning.roadmap;
-  const [overlayOpen, setOverlayOpen] = useState(true);
   const [milestones, setMilestones] = useState(snapshot.milestones);
   const indicatorId = useId();
   const reduced = useReducedMotionSafe();
@@ -81,7 +105,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
     }
   }
   function close() {
-    if (!saving && discard()) setOverlayOpen(false);
+    if (!saving && discard()) onClose();
   }
   async function save(change: RoadmapChange) {
     if (saving) return;
@@ -136,13 +160,13 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
   }
   return (
     <Dialog
-      open={overlayOpen}
+      open={open}
       onOpenChange={(open) => {
         if (!open) close();
       }}
     >
       <DialogContent
-        onExitComplete={onClose}
+        onExitComplete={onExitComplete}
         className="roadmap-editor w-[960px] [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2"
         onEscapeKeyDown={(event) => {
           if (saving || adding) event.preventDefault();

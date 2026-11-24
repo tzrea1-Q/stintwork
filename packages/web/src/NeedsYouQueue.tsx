@@ -28,19 +28,27 @@ import { attentionStageName, attentionTitle, type useAttentionAlerts } from "./u
 
 export function NeedsYouQueue({
   snapshot,
+  open,
+  onExitComplete,
   alerts,
   openSlug,
   onClose,
   onOpenItem,
 }: {
   snapshot: ProjectSnapshot;
+  open?: boolean;
+  onExitComplete?: () => void;
   alerts: ReturnType<typeof useAttentionAlerts>;
   openSlug: string | null;
   onClose: () => void;
   onOpenItem: (slug: string) => void;
 }) {
   const { t, language } = useLanguage();
-  const [overlayOpen, setOverlayOpen] = useState(true);
+  const [internalOpen, setInternalOpen] = useState(true);
+  const close = () => {
+    setInternalOpen(false);
+    onClose();
+  };
   const opener = useRef<HTMLElement | null>(null);
   const navigating = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -88,20 +96,21 @@ export function NeedsYouQueue({
   }
 
   useEffect(() => {
+    if (!(open ?? internalOpen)) return;
     const timer = setInterval(() => setNow(Date.now()), 60_000);
     return () => clearInterval(timer);
-  }, []);
+  }, [open, internalOpen]);
 
   return (
     <Sheet
-      open={overlayOpen}
+      open={open ?? internalOpen}
       onOpenChange={(open) => {
-        if (!open) setOverlayOpen(false);
+        if (!open) close();
       }}
     >
       <TooltipProvider>
         <SheetContent
-          onExitComplete={onClose}
+          onExitComplete={onExitComplete}
           className="needs-you-queue flex w-[560px] flex-col p-0"
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
@@ -269,7 +278,7 @@ export function NeedsYouQueue({
                     className="attention-work-item h-auto min-h-8 max-w-full justify-start whitespace-normal py-1 text-left wrap-anywhere"
                     onClick={() => {
                       navigating.current = item.workItem !== openSlug;
-                      setOverlayOpen(false);
+                      close();
                       onOpenItem(item.workItem);
                     }}
                   >

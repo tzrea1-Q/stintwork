@@ -8,13 +8,14 @@ import {
 } from "@stintwork/core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { domMax, LazyMotion, MotionGlobalConfig } from "motion/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { Board } from "./Board";
 import { attentionSnapshot } from "./attention-test-fixtures";
+import { Board } from "./Board";
 import { en } from "./i18n/en";
+import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
 import { WorkItemCard } from "./WorkItemCard";
-import { LanguageProvider, languageStorageKey } from "./i18n/language";
 
 const files = {
   ".stintwork/roadmap.md":
@@ -466,6 +467,82 @@ test("opens the drawer from a card and closes it with Esc", async () => {
   expect(card).toHaveFocus();
   await user.keyboard("{Enter}");
   expect(screen.getByRole("dialog", { name: "The live board" })).toBeInTheDocument();
+});
+
+test("clears the item URL before the drawer finishes exiting", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    render(
+      <LazyMotion features={domMax}>
+        <Board snapshot={project()} />
+      </LazyMotion>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open board: The live board" }));
+    const drawer = screen.getByRole("dialog", { name: "The live board" });
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close work item" }));
+    expect(new URL(window.location.href).searchParams.has("item")).toBe(false);
+    expect(drawer).toBeInTheDocument();
+    await waitFor(() => expect(drawer).not.toBeInTheDocument(), { timeout: 2000 });
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test("reopens the command palette during exit and restores focus", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    render(
+      <LazyMotion features={domMax}>
+        <Board snapshot={project()} />
+      </LazyMotion>,
+    );
+    const trigger = screen.getByRole("button", { name: "Open command palette" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "k", ctrlKey: true });
+    const search = screen.getByRole("combobox", { name: "Search work items and milestones" });
+    expect(search).toHaveFocus();
+    fireEvent.keyDown(search, { key: "Escape" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "k", ctrlKey: true });
+    expect(
+      screen.getByRole("combobox", { name: "Search work items and milestones" }),
+    ).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Search work items and milestones" }), {
+      key: "Escape",
+    });
+    await waitFor(() => expect(trigger).toHaveFocus(), { timeout: 2000 });
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test("opens the palette while Customise is still exiting", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  const fetcher = vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise(() => {}));
+  try {
+    const user = userEvent.setup();
+    render(
+      <LazyMotion features={domMax}>
+        <Board snapshot={project()} />
+      </LazyMotion>,
+    );
+    const trigger = screen.getByRole("button", { name: "Open command palette" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("option", { name: "Customise Feature workflow" }));
+    const customise = screen.getByRole("dialog", { name: /customise feature workflow/i });
+    fireEvent.keyDown(customise, { key: "Escape" });
+    expect(document.querySelector(".customise-workflow")).toBeInTheDocument();
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "k", ctrlKey: true });
+    expect(
+      screen.getByRole("combobox", { name: "Search work items and milestones" }),
+    ).toHaveFocus();
+    expect(document.querySelector(".customise-workflow")).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "Customise Feature workflow" }));
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
 });
 
 test("renders tickets in dependency order with Blocked by", async () => {

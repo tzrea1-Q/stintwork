@@ -223,6 +223,7 @@ export function TopBar({
         <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
           {setupMounted && (
             <SetupGuide
+              open={setupOpen}
               onExitComplete={() => setSetupMounted(false)}
               workflows={snapshot.workflows}
               onClose={() => setSetupOpen(false)}

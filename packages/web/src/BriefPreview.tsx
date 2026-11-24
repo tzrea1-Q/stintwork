@@ -204,6 +204,7 @@ function BriefPreviewSheet({
   const warnings = policy?.warnings ?? brief?.warnings ?? [];
 
   useEffect(() => {
+    if (!open) return;
     const request = new AbortController();
     async function load() {
       let fallback: "loadBriefFailed" | "loadAgentsFailed" = "loadBriefFailed";
@@ -241,7 +242,7 @@ function BriefPreviewSheet({
     }
     void load();
     return () => request.abort();
-  }, [slug, ticketNumber, setError]);
+  }, [slug, ticketNumber, setError, open]);
 
   async function copy() {
     if (!brief) return;

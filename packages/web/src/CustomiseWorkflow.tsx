@@ -14,17 +14,33 @@ import { Item, ItemContent, ItemMedia } from "./ui/Item";
 import { Skeleton } from "./ui/Skeleton";
 import { StatusChip } from "./ui/StatusChip";
 
-export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => void }) {
+export function CustomiseWorkflow({
+  id,
+  open,
+  onClose,
+  onExitComplete,
+}: {
+  id: string;
+  open?: boolean;
+  onClose: () => void;
+  onExitComplete?: () => void;
+}) {
   const { t } = useLanguage();
-  const [overlayOpen, setOverlayOpen] = useState(true);
+  const [internalOpen, setInternalOpen] = useState(true);
+  const close = () => {
+    setInternalOpen(false);
+    onClose();
+  };
   const [preview, setPreview] = useState<{ path: string; yaml: string } | null>(null);
   const [error, setError] = useErrorText();
   const [saving, setSaving] = useState(false);
+  const isOpen = open ?? internalOpen;
   const endpoint = `/api/workflows/${encodeURIComponent(id)}/customise`;
   const workflow = builtInWorkflows[id as keyof typeof builtInWorkflows];
   const name = workflow ? workflowName(workflow, t) : id;
 
   useEffect(() => {
+    if (!isOpen) return;
     const controller = new AbortController();
     let disposed = false;
     setPreview(null);
@@ -51,7 +67,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
       disposed = true;
       controller.abort();
     };
-  }, [endpoint, setError]);
+  }, [endpoint, isOpen, setError]);
 
   async function customise() {
     if (saving || !preview) return;
@@ -66,7 +82,8 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
       const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, en.planning.customise.errors.save);
       toast.success(t.actionToast.workflowSaved);
-      setOverlayOpen(false);
+      setSaving(false);
+      close();
     } catch (cause) {
       toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.customise.errors.save);
@@ -76,13 +93,13 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
 
   return (
     <Dialog
-      open={overlayOpen}
+      open={isOpen}
       onOpenChange={(open) => {
-        if (!open && !saving) setOverlayOpen(false);
+        if (!open && !saving) close();
       }}
     >
       <DialogContent
-        onExitComplete={onClose}
+        onExitComplete={onExitComplete}
         aria-describedby={undefined}
         className="customise-workflow"
         onEscapeKeyDown={(event) => {
@@ -155,7 +172,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
             </p>
           )}
           <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
-            <Button onClick={() => setOverlayOpen(false)}>{t.planning.customise.cancel}</Button>
+            <Button onClick={close}>{t.planning.customise.cancel}</Button>
             <Button variant="primary" disabled={!preview} onClick={() => void customise()}>
               {saving ? t.planning.customise.saving : t.planning.customise.confirm}
             </Button>
