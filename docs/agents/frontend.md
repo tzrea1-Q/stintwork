@@ -4,7 +4,7 @@ ui-foundations 01 creates `src/ui/`, `packages/web/src/styles/tokens.css` and th
 
 ## Stack and source
 
-Read `packages/web/package.json` for dependencies and scripts, ADR 0010 and ADR 0019 for frontend decisions, and `GLOSSARY.md` for product terms. Use React views built by Vite and styled with Tailwind. Keep wrapped primitives in `packages/web/src/ui/`, icons in lucide-react, the command palette in cmdk, and catalogs in `packages/web/src/i18n/`. Views read state and send actions through the existing layer (ADR 0006).
+Read `packages/web/package.json` for dependencies and scripts, ADR 0010, ADR 0019 and ADR 0022 for frontend decisions, and `GLOSSARY.md` for product terms. Use React views built by Vite and styled with Tailwind. Keep wrapped primitives in `packages/web/src/ui/`, icons in lucide-react, the command palette in cmdk, animation in Motion with the tokens in `src/ui/motion.ts`, and catalogs in `packages/web/src/i18n/`. Views read state and send actions through the existing layer (ADR 0006).
 
 ## Components
 
@@ -32,6 +32,68 @@ Bundle Geist and Geist Mono with `@fontsource-variable/*`, using the CJK system 
 - Use the danger variant and a confirmation step for irreversible actions. Toasts report action results; show Undo only when the action really can be reversed. None can today.
 - Use a top bar with project and branch, centred Overview and Pipeline pill navigation, Jump to, Needs you and Settings; no sidebar. Overview is home and shows only existing snapshot data or its derivations. Omit unavailable cards. Pipeline has stage columns, with empty columns collapsed to rails, and a docked detail panel at 1024px and wider; below that detail uses a Sheet. Detail content uses tabs (Overview, Spec, Tickets, Stints) in every container.
 - Keep existing roadmap editor, setup, customise, review, gate and brief preview entry points and behaviour. Disclose secondary details in a panel, popover or expandable section so the board stays scannable.
+
+## Motion
+
+Motion is expressive within a frequency gate (ADR 0022). Use Motion (`motion/react`, through `LazyMotion` and `m.*` components) and CSS transitions only. Animate UI is a reference for ideas; never install, import or copy its code.
+
+**Tokens.** Every timing comes from `packages/web/src/ui/motion.ts`. CSS reads the same values as `--motion-*` custom properties in `tokens.css`, and a unit test keeps the two in sync. Never hand-type a duration, curve, spring or distance in feature code. A new role needs a new token, added here first.
+
+| Token | Value | Role |
+|---|---|---|
+| `spring.press` | visualDuration 0.15, bounce 0.3 | Press feedback: scale 0.97 for controls, 0.985 for cards and rows |
+| `spring.pop` | 0.25, bounce 0.25 | Popover, tooltip, menu and select content growing from the trigger |
+| `spring.selection` | 0.3, bounce 0.2 | Tab, pill navigation and toggle group indicators gliding between items |
+| `spring.surface` | 0.4, bounce 0.15 | Dialog content |
+| `spring.layout` | 0.45, bounce 0.15 | Cards and containers moving or resizing: stage changes, rails, board reflow, full screen |
+| `spring.arrive` | 0.5, bounce 0.3 | Items arriving: a new card, a stream message, the first-load stagger |
+| `spring.celebrate` | 0.6, bounce 0.45 | Rare moments only: a check popping, a work item shipped |
+| `spring.number` | 0.8, bounce 0 | Counts rolling and progress filling |
+| `tween.color` | 150ms, `ease` | Hover and colour changes (CSS) |
+| `tween.fade` | 200ms, ease-out `cubic-bezier(0.23, 1, 0.32, 1)` | Fades in place |
+| `tween.menu` | 180ms, ease-soft `cubic-bezier(0.215, 0.61, 0.355, 1)` | Command palette and menus opened from the keyboard all day |
+| `tween.overlay` | 300ms, ease-soft | Backdrops dimming and clearing |
+| `tween.sheet` | 400ms, ease-soft | Sheets and the docked panel sliding against an edge |
+| `tween.disclosure` | 300ms, ease-soft | Disclosure height |
+| `tween.swap` | 180ms, ease-out | A label, icon or status chip swapping in place, through `blur.swap` |
+| `tween.dismiss` | 180ms, ease-away `cubic-bezier(0.33, 0.17, 0.67, 0.5)` | Dialogs, sheets and toasts dismissed |
+| `scale` | tooltip 0.8, popover and menu 0.9, dialog 0.92, palette 0.96, removed card 0.96 | Starting scales |
+| `shift` | panel 6px, arrive 12px | Travel distances |
+| `blur` | swap 2px, surface 6px | Blur that bridges a swap or an arrival |
+| `stagger` | 35ms per item, at most 12 items and 300ms in total | Groups arriving together, in rare moments only |
+
+**Frequency gate.**
+
+| How often | Examples | Motion |
+|---|---|---|
+| All day | Press, tabs, pill navigation, toggle groups, menus, selects, tooltips, hover, Jump to | `press`, `selection`, `pop` or `tween.menu`. Settled within 250ms, no stagger, closing no slower than opening. A warm tooltip, shown within 500ms of the last, appears at once. |
+| Occasional | Dialogs, sheets, the Needs you queue, the docked panel, full screen, disclosures, toasts | `surface`, `tween.sheet`, `tween.disclosure`, `tween.overlay` in; `tween.dismiss` out |
+| Continuity | A card changing stage, rails expanding, the board reflowing beside the panel, counts and progress | `spring.layout` and `spring.number` |
+| Rare moments | First board load, ticket resolved, gate approved, work item shipped, Needs you count rising | `arrive`, `celebrate` and `stagger`. This is where the expressive level shows. |
+
+**Rules.**
+
+- Animate `transform`, `opacity` and `filter`. Animate height only in disclosures. Never animate `width`, `top`, `left` or `margin`; use layout animation, which moves by transform.
+- Anchored overlays grow from their trigger through Radix's `--radix-*-content-transform-origin`. Dialogs scale from the centre. Sheets and the docked panel slide from their edge.
+- Exits are quicker than entrances and leave the way they came. Never use ease-in on something entering, or ease-in-out on an entrance.
+- Press scales on pointer down and on Enter or Space. Hover never scales; it changes colour, background, border or shadow.
+- Re-triggering retargets from the current value and never restarts. The keyboard animates like the pointer.
+- Text never scales. Changing text and status chips fade and blur through `tween.swap`. Containers that resize use layout animation with `layout` on their children, so nothing stretches.
+- Motion never blocks input or focus. Controls stay usable mid-animation, focus moves into a dialog at once, and switching tabs shows the new panel without waiting for the old one to leave.
+- Live updates: when one snapshot changes more than 12 cards, or the document is hidden, skip continuity and jump to the result. Only running indicators loop. Loops pause off screen and when the document is hidden.
+- Reduced motion: wrap the app in `MotionConfig reducedMotion="user"`. Under `prefers-reduced-motion: reduce`, drop transform, travel, scale, blur and stagger, and keep fades, colour changes and spinners. Each CSS transition carries its own `@media (prefers-reduced-motion: reduce)` rule.
+- Keep the Radix element as the animated element (`asChild` with `forceMount` under `AnimatePresence`), so `data-state`, focus and dismissal still work.
+
+**Tests.** jsdom tests run with `MotionGlobalConfig.skipAnimations` set in `src/test-setup.ts`. Browser suites run with `reducedMotion: "reduce"` by default. `e2e/motion.spec.ts` runs with motion on and samples frames to check that:
+
+- elements are mid-flight partway through and at rest afterwards;
+- origins sit at the trigger;
+- exits finish within their token;
+- a quick double trigger ends in the right state;
+- the page has no horizontal overflow during motion;
+- under reduced motion, no transform runs while fades still play.
+
+Before merging, the coordinator watches changed motion at normal speed and at 10% playback speed in Chrome DevTools.
 
 ## Layout and states
 
@@ -66,4 +128,5 @@ UI ticket acceptance criteria name the widths and languages checked. Before merg
 3. [ ] Behaviour tests pass for the changed actions, keyboard use and focus handling.
 4. [ ] Browser cases pass at 1440, 1024, 768 and 390px in `en` and `zh-CN`, with the required colour-scheme cases and screenshots saved.
 5. [ ] Loading, empty, error and long-content states pass the layout checks; deliberate truncation exposes the full text.
-6. [ ] Ticket Comments record actual checks and the coordinator's browser review at 1440 and 390px in both languages before merging.
+6. [ ] Changed motion uses the tokens and passes the Motion rules, including reduced motion.
+7. [ ] Ticket Comments record actual checks and the coordinator's browser review at 1440 and 390px in both languages before merging.

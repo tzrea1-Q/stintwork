@@ -231,6 +231,17 @@ Spec: `.scratch/board-polish/spec.md`. Decisions: ADR 0020, ADR 0021.
 
 **Exit test:** the browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` and both colour schemes, and the maintainer walks Pipeline with the detail panel, Overview and Edit roadmap on this repository's real data at 1440, 768 and 390px in both languages and accepts the result.
 
+### M17 · Motion · M
+
+Spec: `.scratch/motion/spec.md`. Decision: ADR 0022.
+
+- Adopt Motion with one token module and the Motion rules in `docs/agents/frontend.md`. Remove `tw-animate-css`.
+- Animate overlays, the detail panel, indicators and tab panels.
+- Make the board move continuously as cards change stage and the panel opens.
+- Let live updates arrive, and give rare moments (ticket resolved, gate approved, shipped) the expressive level.
+
+**Exit test:** `e2e/motion.spec.ts` and the full browser suite pass. The maintainer walks the main surfaces on this repository's real data at 1440 and 390px, with motion on and with reduced motion, and accepts the result.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.
