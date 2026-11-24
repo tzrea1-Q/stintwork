@@ -220,6 +220,7 @@ test("roadmap draft survives back to Overview and forward to Pipeline", async ()
     }),
   );
   await user.click(screen.getByRole("button", { name: en.planning.roadmap.title }));
+  await user.click(screen.getByRole("button", { name: en.planning.roadmap.newMilestone }));
   const input = screen.getByRole("textbox", { name: en.planning.roadmap.newName });
   await user.type(input, "Draft milestone");
   window.history.back();

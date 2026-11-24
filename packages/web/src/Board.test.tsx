@@ -124,6 +124,25 @@ test("stage navigation describes its keyboard controls without moving focus", as
   }
 });
 
+test("stage navigation targets column snap positions", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<Board snapshot={project()} />);
+  const scroller = container.querySelector<HTMLElement>(".board-scroll");
+  if (!scroller) throw new Error("Board scroller is missing");
+  const columns = container.querySelectorAll<HTMLElement>(".stage-column");
+  columns.forEach((column, index) => {
+    Object.defineProperty(column, "offsetLeft", { value: 16 + index * 180 });
+  });
+  const scrollTo = vi.fn();
+  scroller.scrollTo = scrollTo;
+  const navigation = screen.getByRole("navigation", { name: "Stage navigation" });
+  await user.click(within(navigation).getByRole("button", { name: "Next stages" }));
+  expect(scrollTo).toHaveBeenLastCalledWith({ left: 180 });
+  scroller.scrollLeft = 180;
+  await user.click(within(navigation).getByRole("button", { name: "Previous stages" }));
+  expect(scrollTo).toHaveBeenLastCalledWith({ left: 0 });
+});
+
 test("milestone filter counts resolved local tickets without a merge", async () => {
   const snapshot = project({
     ...files,

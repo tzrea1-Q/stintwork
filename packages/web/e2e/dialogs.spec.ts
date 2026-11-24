@@ -260,10 +260,12 @@ for (const language of ["en", "zh-CN"] as const) {
           const dialog = page.getByRole("dialog", { name: t.planning.roadmap.title });
           const last = dialog.getByRole("region", { name: "Milestone 14" });
           if (width >= 768)
-            await expect(last.getByRole("button", { pressed: false })).toBeVisible();
+            await expect(
+              last.getByRole("button", { name: /^Milestone 14\s+milestone-14/, pressed: false }),
+            ).toBeVisible();
           else
             await expect(
-              dialog.getByRole("combobox", { name: t.planning.roadmap.milestones }),
+              dialog.getByRole("combobox", { name: t.planning.roadmap.milestones, exact: true }),
             ).toBeVisible();
           if (width === 1440) {
             const bounds = await last.boundingBox();
@@ -297,7 +299,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await capture(page, dialog, testInfo, "roadmap-long");
           const picker =
             width < 768
-              ? dialog.getByRole("combobox", { name: t.planning.roadmap.milestones })
+              ? dialog.getByRole("combobox", { name: t.planning.roadmap.milestones, exact: true })
               : dialog.getByRole("combobox").first();
           if (await picker.count()) {
             await picker.scrollIntoViewIfNeeded();

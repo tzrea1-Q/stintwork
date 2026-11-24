@@ -709,6 +709,7 @@ test("c does not intercept text inputs, editable content, other dialogs or modif
   expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
   editable.remove();
   await user.click(screen.getByRole("button", { name: "Edit roadmap" }));
+  await user.click(screen.getByRole("button", { name: "New milestone" }));
   await user.type(screen.getByRole("textbox", { name: "New milestone name" }), "c");
   expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
 });
