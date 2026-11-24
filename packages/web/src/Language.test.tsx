@@ -399,10 +399,22 @@ test("Chinese roadmap actions separate copy from Latin milestone names", async (
   for (const name of ["M1 · The board", "M2 · The drawer"]) {
     expect(roadmap.getByRole("region", { name })).toBeInTheDocument();
     await user.click(
-      within(roadmap.getByRole("region", { name })).getByRole("button", { expanded: false }),
+      within(roadmap.getByRole("region", { name })).getByRole("button", {
+        pressed: name === "M1 · The board",
+      }),
     );
-    for (const action of ["重命名", "上移", "下移"])
-      expect(roadmap.getByRole("button", { name: `${action} ${name}` })).toBeInTheDocument();
+    expect(roadmap.getByRole("textbox", { name: `名称：${name}` })).toBeInTheDocument();
+    expect(roadmap.getByRole("radiogroup", { name: `状态：${name}` })).toBeInTheDocument();
+    expect(roadmap.getByLabelText(`目标日期：${name}`)).toBeInTheDocument();
+    expect(
+      roadmap.getByRole("combobox", { name: `移动 ${name} 的 Repo title 中文 至里程碑` }),
+    ).toBeInTheDocument();
+    for (const action of ["上移", "下移"])
+      expect(
+        within(roadmap.getByRole("region", { name })).getByRole("button", {
+          name: `${action} ${name}`,
+        }),
+      ).toBeInTheDocument();
   }
 });
 

@@ -46,6 +46,10 @@ const samples: Record<string, unknown[][]> = {
   "card.needsYou": [[0], [1], [2]],
   "card.progress": [["repo/中文"]],
   "planning.palette.customise": [["Repo 原文"], ["功能"], ["Latin"]],
+  "planning.roadmap.moveItem": [
+    ["Board", "M1 · The board"],
+    ["工作项", "路线图"],
+  ],
   "planning.roadmap.name": [["Repo 原文"]],
   "planning.roadmap.rename": [["Repo 原文"], ["M1 · The board"], ["路线图"], ["（中文）"]],
   "planning.roadmap.status": [["Repo 原文"]],

@@ -43,20 +43,31 @@ export function addRoadmapRoute(
     try {
       const commit = await commitRoadmap(root, (text) => {
         const edited = editRoadmap(text, change);
-        if (change && typeof change === "object" && "kind" in change && change.kind === "move") {
-          const project = readProjectFiles();
-          if (project.warnings.some(({ path }) => path === ".git"))
-            throw new RoadmapWriteRefusal({ code: "roadmap.worktreesUnreadable" });
-          const item = resolveProjectSnapshot(project, getSnapshot).workItems.find(
-            (item) => "workItem" in change && item.slug === change.workItem,
-          );
-          if (!item) throw new CoreTextError({ code: "server.workItemNotFound" });
-          if (
-            item.declaredMilestone !== undefined &&
-            "milestone" in change &&
-            item.declaredMilestone !== change.milestone
-          )
-            throw new RoadmapWriteRefusal({ code: "roadmap.declaredMilestone" });
+        const changes =
+          change &&
+          typeof change === "object" &&
+          "kind" in change &&
+          change.kind === "batch" &&
+          "changes" in change &&
+          Array.isArray(change.changes)
+            ? change.changes
+            : [change];
+        for (const change of changes) {
+          if (change && typeof change === "object" && "kind" in change && change.kind === "move") {
+            const project = readProjectFiles();
+            if (project.warnings.some(({ path }) => path === ".git"))
+              throw new RoadmapWriteRefusal({ code: "roadmap.worktreesUnreadable" });
+            const item = resolveProjectSnapshot(project, getSnapshot).workItems.find(
+              (item) => "workItem" in change && item.slug === change.workItem,
+            );
+            if (!item) throw new CoreTextError({ code: "server.workItemNotFound" });
+            if (
+              item.declaredMilestone !== undefined &&
+              "milestone" in change &&
+              item.declaredMilestone !== change.milestone
+            )
+              throw new RoadmapWriteRefusal({ code: "roadmap.declaredMilestone" });
+          }
         }
         milestones = edited.milestones;
         validated = true;

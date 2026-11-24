@@ -321,3 +321,41 @@ test("serializes concurrent roadmap writes without losing either change", async 
   ).toEqual(["Renamed", "Second", "Third"]);
   expect(git(root, "rev-list", "--count", "HEAD")).toBe("3");
 });
+
+test("a batch saves all changes in exactly one commit", async () => {
+  const { root, project } = fixture();
+  const before = git(root, "rev-parse", "HEAD");
+  const response = await action(project, {
+    kind: "batch",
+    id: "first",
+    changes: [
+      { kind: "rename", id: "first", name: "Renamed" },
+      { kind: "update", id: "first", status: "shipped", target: "2027-01-02" },
+      { kind: "move", workItem: "board", milestone: "second" },
+    ],
+  });
+  expect(response.status).toBe(200);
+  expect(git(root, "rev-list", "--count", `${before}..HEAD`)).toBe("1");
+  expect(parseRoadmap(readFileSync(join(root, relative), "utf8")).milestones).toMatchObject([
+    { name: "Renamed", status: "shipped", target: "2027-01-02", workItemSlugs: [] },
+    { id: "second", workItemSlugs: ["board"] },
+  ]);
+});
+
+test("a batch refuses hand edits and leaves the roadmap and HEAD untouched", async () => {
+  const { root, project } = fixture();
+  const before = git(root, "rev-parse", "HEAD");
+  const dirty = `${initial}\nHand edit.\n`;
+  writeFileSync(join(root, relative), dirty);
+  const response = await action(project, {
+    kind: "batch",
+    id: "first",
+    changes: [
+      { kind: "rename", id: "first", name: "Renamed" },
+      { kind: "move", workItem: "board", milestone: "second" },
+    ],
+  });
+  expect(response.status).toBe(409);
+  expect(readFileSync(join(root, relative), "utf8")).toBe(dirty);
+  expect(git(root, "rev-parse", "HEAD")).toBe(before);
+});
