@@ -22,6 +22,8 @@ import {
 } from "./attention-test-fixtures";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import { useProjectSnapshot } from "./useProjectSnapshot";
+import { Board } from "./Board";
+import { motionBoardSnapshot, moveMotionCard } from "../e2e/motion-board.fixture";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 const snapshot = indexProject(createMemoryRepoFiles({ ".scratch/board/spec.md": "# Pipeline" }), {
@@ -90,6 +92,31 @@ test("a displayed project failure follows language changes without reconnecting"
   expect(fetch).toHaveBeenCalledOnce();
   expect(TestSocket.instances).toHaveLength(1);
   localStorage.removeItem(languageStorageKey);
+});
+
+test("accepts the motion board fixture on HTTP and live updates", async () => {
+  const { snapshot, template } = motionBoardSnapshot();
+  vi.mocked(fetch).mockResolvedValue(response(snapshot));
+  const { result } = renderHook(useProjectSnapshot);
+  await waitFor(() => expect(result.current.snapshot?.workItems[0]?.slug).toBe("motion-0"));
+  if (!result.current.snapshot) throw new Error("Missing accepted snapshot");
+  const board = render(<Board snapshot={result.current.snapshot} />);
+  expect(board.container.querySelector('[data-work-item="motion-0"]')).toBeInTheDocument();
+  moveMotionCard(snapshot, 0, "tickets");
+  act(() => TestSocket.instances[0].sendSnapshot(snapshot));
+  expect(result.current.snapshot?.workItems[0].column).toBe("tickets");
+  snapshot.workItems.push({ ...structuredClone(template), slug: "motion-arrival", column: "spec" });
+  snapshot.milestones
+    .find((milestone) => milestone.id === "active")
+    ?.workItemSlugs.push("motion-arrival");
+  act(() => TestSocket.instances[0].sendSnapshot(snapshot));
+  expect(result.current.snapshot?.workItems).toHaveLength(61);
+  for (let index = 1; index <= 13; index++) moveMotionCard(snapshot, index, "tickets");
+  act(() => TestSocket.instances[0].sendSnapshot(snapshot));
+  expect(result.current.snapshot?.workItems[13].column).toBe("tickets");
+  moveMotionCard(snapshot, 14, "tickets");
+  act(() => TestSocket.instances[0].sendSnapshot(snapshot));
+  expect(result.current.snapshot?.workItems[14].column).toBe("tickets");
 });
 
 test("accepts preparation failures in HTTP and live snapshots", async () => {

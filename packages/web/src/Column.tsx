@@ -7,7 +7,11 @@ import type {
   WorkflowDefinitions,
 } from "@stintwork/core";
 import { CheckCheck, CircleHelp, GitBranch, ListFilter, Sparkles, Zap } from "lucide-react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { AnimatePresence, m } from "motion/react";
+import { useContext, useLayoutEffect, useRef, useState } from "react";
+import { BoardMotionContext } from "./board-motion";
+import { spring } from "./ui/motion";
+import { RollingNumber } from "./ui/RollingNumber";
 import { useLanguage } from "./i18n/language";
 import { IconChip } from "./ui/IconChip";
 import { type BoardWorkItem, WorkItemCard } from "./WorkItemCard";
@@ -49,6 +53,7 @@ export function Column({
   panelOpen: boolean;
 }) {
   const { t } = useLanguage();
+  const { skip, reduced } = useContext(BoardMotionContext);
   const section = useRef<HTMLElement>(null);
   const toggled = useRef(false);
   const [wide, setWide] = useState(false);
@@ -79,7 +84,9 @@ export function Column({
   ).length;
   const stats = `${running} ${t.pipelineBoard.running} · ${waiting} ${t.pipelineBoard.waiting}`;
   return (
-    <section
+    <m.section
+      layout={!skip && !reduced ? "position" : false}
+      transition={skip ? { duration: 0 } : spring.layout}
       ref={section}
       className={`stage-column relative snap-start ${rail ? "w-14 shrink-0" : "w-[min(280px,calc(100vw-80px))] shrink-0 lg:min-w-[220px] lg:flex-1"}`}
       data-card-column={id}
@@ -87,7 +94,8 @@ export function Column({
       aria-labelledby={`stage-${id}`}
     >
       {rail ? (
-        <button
+        <m.button
+          layout="position"
           type="button"
           className="flex h-full w-full flex-col items-center rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
           aria-label={t.column.expand(name, items.length)}
@@ -101,7 +109,7 @@ export function Column({
               <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
             </span>
             <span className="count shrink-0 tabular-nums text-xs text-muted-foreground">
-              {items.length}
+              <RollingNumber value={items.length} />
             </span>
           </header>
           <h2
@@ -111,7 +119,7 @@ export function Column({
           >
             {name}
           </h2>
-        </button>
+        </m.button>
       ) : (
         <header className="stage-header sticky top-0 z-20 h-[88px] bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
           <div className="flex flex-wrap items-center gap-2">
@@ -125,7 +133,9 @@ export function Column({
             >
               {name}
             </h2>
-            <span className="count tabular-nums text-xs text-muted-foreground">{items.length}</span>
+            <span className="count tabular-nums text-xs text-muted-foreground">
+              <RollingNumber value={items.length} />
+            </span>
             {!items.length && (
               <button
                 type="button"
@@ -142,18 +152,21 @@ export function Column({
           <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
         </header>
       )}
-      <div
+      <m.div
+        layout={!skip && !reduced ? "position" : false}
+        transition={skip ? { duration: 0 } : spring.layout}
         className={
           grid
             ? "flex flex-col gap-3 lg:grid lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:content-start"
             : "flex flex-col gap-3"
         }
       >
-        {items.length ? (
-          items.map((item) => (
+        <AnimatePresence mode="popLayout">
+          {items.map((item, index) => (
             <WorkItemCard
               key={item.slug}
               item={item}
+              index={index}
               agents={agents}
               selected={selectedSlug === item.slug}
               workflow={workflows[item.workflow]}
@@ -161,11 +174,10 @@ export function Column({
               milestone={milestones.find((milestone) => milestone.id === item.milestone)}
               onOpen={onOpen}
             />
-          ))
-        ) : (
-          <span className="sr-only">{t.column.empty(name)}</span>
-        )}
-      </div>
-    </section>
+          ))}
+        </AnimatePresence>
+        {!items.length && <span className="sr-only">{t.column.empty(name)}</span>}
+      </m.div>
+    </m.section>
   );
 }

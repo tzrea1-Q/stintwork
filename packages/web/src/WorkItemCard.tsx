@@ -8,6 +8,11 @@ import {
   type WorkflowDefinition,
 } from "@stintwork/core";
 import { Bug, Layers3, Sparkles, Zap } from "lucide-react";
+import { m, useIsPresent } from "motion/react";
+import { forwardRef, useContext } from "react";
+import { BoardMotionContext } from "./board-motion";
+import { blur, scale, shift, spring, staggerDelay, tween, usePress } from "./ui/motion";
+import { RollingNumber } from "./ui/RollingNumber";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
 import { recoveryStatus } from "./StintRecovery";
@@ -19,24 +24,36 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/T
 
 export type BoardWorkItem = ProjectSnapshot["workItems"][number];
 
-export function WorkItemCard({
-  item,
-  milestone,
-  onOpen,
-  attentionCount = 0,
-  workflow,
-  agents = [],
-  selected = false,
-}: {
-  item: BoardWorkItem;
-  milestone?: Milestone;
-  onOpen: (slug: string) => void;
-  attentionCount?: number;
-  workflow?: WorkflowDefinition;
-  agents?: AgentProfile[];
-  selected?: boolean;
-}) {
+export const WorkItemCard = forwardRef<
+  HTMLElement,
+  {
+    item: BoardWorkItem;
+    milestone?: Milestone;
+    onOpen: (slug: string) => void;
+    attentionCount?: number;
+    workflow?: WorkflowDefinition;
+    agents?: AgentProfile[];
+    selected?: boolean;
+    index?: number;
+  }
+>(function WorkItemCard(
+  {
+    item,
+    milestone,
+    onOpen,
+    attentionCount = 0,
+    workflow,
+    agents = [],
+    selected = false,
+    index = 0,
+  },
+  ref,
+) {
   const { t } = useLanguage();
+  const isPresent = useIsPresent();
+  const { firstLoad, previous, skip, reduced } = useContext(BoardMotionContext);
+  const arrival = !skip && (previous ? !previous.has(item.slug) : firstLoad);
+  const { rest, press } = usePress("card", { onClick: () => onOpen(item.slug) });
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
   const open = item.tickets.filter((ticket) => !ticket.resolved);
   const blocked =
@@ -94,121 +111,157 @@ export function WorkItemCard({
       : t.card.noFiles;
 
   return (
-    <article
+    <m.article
+      ref={ref}
+      data-exiting={isPresent ? undefined : item.slug}
+      aria-hidden={isPresent ? undefined : true}
+      layout={!skip && !reduced ? "position" : false}
+      layoutId={skip || reduced ? undefined : `card-${item.slug}`}
+      initial={
+        arrival
+          ? reduced
+            ? { opacity: 0 }
+            : { opacity: 0, y: shift.arrive, filter: `blur(${blur.surface}px)` }
+          : false
+      }
+      animate={{ opacity: 1, y: 0, filter: "blur(0px)", scale: press.animate.scale }}
+      exit={{
+        ...(reduced ? { opacity: 0 } : { opacity: 0, scale: scale.removedCard }),
+        transition: skip ? { duration: 0 } : tween.dismiss,
+      }}
+      transition={{
+        ...spring.arrive,
+        delay: firstLoad && !previous ? staggerDelay(index) : 0,
+        layout: skip ? { duration: 0 } : spring.layout,
+        scale: spring.press,
+        opacity: skip ? { duration: 0 } : spring.arrive,
+      }}
       className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring ${running ? "bg-running-soft" : attentionCount > 0 ? "bg-attention-soft" : blocked ? "bg-blocked-soft" : "bg-muted"} ${selected ? "ring-2 ring-ring" : ""}`}
       aria-label={`${item.slug}: ${item.title}`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <span
-          className="work-item-id inline-flex max-w-full flex-none items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
-          title={typeName}
-        >
-          <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
-          <span className="sr-only">{typeName}: </span>
-          <span className="truncate" data-truncate title={item.slug}>
-            {item.slug}
-          </span>
-        </span>
-        {item.milestone && (
+      <m.div layout="position">
+        <div className="flex flex-wrap items-start justify-between gap-2">
           <span
-            className="milestone-tag shrink-0 whitespace-nowrap rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
-            title={milestone?.name}
+            className="work-item-id inline-flex max-w-full flex-none items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
+            title={typeName}
           >
-            {milestone?.id ?? item.milestone}
+            <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
+            <span className="sr-only">{typeName}: </span>
+            <span className="truncate" data-truncate title={item.slug}>
+              {item.slug}
+            </span>
           </span>
-        )}
-      </div>
-      <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-[620] break-words">
-        <Button
-          variant="link"
-          type="button"
-          className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-[620] after:absolute after:inset-0 after:rounded-2xl"
-          data-work-item={item.slug}
-          aria-label={t.card.open(item.slug, item.title)}
-          aria-haspopup="dialog"
-          onClick={() => onOpen(item.slug)}
-        >
-          <span className="line-clamp-3 break-words" data-truncate title={item.title}>
-            {item.title}
-          </span>
-        </Button>
-      </h3>
-      {status && (
-        <div className="mb-3 flex flex-wrap items-center gap-2">
-          {running || attentionCount > 0 ? (
+          {item.milestone && (
             <span
-              role="status"
-              aria-label={!running ? t.card.attention(attentionCount) : undefined}
+              className="milestone-tag shrink-0 whitespace-nowrap rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
+              title={milestone?.name}
             >
-              <StatusChip status={status} pulse={running}>
-                {running
-                  ? ((item.activeStint && recoveryStatus(item.activeStint, t)) ?? t.card.running)
-                  : t.card.needsYou(attentionCount)}
-              </StatusChip>
-            </span>
-          ) : (
-            <StatusChip status={status}>
-              {blocked ? t.card.blocked : t.overview.stintStatus.stopped}
-            </StatusChip>
-          )}
-          {running && attentionCount > 0 && (
-            <span className="text-xs" role="status" aria-label={t.card.attention(attentionCount)}>
-              {t.card.needsYou(attentionCount)}
+              {milestone?.id ?? item.milestone}
             </span>
           )}
         </div>
-      )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        {agent &&
-          (item.inferred ? (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="relative z-10 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-                    aria-label={`${agent.displayName} · ${t.card.inferred}`}
-                  >
-                    <AgentAvatar
-                      agent={agent.id}
-                      name={agent.displayName}
-                      active={running}
-                      size="sm"
-                    />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  {t.card.inference}
-                  {reason}
-                  {item.workflow === "bug" && t.card.bugInference}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
-          ))}
-        <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-          {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
-            <span>
-              {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
+        <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-[620] break-words">
+          <Button
+            variant="link"
+            type="button"
+            className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-[620] after:absolute after:inset-0 after:rounded-2xl"
+            data-work-item={isPresent ? item.slug : undefined}
+            disabled={!isPresent}
+            aria-label={t.card.open(item.slug, item.title)}
+            aria-haspopup="dialog"
+            {...rest}
+            onPointerDown={press.onPointerDown}
+            onPointerUp={press.onPointerUp}
+            onPointerLeave={press.onPointerLeave}
+            onPointerCancel={press.onPointerCancel}
+            onKeyDown={press.onKeyDown}
+            onKeyUp={press.onKeyUp}
+            onBlur={press.onBlur}
+            data-pressed={press["data-pressed"]}
+          >
+            <span className="line-clamp-3 break-words" data-truncate title={item.title}>
+              {item.title}
             </span>
-          ) : (
-            <>
-              <span>
-                {resolved}/{item.tickets.length} <span className="sr-only">{t.card.resolved}</span>
-                {t.card.tickets}
+          </Button>
+        </h3>
+        {status && (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            {running || attentionCount > 0 ? (
+              <span
+                role="status"
+                aria-label={!running ? t.card.attention(attentionCount) : undefined}
+              >
+                <StatusChip status={status} pulse={running}>
+                  {running
+                    ? ((item.activeStint && recoveryStatus(item.activeStint, t)) ?? t.card.running)
+                    : t.card.needsYou(attentionCount)}
+                </StatusChip>
               </span>
-              <div className="w-11 shrink-0">
-                <SegmentedProgress
-                  label={t.card.progress(item.slug)}
-                  total={item.tickets.length}
-                  value={resolved}
-                />
-              </div>
-            </>
-          )}
+            ) : (
+              <StatusChip status={status}>
+                {blocked ? t.card.blocked : t.overview.stintStatus.stopped}
+              </StatusChip>
+            )}
+            {running && attentionCount > 0 && (
+              <span className="text-xs" role="status" aria-label={t.card.attention(attentionCount)}>
+                {t.card.needsYou(attentionCount)}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {agent &&
+            (item.inferred ? (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="relative z-10 rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      aria-label={`${agent.displayName} · ${t.card.inferred}`}
+                    >
+                      <AgentAvatar
+                        agent={agent.id}
+                        name={agent.displayName}
+                        active={running}
+                        size="sm"
+                      />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {t.card.inference}
+                    {reason}
+                    {item.workflow === "bug" && t.card.bugInference}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            ) : (
+              <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
+            ))}
+          <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
+              <span>
+                {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
+              </span>
+            ) : (
+              <>
+                <span>
+                  <RollingNumber value={resolved} />/{item.tickets.length}{" "}
+                  <span className="sr-only">{t.card.resolved}</span>
+                  {t.card.tickets}
+                </span>
+                <div className="w-11 shrink-0">
+                  <SegmentedProgress
+                    label={t.card.progress(item.slug)}
+                    total={item.tickets.length}
+                    value={resolved}
+                  />
+                </div>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </article>
+      </m.div>
+    </m.article>
   );
-}
+});
