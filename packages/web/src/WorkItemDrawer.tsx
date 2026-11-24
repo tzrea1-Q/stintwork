@@ -23,13 +23,14 @@ import {
   X,
 } from "lucide-react";
 import { MotionGlobalConfig, m, usePresence } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { ChecksPanel } from "./ChecksPanel";
 import { GateView } from "./GateView";
 import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { ticketStatus, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
+import { becameResolved } from "./moments";
 import { MarkShipped } from "./MarkShipped";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { ReviewOverlay } from "./ReviewOverlay";
@@ -140,6 +141,17 @@ export function WorkItemDrawer({
 }) {
   const { t } = useLanguage();
   const reduced = useReducedMotionSafe();
+  const previousTickets = useRef(
+    new Map(item.tickets.map((ticket) => [ticket.path, ticket.resolved])),
+  );
+  const resolvedNow = new Set(
+    item.tickets
+      .filter((ticket) => becameResolved(previousTickets.current.get(ticket.path), ticket.resolved))
+      .map((ticket) => ticket.path),
+  );
+  useEffect(() => {
+    previousTickets.current = new Map(item.tickets.map((ticket) => [ticket.path, ticket.resolved]));
+  }, [item.tickets]);
   const [isPresent, safeToRemove] = usePresence();
   useEffect(() => {
     if (!isPresent && MotionGlobalConfig.skipAnimations) safeToRemove?.();
@@ -191,6 +203,7 @@ export function WorkItemDrawer({
   const closeButton = useRef<HTMLButtonElement>(null);
   const autoFocusing = useRef(false);
   const panel = useRef<HTMLElement>(null);
+  const sheetPanel = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(() => {
     try {
       const stored = localStorage.getItem("stintwork.detailWidth");
@@ -249,6 +262,20 @@ export function WorkItemDrawer({
         opener.current.focus();
     };
   }, [docked]);
+  useLayoutEffect(() => {
+    if (!isPresent && !docked && sheetPanel.current) {
+      sheetPanel.current.setAttribute("data-exiting", "true");
+      sheetPanel.current.setAttribute("aria-hidden", "true");
+      sheetPanel.current.setAttribute("inert", "");
+    }
+    if (
+      !isPresent &&
+      docked &&
+      (document.activeElement === document.body || panel.current?.contains(document.activeElement))
+    ) {
+      opener.current?.focus();
+    }
+  }, [isPresent, docked]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewMounted, setReviewMounted] = useState(false);
   useEffect(() => {
@@ -785,16 +812,31 @@ export function WorkItemDrawer({
                                   )
                                 }
                               >
-                                <StatusIcon
-                                  className={
-                                    ticket.resolved
-                                      ? "size-icon-sm shrink-0 text-success-foreground"
-                                      : blocked
-                                        ? "size-icon-sm shrink-0 text-attention-foreground"
-                                        : "size-icon-sm shrink-0 text-muted-foreground"
+                                <m.span
+                                  data-ticket-check={ticket.path}
+                                  key={`${ticket.path}:${ticket.resolved}`}
+                                  initial={
+                                    resolvedNow.has(ticket.path)
+                                      ? reduced
+                                        ? { opacity: 0 }
+                                        : { scale: 0.5, opacity: 0 }
+                                      : false
                                   }
-                                  aria-hidden="true"
-                                />
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  transition={spring.celebrate}
+                                  className="inline-flex shrink-0"
+                                >
+                                  <StatusIcon
+                                    className={
+                                      ticket.resolved
+                                        ? "size-icon-sm shrink-0 text-success-foreground"
+                                        : blocked
+                                          ? "size-icon-sm shrink-0 text-attention-foreground"
+                                          : "size-icon-sm shrink-0 text-muted-foreground"
+                                    }
+                                    aria-hidden="true"
+                                  />
+                                </m.span>
                                 <span className="ticket-title grid min-w-0 gap-1 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
                                   <strong>
                                     {ticketNumber(ticket.number)} · {ticket.title}
@@ -997,6 +1039,9 @@ export function WorkItemDrawer({
         >
           <m.aside
             ref={panel}
+            data-exiting={isPresent ? undefined : "true"}
+            aria-hidden={isPresent ? undefined : true}
+            {...(isPresent ? {} : { inert: "" })}
             onAnimationComplete={() => {
               if (!isPresent) safeToRemove?.();
             }}
@@ -1047,6 +1092,7 @@ export function WorkItemDrawer({
           }}
         >
           <SheetContent
+            ref={sheetPanel}
             onExitComplete={safeToRemove ?? undefined}
             className="work-item-drawer flex min-h-0 min-w-0 w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col overflow-hidden p-0 [&_button]:min-h-10 [&_button]:min-w-10 [&_summary]:min-h-10"
             aria-describedby={undefined}

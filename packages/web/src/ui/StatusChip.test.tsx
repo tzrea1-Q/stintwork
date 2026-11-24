@@ -13,3 +13,10 @@ test("renders a hidden pulsing dot", () => {
   expect(dot).toHaveAttribute("aria-hidden", "true");
   expect(dot).toHaveClass("motion-safe:animate-pulse");
 });
+
+test("exposes the new status immediately", () => {
+  const { rerender } = render(<StatusChip status="running">Running</StatusChip>);
+  rerender(<StatusChip status="success">Done</StatusChip>);
+  expect(screen.getByText("Done")).toBeVisible();
+  expect(screen.queryByText("Running")).not.toBeInTheDocument();
+});

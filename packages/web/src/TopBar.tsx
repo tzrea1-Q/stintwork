@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
 import { Inbox, Search, Settings } from "lucide-react";
-import { useId, useRef, useState } from "react";
-import { m } from "motion/react";
+import { useEffect, useId, useRef, useState } from "react";
+import { animate, m, useMotionValue } from "motion/react";
 import { spring, useReducedMotionSafe } from "./ui/motion";
+import { rose } from "./moments";
+import { RollingNumber } from "./ui/RollingNumber";
 import { LanguageMenu } from "./i18n/LanguageMenu";
 import { useLanguage } from "./i18n/language";
 import { SetupGuide } from "./SetupGuide";
@@ -48,6 +50,26 @@ export function TopBar({
   ];
   const ready = checks.filter(Boolean).length;
   const warnings = snapshot.warnings.length;
+  const previousCount = useRef(snapshot.attentionItems.length);
+  const pop = rose(previousCount.current, snapshot.attentionItems.length);
+  const badgeScale = useMotionValue(1);
+  useEffect(() => {
+    const count = snapshot.attentionItems.length;
+    const rising = rose(previousCount.current, count);
+    previousCount.current = count;
+    if (reduced) {
+      badgeScale.set(1);
+      return;
+    }
+    if (!rising && badgeScale.get() === 1) return;
+    let animation = animate(badgeScale, rising ? 1.25 : 1, {
+      ...spring.celebrate,
+      onComplete: () => {
+        if (rising) animation = animate(badgeScale, 1, spring.celebrate);
+      },
+    });
+    return () => animation.stop();
+  }, [badgeScale, reduced, snapshot.attentionItems.length]);
 
   return (
     <header className="top-bar mx-auto flex min-h-16 w-full max-w-[1500px] shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-7">
@@ -141,12 +163,15 @@ export function TopBar({
               >
                 <Inbox aria-hidden="true" />
                 {snapshot.attentionItems.length > 0 && (
-                  <span
+                  <m.span
+                    data-needs-you-badge
+                    data-pop={pop || undefined}
+                    style={{ scale: badgeScale }}
                     className="absolute -right-[3px] -top-[3px] grid size-4 place-items-center rounded-full bg-attention text-[9px] tabular-nums text-background"
                     aria-hidden="true"
                   >
-                    {snapshot.attentionItems.length}
-                  </span>
+                    <RollingNumber value={snapshot.attentionItems.length} />
+                  </m.span>
                 )}
                 {warnings > 0 && (
                   <span

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject } from "@stintwork/core";
+import { LazyMotion, domMax, MotionGlobalConfig } from "motion/react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
@@ -335,4 +336,50 @@ test("navigation indicator belongs only to the current view", () => {
   expect(
     screen.getByRole("button", { name: "Overview" }).querySelector('[data-slot="nav-indicator"]'),
   ).toBeInTheDocument();
+});
+
+test("only a rising needs you count marks the badge", () => {
+  const one = attentionSnapshot(["one"]);
+  const two = attentionSnapshot(["one", "two"]);
+  const view = renderTopBar(one);
+  const bar = (project: typeof one) => (
+    <LanguageProvider>
+      <TopBar snapshot={project} onOpenPalette={() => {}} onOpenNeedsYou={() => {}} />
+    </LanguageProvider>
+  );
+  view.rerender(bar(two));
+  expect(view.container.querySelector("[data-pop]")).toBeInTheDocument();
+  view.rerender(bar(one));
+  expect(view.container.querySelector("[data-pop]")).toBeNull();
+});
+
+test("the needs you badge springs up on a first arrival and a later rise", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const tree = (project: typeof snapshot) => (
+    <LazyMotion features={domMax} strict>
+      <LanguageProvider>
+        <TopBar snapshot={project} onOpenPalette={() => {}} onOpenNeedsYou={() => {}} />
+      </LanguageProvider>
+    </LazyMotion>
+  );
+  try {
+    const view = render(tree(attentionSnapshot([])));
+    const one = attentionSnapshot(["one"]);
+    const two = attentionSnapshot(["one", "two"]);
+    view.rerender(tree(one));
+    const badge = view.container.querySelector("[data-needs-you-badge]") as HTMLElement;
+    const scale = () => Number(/scale\(([^)]+)\)/.exec(badge.style.transform)?.[1] ?? 1);
+    await waitFor(() => expect(scale()).toBeGreaterThan(1.01), { interval: 10, timeout: 2000 });
+    await waitFor(() => expect(scale()).toBeCloseTo(1, 2), { interval: 20, timeout: 3000 });
+    view.rerender(tree(two));
+    await waitFor(() => expect(scale()).toBeGreaterThan(1.01), { interval: 10, timeout: 2000 });
+    await waitFor(() => expect(scale()).toBeCloseTo(1, 2), { interval: 20, timeout: 3000 });
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
 });

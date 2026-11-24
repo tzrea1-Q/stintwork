@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { usePulse } from "./usePulse";
 import { Avatar, AvatarFallback } from "./Avatar";
 import { cn } from "./cn";
 const colors: Record<string, string> = {
@@ -18,8 +19,10 @@ export function AgentAvatar({
   active?: boolean;
   size?: "sm" | "md";
 }) {
+  const pulseProps = usePulse<HTMLSpanElement>();
   return (
     <Avatar
+      {...pulseProps}
       role="img"
       aria-label={name}
       className={cn(

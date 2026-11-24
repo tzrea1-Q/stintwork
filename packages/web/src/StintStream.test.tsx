@@ -406,3 +406,23 @@ test("a restored selection stays disabled through transport delivery and replay/
     "status",
   );
 });
+
+test("only live messages are marked as arriving", () => {
+  const history = stint([{ type: "message", id: "old", text: "History" }]);
+  const { rerender, container } = render(
+    <LanguageProvider>
+      <StintStream stint={history} />
+    </LanguageProvider>,
+  );
+  expect(container.querySelector("[data-arriving]")).toBeNull();
+  const updated = stint([
+    { type: "message", id: "old", text: "History" },
+    { type: "message", id: "new", text: "Live message" },
+  ]);
+  rerender(
+    <LanguageProvider>
+      <StintStream stint={updated} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByText("Live message").closest("[data-arriving]")).toBeInTheDocument();
+});

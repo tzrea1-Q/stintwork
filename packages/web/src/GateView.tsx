@@ -9,7 +9,10 @@ import {
   type WorkflowDefinitions,
 } from "@stintwork/core";
 import { CheckCircle2, Circle, GitCommitHorizontal } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { m } from "motion/react";
+import { becameResolved } from "./moments";
+import { spring, staggerDelay, useReducedMotionSafe } from "./ui/motion";
 import { toast } from "sonner";
 import { refreshGithubItem } from "./github-refresh";
 import { HandoffAnswer } from "./HandoffAnswer";
@@ -50,6 +53,22 @@ export function GateView({
   const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
   const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
   const gate = gateReadiness(item, workflows);
+  const reduced = useReducedMotionSafe();
+  const previousConditions = useRef(
+    new Map(gate.conditions.map((condition) => [condition.id, condition.ready])),
+  );
+  const met = new Set(
+    gate.conditions
+      .filter((condition) =>
+        becameResolved(previousConditions.current.get(condition.id), condition.ready),
+      )
+      .map((condition) => condition.id),
+  );
+  useEffect(() => {
+    previousConditions.current = new Map(
+      gate.conditions.map((condition) => [condition.id, condition.ready]),
+    );
+  });
   const emptyGithubSpec =
     !!github &&
     item.spec === null &&
@@ -150,13 +169,27 @@ export function GateView({
             aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
             className="space-y-2"
           >
-            {gate.conditions.map((condition) => (
+            {gate.conditions.map((condition, index) => (
               <li key={condition.id} className="rounded-xl border border-border p-3">
                 {condition.ready ? (
-                  <CheckCircle2
-                    aria-hidden="true"
-                    className="mr-2 inline size-4 text-success-foreground"
-                  />
+                  <m.span
+                    key={`${condition.id}:${condition.ready}`}
+                    className="inline-flex"
+                    initial={
+                      met.has(condition.id)
+                        ? reduced
+                          ? { opacity: 0 }
+                          : { scale: 0.5, opacity: 0 }
+                        : false
+                    }
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ ...spring.celebrate, delay: reduced ? 0 : staggerDelay(index) }}
+                  >
+                    <CheckCircle2
+                      aria-hidden="true"
+                      className="mr-2 inline size-4 text-success-foreground"
+                    />
+                  </m.span>
                 ) : (
                   <Circle aria-hidden="true" className="mr-2 inline size-4 text-muted-foreground" />
                 )}

@@ -7,6 +7,10 @@ import {
   type StintEvent,
   type StintToolContent,
 } from "@stintwork/core";
+import { useRef } from "react";
+import { m } from "motion/react";
+import { newlyArrived } from "./moments";
+import { blur, shift, spring, useReducedMotionSafe } from "./ui/motion";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
 import type { Catalog } from "./i18n/en";
 import { renderCoreText, stintEventKind, useLanguage } from "./i18n/language";
@@ -109,6 +113,11 @@ export function StintStream({
   profile?: AgentProfile;
 }) {
   const { t } = useLanguage();
+  const reduced = useReducedMotionSafe();
+  const ids = stint.events.filter((event) => event.type === "message").map((event) => event.id);
+  const known = useRef(new Set(ids));
+  const arriving = new Set(newlyArrived(known.current, ids));
+  for (const id of ids) known.current.add(id);
   const waitingForPermission = pendingStintPermissions(stint).length > 0;
   return (
     <div className="stint-stream min-w-0 [overflow-wrap:anywhere]">
@@ -196,7 +205,19 @@ export function StintStream({
                   ? `${event.type}:${event.toolCallId}:${"path" in event ? event.path : ""}`
                   : index;
           return (
-            <div
+            <m.div
+              data-arriving={
+                event.type === "message" && arriving.has(event.id) ? "true" : undefined
+              }
+              initial={
+                event.type === "message" && arriving.has(event.id)
+                  ? reduced
+                    ? { opacity: 0 }
+                    : { opacity: 0, y: shift.arrive, filter: `blur(${blur.swap}px)` }
+                  : false
+              }
+              animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+              transition={spring.arrive}
               className={`stint-event min-w-0 border-b border-border py-3 [overflow-wrap:anywhere] stint-event-${event.type}`}
               key={`${event.type}:${key}`}
             >
@@ -282,7 +303,7 @@ export function StintStream({
                   <CodeBlock>{JSON.stringify(event.update, null, 2)}</CodeBlock>
                 </details>
               )}
-            </div>
+            </m.div>
           );
         })}
         {stint.error && stint.recovery?.state !== "fallback" && (

@@ -9,7 +9,8 @@ import {
 } from "@stintwork/core";
 import { Bug, Layers3, Sparkles, Zap } from "lucide-react";
 import { m, useIsPresent } from "motion/react";
-import { forwardRef, useContext } from "react";
+import { forwardRef, useContext, useRef, useState } from "react";
+import { becameShipped } from "./moments";
 import { BoardMotionContext } from "./board-motion";
 import { blur, scale, shift, spring, staggerDelay, tween, usePress } from "./ui/motion";
 import { RollingNumber } from "./ui/RollingNumber";
@@ -21,6 +22,8 @@ import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { StatusChip } from "./ui/StatusChip";
 import { Button } from "./ui/Button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
+
+const shippedMoments = new Set<string>();
 
 export type BoardWorkItem = ProjectSnapshot["workItems"][number];
 
@@ -52,6 +55,18 @@ export const WorkItemCard = forwardRef<
   const { t } = useLanguage();
   const isPresent = useIsPresent();
   const { firstLoad, previous, skip, reduced } = useContext(BoardMotionContext);
+  const was = previous?.get(item.slug);
+  const moment = useRef(false);
+  const [ringDone, setRingDone] = useState(false);
+  if (
+    !moment.current &&
+    !shippedMoments.has(item.slug) &&
+    becameShipped(was, item.column === "ship" || !!item.merged)
+  ) {
+    moment.current = true;
+    shippedMoments.add(item.slug);
+  }
+  const shipped = moment.current && !ringDone;
   const arrival = !skip && (previous ? !previous.has(item.slug) : firstLoad);
   const { rest, press } = usePress("card", { onClick: () => onOpen(item.slug) });
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
@@ -139,6 +154,16 @@ export const WorkItemCard = forwardRef<
       className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring ${running ? "bg-running-soft" : attentionCount > 0 ? "bg-attention-soft" : blocked ? "bg-blocked-soft" : "bg-muted"} ${selected ? "ring-2 ring-ring" : ""}`}
       aria-label={`${item.slug}: ${item.title}`}
     >
+      {shipped && (
+        <m.span
+          aria-hidden="true"
+          onAnimationComplete={() => setRingDone(true)}
+          className="pointer-events-none absolute inset-0 rounded-2xl ring-2 ring-success"
+          initial={reduced ? { opacity: 1 } : { scale: 0.9, opacity: 1 }}
+          animate={reduced ? { opacity: 0 } : { scale: 1.06, opacity: 0 }}
+          transition={spring.celebrate}
+        />
+      )}
       <m.div layout="position">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <span

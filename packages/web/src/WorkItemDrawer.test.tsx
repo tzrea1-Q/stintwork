@@ -7,7 +7,7 @@ import {
 } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { LazyMotion, domMax, MotionGlobalConfig } from "motion/react";
+import { AnimatePresence, LazyMotion, domMax, MotionGlobalConfig } from "motion/react";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
@@ -1016,4 +1016,72 @@ test("docked Escape collapses full screen before closing and restores focus", as
   await user.keyboard("{Escape}");
   expect(onClose).toHaveBeenCalledOnce();
   await waitFor(() => expect(opener).toHaveFocus());
+});
+
+test("an exiting docked drawer is inert and hidden while it remains mounted", () => {
+  MotionGlobalConfig.skipAnimations = false;
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === "(min-width: 1024px)",
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const tree = (open: boolean) => (
+    <LazyMotion features={domMax} strict>
+      <button type="button">Open</button>
+      <AnimatePresence>
+        {open && <WorkItemDrawer key="first" item={item} onClose={() => {}} />}
+      </AnimatePresence>
+    </LazyMotion>
+  );
+  try {
+    const view = render(tree(false));
+    const opener = screen.getByRole("button", { name: "Open" });
+    opener.focus();
+    view.rerender(tree(true));
+    const drawer = view.container.querySelector(".work-item-drawer") as HTMLElement;
+    expect(drawer).toContainElement(document.activeElement as HTMLElement);
+    view.rerender(tree(false));
+    expect(drawer).toBeInTheDocument();
+    expect(drawer).toHaveAttribute("data-exiting", "true");
+    expect(drawer).toHaveAttribute("inert");
+    expect(drawer).toHaveAttribute("aria-hidden", "true");
+    expect(opener).toHaveFocus();
+    expect(screen.queryByRole("button", { name: "Close work item" })).not.toBeInTheDocument();
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test("an exiting mobile drawer is inert and hidden while it remains mounted", () => {
+  MotionGlobalConfig.skipAnimations = false;
+  vi.stubGlobal("matchMedia", () => ({
+    matches: false,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const tree = (open: boolean) => (
+    <LazyMotion features={domMax} strict>
+      <AnimatePresence>
+        {open && <WorkItemDrawer key="first" item={item} onClose={() => {}} />}
+      </AnimatePresence>
+    </LazyMotion>
+  );
+  try {
+    const view = render(tree(true));
+    const drawer = document.querySelector(".work-item-drawer") as HTMLElement;
+    expect(drawer).toBeInTheDocument();
+    view.rerender(tree(false));
+    expect(drawer).toBeInTheDocument();
+    expect(drawer).toHaveAttribute("data-exiting", "true");
+    expect(drawer).toHaveAttribute("inert");
+    expect(drawer).toHaveAttribute("aria-hidden", "true");
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
 });
