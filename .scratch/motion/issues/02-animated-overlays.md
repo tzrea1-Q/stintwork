@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 02 — Animated overlays
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -32,3 +32,26 @@ Scope: Dialog, Sheet, Popover, Tooltip, DropdownMenu, Select, `CommandPalette.ts
 - [ ] Under reduced motion, overlays fade without scale or travel.
 - [ ] Existing overlay unit tests and the full browser suite pass. `motion.spec.ts` covers every overlay listed above.
 - [ ] Comments include the coordinator's normal-speed and 10%-speed review on real data at 1440 and 390px in both languages.
+
+## Comments
+
+**Coordinator, 2026-11-24:** Verification.
+
+- Codex implemented it in two stages, A (Dialog, Sheet, Popover and Tooltip) and B (DropdownMenu, Select, Jump to, Sonner, and exits for every Dialog consumer).
+- Coordinator review in Chrome found and got fixed:
+  - At 390px the Sheet stayed at Motion's `initial` state (opacity 0, translateX(100%)), so taps went through it and dismissed it. Codex could not reproduce the stall in jsdom. Side sheets now enter with a token-timed CSS `translate` transition and exit through Motion.
+  - `waitForRest` passed an async predicate to `page.waitForFunction`, which resolved immediately. After the rewrite, it was too strict for centred dialogs (`translate: -50% -50%`).
+  - The Jump to timing test was flaky; it now measures inside the page.
+  - On integration, closing cleared the selection, `?item=` and `customiseId` only after the exit animation. Reloading or pressing ⌘K right after closing reopened detail or was ignored. Open state now clears at once, and the parent keeps the component mounted for its exit.
+- Sonner keeps its own animation where its API does not expose timing; see the comment in `ui/Sonner.tsx`.
+- **Final runs** on `motion-integration` (02, 03 and 04 merged):
+  - `pnpm format:check`, `pnpm lint` (11 existing warnings), `pnpm typecheck` and `pnpm build` passed.
+  - `pnpm test`: 3,521 passed and 1 failed. The failure is `index.test.ts` "watching discovers project directories…", which predates this branch and also fails on `main`.
+  - `PLAYWRIGHT_CHROME_CHANNEL=chrome pnpm test:e2e`: 534 passed and 4 failed. The four were one Needs you case, one `motion-board` case and two `motion-detail` cases. All four passed in two serial reruns (53/53 each): the frame-timing and long-task checks are sensitive to load from parallel workers.
+- **Real browser** on this repository's data, in a git clone, motion on, at 1440px in en and zh-CN and at 390px. Sampled frame by frame:
+  - the docked panel slides in by transform and reaches rest in about 520ms;
+  - board cards glide by position, their width snapping (244→254px) with no stretching;
+  - Create work item scales from 0.92 and fades through blur, reaching rest in about 460ms;
+  - the Settings menu grows from its trigger with a slight overshoot (1.0025) on `spring.pop`;
+  - at 390px the Sheet slides from x=291 to 16 in about 470ms;
+  - no horizontal overflow at any width.
