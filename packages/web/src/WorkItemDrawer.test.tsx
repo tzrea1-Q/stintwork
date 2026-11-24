@@ -971,6 +971,7 @@ test("mark shipped remains mounted during exit and returns focus", async () => {
     MotionGlobalConfig.skipAnimations = true;
     localStorage.removeItem(languageStorageKey);
   }
+});
 
 test("docked Escape collapses full screen before closing and restores focus", async () => {
   vi.stubGlobal("matchMedia", () => ({
