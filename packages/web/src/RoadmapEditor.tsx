@@ -30,6 +30,7 @@ export function RoadmapEditor({ snapshot }: { snapshot: ProjectSnapshot }) {
 function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClose: () => void }) {
   const { t } = useLanguage();
   const labels = t.planning.roadmap;
+  const [overlayOpen, setOverlayOpen] = useState(true);
   const [milestones, setMilestones] = useState(snapshot.milestones);
   const [selected, setSelected] = useState(snapshot.milestones[0]?.id ?? "");
   const milestone = milestones.find((item) => item.id === selected);
@@ -75,7 +76,7 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
     }
   }
   function close() {
-    if (!saving && discard()) onClose();
+    if (!saving && discard()) setOverlayOpen(false);
   }
   async function save(change: RoadmapChange) {
     if (saving) return;
@@ -130,12 +131,13 @@ function RoadmapSheet({ snapshot, onClose }: { snapshot: ProjectSnapshot; onClos
   }
   return (
     <Dialog
-      open
+      open={overlayOpen}
       onOpenChange={(open) => {
         if (!open) close();
       }}
     >
       <DialogContent
+        onExitComplete={onClose}
         className="roadmap-editor w-[960px] [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2"
         onEscapeKeyDown={(event) => {
           if (saving || adding) event.preventDefault();

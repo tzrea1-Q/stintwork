@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, editRoadmap, indexProject } from "@stintwork/core";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { domMax, LazyMotion, MotionGlobalConfig } from "motion/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { chooseOption } from "./select-test-helper";
@@ -121,4 +122,34 @@ test("reveals the new milestone form and dismisses it with Escape or Cancel", as
   expect(fetch).toHaveBeenCalledTimes(1);
   expect(JSON.parse(String(fetch.mock.calls[0][1].body))).toEqual({ kind: "add", name: "Next" });
   expect(await sheet.findByRole("button", { name: "New milestone" })).toBeInTheDocument();
+});
+
+test("closing the roadmap returns focus to its opener", async () => {
+  const { user, sheet } = await open();
+  const trigger = screen.getByRole("button", { name: "Edit roadmap", hidden: true });
+  await user.click(sheet.getByRole("button", { name: "Close roadmap" }));
+  await vi.waitFor(() => expect(trigger).toHaveFocus());
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+test("roadmap stays mounted during its exit and returns focus afterwards", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    const user = userEvent.setup();
+    render(
+      <LazyMotion features={domMax} strict>
+        <RoadmapEditor snapshot={snapshot()} />
+      </LazyMotion>,
+    );
+    const trigger = screen.getByRole("button", { name: "Edit roadmap" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Edit roadmap" });
+    await vi.waitFor(() => expect(dialog).toHaveStyle({ opacity: "1" }), { timeout: 2500 });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close roadmap" }));
+    expect(dialog).toBeInTheDocument();
+    await vi.waitFor(() => expect(dialog).not.toBeInTheDocument(), { timeout: 2500 });
+    await vi.waitFor(() => expect(trigger).toHaveFocus());
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
 });

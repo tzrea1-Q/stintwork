@@ -32,6 +32,7 @@ export function TopBar({
 }) {
   const { t } = useLanguage();
   const [setupOpen, setSetupOpen] = useState(false);
+  const [setupMounted, setSetupMounted] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
   const setup = snapshot.setup;
   const checks = [
@@ -182,7 +183,13 @@ export function TopBar({
             >
               <LanguageMenu />
               <DropdownMenuSeparator className="my-1 border-t border-border" />
-              <DropdownMenuItem aria-haspopup="dialog" onSelect={() => setSetupOpen(true)}>
+              <DropdownMenuItem
+                aria-haspopup="dialog"
+                onSelect={() => {
+                  setSetupMounted(true);
+                  setSetupOpen(true);
+                }}
+              >
                 {t.topBar.projectSetup}{" "}
                 <span className="ml-auto pl-4 text-muted-foreground">
                   {ready}/{checks.length}
@@ -197,8 +204,9 @@ export function TopBar({
           </span>
         )}
         <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
-          {setupOpen && (
+          {setupMounted && (
             <SetupGuide
+              onExitComplete={() => setSetupMounted(false)}
               workflows={snapshot.workflows}
               onClose={() => setSetupOpen(false)}
               returnFocusRef={settingsTrigger}

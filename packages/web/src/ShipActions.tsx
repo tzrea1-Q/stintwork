@@ -34,6 +34,8 @@ export function ShipActions({
   const [conflicts, setConflicts] = useState<string[]>([]);
   const [message, setMessage] = useState("");
   const [preview, setPreview] = useState<PullRequestPreview | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeMethod, setMergeMethod] = useState<MergeMethod | null>(null);
   const [opened, setOpened] = useState(item.pullRequest);
   const publishingTrigger = useRef<HTMLButtonElement>(null);
@@ -98,15 +100,17 @@ export function ShipActions({
       }
       if (name === "preview-pr") {
         setPreview(result.preview);
+        setPreviewOpen(true);
         return;
       }
       if (name === "preview-merge-pr") {
         setMergeMethod(result.mergeMethod);
+        setMergeOpen(true);
         return;
       }
       if (name === "open-pr") {
         setOpened(result.pullRequest);
-        setPreview(null);
+        setPreviewOpen(false);
         return;
       }
       setMessage(
@@ -117,10 +121,10 @@ export function ShipActions({
             )
           : t.review.ship.sentBack(result.stageName),
       );
-      setMergeMethod(null);
+      setMergeOpen(false);
     } catch (cause) {
-      if (name === "open-pr") setPreview(null);
-      if (name === "merge-pr") setMergeMethod(null);
+      if (name === "open-pr") setPreviewOpen(false);
+      if (name === "merge-pr") setMergeOpen(false);
       setError(cause instanceof Error ? cause : t.review.ship.error);
     } finally {
       setBusy(false);
@@ -209,12 +213,13 @@ export function ShipActions({
               </Button>
               {mergeMethod && (
                 <Dialog
-                  open
+                  open={mergeOpen}
                   onOpenChange={(open) => {
-                    if (!open && !busy) setMergeMethod(null);
+                    if (!open && !busy) setMergeOpen(false);
                   }}
                 >
                   <DialogContent
+                    onExitComplete={() => setMergeMethod(null)}
                     returnFocusRef={mergeTrigger}
                     aria-describedby={undefined}
                     className="[overflow-wrap:anywhere] [&_p]:my-3"
@@ -243,7 +248,7 @@ export function ShipActions({
                     >
                       {t.review.ship.confirmMethod(mergeMethod)}
                     </Button>
-                    <Button type="button" disabled={busy} onClick={() => setMergeMethod(null)}>
+                    <Button type="button" disabled={busy} onClick={() => setMergeOpen(false)}>
                       {t.review.ship.cancel}
                     </Button>
                   </DialogContent>
@@ -272,12 +277,13 @@ export function ShipActions({
           )}
           {preview && (
             <Dialog
-              open
+              open={previewOpen}
               onOpenChange={(open) => {
-                if (!open && !busy) setPreview(null);
+                if (!open && !busy) setPreviewOpen(false);
               }}
             >
               <DialogContent
+                onExitComplete={() => setPreview(null)}
                 returnFocusRef={publishingTrigger}
                 aria-label={t.review.ship.confirmPublishing}
                 aria-describedby={undefined}
@@ -338,7 +344,7 @@ export function ShipActions({
                     ? t.review.ship.confirmAdoption
                     : t.review.ship.confirmPush}
                 </Button>
-                <Button type="button" disabled={busy} onClick={() => setPreview(null)}>
+                <Button type="button" disabled={busy} onClick={() => setPreviewOpen(false)}>
                   {t.review.ship.cancel}
                 </Button>
               </DialogContent>

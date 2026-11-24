@@ -26,10 +26,12 @@ type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
 export function SetupGuide({
   workflows = {},
   onClose,
+  onExitComplete,
   returnFocusRef,
 }: {
   workflows?: WorkflowDefinitions;
   onClose: () => void;
+  onExitComplete: () => void;
   returnFocusRef?: RefObject<HTMLElement>;
 }) {
   const { t } = useLanguage();
@@ -183,6 +185,7 @@ export function SetupGuide({
   const selectedChanges = guide?.changes.filter(({ path }) => selected.includes(path)) ?? [];
   return (
     <DialogContent
+      onExitComplete={onExitComplete}
       returnFocusRef={returnFocusRef}
       className="setup-guide flex w-2xl flex-col overflow-hidden p-0 [overflow-wrap:anywhere]"
       onEscapeKeyDown={(event) => {

@@ -10,6 +10,8 @@ import { Kbd } from "./ui/Kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function CommandPalette({
+  open = true,
+  onExitComplete,
   snapshot,
   milestone,
   onMilestoneChange,
@@ -18,6 +20,8 @@ export function CommandPalette({
   onCustomiseWorkflow,
   onClose,
 }: {
+  open?: boolean;
+  onExitComplete?: () => void;
   snapshot: ProjectSnapshot;
   milestone: string;
   onMilestoneChange: (milestone: string) => void;
@@ -30,12 +34,14 @@ export function CommandPalette({
 
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
       <DialogContent
+        onExitComplete={onExitComplete}
+        motion="palette"
         aria-describedby={undefined}
         className="command-palette w-xl rounded-[22px] bg-popover text-popover-foreground p-0 focus-within:ring-2 focus-within:ring-ring"
       >

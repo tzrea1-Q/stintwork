@@ -47,6 +47,11 @@ export function Board({
     viewFromSearch(window.location.search),
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteMounted, setPaletteMounted] = useState(false);
+  useEffect(() => {
+    if (paletteOpen) setPaletteMounted(true);
+  }, [paletteOpen]);
+  const [verifyingOpen, setVerifyingOpen] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [createMounted, setCreateMounted] = useState(false);
   useEffect(() => {
@@ -617,19 +622,27 @@ export function Board({
       )}
       {verifyingItem && (
         <Sheet
-          open
+          open={verifyingOpen}
           onOpenChange={(open) => {
-            if (!open) setOpenSlug(null);
+            if (!open) setVerifyingOpen(false);
           }}
         >
-          <SheetContent aria-describedby={undefined}>
+          <SheetContent
+            aria-describedby={undefined}
+            onExitComplete={() => {
+              setOpenSlug(null);
+              setVerifyingOpen(true);
+            }}
+          >
             <SheetTitle>{t.board.verifyingGithub}</SheetTitle>
-            <Button onClick={() => setOpenSlug(null)}>{t.stints.closeWorkItem}</Button>
+            <Button onClick={() => setVerifyingOpen(false)}>{t.stints.closeWorkItem}</Button>
           </SheetContent>
         </Sheet>
       )}
-      {paletteOpen && (
+      {(paletteOpen || paletteMounted) && (
         <CommandPalette
+          open={paletteOpen}
+          onExitComplete={() => setPaletteMounted(false)}
           onCreateItem={() => setCreateOpen(true)}
           onCustomiseWorkflow={setCustomiseId}
           snapshot={snapshot}

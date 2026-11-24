@@ -97,6 +97,7 @@ function StintBriefAction({
   const stage = workflow.stages.find(({ id }) => id === item.stage);
   const [open, setOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const reasonId = useId();
   const availability = briefAvailability(item, ticket, workflows);
   const reason = githubReadOnly
@@ -116,7 +117,10 @@ function StintBriefAction({
       <Button
         disabled={reason !== null}
         aria-describedby={reason ? reasonId : undefined}
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          setMounted(true);
+          setOpen(true);
+        }}
       >
         {item.stints.some((stint) => stint.recovery?.state === "fallback")
           ? t.stints.startNewStint
@@ -127,8 +131,10 @@ function StintBriefAction({
           {reason}
         </p>
       )}
-      {open && (!reason || starting) && (
+      {mounted && (
         <BriefPreviewSheet
+          open={open && (!reason || starting)}
+          onExitComplete={() => setMounted(false)}
           onStartingChange={setStarting}
           slug={item.slug}
           ticketNumber={ticket?.number ?? null}
@@ -144,6 +150,8 @@ function StintBriefAction({
 }
 
 function BriefPreviewSheet({
+  open,
+  onExitComplete,
   slug,
   ticketNumber,
   github,
@@ -151,6 +159,8 @@ function BriefPreviewSheet({
   onClose,
   onStartingChange,
 }: {
+  open: boolean;
+  onExitComplete: () => void;
   onStartingChange: (starting: boolean) => void;
   slug: string;
   ticketNumber: number | null;
@@ -358,12 +368,13 @@ function BriefPreviewSheet({
 
   return (
     <Dialog
-      open
+      open={open}
       onOpenChange={(open) => {
         if (!open) onClose();
       }}
     >
       <DialogContent
+        onExitComplete={onExitComplete}
         className="brief-preview-sheet flex h-[calc(100dvh-32px)] w-3xl flex-col p-0"
         onOpenAutoFocus={(event) => {
           event.preventDefault();

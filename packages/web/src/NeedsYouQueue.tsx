@@ -40,6 +40,7 @@ export function NeedsYouQueue({
   onOpenItem: (slug: string) => void;
 }) {
   const { t, language } = useLanguage();
+  const [overlayOpen, setOverlayOpen] = useState(true);
   const opener = useRef<HTMLElement | null>(null);
   const navigating = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -93,13 +94,14 @@ export function NeedsYouQueue({
 
   return (
     <Sheet
-      open
+      open={overlayOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) setOverlayOpen(false);
       }}
     >
       <TooltipProvider>
         <SheetContent
+          onExitComplete={onClose}
           className="needs-you-queue flex w-[560px] flex-col p-0"
           aria-describedby={undefined}
           onOpenAutoFocus={(event) => {
@@ -267,7 +269,7 @@ export function NeedsYouQueue({
                     className="attention-work-item h-auto min-h-8 max-w-full justify-start whitespace-normal py-1 text-left wrap-anywhere"
                     onClick={() => {
                       navigating.current = item.workItem !== openSlug;
-                      onClose();
+                      setOverlayOpen(false);
                       onOpenItem(item.workItem);
                     }}
                   >

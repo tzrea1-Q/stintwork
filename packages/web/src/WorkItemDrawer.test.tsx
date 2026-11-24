@@ -12,6 +12,7 @@ import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
+import { MarkShipped } from "./MarkShipped";
 import { recoveryStint } from "./recovery-test-fixtures";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 import { MotionRoot } from "./ui/MotionRoot";
@@ -945,5 +946,29 @@ test("the mobile drawer enters when Motion features load after it mounts", async
     });
   } finally {
     MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test("mark shipped remains mounted during exit and returns focus", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  try {
+    localStorage.setItem(languageStorageKey, "en");
+    const user = userEvent.setup();
+    render(
+      <LazyMotion features={domMax} strict>
+        <MarkShipped slug="first" />
+      </LazyMotion>,
+    );
+    const trigger = screen.getByRole("button", { name: "Mark as shipped" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "Mark as shipped" });
+    await waitFor(() => expect(dialog).toHaveStyle({ opacity: "1" }), { timeout: 2500 });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(dialog).toBeInTheDocument();
+    await waitFor(() => expect(dialog).not.toBeInTheDocument(), { timeout: 2500 });
+    expect(trigger).toHaveFocus();
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+    localStorage.removeItem(languageStorageKey);
   }
 });

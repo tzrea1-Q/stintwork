@@ -213,7 +213,8 @@ export function WorkItemDrawer({
       /* Storage may be blocked. */
     }
   }
-  const dismiss = () => (full ? onFullChange?.(false) : onClose());
+  const [sheetOpen, setSheetOpen] = useState(true);
+  const dismiss = () => (full ? onFullChange?.(false) : docked ? onClose() : setSheetOpen(false));
   const [docked, setDocked] = useState(
     () =>
       typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches,
@@ -459,7 +460,7 @@ export function WorkItemDrawer({
                 className="size-10 shrink-0"
                 ref={closeButton}
                 aria-label={t.stints.closeWorkItem}
-                onClick={onClose}
+                onClick={() => (docked ? onClose() : setSheetOpen(false))}
               >
                 <X aria-hidden="true" />
               </Button>
@@ -994,12 +995,13 @@ export function WorkItemDrawer({
         </aside>
       ) : (
         <Sheet
-          open
+          open={sheetOpen}
           onOpenChange={(open) => {
-            if (!open) onClose();
+            if (!open) setSheetOpen(false);
           }}
         >
           <SheetContent
+            onExitComplete={onClose}
             className="work-item-drawer flex min-h-0 min-w-0 w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col overflow-hidden p-0 [&_button]:min-h-10 [&_button]:min-w-10 [&_summary]:min-h-10"
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => {

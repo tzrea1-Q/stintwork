@@ -124,3 +124,12 @@ test("immediately cancelling a nested select dismisses only the select and retur
   await userEvent.setup().keyboard("{Escape}");
   await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
 });
+
+test("a select changes value by pointer", async () => {
+  const user = userEvent.setup();
+  render(<MilestoneSelect />);
+  const trigger = screen.getByRole("combobox", { name: "Milestone" });
+  await user.click(trigger);
+  await user.click(await screen.findByRole("option", { name: "Next milestone" }));
+  await waitFor(() => expect(trigger).toHaveTextContent("Next milestone"));
+});

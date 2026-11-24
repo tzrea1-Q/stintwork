@@ -33,7 +33,13 @@ function Toaster({ ...props }: ToasterProps) {
           "--border-radius": "var(--radius)",
         } as CSSProperties
       }
-      toastOptions={{ classNames: { toast: "!shadow-overlay" } }}
+      // Sonner hard-codes its removal delay; the visible transition uses our dismissal token.
+      toastOptions={{
+        classNames: {
+          toast:
+            "!shadow-overlay !transition-[transform,opacity] !duration-(--motion-duration-dismiss) !ease-(--motion-ease-away)",
+        },
+      }}
       {...props}
     />
   );

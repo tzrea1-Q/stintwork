@@ -5,7 +5,14 @@ export async function sampleFrames(page: Page, selector: string, ms: number) {
   return page.evaluate(
     ({ selector, ms }) =>
       new Promise<
-        { opacity: string; transform: string; height: string; overflow: number; left: number }[]
+        {
+          opacity: string;
+          transform: string;
+          height: string;
+          overflow: number;
+          left: number;
+          timestamp: number;
+        }[]
       >((resolve, reject) => {
         const element = document.querySelector(selector);
         if (!element) return reject(new Error(`Missing element: ${selector}`));
@@ -15,18 +22,20 @@ export async function sampleFrames(page: Page, selector: string, ms: number) {
           height: string;
           overflow: number;
           left: number;
+          timestamp: number;
         }[] = [];
         const start = performance.now();
-        const sample = () => {
+        const sample = (timestamp: number) => {
           const style = getComputedStyle(element);
           frames.push({
+            timestamp,
             opacity: style.opacity,
             transform: style.transform,
             height: style.height,
             left: element.getBoundingClientRect().left,
             overflow: document.documentElement.scrollWidth - innerWidth,
           });
-          if (performance.now() - start < ms) requestAnimationFrame(sample);
+          if (timestamp - start < ms) requestAnimationFrame(sample);
           else resolve(frames);
         };
         requestAnimationFrame(sample);

@@ -16,6 +16,7 @@ import { StatusChip } from "./ui/StatusChip";
 
 export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => void }) {
   const { t } = useLanguage();
+  const [overlayOpen, setOverlayOpen] = useState(true);
   const [preview, setPreview] = useState<{ path: string; yaml: string } | null>(null);
   const [error, setError] = useErrorText();
   const [saving, setSaving] = useState(false);
@@ -65,7 +66,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
       const result = await readResponseJson(response);
       if (!response.ok) throw new CoreTextError(result, en.planning.customise.errors.save);
       toast.success(t.actionToast.workflowSaved);
-      onClose();
+      setOverlayOpen(false);
     } catch (cause) {
       toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.customise.errors.save);
@@ -75,12 +76,13 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
 
   return (
     <Dialog
-      open
+      open={overlayOpen}
       onOpenChange={(open) => {
-        if (!open && !saving) onClose();
+        if (!open && !saving) setOverlayOpen(false);
       }}
     >
       <DialogContent
+        onExitComplete={onClose}
         aria-describedby={undefined}
         className="customise-workflow"
         onEscapeKeyDown={(event) => {
@@ -153,7 +155,7 @@ export function CustomiseWorkflow({ id, onClose }: { id: string; onClose: () => 
             </p>
           )}
           <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
-            <Button onClick={onClose}>{t.planning.customise.cancel}</Button>
+            <Button onClick={() => setOverlayOpen(false)}>{t.planning.customise.cancel}</Button>
             <Button variant="primary" disabled={!preview} onClick={() => void customise()}>
               {saving ? t.planning.customise.saving : t.planning.customise.confirm}
             </Button>

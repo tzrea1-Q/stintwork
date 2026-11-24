@@ -261,6 +261,7 @@ export function ReviewOverlay({
   reviewStageId?: string;
 } & ReviewSlots) {
   const { t } = useLanguage();
+  const [overlayOpen, setOverlayOpen] = useState(true);
   const closeButton = useRef<HTMLButtonElement>(null);
   const findingId = useId();
   const detailsId = useId();
@@ -407,12 +408,13 @@ export function ReviewOverlay({
 
   return (
     <Dialog
-      open
+      open={overlayOpen}
       onOpenChange={(open) => {
-        if (!open) onClose();
+        if (!open) setOverlayOpen(false);
       }}
     >
       <DialogContent
+        onExitComplete={onClose}
         className="review-overlay flex h-[calc(100dvh-32px)] w-[calc(100vw-32px)] max-w-[min(1600px,calc(100vw-32px))] flex-col p-0"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
@@ -499,7 +501,7 @@ export function ReviewOverlay({
               size="sm"
               className="md:min-h-8 md:px-3"
               ref={closeButton}
-              onClick={onClose}
+              onClick={() => setOverlayOpen(false)}
               aria-label={t.review.diff.close}
             >
               <X aria-hidden="true" /> {t.review.diff.close}

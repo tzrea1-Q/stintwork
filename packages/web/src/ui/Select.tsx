@@ -1,11 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
+import { AnimatePresence, m, MotionGlobalConfig } from "motion/react";
 import { Check, ChevronDown } from "lucide-react";
 import { Select as Primitive } from "radix-ui";
-import { type ComponentPropsWithoutRef, type ElementRef, forwardRef, useState } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type ElementRef,
+  createContext,
+  forwardRef,
+  useContext,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { Button } from "./Button";
 import { cn } from "./cn";
+import { scale, spring, tween, useReducedMotionSafe } from "./motion";
+
+const OpenContext = createContext(true);
 
 export function Select({
   open,
@@ -15,18 +26,20 @@ export function Select({
 }: ComponentPropsWithoutRef<typeof Primitive.Root>) {
   const [currentOpen, setOpen] = useState(defaultOpen);
   return (
-    <Primitive.Root
-      {...props}
-      open={open ?? currentOpen}
-      onOpenChange={(nextOpen) => {
-        flushSync(() => {
-          setOpen(nextOpen);
-          onOpenChange?.(nextOpen);
-        });
-        // Workaround: refresh Radix 1.2's parent Escape listener synchronously until upstream fixes layer changes.
-        flushSync(() => document.dispatchEvent(new CustomEvent("dismissableLayer.update")));
-      }}
-    />
+    <OpenContext.Provider value={open ?? currentOpen}>
+      <Primitive.Root
+        {...props}
+        open={open ?? currentOpen}
+        onOpenChange={(nextOpen) => {
+          flushSync(() => {
+            setOpen(nextOpen);
+            onOpenChange?.(nextOpen);
+          });
+          // Workaround: refresh Radix 1.2's parent Escape listener synchronously until upstream fixes layer changes.
+          flushSync(() => document.dispatchEvent(new CustomEvent("dismissableLayer.update")));
+        }}
+      />
+    </OpenContext.Provider>
   );
 }
 export const SelectValue = Primitive.Value;
@@ -55,24 +68,51 @@ export const SelectTrigger = forwardRef<
 export const SelectContent = forwardRef<
   ElementRef<typeof Primitive.Content>,
   ComponentPropsWithoutRef<typeof Primitive.Content>
->(function SelectContent({ className, children, sideOffset = 4, ...props }, ref) {
+>(function SelectContent(
+  { className, children, sideOffset = 4, position = "popper", ...props },
+  ref,
+) {
+  const open = useContext(OpenContext);
+  const reduced = useReducedMotionSafe();
+  const hidden = reduced ? { opacity: 0 } : { opacity: 0, scale: scale.menu };
   return (
-    <Primitive.Portal>
-      <Primitive.Content
-        {...props}
-        ref={ref}
-        position="popper"
-        sideOffset={sideOffset}
-        collisionPadding={17}
-        avoidCollisions
-        className={cn(
-          "z-50 w-[max(280px,var(--radix-select-trigger-width))] min-w-0 max-w-[calc(100vw-34px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-xl border border-border bg-card p-1 text-sm text-foreground shadow-overlay",
-          className,
+    <>
+      {!open && (
+        <Primitive.Content>
+          <Primitive.Viewport>{children}</Primitive.Viewport>
+        </Primitive.Content>
+      )}
+      <AnimatePresence>
+        {open && (
+          <Primitive.Portal forceMount>
+            <Primitive.Content
+              {...props}
+              ref={ref}
+              forceMount
+              asChild
+              position={position}
+              sideOffset={sideOffset}
+              collisionPadding={17}
+              avoidCollisions
+              className={cn(
+                "z-50 w-[max(280px,var(--radix-select-trigger-width))] min-w-0 max-w-[calc(100vw-34px)] max-h-[var(--radix-select-content-available-height)] overflow-auto rounded-xl border border-border bg-card p-1 text-sm text-foreground shadow-overlay",
+                className,
+              )}
+            >
+              <m.div
+                style={{ transformOrigin: "var(--radix-select-content-transform-origin)" }}
+                initial={MotionGlobalConfig.skipAnimations ? false : hidden}
+                animate={reduced ? { opacity: 1 } : { opacity: 1, scale: 1 }}
+                exit={{ ...hidden, transition: tween.dismiss }}
+                transition={spring.pop}
+              >
+                <Primitive.Viewport>{children}</Primitive.Viewport>
+              </m.div>
+            </Primitive.Content>
+          </Primitive.Portal>
         )}
-      >
-        <Primitive.Viewport>{children}</Primitive.Viewport>
-      </Primitive.Content>
-    </Primitive.Portal>
+      </AnimatePresence>
+    </>
   );
 });
 

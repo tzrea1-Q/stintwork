@@ -59,3 +59,20 @@ test("outside press dismisses a menu and restores trigger focus", async () => {
   await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   expect(screen.getByRole("button", { name: "Language" })).toHaveFocus();
 });
+
+test("opens by click and Enter and selects with the keyboard", async () => {
+  const user = userEvent.setup();
+  render(<LanguageMenu />);
+  const trigger = screen.getByRole("button", { name: "Language" });
+  await user.click(trigger);
+  expect(await screen.findByRole("menu")).toBeVisible();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await user.keyboard("{Enter}{ArrowDown}{Enter}");
+  await waitFor(() => expect(trigger).toHaveFocus());
+  await user.keyboard("{ArrowDown}");
+  expect(await screen.findByRole("menuitemradio", { name: "简体中文" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+});
