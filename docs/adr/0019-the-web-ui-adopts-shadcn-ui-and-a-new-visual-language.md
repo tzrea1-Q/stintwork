@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The web UI adopts shadcn/ui and a new visual language
 
+Status: partly superseded by [ADR 0020](0020-work-surfaces-drop-page-titles-and-detail-can-go-full-screen.md) (page titles and the docked-only detail)
+
 On 2026-11-10 the maintainer found the shipped UI rough and chose Variant D of the visual prototype. It combines Variant B's top pill navigation and Overview with Variant A's Pipeline board and docked work item detail. The prototype at tag `prototype-visual-v1` is a design reference to rebuild from, never code to import.
 
 The coordinator verified that `pnpm dlx shadcn@latest init -b radix` and `add` work with React 18.3.1, Tailwind 4 and Vite 7 without source fixes. shadcn defaults new projects to Base UI, supports Radix, uses OKLCH tokens and class-based dark mode, and has unified Radix imports in `radix-ui` via `shadcn migrate radix`.

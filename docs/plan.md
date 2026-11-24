@@ -220,6 +220,17 @@ Spec: `.scratch/visual-fidelity/spec.md`. Reference: Variant D, ADR 0019.
 
 **Exit test:** the browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` and both colour schemes, and the maintainer compares Overview, Pipeline with the detail panel, Needs you and every dialog against Variant D at 1440, 768 and 390px in both languages and accepts the result.
 
+### M16 · Board and detail polish · M
+
+Spec: `.scratch/board-polish/spec.md`. Decisions: ADR 0020, ADR 0021.
+
+- Drop the Overview and Pipeline page headers; keep stage headers visible while the board scrolls; collapse empty stages and let busy stages use the space.
+- Record merges made outside Stintwork, so finished work reaches Shipped.
+- Rebuild Edit roadmap as a two-pane dialog with one save per milestone.
+- Make work item detail a tabbed, resizable panel that can go full screen.
+
+**Exit test:** the browser suite passes at 1440, 1024, 768 and 390px in `en` and `zh-CN` and both colour schemes, and the maintainer walks Pipeline with the detail panel, Overview and Edit roadmap on this repository's real data at 1440, 768 and 390px in both languages and accepts the result.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.

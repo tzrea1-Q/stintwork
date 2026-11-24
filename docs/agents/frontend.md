@@ -14,7 +14,7 @@ Let Radix handle overlay positioning, focus, Escape and outside-click dismissal.
 
 ### Choosing a container
 
-Use Popover for glanceable information and single immediate actions. Use Dialog for multi-step tasks, forms and anything that writes files or commits. Use a docked panel for a work item alongside the Pipeline board at 1024px and wider; use Sheet below 1024px and for a queue. Use Tooltip only for labels.
+Use Popover for glanceable information and single immediate actions. Use Dialog for multi-step tasks, forms and anything that writes files or commits. Use a resizable docked panel for a work item alongside the Pipeline board at 1024px and wider, with a full-screen mode below the top bar (ADR 0020); use Sheet below 1024px and for a queue. Use Tooltip only for labels.
 
 ## Tokens and styling
 
@@ -28,9 +28,9 @@ Bundle Geist and Geist Mono with `@fontsource-variable/*`, using the CJK system 
 - Use a grey canvas, white rounded cards with large radii and soft shadows. Give each control type a consistent `src/ui/` variant; feature styling belongs on layout and content.
 - Put one near-black pill primary action on each surface. Reserve violet for selection and focus.
 - Render statuses as shared soft-tinted chips with dots. Use 36px round tinted icon chips in list rows, property rows with icon, muted label and value, and segmented progress for counts.
-- Use a 14px base, 28–32px page titles and large tabular numerals for counts. Use spacing tokens in 4px steps and lucide-react icons at token-defined sizes. Give every icon-only button a tooltip matching its accessible name.
+- Use a 14px base and large tabular numerals for counts. Overview and Pipeline have no page header; dialogs keep their titles (ADR 0020). Use spacing tokens in 4px steps and lucide-react icons at token-defined sizes. Give every icon-only button a tooltip matching its accessible name.
 - Use the danger variant and a confirmation step for irreversible actions. Toasts report action results; show Undo only when the action really can be reversed. None can today.
-- Use a top bar with project and branch, centred Overview and Pipeline pill navigation, Jump to, Needs you and Settings; no sidebar. Overview is home and shows only existing snapshot data or its derivations. Omit unavailable cards. Pipeline has stage columns and a docked detail panel at 1024px and wider; below that detail uses a Sheet.
+- Use a top bar with project and branch, centred Overview and Pipeline pill navigation, Jump to, Needs you and Settings; no sidebar. Overview is home and shows only existing snapshot data or its derivations. Omit unavailable cards. Pipeline has stage columns, with empty columns collapsed to rails, and a docked detail panel at 1024px and wider; below that detail uses a Sheet. Detail content uses tabs (Overview, Spec, Tickets, Stints) in every container.
 - Keep existing roadmap editor, setup, customise, review, gate and brief preview entry points and behaviour. Disclose secondary details in a panel, popover or expandable section so the board stays scannable.
 
 ## Layout and states

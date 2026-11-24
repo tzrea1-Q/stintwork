@@ -91,3 +91,9 @@ Id: m15
 Status: active
 
 - visual-fidelity
+
+## M16 · Board and detail polish
+Id: m16
+Status: active
+
+- board-polish
