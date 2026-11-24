@@ -18,6 +18,8 @@ import {
   GitPullRequest,
   LayoutGrid,
   LockKeyhole,
+  Maximize2,
+  Minimize2,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -41,10 +43,13 @@ import { Button } from "./ui/Button";
 import { AgentAvatar } from "./ui/AgentAvatar";
 import { Markdown } from "./ui/Markdown";
 import { PropertyList, PropertyRow } from "./ui/PropertyRow";
+import { ResizeHandle } from "./ui/ResizeHandle";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
 import { StatusChip } from "./ui/StatusChip";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import type { BoardWorkItem } from "./WorkItemCard";
+
+const maxDetailWidth = () => Math.max(400, Math.floor(window.innerWidth * 0.6));
 
 function FilePath({ path, compact = false }: { path: string; compact?: boolean }) {
   const { t } = useLanguage();
@@ -110,7 +115,11 @@ export function WorkItemDrawer({
   pendingPermissions = false,
   attentionCount = 0,
   onOpenNeedsYou,
+  full = false,
+  onFullChange,
 }: {
+  full?: boolean;
+  onFullChange?: (full: boolean) => void;
   item: BoardWorkItem;
   mainHead?: string;
   localTracker?: boolean;
@@ -173,6 +182,37 @@ export function WorkItemDrawer({
   const closeButton = useRef<HTMLButtonElement>(null);
   const autoFocusing = useRef(false);
   const panel = useRef<HTMLElement>(null);
+  const [width, setWidth] = useState(() => {
+    try {
+      const stored = localStorage.getItem("stintwork.detailWidth");
+      const value = stored === null || stored.trim() === "" ? NaN : Number(stored);
+      return Math.max(
+        400,
+        Math.min(maxDetailWidth(), Number.isFinite(value) && value > 0 ? value : 560),
+      );
+    } catch {
+      return Math.min(560, maxDetailWidth());
+    }
+  });
+  const [maximum, setMaximum] = useState(maxDetailWidth);
+  useEffect(() => {
+    const resize = () => {
+      const max = maxDetailWidth();
+      setMaximum(max);
+      setWidth((value) => Math.min(value, max));
+    };
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+  function changeWidth(value: number) {
+    setWidth(value);
+    try {
+      localStorage.setItem("stintwork.detailWidth", String(value));
+    } catch {
+      /* Storage may be blocked. */
+    }
+  }
+  const dismiss = () => (full ? onFullChange?.(false) : onClose());
   const [docked, setDocked] = useState(
     () =>
       typeof window.matchMedia === "function" && window.matchMedia("(min-width: 1024px)").matches,
@@ -204,7 +244,7 @@ export function WorkItemDrawer({
   const [shipPaused, setShipPaused] = useState(false);
   useEffect(() => {
     if (!docked) return;
-    const dismiss = (event: KeyboardEvent) => {
+    const handleEscape = (event: KeyboardEvent) => {
       if (
         event.key !== "Escape" ||
         event.defaultPrevented ||
@@ -213,11 +253,12 @@ export function WorkItemDrawer({
         document.querySelector('[role="dialog"], [role="menu"], [role="listbox"], [role="tooltip"]')
       )
         return;
-      onClose();
+      if (full) onFullChange?.(false);
+      else onClose();
     };
-    window.addEventListener("keydown", dismiss);
-    return () => window.removeEventListener("keydown", dismiss);
-  }, [docked, onClose, reviewOpen]);
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [docked, onClose, onFullChange, full, reviewOpen]);
   const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
@@ -326,6 +367,24 @@ export function WorkItemDrawer({
             </StatusChip>
           )}
           <span className="flex-1" />
+          {docked && onFullChange && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-10 shrink-0"
+                  aria-label={full ? t.stints.collapseDetail : t.stints.expandDetail}
+                  onClick={() => onFullChange(!full)}
+                >
+                  {full ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {full ? t.stints.collapseDetail : t.stints.expandDetail}
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger
               asChild
@@ -760,7 +819,8 @@ export function WorkItemDrawer({
         <aside
           ref={panel}
           aria-label={item.title}
-          className="work-item-drawer relative flex min-h-0 w-[clamp(320px,30vw,440px)] shrink-0 flex-col rounded-2xl bg-card shadow-card"
+          className="work-item-drawer relative flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
+          style={{ width: full ? "100%" : width }}
           onKeyDown={(event) => {
             if (
               event.key === "Escape" &&
@@ -772,10 +832,19 @@ export function WorkItemDrawer({
               )
             ) {
               event.preventDefault();
-              onClose();
+              dismiss();
             }
           }}
         >
+          {!full && (
+            <ResizeHandle
+              value={width}
+              min={400}
+              max={maximum}
+              onChange={changeWidth}
+              label={t.stints.resizeDetail}
+            />
+          )}
           {content}
         </aside>
       ) : (

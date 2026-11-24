@@ -526,3 +526,34 @@ for (const language of ["en", "zh-CN"] as const) {
     }
   }
 }
+
+test("detail resizing persists and full screen fills the board area", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openFixture(page, "en");
+  await page.goto("/?view=pipeline");
+  await page.locator('.board-scroll [data-work-item="long-title"]').click();
+  const drawer = page.locator(".work-item-drawer");
+  await expect(drawer).toHaveCSS("width", "560px");
+  const handle = drawer.getByRole("separator", { name: en.stints.resizeDetail });
+  const bounds = await handle.boundingBox();
+  if (!bounds) throw new Error("Resize handle is not visible");
+  await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(bounds.x + bounds.width / 2 - 200, bounds.y + bounds.height / 2);
+  await page.mouse.up();
+  await expect(drawer).toHaveCSS("width", "760px");
+  await page.reload();
+  await expect(drawer).toHaveCSS("width", "760px");
+  await drawer.getByRole("button", { name: en.stints.expandDetail }).click();
+  await expect(page.locator(".pipeline-main")).toBeHidden();
+  const fullBounds = await drawer.boundingBox();
+  const topBarBounds = await page.locator(".top-bar").boundingBox();
+  if (!fullBounds || !topBarBounds) throw new Error("Expected detail and top bar bounds");
+  expect(fullBounds.width).toBe(1440);
+  expect(fullBounds.y).toBe(topBarBounds.y + topBarBounds.height);
+  expect(fullBounds.y + fullBounds.height).toBe(900);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.setViewportSize({ width: 390, height: 900 });
+  await expect(drawer.getByRole("button", { name: en.stints.collapseDetail })).toHaveCount(0);
+  await expect(drawer.getByRole("button", { name: en.stints.expandDetail })).toHaveCount(0);
+});

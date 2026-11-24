@@ -1246,3 +1246,62 @@ test("column header includes waiting count", () => {
     within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 1 waiting"),
   ).toBeInTheDocument();
 });
+
+test("detail width persists and full screen collapses before closing", async () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  localStorage.removeItem("stintwork.detailWidth");
+  const user = userEvent.setup();
+  const { unmount } = render(<Board snapshot={project()} />);
+  const card = document.querySelector<HTMLButtonElement>('[data-work-item="board"]')!;
+  await user.click(card);
+  let drawer = screen.getByRole("complementary", { name: /board/i });
+  expect(drawer).toHaveStyle({ width: "560px" });
+  fireEvent.keyDown(within(drawer).getByRole("separator"), { key: "ArrowLeft" });
+  expect(localStorage.getItem("stintwork.detailWidth")).toBe("576");
+  await user.click(within(drawer).getByRole("button", { name: "Expand to full screen" }));
+  expect(new URL(location.href).searchParams.get("detail")).toBe("full");
+  fireEvent.keyDown(within(drawer).getByRole("button", { name: "Collapse to panel" }), {
+    key: "Escape",
+  });
+  expect(new URL(location.href).searchParams.has("detail")).toBe(false);
+  expect(drawer).toHaveStyle({ width: "576px" });
+  fireEvent.keyDown(within(drawer).getByRole("button", { name: "Expand to full screen" }), {
+    key: "Escape",
+  });
+  expect(screen.queryByRole("complementary", { name: /board/i })).not.toBeInTheDocument();
+  expect(card).toHaveFocus();
+  await user.click(card);
+  drawer = screen.getByRole("complementary", { name: /board/i });
+  expect(drawer).toHaveStyle({ width: "576px" });
+  await user.click(within(drawer).getByRole("button", { name: "Expand to full screen" }));
+  await user.click(within(drawer).getByRole("button", { name: "Close work item" }));
+  expect(new URL(location.href).searchParams.has("detail")).toBe(false);
+  unmount();
+  localStorage.removeItem("stintwork.detailWidth");
+  vi.unstubAllGlobals();
+});
+
+test("blocked detail storage falls back to the default width", async () => {
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    throw new Error("blocked");
+  });
+  render(<Board snapshot={project()} />);
+  fireEvent.click(document.querySelector<HTMLButtonElement>('[data-work-item="board"]')!);
+  const drawer = screen.getByRole("complementary", { name: /board/i });
+  expect(drawer).toHaveStyle({ width: "560px" });
+  fireEvent.keyDown(within(drawer).getByRole("separator"), { key: "ArrowLeft" });
+  expect(drawer).toHaveStyle({ width: "576px" });
+  vi.unstubAllGlobals();
+});

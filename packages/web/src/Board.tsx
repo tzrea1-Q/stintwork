@@ -40,6 +40,9 @@ export function Board({
   const [openSlug, setOpenSlug] = useState<string | null>(() =>
     new URL(window.location.href).searchParams.get("item"),
   );
+  const [fullDetail, setFullDetail] = useState(
+    () => new URL(window.location.href).searchParams.get("detail") === "full",
+  );
   const [view, setView] = useState<"overview" | "pipeline">(() =>
     viewFromSearch(window.location.search),
   );
@@ -96,7 +99,10 @@ export function Board({
   useEffect(() => {
     const url = new URL(window.location.href);
     if (openSlug && (openItem || verifyingItem)) url.searchParams.set("item", openSlug);
-    else url.searchParams.delete("item");
+    else {
+      url.searchParams.delete("item");
+      url.searchParams.delete("detail");
+    }
     window.history.replaceState(window.history.state, "", url);
 
     if (!openItem && !verifyingItem && previousItem.current) {
@@ -173,7 +179,9 @@ export function Board({
       target?.focus();
     }
     function handlePopstate() {
-      setOpenSlug(new URL(window.location.href).searchParams.get("item"));
+      const params = new URL(window.location.href).searchParams;
+      setOpenSlug(params.get("item"));
+      setFullDetail(params.get("detail") === "full");
     }
     document.addEventListener("keydown", handleKeydown);
     window.addEventListener("popstate", handlePopstate);
@@ -240,7 +248,7 @@ export function Board({
       >
         <main
           hidden={view === "overview"}
-          className={`pipeline-main ${view === "overview" ? "hidden" : "flex"} min-h-0 min-w-0 flex-1 flex-col`}
+          className={`pipeline-main ${view === "overview" ? "hidden" : "flex"} ${fullDetail && openItem ? "lg:hidden" : ""} min-h-0 min-w-0 flex-1 flex-col`}
         >
           <BoardWorkflowFilter snapshot={snapshot} items={visible} openSlug={openSlug}>
             {(filtered, workflowPicker) => {
@@ -563,7 +571,18 @@ export function Board({
             }
             agents={snapshot.agents}
             milestone={snapshot.milestones.find((entry) => entry.id === openItem.milestone)}
-            onClose={() => setOpenSlug(null)}
+            full={fullDetail}
+            onFullChange={(full) => {
+              setFullDetail(full);
+              const url = new URL(window.location.href);
+              if (full) url.searchParams.set("detail", "full");
+              else url.searchParams.delete("detail");
+              window.history.replaceState(window.history.state, "", url);
+            }}
+            onClose={() => {
+              setFullDetail(false);
+              setOpenSlug(null);
+            }}
             onCustomiseWorkflow={setCustomiseId}
           />
         )}
