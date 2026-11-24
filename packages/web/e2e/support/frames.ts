@@ -11,6 +11,7 @@ export async function sampleFrames(page: Page, selector: string, ms: number) {
           height: string;
           overflow: number;
           left: number;
+          width: number;
           timestamp: number;
         }[]
       >((resolve, reject) => {
@@ -22,17 +23,21 @@ export async function sampleFrames(page: Page, selector: string, ms: number) {
           height: string;
           overflow: number;
           left: number;
+          width: number;
           timestamp: number;
         }[] = [];
         const start = performance.now();
         const sample = (timestamp: number) => {
-          const style = getComputedStyle(element);
+          const current = document.querySelector(selector) ?? element;
+          const style = getComputedStyle(current);
+          const rect = current.getBoundingClientRect();
           frames.push({
             timestamp,
+            left: rect.left,
+            width: rect.width,
             opacity: style.opacity,
             transform: style.transform,
             height: style.height,
-            left: element.getBoundingClientRect().left,
             overflow: document.documentElement.scrollWidth - innerWidth,
           });
           if (timestamp - start < ms) requestAnimationFrame(sample);

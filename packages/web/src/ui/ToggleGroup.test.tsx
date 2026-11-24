@@ -32,3 +32,18 @@ test("propagates variant, size, spacing and orientation to items", async () => {
   await user.keyboard("{ArrowDown}[Space]");
   expect(screen.getByRole("button", { name: "B" })).toHaveAttribute("aria-pressed", "true");
 });
+
+test("indicator follows the selected item", async () => {
+  const user = userEvent.setup();
+  const { container } = render(
+    <ToggleGroup type="single" defaultValue="a">
+      <ToggleGroupItem value="a">A</ToggleGroupItem>
+      <ToggleGroupItem value="b">B</ToggleGroupItem>
+    </ToggleGroup>,
+  );
+  await user.click(screen.getByRole("radio", { name: "B" }));
+  expect(container.querySelectorAll('[data-slot="toggle-indicator"]')).toHaveLength(1);
+  expect(
+    screen.getByRole("radio", { name: "B" }).querySelector('[data-slot="toggle-indicator"]'),
+  ).toBeInTheDocument();
+});

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
 import { Inbox, Search, Settings } from "lucide-react";
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
+import { m } from "motion/react";
+import { spring, useReducedMotionSafe } from "./ui/motion";
 import { LanguageMenu } from "./i18n/LanguageMenu";
 import { useLanguage } from "./i18n/language";
 import { SetupGuide } from "./SetupGuide";
@@ -31,6 +33,8 @@ export function TopBar({
   onOpenNeedsYou: () => void;
 }) {
   const { t } = useLanguage();
+  const indicatorId = useId();
+  const reduced = useReducedMotionSafe();
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupMounted, setSetupMounted] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
@@ -82,11 +86,24 @@ export function TopBar({
             key={entry}
             id={`${entry}-view-trigger`}
             size="sm"
-            className="rounded-full px-1.5 py-[9px] min-[700px]:px-4"
-            variant={view === entry ? "primary" : "ghost"}
+            className={
+              view === entry
+                ? "relative isolate rounded-full bg-transparent px-1.5 py-[9px] text-primary-foreground hover:bg-transparent min-[700px]:px-4"
+                : "relative isolate rounded-full px-1.5 py-[9px] min-[700px]:px-4"
+            }
+            variant="ghost"
             aria-current={view === entry ? "page" : undefined}
             onClick={() => onViewChange(entry)}
           >
+            {view === entry && (
+              <m.span
+                aria-hidden="true"
+                data-slot="nav-indicator"
+                layoutId={reduced ? undefined : indicatorId}
+                transition={spring.selection}
+                className="absolute inset-0 -z-10 rounded-full bg-primary"
+              />
+            )}
             {t.viewNavigation[entry]}
           </Button>
         ))}

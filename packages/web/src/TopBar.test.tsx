@@ -306,3 +306,33 @@ test("shows the wordmark and project identity and hides an empty badge", () => {
   expect(branch).not.toHaveClass("flex-[1_1_0%]");
   expect(screen.getByRole("button", { name: /^Needs you 0/ })).not.toHaveTextContent("0");
 });
+
+test("navigation indicator belongs only to the current view", () => {
+  const { container, rerender } = render(
+    <LanguageProvider>
+      <TopBar
+        snapshot={snapshot}
+        view="pipeline"
+        onOpenPalette={() => {}}
+        onOpenNeedsYou={() => {}}
+      />
+    </LanguageProvider>,
+  );
+  expect(
+    screen.getByRole("button", { name: "Pipeline" }).querySelector('[data-slot="nav-indicator"]'),
+  ).toBeInTheDocument();
+  rerender(
+    <LanguageProvider>
+      <TopBar
+        snapshot={snapshot}
+        view="overview"
+        onOpenPalette={() => {}}
+        onOpenNeedsYou={() => {}}
+      />
+    </LanguageProvider>,
+  );
+  expect(container.querySelectorAll('[data-slot="nav-indicator"]')).toHaveLength(1);
+  expect(
+    screen.getByRole("button", { name: "Overview" }).querySelector('[data-slot="nav-indicator"]'),
+  ).toBeInTheDocument();
+});
