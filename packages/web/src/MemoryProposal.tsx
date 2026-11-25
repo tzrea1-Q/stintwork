@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { MemoryProposalAttentionItem } from "@stintwork/core";
-import { Brain, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { useState } from "react";
 import { CoreTextError, readResponseJson, useLanguage } from "./i18n/language";
 import { Button } from "./ui/Button";
 import { Card, CardContent, CardHeader } from "./ui/Card";
 import { CodeBlock } from "./ui/CodeBlock";
 import { IconChip } from "./ui/IconChip";
-import { PropertyList, PropertyRow } from "./ui/PropertyRow";
 
 export function MemoryProposal({
   item,
   onError,
+  onSuccess,
 }: {
   item: MemoryProposalAttentionItem;
   onError: (reason: string | Error) => void;
+  onSuccess?: () => void;
 }) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
@@ -37,6 +38,7 @@ export function MemoryProposal({
         throw new CoreTextError(body, t.review.memory.error);
       }
       setSubmitted(true);
+      onSuccess?.();
     } catch (error) {
       onError(
         error instanceof CoreTextError && error.reasonMessage !== undefined
@@ -52,17 +54,10 @@ export function MemoryProposal({
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-3">
-        <IconChip icon={Brain} tone="attention" />
-        <strong>{t.review.memory.accept}</strong>
+        <IconChip icon={FileText} tone="attention" />
+        <h4 className="font-mono font-semibold">{item.path}</h4>
       </CardHeader>
       <CardContent>
-        <PropertyList>
-          <PropertyRow
-            icon={FileText}
-            label={t.review.visualRefresh07.path}
-            value={<code>{item.path}</code>}
-          />
-        </PropertyList>
         <p>{item.details}</p>
         <p className="muted text-muted-foreground">{t.review.memory.rejectWarning}</p>
         <section aria-label={t.review.memory.diff(item.path)}>

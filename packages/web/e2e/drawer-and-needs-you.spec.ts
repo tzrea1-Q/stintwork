@@ -437,9 +437,7 @@ for (const language of ["en", "zh-CN"] as const) {
         ).toBeDisabled();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-answer-pending");
         releaseAnswer();
-        await expect(sheet.locator('.needs-you-footer [role="alert"]')).toContainText(
-          t.needsYou.permissionFailed,
-        );
+        await expect(first.getByRole("alert")).toContainText(t.needsYou.permissionFailed);
         await expect(answer).toBeEnabled();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-error");
         await answer.click();

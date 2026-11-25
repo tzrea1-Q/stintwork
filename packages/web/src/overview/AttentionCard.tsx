@@ -36,7 +36,11 @@ export function AttentionCard({ data, snapshot, t, language, onNeedsYou }: CardP
               );
               return (
                 <Item asChild key={item.id}>
-                  <button type="button" className="text-left hover:bg-muted" onClick={onNeedsYou}>
+                  <button
+                    type="button"
+                    className="text-left hover:bg-muted"
+                    onClick={() => onNeedsYou(item.id)}
+                  >
                     <ItemMedia>
                       <IconChip icon={CircleAlert} tone="attention" />
                     </ItemMedia>
@@ -49,7 +53,7 @@ export function AttentionCard({ data, snapshot, t, language, onNeedsYou }: CardP
                 </Item>
               );
             })}
-            <Button onClick={onNeedsYou}>{t.overview.openQueue}</Button>
+            <Button onClick={() => onNeedsYou()}>{t.overview.openQueue}</Button>
           </CardContent>
         </Card>
       )}

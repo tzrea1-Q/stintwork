@@ -489,9 +489,9 @@ export const en = {
     largeFile: "Larger than 1 MiB",
     generatedDirectory: "Generated directory",
     excludedFiles:
-      "Excluded from the checkpoint and left uncommitted. File contents are not shown.",
+      "Excluded from the checkpoint and left uncommitted. File contents are not shown. Remove these files or deliberately ignore them, then start another stint.",
     committedFiles:
-      "Already committed on the branch; not excluded by the checkpoint. Remove these files in a follow-up commit and add them to .gitignore, or deliberately Accept each path with a reason in Review. Rotate real secrets and clean Git history before publishing. File contents are not shown.",
+      "Already committed on the branch; not excluded by the checkpoint. Risky files block shipping. Remove these files in a follow-up commit and add them to .gitignore, or deliberately Accept each path with a reason in Review. Rotate real secrets and clean Git history before publishing. File contents are not shown.",
     committed: " · Committed: ",
     riskyCommitted: "Risky files committed on the branch",
     riskyExcluded: "Risky files excluded from checkpoint",
@@ -501,6 +501,8 @@ export const en = {
       "Remove these files or deliberately ignore them, then start another stint. Checks and Merge locally require a clean worktree.",
     enableNotifications: "Enable browser notifications",
     disableNotifications: "Disable browser notifications",
+    conditionsMet: (met: number, total: number) => `${met} of ${total} conditions met`,
+    openGate: "Open gate",
     notificationsUnsupported: "Browser notifications are not supported here.",
     notificationsUnavailable:
       "Browser notifications are unavailable. The Needs-you queue remains available.",

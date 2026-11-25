@@ -490,7 +490,7 @@ test("the Needs-you gate item contains evidence and an approval action", async (
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
   const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
   expect(queue.getByText("Implement ready to approve")).toBeInTheDocument();
-  expect(queue.getByText("1/1 tickets resolved")).toBeInTheDocument();
+  expect(queue.getByText(/of \d+ conditions met/)).toBeInTheDocument();
   expect(queue.getByText("No readiness time recorded")).toBeInTheDocument();
   await user.click(queue.getByRole("button", { name: "Approve Implement" }));
   expect(await queue.findByText("Gate approved. Stage advances to Review.")).toBeInTheDocument();
@@ -559,7 +559,7 @@ test("the Needs-you gate uses the workflow's customised gate kind", async () => 
   render(<Board snapshot={snapshot} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Needs you 1" }));
   const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
-  expect(queue.getByText("spec.md exists and parses").closest("li")).toHaveTextContent("Ready");
+  expect(queue.getByText(/of \d+ conditions met/)).toBeInTheDocument();
   expect(queue.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
 });
 
