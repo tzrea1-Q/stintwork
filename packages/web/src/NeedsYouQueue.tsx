@@ -277,6 +277,7 @@ export function NeedsYouQueue({
               return (
                 <m.article
                   key={item.id}
+                  data-attention-kind={item.kind}
                   ref={(node) => {
                     if (node) itemRefs.current.set(item.id, node);
                     else itemRefs.current.delete(item.id);
