@@ -15,8 +15,8 @@ import { Board } from "./Board";
 import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
-import { WorkItemCard } from "./WorkItemCard";
 import { workItemInFlight } from "./overview-data";
+import { WorkItemCard } from "./WorkItemCard";
 
 const files = {
   ".stintwork/roadmap.md":
@@ -441,7 +441,7 @@ test("opens the drawer from a card and closes it with Esc", async () => {
   const card = screen.getByRole("button", { name: "Open board: The live board" });
   await user.click(card);
   const drawer = screen.getByRole("dialog", { name: "The live board" });
-  expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(drawer).toHaveFocus();
   expect(window.location.search).toBe("?view=pipeline&item=board");
   expect(window.history.state).toEqual({ preserved: true });
   expect(window.location.hash).toBe("#anchor");
@@ -569,7 +569,7 @@ test("?item=<slug> opens the drawer on load", async () => {
   window.history.replaceState(null, "", "/?item=board");
   render(<Board snapshot={project()} />);
   const drawer = screen.getByRole("dialog", { name: "The live board" });
-  expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(drawer).toHaveFocus();
   await userEvent.setup().click(within(drawer).getByText("Agents by stage"));
   const rail = within(drawer).getByRole("list", { name: "Feature workflow stages" });
   expect(rail.querySelector('[aria-current="step"]')).toHaveTextContent("ImplementInferred");
@@ -704,12 +704,12 @@ test("keeps the drawer open when Esc dismisses a palette above it", async () => 
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   await user.click(screen.getByRole("button", { name: "Open board: The live board" }));
-  const close = screen.getByRole("button", { name: "Close work item" });
+  const drawer = screen.getByRole("dialog", { name: "The live board" });
   await user.keyboard("{Control>}k{/Control}");
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: "The live board" })).toBeInTheDocument();
-  expect(close).toHaveFocus();
+  expect(drawer).toHaveFocus();
 });
 
 test("refreshes the open drawer and returns focus to a card that changed stage", async () => {
@@ -725,7 +725,7 @@ test("refreshes the open drawer and returns focus to a card that changed stage",
     />,
   );
   const drawer = screen.getByRole("dialog");
-  expect(screen.getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(drawer).toHaveFocus();
   await user.click(within(drawer).getByText("Agents by stage"));
   expect(
     within(drawer)

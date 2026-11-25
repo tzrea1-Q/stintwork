@@ -102,11 +102,23 @@ for (const language of ["en", "zh-CN"] as const) {
 
         await expect(close).toBeFocused();
         await expect(
+          sheet.locator(".drawer-footer .footer-primary button, .drawer-footer button.bg-primary"),
+        ).toHaveCount(1);
+        const conditionRows = sheet.locator(".handoff-card li:has(> div > strong)");
+        expect(await conditionRows.count()).toBeGreaterThan(0);
+        for (const row of await conditionRows.all()) {
+          const title = await row.locator("strong").boundingBox();
+          const chip = await row.locator("strong + span").boundingBox();
+          if (!title || !chip) throw new Error("Expected condition title and status");
+          expect(Math.abs(title.y - chip.y)).toBeLessThanOrEqual(4);
+        }
+
+        await expect(
           sheet.locator(".drawer-identity").getByRole("heading", { name: item.title, exact: true }),
         ).toHaveAttribute("title", item.title);
         await sheet.locator("summary", { hasText: t.drawerIdentity.agentsByStage }).click();
         await expect(sheet.getByRole("combobox").last()).toBeDisabled();
-        const rows = sheet.locator(".drawer-content > dl [role=group]");
+        const rows = sheet.locator(".drawer-content > div > dl [role=group]");
         const positions = await rows.evaluateAll((elements) =>
           elements.map((element) => {
             const label = element.querySelector("dt")?.getBoundingClientRect();
@@ -157,7 +169,7 @@ for (const language of ["en", "zh-CN"] as const) {
         }
         await sheet.getByRole("tab", { name: t.detailTabs.spec }).click();
         const content = sheet.getByRole("tabpanel");
-        await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(0);
+        await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(1);
         const header = sheet.locator(".drawer-header");
         const headerBefore = await header.boundingBox();
         await scrollContent(content);
@@ -572,6 +584,9 @@ test("detail resizing persists and full screen fills the board area", async ({ p
   const topBarBounds = await page.locator(".top-bar").boundingBox();
   if (!fullBounds || !topBarBounds) throw new Error("Expected detail and top bar bounds");
   expect(fullBounds.width).toBe(1440);
+  const gateBounds = await drawer.locator(".handoff-card").first().boundingBox();
+  if (!gateBounds) throw new Error("Expected gate");
+  expect(gateBounds.width).toBeLessThanOrEqual(1000);
   expect(fullBounds.y).toBe(topBarBounds.y + topBarBounds.height);
   expect(fullBounds.y + fullBounds.height).toBe(900);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

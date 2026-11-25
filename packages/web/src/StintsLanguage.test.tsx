@@ -100,7 +100,7 @@ test("Chinese drawer sections, stage agents and Stop keep repo content verbatim"
   await user.click(sections.getByRole("tab", { name: "规格" }));
   expect(drawer.getByText("Spec body café 中文")).toBeInTheDocument();
   await user.click(sections.getByRole("tab", { name: "概览" }));
-  expect(drawer.queryByRole("button", { name: "开始 Stint" })).not.toBeInTheDocument();
+  expect(drawer.getByRole("button", { name: "开始 Stint" })).toBeDisabled();
   await user.click(drawer.getByRole("button", { name: "停止" }));
   expect(fetch).toHaveBeenCalledWith("/api/stints/stint-%E4%B8%AD%E6%96%87/stop", {
     method: "POST",
@@ -442,9 +442,8 @@ test("Chinese gate approval keeps ticket titles, warning paths and warning messa
   expect(screen.getByText("01 · Ticket title 原文")).toBeInTheDocument();
   expect(screen.getByText("已解决")).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "概览" }));
-  const reopenedGate = within(screen.getByRole("region", { name: "实现关卡" }));
-  await user.click(reopenedGate.getByRole("button", { name: "批准实现" }));
-  expect(await reopenedGate.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "批准实现" }));
+  expect(await screen.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
 });
 
 test("Chinese rail localizes chrome while custom workflow and stage names remain verbatim", async () => {

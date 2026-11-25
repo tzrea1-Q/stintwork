@@ -9,6 +9,7 @@ import { Button } from "./ui/Button";
 
 type PermissionAnswerProps = {
   showContext?: boolean;
+  notify?: boolean;
   stintId: string;
   request: Pick<
     Extract<StintEvent, { type: "permission_request" }>,
@@ -40,6 +41,7 @@ function PermissionAnswerBinding({
   onError,
   onSuccess,
   showContext = true,
+  notify = showContext,
 }: PermissionAnswerProps) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
@@ -68,9 +70,9 @@ function PermissionAnswerBinding({
       }
       setSubmitted(true);
       onSuccess?.();
-      if (showContext) toast.success(t.actionToast.permissionAnswered);
+      if (notify) toast.success(t.actionToast.permissionAnswered);
     } catch (cause) {
-      if (showContext) toast.error(t.actionToast.failed);
+      if (notify) toast.error(t.actionToast.failed);
       const reason =
         cause instanceof CoreTextError && cause.reasonMessage !== undefined
           ? cause
