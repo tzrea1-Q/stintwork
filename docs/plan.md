@@ -253,6 +253,19 @@ Spec: `.scratch/overview-polish/spec.md`.
 
 **Exit test:** the browser suite passes at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN` and both colour schemes, and the maintainer walks Overview, Needs you, Create work item, Jump to, Settings and Project setup on this repository's real data at 1440, 768 and 390px in both languages and accepts the result.
 
+### M19 · Pipeline polish · L
+
+Spec: `.scratch/pipeline-polish/spec.md`.
+
+- Fix the 2026-11-25 audit of Pipeline and the surfaces it opens:
+  - honest board data (work in flight, a Shipped lane that separates recorded merges from shipped milestones);
+  - readable times, ids and agent names.
+- Rebuild the board for every width: compact empty stages, visible overflow, and one stage at a time on phones.
+- Give the work item detail panel a neutral header, one primary action, one gate layout, and tidy Spec, Tickets and Stints tabs. Then split it and make opening it cheap.
+- Tidy the review overlay, Brief preview, Edit roadmap, Customise workflow and Mark as shipped.
+
+**Exit test:** the browser suite passes at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN` and both colour schemes. The maintainer walks Pipeline, the detail panel and its overlays on this repository's real data at 1440, 768 and 390px in both languages and accepts the result.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.
