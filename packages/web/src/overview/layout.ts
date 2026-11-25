@@ -20,5 +20,5 @@ export function assignColumns(count: 1 | 2 | 3, available: readonly CardId[]): C
     const moved = donor?.pop();
     if (moved) column.push(moved);
   }
-  return columns.filter((column) => column.length);
+  return columns.sort((a, b) => Number(!a.length) - Number(!b.length));
 }

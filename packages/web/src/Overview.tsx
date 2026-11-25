@@ -137,11 +137,12 @@ export function Overview({
           <EmptyOverview github={snapshot.setup.tracker === "github-issues"} onCreate={onCreate} />
         )}
         <div className="flex min-w-0 gap-4" data-overview-columns>
-          {assignColumns(columns, available).map((column) => (
+          {assignColumns(columns, available).map((column, index) => (
             <div
-              key={column.join("-")}
+              key={column.length ? column.join("-") : `empty-${index}`}
               className="flex min-w-0 flex-1 flex-col gap-4"
               data-overview-column
+              aria-hidden={column.length ? undefined : true}
             >
               {column.map((card) => (
                 <Fragment key={card}>{cards[card]}</Fragment>

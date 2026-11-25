@@ -17,10 +17,12 @@ test("assigns cards in each specified reading order", () => {
   ]);
 });
 test("fills empty columns when a column has cards to spare", () => {
-  expect(assignColumns(3, ["milestone", "attention"])).toEqual([["milestone"], ["attention"]]);
+  expect(assignColumns(3, ["milestone", "attention"])).toEqual([["milestone"], ["attention"], []]);
   expect(assignColumns(2, ["milestone", "stages", "running"])).toEqual([
     ["milestone", "stages"],
     ["running"],
   ]);
-  expect(assignColumns(3, [])).toEqual([]);
+  expect(assignColumns(3, ["stages"])).toEqual([["stages"], [], []]);
+  expect(assignColumns(2, ["next"])).toEqual([["next"], []]);
+  expect(assignColumns(3, [])).toEqual([[], [], []]);
 });

@@ -528,6 +528,36 @@ test("renders three columns at desktop width without a resize notification", () 
   }
 });
 
+test("keeps empty desktop columns as spacers for a single card", () => {
+  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1440);
+  try {
+    const snapshot = project({});
+    snapshot.milestones = [
+      { id: "active", name: "Active milestone", status: "active", workItemSlugs: [] },
+    ];
+    const { container } = render(
+      <Overview
+        snapshot={snapshot}
+        connection="live"
+        onPipeline={() => {}}
+        onOpenItem={() => {}}
+        onNeedsYou={() => {}}
+        onCreate={() => {}}
+        onMilestone={() => {}}
+      />,
+    );
+    const columns = container.querySelectorAll("[data-overview-column]");
+    expect(columns).toHaveLength(3);
+    expect(columns[0].querySelector('[data-slot="card"]')).toBeInTheDocument();
+    expect(columns[1]).toBeEmptyDOMElement();
+    expect(columns[2]).toBeEmptyDOMElement();
+    expect(columns[1]).toHaveAttribute("aria-hidden", "true");
+    expect(columns[2]).toHaveAttribute("aria-hidden", "true");
+  } finally {
+    width.mockRestore();
+  }
+});
+
 test("reconnecting status and error share a visible callout", () => {
   render(
     <Overview
