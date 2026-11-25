@@ -8,6 +8,7 @@ import { PermissionDetails } from "./PermissionDetails";
 import { Button } from "./ui/Button";
 
 type PermissionAnswerProps = {
+  showContext?: boolean;
   stintId: string;
   request: Pick<
     Extract<StintEvent, { type: "permission_request" }>,
@@ -31,7 +32,13 @@ export function PermissionAnswer(props: PermissionAnswerProps) {
   );
 }
 
-function PermissionAnswerBinding({ stintId, request, profile, onError }: PermissionAnswerProps) {
+function PermissionAnswerBinding({
+  stintId,
+  request,
+  profile,
+  onError,
+  showContext = true,
+}: PermissionAnswerProps) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -83,19 +90,25 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
             : t.needsYou.waitingPermission}
         </p>
       )}
-      <p className="font-medium">{t.review.visualRefresh07.permission}</p>
-      <p className="text-muted-foreground">
-        {profile && (
-          <>
-            {t.review.visualRefresh07.agent}: {profile.displayName} ·{" "}
-          </>
-        )}
-        {t.review.visualRefresh07.stint}: <code>{stintId}</code>
-      </p>
+      {showContext && (
+        <>
+          <p className="font-medium">{t.review.visualRefresh07.permission}</p>
+          <p className="text-muted-foreground">
+            {profile && (
+              <>
+                {t.review.visualRefresh07.agent}: {profile.displayName} ·{" "}
+              </>
+            )}
+            {t.review.visualRefresh07.stint}: <code>{stintId}</code>
+          </p>
+        </>
+      )}
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
         <p className="warning text-attention-foreground">
-          {t.needsYou.declineEndsTurn(profile.displayName)}
+          {showContext
+            ? t.needsYou.declineEndsTurn(profile.displayName)
+            : t.needsYou.declineEndsCurrentTurn}
         </p>
       )}
       <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
