@@ -38,6 +38,7 @@ export const WorkItemCard = forwardRef<
     agents?: AgentProfile[];
     selected?: boolean;
     index?: number;
+    showWorkflow?: boolean;
   }
 >(function WorkItemCard(
   {
@@ -49,6 +50,7 @@ export const WorkItemCard = forwardRef<
     agents = [],
     selected = false,
     index = 0,
+    showWorkflow = false,
   },
   ref,
 ) {
@@ -151,7 +153,7 @@ export const WorkItemCard = forwardRef<
         scale: spring.press,
         opacity: skip ? { duration: 0 } : spring.arrive,
       }}
-      className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring ${running ? "bg-running-soft" : attentionCount > 0 ? "bg-attention-soft" : blocked ? "bg-blocked-soft" : "bg-muted"} ${selected ? "ring-2 ring-ring" : ""}`}
+      className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring bg-muted ${status ? `status-edge status-edge-${status}` : ""} ${selected ? "ring-2 ring-ring" : ""}`}
       aria-label={`${item.slug}: ${item.title}`}
     >
       {shipped && (
@@ -170,7 +172,9 @@ export const WorkItemCard = forwardRef<
             className="work-item-id inline-flex max-w-full flex-none items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
             title={typeName}
           >
-            <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
+            {showWorkflow && (
+              <TypeIcon data-workflow-icon className="size-icon-sm shrink-0" aria-hidden="true" />
+            )}
             <span className="sr-only">{typeName}: </span>
             <span className="truncate" data-truncate title={item.slug}>
               {item.slug}
@@ -187,11 +191,11 @@ export const WorkItemCard = forwardRef<
             </span>
           )}
         </div>
-        <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-[620] break-words">
+        <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-semibold break-words">
           <Button
             variant="link"
             type="button"
-            className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-[620] after:absolute after:inset-0 after:rounded-2xl"
+            className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-semibold after:absolute after:inset-0 after:rounded-2xl"
             data-work-item={isPresent ? item.slug : undefined}
             disabled={!isPresent}
             aria-label={t.card.open(item.slug, item.title)}

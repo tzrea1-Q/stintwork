@@ -252,7 +252,7 @@ test.each(["team", "feature", "constructor"])(
         <Board snapshot={snapshot} />
       </LanguageProvider>,
     );
-    for (const name of ["澄清", "规格说明", "工单", "实现", "审查", "交付"])
+    for (const name of ["澄清", "规格", "工单", "实现", "审查", "交付"])
       expect(screen.getByRole("heading", { name })).toBeInTheDocument();
     expect(screen.getByText("Repo project 中文")).toBeInTheDocument();
     expect(screen.getByText("team/中文")).toBeInTheDocument();
@@ -518,7 +518,7 @@ test.each(["built-in", "custom-name", "custom-skill", "custom-agent"])(
       customisation === "built-in" ? "澄清:" : `${workflow.stages[0].name}:`,
     );
     if (customisation === "built-in")
-      for (const name of ["澄清", "规格说明", "工单", "实现", "审查"])
+      for (const name of ["澄清", "规格", "工单", "实现", "审查"])
         expect(skills.getAllByText(`${name}:`, { exact: false }).length).toBeGreaterThan(0);
     for (const name of [
       customisation === "built-in" ? "功能" : workflow.name,

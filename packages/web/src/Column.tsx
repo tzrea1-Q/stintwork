@@ -38,6 +38,8 @@ export function Column({
   expanded,
   onToggle,
   panelOpen,
+  narrow,
+  showWorkflow,
 }: {
   id: BoardColumn;
   name: string;
@@ -51,6 +53,8 @@ export function Column({
   expanded: boolean;
   onToggle: () => void;
   panelOpen: boolean;
+  narrow: boolean;
+  showWorkflow: boolean;
 }) {
   const { t } = useLanguage();
   const { skip, instant, reduced } = useContext(BoardMotionContext);
@@ -78,7 +82,7 @@ export function Column({
     if (toggled.current) section.current?.querySelector<HTMLButtonElement>("button")?.focus();
     toggled.current = false;
   });
-  const rail = !items.length && !expanded;
+  const rail = !narrow && !items.length && !expanded;
   const grid = items.length > 0 && wide && !panelOpen;
   const Icon = presentation[id];
   const running = items.filter((item) => item.activeStint?.status === "running").length;
@@ -91,7 +95,7 @@ export function Column({
       layout={!skip && !reduced ? "position" : false}
       transition={skip || instant ? { duration: 0 } : spring.layout}
       ref={section}
-      className={`stage-column @container relative snap-start ${rail ? "w-14 shrink-0" : "w-[min(280px,calc(100vw-80px))] shrink-0 lg:min-w-[220px] lg:flex-1"}`}
+      className={`stage-column @container relative snap-start ${narrow ? "w-full" : rail ? "w-20 shrink-0" : "stage-column-wide shrink-0 lg:flex-1"}`}
       data-card-column={id}
       data-layout={rail ? "rail" : grid ? "grid" : "single"}
       aria-labelledby={`stage-${id}`}
@@ -107,7 +111,7 @@ export function Column({
             onToggle();
           }}
         >
-          <header className="stage-header sticky top-0 z-20 flex h-[88px] w-full shrink-0 flex-col items-center gap-2 bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
+          <header className="stage-header sticky top-0 z-20 flex h-22 w-full shrink-0 flex-col items-center gap-2 bg-card px-1 pb-4 pt-2 ">
             <span data-stage-icon className="inline-flex shrink-0">
               <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
             </span>
@@ -118,13 +122,13 @@ export function Column({
           <h2
             id={`stage-${id}`}
             title={name}
-            className="mt-2 text-[13px] font-semibold [writing-mode:vertical-rl] [text-orientation:mixed]"
+            className="mt-2 text-[length:var(--type-item-title)] font-semibold text-center break-words"
           >
             {name}
           </h2>
         </m.button>
       ) : (
-        <header className="stage-header sticky top-0 z-20 h-[88px] bg-card px-1 pb-4 pt-2 [[data-scrolled=true]_&]:shadow-[0_1px_0_var(--border)]">
+        <header className="stage-header sticky top-0 z-20 h-22 bg-card px-1 pb-4 pt-2 ">
           <div className="flex flex-wrap items-center gap-2">
             <span data-stage-icon className="inline-flex shrink-0">
               <IconChip icon={Icon} tone={id === "implement" ? "accent" : "neutral"} />
@@ -132,7 +136,7 @@ export function Column({
             <h2
               id={`stage-${id}`}
               title={name}
-              className="min-w-0 flex-1 break-words text-[13px] font-semibold"
+              className="min-w-0 flex-1 break-words text-[length:var(--type-item-title)] font-semibold"
             >
               {name}
             </h2>
@@ -161,9 +165,7 @@ export function Column({
         layout={!skip && !reduced ? "position" : false}
         transition={skip || instant ? { duration: 0 } : spring.layout}
         className={
-          items.length > 0 && !panelOpen
-            ? "flex flex-col gap-3 lg:@min-[452px]:grid lg:@min-[452px]:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:@min-[452px]:content-start"
-            : "flex flex-col gap-3"
+          items.length > 0 && !panelOpen ? "stage-cards flex flex-col gap-3" : "flex flex-col gap-3"
         }
       >
         <AnimatePresence mode="popLayout">
@@ -174,6 +176,7 @@ export function Column({
               index={index}
               agents={agents}
               selected={selectedSlug === item.slug}
+              showWorkflow={showWorkflow}
               workflow={workflows[item.workflow]}
               attentionCount={attentionItems.filter((entry) => entry.workItem === item.slug).length}
               milestone={milestones.find((milestone) => milestone.id === item.milestone)}

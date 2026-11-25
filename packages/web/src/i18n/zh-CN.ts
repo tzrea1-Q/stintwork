@@ -228,7 +228,7 @@ export const zhCN: Catalog = {
       name: "功能",
       stages: {
         clarify: "澄清",
-        spec: "规格说明",
+        spec: "规格",
         tickets: "工单",
         implement: "实现",
         review: "审查",
@@ -606,7 +606,7 @@ export const zhCN: Catalog = {
       unavailable: "审查发现不可用：",
       axes: {
         Standards: "规范",
-        Spec: "规格说明",
+        Spec: "规格",
       },
       severities: {
         blocker: "阻断",
@@ -794,7 +794,7 @@ export const zhCN: Catalog = {
     noStage: "此工作项尚未声明阶段。",
     stageStintSection: "阶段 Stint",
     sections: "工作项章节",
-    spec: "规格说明",
+    spec: "规格",
     tickets: "工单",
     stageStint: (name) => `${name} Stint`,
     noSpec: "尚无规格说明。",

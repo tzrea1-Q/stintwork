@@ -607,7 +607,7 @@ for (const language of ["en", "zh-CN"] as const) {
       </LanguageProvider>,
     );
     expect(
-      screen.getByRole("button", { name: language === "en" ? "Approve Spec" : "批准规格说明" }),
+      screen.getByRole("button", { name: language === "en" ? "Approve Spec" : "批准规格" }),
     ).toBeEnabled();
   });
   test.each(["current", "stale", "unknown"] as const)(

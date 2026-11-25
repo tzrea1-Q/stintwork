@@ -1,15 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
-import {
-  CheckCheck,
-  ChevronLeft,
-  ChevronRight,
-  FolderOpen,
-  Layers3,
-  ShieldAlert,
-} from "lucide-react";
+import { ChevronRight, FolderOpen, ShieldAlert } from "lucide-react";
 import { AnimatePresence, LayoutGroup, MotionConfig, MotionGlobalConfig, m } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { BoardToolbar } from "./board/BoardToolbar";
+import { ShippedLane } from "./board/ShippedLane";
+import { StageStrip } from "./board/StageStrip";
+import { UnstagedLane } from "./board/UnstagedLane";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
 import { BoardMotionContext, countBoardChanges } from "./board-motion";
 import { Column } from "./Column";
@@ -21,18 +18,13 @@ import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { Overview } from "./Overview";
-import { viewFromSearch, workItemDone, workItemInFlight } from "./overview-data";
-import { RoadmapEditor } from "./RoadmapEditor";
+import { viewFromSearch, workItemInFlight } from "./overview-data";
 import { TopBar } from "./TopBar";
 import { Button } from "./ui/Button";
 import { spring, useReducedMotionSafe } from "./ui/motion";
-import { RollingNumber } from "./ui/RollingNumber";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/Select";
 import { Sheet, SheetContent, SheetTitle } from "./ui/Sheet";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { useAttentionAlerts } from "./useAttentionAlerts";
 import type { Connection } from "./useProjectSnapshot";
-import { WorkItemCard } from "./WorkItemCard";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 let boardLoaded = false;
@@ -121,29 +113,6 @@ export function Board({
   );
   const unstaged = inFlight.filter((item) => item.column === undefined);
   const selected = snapshot.milestones.find((entry) => entry.id === milestone);
-
-  function scrollStages(direction: -1 | 1) {
-    const viewport = scroll.current;
-    const columns = Array.from(
-      viewport?.querySelectorAll<HTMLElement>('.stage-column:not([data-layout="rail"])') ?? [],
-    );
-    if (!viewport || !columns.length) return;
-    const padding = Number.parseFloat(getComputedStyle(viewport).scrollPaddingLeft) || 0;
-    const positions = Array.from(
-      new Set([0, ...columns.map((column) => Math.max(0, column.offsetLeft - padding))]),
-    );
-    const current = positions.reduce(
-      (nearest, position, index) =>
-        Math.abs(position - viewport.scrollLeft) <
-        Math.abs(positions[nearest] - viewport.scrollLeft)
-          ? index
-          : nearest,
-      0,
-    );
-    viewport.scrollTo({
-      left: positions[Math.max(0, Math.min(current + direction, positions.length - 1))],
-    });
-  }
 
   const [drawerVersion, setDrawerVersion] = useState(0);
   function openWorkItem(slug: string, overview = false) {
@@ -344,6 +313,7 @@ export function Board({
         >
           <BoardWorkflowFilter snapshot={snapshot} items={visible} openSlug={openSlug}>
             {(filtered, workflowPicker) => {
+              const showWorkflow = new Set(filtered.map((item) => item.workflow)).size > 1;
               const filteredActive = inFlight.filter((item) => filtered.includes(item));
               const filteredShipped = shipped.filter((item) => filtered.includes(item));
               const filteredMilestoneShipped = milestoneShipped.filter((item) =>
@@ -361,131 +331,19 @@ export function Board({
                       {t.board.lastAvailable}
                     </p>
                   )}
-                  <div className="board-toolbar flex min-w-0 flex-col gap-3 px-4 py-4 text-xs text-muted-foreground lg:flex-row lg:flex-wrap lg:items-center lg:justify-between lg:px-6">
-                    <div className="board-toolbar-context flex min-w-0 flex-wrap items-center gap-4">
-                      <div className="board-milestone-label flex min-w-0 max-w-full items-center gap-2">
-                        <Layers3 className="size-icon-sm shrink-0" aria-hidden="true" />
-                        <Select
-                          value={milestone ? `milestone:${milestone}` : "all"}
-                          onValueChange={(value) =>
-                            setSelectedMilestone(
-                              value === "all" ? "" : value.slice("milestone:".length),
-                            )
-                          }
-                        >
-                          <SelectTrigger aria-label={t.topBar.milestone} className="max-w-64">
-                            <SelectValue
-                              data-truncate
-                              title={selected?.name ?? t.board.allMilestones}
-                            >
-                              {selected?.name ?? t.board.allMilestones}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="all">{t.board.allMilestones}</SelectItem>
-                            {snapshot.milestones.map((entry) => {
-                              const total = snapshot.workItems.filter(
-                                (item) => item.milestone === entry.id,
-                              ).length;
-                              const done = snapshot.workItems.filter(
-                                (item) => item.milestone === entry.id && workItemDone(item),
-                              ).length;
-                              const progress = `${done}/${total} ${t.pipelineBoard.milestoneProgress}`;
-                              return (
-                                <SelectItem
-                                  key={entry.id}
-                                  value={`milestone:${entry.id}`}
-                                  title={entry.name}
-                                  aria-description={progress}
-                                  data-progress={progress}
-                                  className="gap-2 after:shrink-0 after:text-xs after:text-muted-foreground after:content-[attr(data-progress)]"
-                                >
-                                  {entry.name}
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {workflowPicker}
-                      <p className="connection-status flex items-center gap-2" role="status">
-                        <span
-                          aria-hidden="true"
-                          className={`size-1 rounded-full ${connection === "live" ? "bg-success" : "bg-attention"}`}
-                        />
-                        {connection === "live"
-                          ? t.board.live
-                          : connection === "connecting"
-                            ? t.board.connecting
-                            : t.board.reconnecting}
-                      </p>
-                      {!snapshot.github?.verifying && (
-                        <span className="board-stats whitespace-nowrap">
-                          {(() => {
-                            const [before, middle, after] = t.board
-                              .counts(-12345, -67890)
-                              .split(/-12345|-67890/);
-                            return (
-                              <>
-                                {before}
-                                <RollingNumber value={filteredActive.length} />
-                                {middle}
-                                <RollingNumber
-                                  value={filteredShipped.length + filteredMilestoneShipped.length}
-                                />
-                                {after}
-                              </>
-                            );
-                          })()}
-                        </span>
-                      )}
-                    </div>
-                    <div className="board-toolbar-actions flex min-w-0 flex-wrap items-center gap-2">
-                      <RoadmapEditor snapshot={snapshot} />
-                      {!githubTracker && (
-                        <Button
-                          variant="primary"
-                          aria-haspopup="dialog"
-                          onClick={() => setCreateOpen(true)}
-                        >
-                          {t.board.createWorkItem}
-                        </Button>
-                      )}
-                      <TooltipProvider>
-                        <nav
-                          className="stage-navigation ml-auto flex gap-1 lg:ml-0 min-[1200px]:hidden"
-                          aria-label={t.board.stageNavigation}
-                        >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={t.board.previousStages}
-                                onClick={() => scrollStages(-1)}
-                              >
-                                <ChevronLeft aria-hidden="true" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{t.board.previousStages}</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                aria-label={t.board.nextStages}
-                                onClick={() => scrollStages(1)}
-                              >
-                                <ChevronRight aria-hidden="true" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>{t.board.nextStages}</TooltipContent>
-                          </Tooltip>
-                        </nav>
-                      </TooltipProvider>
-                    </div>
-                  </div>
+                  <BoardToolbar
+                    snapshot={snapshot}
+                    milestone={milestone}
+                    selected={selected}
+                    setSelectedMilestone={setSelectedMilestone}
+                    workflowPicker={workflowPicker}
+                    connection={connection}
+                    filteredActive={filteredActive}
+                    filteredShipped={filteredShipped}
+                    filteredMilestoneShipped={filteredMilestoneShipped}
+                    githubTracker={githubTracker}
+                    onCreate={() => setCreateOpen(true)}
+                  />
                   {githubTracker && (
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm text-muted-foreground sm:px-6">
                       <span>{t.board.githubCreation}</span>
@@ -516,7 +374,7 @@ export function Board({
                     >
                       <LayoutGroup>
                         <section
-                          className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
+                          className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-6"
                           onScroll={(event) => {
                             const grid = event.currentTarget.querySelector(".stage-grid");
                             event.currentTarget.dataset.scrolled = String(
@@ -540,7 +398,7 @@ export function Board({
                               (!snapshot.github.complete &&
                                 snapshot.workItems.length === 0)) ? null : snapshot.workItems
                               .length === 0 ? (
-                            <section className="empty-project flex min-h-[360px] flex-col items-center justify-center text-center leading-relaxed">
+                            <section className="empty-project flex min-h-64 flex-col items-center justify-center text-center leading-relaxed">
                               <FolderOpen
                                 className="size-icon-lg muted text-muted-foreground"
                                 aria-hidden="true"
@@ -567,166 +425,68 @@ export function Board({
                                   {t.board.emptyMilestone}
                                 </p>
                               )}
-                              <m.div
-                                layout={!skip && !reduced ? "position" : false}
-                                transition={instant || skip ? { duration: 0 } : spring.layout}
-                                className="stage-board w-full min-w-max rounded-3xl bg-card p-3 shadow-card"
-                              >
-                                <m.div
-                                  layout={!skip && !reduced ? "position" : false}
-                                  transition={instant || skip ? { duration: 0 } : spring.layout}
-                                  className="stage-grid flex min-h-[360px] justify-start gap-2 [&>.stage-column]:snap-start"
-                                >
-                                  {builtInWorkflows.feature.stages.map((stage) => (
-                                    <Column
-                                      key={stage.id}
-                                      id={stage.column}
-                                      name={stageName(builtInWorkflows.feature, stage, t)}
-                                      items={filteredActive.filter(
-                                        (item) => item.column === stage.column,
-                                      )}
-                                      milestones={snapshot.milestones}
-                                      workflows={snapshot.workflows}
-                                      attentionItems={snapshot.attentionItems}
-                                      agents={snapshot.agents}
-                                      selectedSlug={openSlug}
-                                      expanded={expandedStages.includes(stage.column)}
-                                      onToggle={() =>
-                                        setExpandedStages((current) =>
-                                          current.includes(stage.column)
-                                            ? current.filter((id) => id !== stage.column)
-                                            : [...current, stage.column],
-                                        )
-                                      }
-                                      panelOpen={!!openItem}
-                                      onOpen={openWorkItem}
-                                    />
-                                  ))}
-                                </m.div>
-                              </m.div>
-                              {filteredUnstaged.length > 0 && (
-                                <section
-                                  className="unstaged mt-5"
-                                  data-card-column="unstaged"
-                                  aria-label={t.board.unstaged}
-                                >
-                                  <h2 className="mb-3 text-xs muted text-muted-foreground">
-                                    {t.board.unstagedCount(filteredUnstaged.length)}
-                                  </h2>
-                                  <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3">
-                                    <AnimatePresence mode="popLayout">
-                                      {filteredUnstaged.map((item, index) => (
-                                        <WorkItemCard
-                                          workflow={snapshot.workflows[item.workflow]}
-                                          key={item.slug}
-                                          item={item}
-                                          index={index}
-                                          agents={snapshot.agents}
-                                          selected={openSlug === item.slug}
-                                          attentionCount={
-                                            snapshot.attentionItems.filter(
-                                              (entry) => entry.workItem === item.slug,
-                                            ).length
-                                          }
-                                          milestone={snapshot.milestones.find(
-                                            (entry) => entry.id === item.milestone,
-                                          )}
-                                          onOpen={openWorkItem}
-                                        />
-                                      ))}
-                                    </AnimatePresence>
-                                  </div>
-                                </section>
-                              )}
-                            </>
-                          )}
-                          <details className="shipped-lane mt-4 rounded-2xl bg-card p-4 shadow-card [&>summary]:flex [&>summary]:w-fit [&>summary]:list-none [&>summary]:items-center [&>summary]:gap-2 [&>summary]:text-xs [&>summary::-webkit-details-marker]:hidden [&[open]_.shipped-chevron]:rotate-90">
-                            <summary>
-                              <ChevronRight
-                                className="shipped-chevron size-icon-sm"
-                                aria-hidden="true"
-                              />
-                              <CheckCheck
-                                className="size-icon-sm success text-success-foreground"
-                                aria-hidden="true"
-                              />
-                              <h2>{t.board.shipped}</h2>
-                              <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
-                                {filteredShipped.length + filteredMilestoneShipped.length}
-                              </span>
-                            </summary>
-                            {filteredShipped.length + filteredMilestoneShipped.length ? (
-                              <>
-                                {filteredShipped.length > 0 && (
-                                  <h3 className="mt-3 text-xs">{t.board.shipped}</h3>
-                                )}
-                                <div
-                                  className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3"
-                                  data-card-column="shipped"
-                                >
-                                  <AnimatePresence mode="popLayout">
-                                    {filteredShipped.map((item, index) => (
-                                      <WorkItemCard
-                                        workflow={snapshot.workflows[item.workflow]}
-                                        key={item.slug}
-                                        item={item}
-                                        index={index}
-                                        agents={snapshot.agents}
-                                        selected={openSlug === item.slug}
-                                        attentionCount={
-                                          snapshot.attentionItems.filter(
-                                            (entry) => entry.workItem === item.slug,
-                                          ).length
-                                        }
-                                        milestone={snapshot.milestones.find(
-                                          (entry) => entry.id === item.milestone,
-                                        )}
-                                        onOpen={openWorkItem}
-                                      />
-                                    ))}
-                                  </AnimatePresence>
-                                </div>
-                                {filteredMilestoneShipped.length > 0 && (
-                                  <section>
-                                    <h3 className="mt-3 text-xs">{t.board.milestoneShipped}</h3>
-                                    <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3">
-                                      {filteredMilestoneShipped.map((item, index) => (
-                                        <div key={item.slug}>
-                                          <WorkItemCard
-                                            workflow={snapshot.workflows[item.workflow]}
-                                            item={item}
-                                            index={index}
-                                            agents={snapshot.agents}
-                                            selected={openSlug === item.slug}
-                                            attentionCount={
-                                              snapshot.attentionItems.filter(
-                                                (entry) => entry.workItem === item.slug,
-                                              ).length
-                                            }
-                                            milestone={snapshot.milestones.find(
-                                              (entry) => entry.id === item.milestone,
+                              <StageStrip items={filteredActive}>
+                                {(narrow, activeStage) => (
+                                  <m.div
+                                    layout={!skip && !reduced ? "position" : false}
+                                    transition={instant || skip ? { duration: 0 } : spring.layout}
+                                    className="stage-board w-full rounded-3xl bg-card p-3 shadow-card"
+                                  >
+                                    <m.div
+                                      layout={!skip && !reduced ? "position" : false}
+                                      transition={instant || skip ? { duration: 0 } : spring.layout}
+                                      className="stage-grid flex justify-start gap-2"
+                                    >
+                                      {builtInWorkflows.feature.stages
+                                        .filter((stage) => !narrow || stage.column === activeStage)
+                                        .map((stage) => (
+                                          <Column
+                                            key={stage.id}
+                                            id={stage.column}
+                                            name={stageName(builtInWorkflows.feature, stage, t)}
+                                            items={filteredActive.filter(
+                                              (item) => item.column === stage.column,
                                             )}
+                                            milestones={snapshot.milestones}
+                                            workflows={snapshot.workflows}
+                                            attentionItems={snapshot.attentionItems}
+                                            agents={snapshot.agents}
+                                            selectedSlug={openSlug}
+                                            expanded={expandedStages.includes(stage.column)}
+                                            onToggle={() =>
+                                              setExpandedStages((current) =>
+                                                current.includes(stage.column)
+                                                  ? current.filter((id) => id !== stage.column)
+                                                  : [...current, stage.column],
+                                              )
+                                            }
+                                            narrow={narrow}
+                                            showWorkflow={showWorkflow}
+                                            panelOpen={!!openItem}
                                             onOpen={openWorkItem}
                                           />
-                                          <Button
-                                            variant="link"
-                                            type="button"
-                                            onClick={() => openWorkItem(item.slug)}
-                                          >
-                                            {t.markShipped.mark}
-                                          </Button>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </section>
+                                        ))}
+                                    </m.div>
+                                  </m.div>
                                 )}
-                              </>
-                            ) : (
-                              <p className="py-4 text-xs muted text-muted-foreground">
-                                {t.board.emptyShipped}
-                              </p>
-                            )}
-                          </details>
+                              </StageStrip>
+                              <UnstagedLane
+                                snapshot={snapshot}
+                                filteredUnstaged={filteredUnstaged}
+                                showWorkflow={showWorkflow}
+                                openSlug={openSlug}
+                                openWorkItem={openWorkItem}
+                              />
+                            </>
+                          )}
+                          <ShippedLane
+                            snapshot={snapshot}
+                            filteredShipped={filteredShipped}
+                            filteredMilestoneShipped={filteredMilestoneShipped}
+                            openSlug={openSlug}
+                            openWorkItem={openWorkItem}
+                            showWorkflow={showWorkflow}
+                          />
                         </section>
                       </LayoutGroup>
                     </MotionConfig>
