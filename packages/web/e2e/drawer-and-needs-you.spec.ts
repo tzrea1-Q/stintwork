@@ -664,3 +664,37 @@ for (const language of ["en", "zh-CN"] as const) {
     });
   }
 }
+
+for (const language of ["en", "zh-CN"] as const) {
+  for (const width of [1440, 390]) {
+    test(`rich stint identifiers ${width}px ${language}`, async ({ page }) => {
+      const t = language === "en" ? en : zhCN;
+      const snapshot = richSnapshotWithEveryKind();
+      const item = snapshot.workItems.find((entry) => entry.slug === "rich-clarify");
+      if (!item?.stints[0]) throw new Error("The rich stint fixture is required");
+      item.stints[0].id = "12345678-1234-1234-1234-123456789abc";
+      item.stints[0].checkpointCommit = "0123456789abcdef0123456789abcdef01234567";
+      await page.setViewportSize({ width, height: 900 });
+      await page.clock.setFixedTime(new Date(richClock));
+      await page.addInitScript(
+        (choice) => localStorage.setItem("stintwork.language", choice),
+        language,
+      );
+      await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+      await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
+      await page.goto("/?view=pipeline");
+      await page.locator('[data-work-item="rich-clarify"]').click();
+      const drawer = page.locator(".work-item-drawer");
+      await drawer.getByRole("tab", { name: t.detailTabs.stints }).click();
+      await expect(
+        drawer.getByRole("button", { name: t.stints.openStint("12345678") }),
+      ).toBeVisible();
+      const visibleText = await drawer.innerText();
+      expect(visibleText).not.toMatch(/\b[0-9a-f]{40}\b/i);
+      expect(visibleText).not.toMatch(
+        /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+      );
+      await assertLayout(page, { region: ".work-item-drawer" });
+    });
+  }
+}

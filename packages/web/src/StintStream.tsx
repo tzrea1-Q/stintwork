@@ -19,6 +19,7 @@ import { recoveryStatus, StintRecovery } from "./StintRecovery";
 import { readableToolOutput } from "./tool-output";
 import { Badge } from "./ui/Badge";
 import { CodeBlock } from "./ui/CodeBlock";
+import { Disclosure } from "./ui/Disclosure";
 import { Markdown } from "./ui/Markdown";
 import { blur, shift, spring, useReducedMotionSafe } from "./ui/motion";
 
@@ -269,15 +270,17 @@ export function StintStream({
                     </p>
                   ))}
                   {event.content?.length || event.output ? (
-                    <details className="stint-tool-output [&_summary]:text-muted-foreground">
-                      <summary>{t.stints.toolOutput}</summary>
+                    <Disclosure
+                      label={t.stints.toolOutput}
+                      className="stint-tool-output [&_summary]:text-muted-foreground"
+                    >
                       {!!event.content?.length && (
                         <CodeBlock>
                           {event.content.map((content) => toolOutput(content, t)).join("\n\n")}
                         </CodeBlock>
                       )}
                       {event.output && <CodeBlock>{readableToolOutput(event.output)}</CodeBlock>}
-                    </details>
+                    </Disclosure>
                   ) : null}
                 </div>
               )}
@@ -303,10 +306,9 @@ export function StintStream({
                 </p>
               )}
               {event.type === "other" && (
-                <details>
-                  <summary>{stintEventKind(event.kind, t.stints.sessionUpdateKinds)}</summary>
+                <Disclosure label={stintEventKind(event.kind, t.stints.sessionUpdateKinds)}>
                   <CodeBlock>{JSON.stringify(event.update, null, 2)}</CodeBlock>
-                </details>
+                </Disclosure>
               )}
             </m.div>
           );

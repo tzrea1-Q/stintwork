@@ -43,6 +43,7 @@ import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import { Disclosure } from "./ui/Disclosure";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -782,15 +783,17 @@ export function WorkItemDrawer({
                   <>
                     {headings.length > 0 && (
                       <>
-                        <details className="text-xs text-muted-foreground @[960px]:hidden">
-                          <summary className="cursor-pointer">{t.detailTabs.contents}</summary>
+                        <Disclosure
+                          label={t.detailTabs.contents}
+                          className="text-xs text-muted-foreground @[960px]:hidden"
+                        >
                           <nav
                             aria-label={t.detailTabs.contents}
                             className="flex flex-col items-start [&>button]:!min-h-7"
                           >
                             {contents}
                           </nav>
-                        </details>
+                        </Disclosure>
                         <nav
                           aria-label={t.detailTabs.contents}
                           className="hidden min-w-0 flex-col items-start gap-1 text-xs text-muted-foreground @[960px]:sticky @[960px]:top-0 @[960px]:flex @[960px]:self-start"
@@ -838,7 +841,7 @@ export function WorkItemDrawer({
                             : Circle;
                         return (
                           <li key={ticket.path}>
-                            <div className="drawer-ticket rounded-md border border-border p-3">
+                            <div className="drawer-ticket border-b border-border py-3">
                               <button
                                 type="button"
                                 className="flex w-full items-start gap-3 text-left"
@@ -874,18 +877,17 @@ export function WorkItemDrawer({
                                     aria-hidden="true"
                                   />
                                 </m.span>
-                                <span className="ticket-title grid min-w-0 gap-1 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
+                                <span className="ticket-title min-w-0 [overflow-wrap:anywhere] [&_strong]:text-sm [&_strong]:font-medium [&_small]:text-xs">
                                   <strong>
                                     {ticketNumber(ticket.number)} · {ticket.title}
-                                  </strong>
-                                  <small
-                                    className={
-                                      blocked
-                                        ? "warning text-attention-foreground"
-                                        : "muted text-muted-foreground"
-                                    }
-                                  >
+                                  </strong>{" "}
+                                  <small className="muted text-muted-foreground">
                                     <Badge
+                                      title={
+                                        Object.hasOwn(t.stints.ticketStatuses, ticket.status)
+                                          ? undefined
+                                          : ticket.status
+                                      }
                                       variant={
                                         ticket.resolved
                                           ? "success"
@@ -949,7 +951,7 @@ export function WorkItemDrawer({
               <h3 id="drawer-stint-history-title" className="sr-only">
                 {t.stints.history}
               </h3>
-              <StintHistory stints={item.stints} github={!!item.github} />
+              <StintHistory stints={item.stints} github={!!item.github} agents={agents} />
             </section>
             {item.merged && (
               <>
