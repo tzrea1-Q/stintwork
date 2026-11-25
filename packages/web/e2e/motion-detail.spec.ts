@@ -108,14 +108,18 @@ test("closing docked detail reflows the board during the panel exit", async ({ p
   expect(Math.abs(firstExit.left - translateX - panelBox.x)).toBeLessThanOrEqual(1);
 });
 
-async function openDetail(page: Page) {
+async function openDetail(page: Page, onOpen?: () => void) {
   await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));
   await page.goto("/?view=pipeline");
   await page.locator('.board-scroll [data-work-item="long-title"]').click();
   await expect(page.locator(".work-item-drawer")).toBeVisible();
+  onOpen?.();
+  await waitForRest(page, ".work-item-drawer");
+  await waitForRest(page, indicator);
 }
 
 async function movesBetween(page: Page, selector: string, action: () => Promise<void>) {
+  await waitForRest(page, selector);
   const start = await page
     .locator(selector)
     .evaluate((element) => element.getBoundingClientRect().left);
@@ -163,19 +167,20 @@ for (const width of [1440, 1024, 390]) {
 for (const width of [1440, 1024]) {
   test(`docked detail and navigation motion at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await openDetail(page);
+    let opening: ReturnType<typeof sampleFrames> | undefined;
+    await openDetail(page, () => {
+      opening = sampleFrames(page, "aside.work-item-drawer", tween.sheet.duration * 1000 * 2);
+    });
     const drawer = page.locator("aside.work-item-drawer");
-    const opening = await sampleFrames(
-      page,
-      "aside.work-item-drawer",
-      tween.sheet.duration * 1000 * 2,
-    );
-    if (width === 1440) expect(opening[0].left).toBeGreaterThan(opening.at(-1)?.left ?? Infinity);
+    if (!opening) throw new Error("Missing opening samples");
+    const openingFrames = await opening;
+    if (width === 1440)
+      expect(openingFrames[0].left).toBeGreaterThan(openingFrames.at(-1)?.left ?? Infinity);
     const expanding = sampleFrames(page, "aside.work-item-drawer", duration);
     await drawer.getByRole("button", { name: /full screen/i }).click();
     const frames = await expanding;
     expect(new Set(frames.map(({ width: value }) => Math.round(value))).size).toBeGreaterThan(2);
-    expect([...opening, ...frames].every(({ overflow }) => overflow <= 0)).toBe(true);
+    expect([...openingFrames, ...frames].every(({ overflow }) => overflow <= 0)).toBe(true);
     const collapsing = sampleFrames(page, "aside.work-item-drawer", duration);
     await drawer.getByRole("button", { name: "Collapse to panel" }).click();
     const collapsed = await collapsing;

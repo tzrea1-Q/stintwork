@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type WebSocketRoute } from "@playwright/test";
 import { motionBoardSnapshot, moveMotionCard } from "./motion-board.fixture";
-import { sampleElementFrames, sampleFrames } from "./support/frames";
+import { longTaskBudgetMs, sampleElementFrames, sampleFrames } from "./support/frames";
 
 test.use({ contextOptions: { reducedMotion: "no-preference", colorScheme: "light" } });
 
@@ -166,12 +166,12 @@ for (const width of [1440, 390]) {
       expect(overflowFrames, JSON.stringify(overflowFrames.slice(0, 3))).toHaveLength(0);
       expect(oversizedFrames, JSON.stringify(oversizedFrames.slice(0, 3))).toHaveLength(0);
       expect(reflowFrames.every((frame) => frame.overflow <= 0 && !frame.oversized)).toBe(true);
+      const durations = await page.evaluate(
+        () => (window as typeof window & { motionLongTasks: number[] }).motionLongTasks,
+      );
       expect(
-        await page.evaluate(() =>
-          (window as typeof window & { motionLongTasks: number[] }).motionLongTasks.every(
-            (duration) => duration <= 50,
-          ),
-        ),
+        durations.every((duration) => duration <= longTaskBudgetMs),
+        JSON.stringify(durations),
       ).toBe(true);
     }
   });
