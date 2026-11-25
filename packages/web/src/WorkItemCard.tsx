@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  stageAgent,
   type AgentProfile,
   type Milestone,
   type ProjectSnapshot,
+  stageAgent,
   type WorkflowDefinition,
 } from "@stintwork/core";
 import { Bug, Layers3, Sparkles, Zap } from "lucide-react";
-import { m, useIsPresent } from "motion/react";
+import { m, useInView, useIsPresent } from "motion/react";
 import { forwardRef, useContext, useRef, useState } from "react";
-import { becameShipped } from "./moments";
 import { BoardMotionContext } from "./board-motion";
-import { blur, scale, shift, spring, staggerDelay, tween, usePress } from "./ui/motion";
-import { RollingNumber } from "./ui/RollingNumber";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
+import { becameShipped } from "./moments";
 import { recoveryStatus } from "./StintRecovery";
 import { AgentAvatar } from "./ui/AgentAvatar";
+import { Button } from "./ui/Button";
+import { blur, scale, shift, spring, staggerDelay, tween, usePress } from "./ui/motion";
+import { RollingNumber } from "./ui/RollingNumber";
 import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { StatusChip } from "./ui/StatusChip";
-import { Button } from "./ui/Button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 const shippedMoments = new Set<string>();
@@ -38,6 +38,7 @@ export const WorkItemCard = forwardRef<
     agents?: AgentProfile[];
     selected?: boolean;
     index?: number;
+    showWorkflow?: boolean;
   }
 >(function WorkItemCard(
   {
@@ -49,9 +50,15 @@ export const WorkItemCard = forwardRef<
     agents = [],
     selected = false,
     index = 0,
+    showWorkflow = false,
   },
   ref,
 ) {
+  const cardRef = useRef<HTMLElement | null>(null);
+  const visible = useInView(cardRef, {
+    initial: true,
+    once: typeof IntersectionObserver === "undefined",
+  });
   const { t } = useLanguage();
   const isPresent = useIsPresent();
   const { firstLoad, previous, skip, instant, reduced } = useContext(BoardMotionContext);
@@ -127,11 +134,15 @@ export const WorkItemCard = forwardRef<
 
   return (
     <m.article
-      ref={ref}
+      ref={(node) => {
+        cardRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = node;
+      }}
       data-exiting={isPresent ? undefined : item.slug}
       aria-hidden={isPresent ? undefined : true}
-      layout={!skip && !reduced ? "position" : false}
-      layoutId={skip || reduced ? undefined : `card-${item.slug}`}
+      layout={!skip && !reduced && visible ? "position" : false}
+      layoutId={skip || reduced || !visible ? undefined : `card-${item.slug}`}
       initial={
         arrival
           ? reduced
@@ -151,7 +162,7 @@ export const WorkItemCard = forwardRef<
         scale: spring.press,
         opacity: skip ? { duration: 0 } : spring.arrive,
       }}
-      className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring has-[.work-item-open:focus-visible]:outline-2 has-[.work-item-open:focus-visible]:outline-offset-2 has-[.work-item-open:focus-visible]:outline-ring ${running ? "bg-running-soft" : attentionCount > 0 ? "bg-attention-soft" : blocked ? "bg-blocked-soft" : "bg-muted"} ${selected ? "ring-2 ring-ring" : ""}`}
+      className={`work-item relative min-w-0 rounded-2xl border border-transparent p-3 hover:border-ring focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring bg-muted ${status ? `status-edge status-edge-${status}` : ""} ${selected ? "ring-2 ring-ring" : ""}`}
       aria-label={`${item.slug}: ${item.title}`}
     >
       {shipped && (
@@ -164,13 +175,15 @@ export const WorkItemCard = forwardRef<
           transition={spring.celebrate}
         />
       )}
-      <m.div layout="position">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+      <m.div layout={visible ? "position" : false}>
+        <div className="flex items-start justify-between gap-2">
           <span
-            className="work-item-id inline-flex max-w-full flex-none items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
+            className="work-item-id inline-flex min-w-0 flex-1 items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
             title={typeName}
           >
-            <TypeIcon className="size-icon-sm shrink-0" aria-hidden="true" />
+            {showWorkflow && (
+              <TypeIcon data-workflow-icon className="size-icon-sm shrink-0" aria-hidden="true" />
+            )}
             <span className="sr-only">{typeName}: </span>
             <span className="truncate" data-truncate title={item.slug}>
               {item.slug}
@@ -178,18 +191,25 @@ export const WorkItemCard = forwardRef<
           </span>
           {item.milestone && (
             <span
-              className="milestone-tag shrink-0 whitespace-nowrap rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
-              title={milestone?.name}
+              className="milestone-tag max-w-40 min-w-0 shrink truncate rounded-sm border border-border px-1 text-xs text-muted-foreground"
+              data-truncate
+              title={
+                /^m\d+$/i.test(milestone?.id ?? item.milestone)
+                  ? (milestone?.id ?? item.milestone).toUpperCase()
+                  : (milestone?.name ?? item.milestone)
+              }
             >
-              {milestone?.id ?? item.milestone}
+              {/^m\d+$/i.test(milestone?.id ?? item.milestone)
+                ? (milestone?.id ?? item.milestone).toUpperCase()
+                : (milestone?.name ?? item.milestone)}
             </span>
           )}
         </div>
-        <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-[620] break-words">
+        <h3 className="my-3 text-[length:var(--type-item-title)] leading-5 font-semibold break-words">
           <Button
             variant="link"
             type="button"
-            className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-[620] after:absolute after:inset-0 after:rounded-2xl"
+            className="work-item-open h-auto w-full justify-start whitespace-normal p-0 text-left text-[length:var(--type-item-title)] font-semibold after:absolute after:inset-0 after:rounded-2xl"
             data-work-item={isPresent ? item.slug : undefined}
             disabled={!isPresent}
             aria-label={t.card.open(item.slug, item.title)}
@@ -236,6 +256,7 @@ export const WorkItemCard = forwardRef<
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           {agent &&
+            (item.activeStint || item.stints.length > 0) &&
             (item.inferred ? (
               <TooltipProvider>
                 <Tooltip>
@@ -263,28 +284,31 @@ export const WorkItemCard = forwardRef<
             ) : (
               <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
             ))}
-          <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
-              <span>
-                {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
-              </span>
-            ) : (
-              <>
+          {(item.tickets.length > 0 ||
+            (item.github && (!item.github.ticketsKnown || item.github.ticketsStale))) && (
+            <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
                 <span>
-                  <RollingNumber value={resolved} />/{item.tickets.length}{" "}
-                  <span className="sr-only">{t.card.resolved}</span>
-                  {t.card.tickets}
+                  {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
                 </span>
-                <div className="w-11 shrink-0">
-                  <SegmentedProgress
-                    label={t.card.progress(item.slug)}
-                    total={item.tickets.length}
-                    value={resolved}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+              ) : (
+                <>
+                  <span>
+                    <RollingNumber value={resolved} />/{item.tickets.length}{" "}
+                    <span className="sr-only">{t.card.resolved}</span>
+                    {t.card.tickets}
+                  </span>
+                  <div className="w-11 shrink-0">
+                    <SegmentedProgress
+                      label={t.card.progress(item.slug)}
+                      total={item.tickets.length}
+                      value={resolved}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </m.div>
     </m.article>

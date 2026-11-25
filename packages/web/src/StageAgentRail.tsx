@@ -10,6 +10,7 @@ import {
 } from "@stintwork/core";
 import { Sparkles } from "lucide-react";
 import { useEffect, useState } from "react";
+import { agentName } from "./agent-name";
 import {
   CoreTextError,
   readResponseJson,
@@ -18,6 +19,7 @@ import {
   useLanguage,
 } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
+import { Disclosure } from "./ui/Disclosure";
 import { PropertyRow } from "./ui/PropertyRow";
 import { SelectField } from "./ui/SelectField";
 import type { BoardWorkItem } from "./WorkItemCard";
@@ -93,7 +95,7 @@ export function StageAgentRail({
     ? ((choices.source === item.stages ? choices.agents[item.stage] : undefined) ??
       stageAgent(item, item.stage, agents, workflows))
     : "";
-  const currentName = agents.find((agent) => agent.id === current)?.displayName ?? current;
+  const currentName = agentName(current, agents);
 
   return (
     <>
@@ -111,10 +113,7 @@ export function StageAgentRail({
           </span>
         }
       />
-      <details className="col-span-full">
-        <summary className="cursor-pointer py-2 text-xs text-muted-foreground">
-          {t.drawerIdentity.agentsByStage}
-        </summary>
+      <Disclosure className="col-span-full" label={t.drawerIdentity.agentsByStage}>
         <ol
           className="stage-rail [&_[role=group]]:items-center [&_[role=group]]:py-0"
           aria-label={t.stints.workflowStages(workflowName(workflow, t))}
@@ -172,7 +171,7 @@ export function StageAgentRail({
             );
           })}
         </ol>
-      </details>
+      </Disclosure>
       {error && (
         <p
           role="alert"

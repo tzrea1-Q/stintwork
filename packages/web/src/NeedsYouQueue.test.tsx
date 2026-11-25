@@ -807,7 +807,7 @@ test.each(["en", "zh-CN"] as const)(
     );
     await user.click(screen.getByRole("button", { name: `${t.topBar.needsYou} 1` }));
     const sheet = within(screen.getByRole("dialog"));
-    const stage = language === "en" ? "Spec" : "规格说明";
+    const stage = language === "en" ? "Spec" : "规格";
     expect(
       sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
     ).toBeVisible();
@@ -867,11 +867,11 @@ test("Chinese notifications translate the stage for gate-ready and stale approva
   );
   expect(notify).toHaveBeenCalledWith(
     "Project · 待你处理",
-    expect.objectContaining({ body: zhCN.needsYou.stageReady("规格说明"), tag: gate.id }),
+    expect.objectContaining({ body: zhCN.needsYou.stageReady("规格"), tag: gate.id }),
   );
   expect(notify).toHaveBeenCalledWith(
     "Project · 待你处理",
-    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: stale.id }),
+    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格"), tag: stale.id }),
   );
   rerender(
     <LanguageProvider>
@@ -897,7 +897,7 @@ test("Chinese notifications translate the stage for gate-ready and stale approva
   expect(notify).toHaveBeenCalledTimes(3);
   expect(notify).toHaveBeenLastCalledWith(
     "Project · 待你处理",
-    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: later.id }),
+    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格"), tag: later.id }),
   );
 });
 
@@ -1058,15 +1058,15 @@ test.each(["en", "zh-CN"] as const)(
   },
 );
 
-test("StintStream retains permission context by default", () => {
+test("StintStream omits repeated permission context", () => {
   const snapshot = attentionSnapshot();
   const stint = snapshot.workItems[0].activeStint;
   if (!stint) throw new Error("Expected active stint");
   render(<StintStream stint={stint} profile={attentionProfile} />);
   expect(
-    screen.getByText(en.review.visualRefresh07.permission, { exact: true }),
-  ).toBeInTheDocument();
-  expect(screen.getByText(/Agent: Test Agent · Stint:/)).toHaveTextContent("stint");
+    screen.queryByText(en.review.visualRefresh07.permission, { exact: true }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/Agent: Test Agent · Stint:/)).not.toBeInTheDocument();
 });
 
 test("compact gate approves and opens the work item", async () => {

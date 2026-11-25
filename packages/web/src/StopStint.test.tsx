@@ -60,6 +60,11 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
       onClose={() => {}}
     />,
   );
+  expect(
+    document.querySelectorAll(
+      ".drawer-footer .footer-primary button, .drawer-footer button.bg-primary",
+    ),
+  ).toHaveLength(0);
   const stop = screen.getByRole("button", { name: "Stop" });
   const live = document.querySelector('section[aria-labelledby="drawer-live-stint-title"]');
   expect(stop.closest("[data-slot=card]")).toBeNull();
@@ -67,6 +72,7 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
     live?.querySelector('[role="status"]')?.parentElement,
   );
   expect(stop.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  expect(stop.querySelector("svg")).toHaveClass("lucide-circle-stop");
   await user.click(stop);
   expect(fetch).toHaveBeenCalledWith("/api/stints/first/stop", { method: "POST" });
   expect(screen.getByRole("button", { name: "Stopping stint…" })).toBeDisabled();
@@ -96,11 +102,12 @@ test("the drawer's Stop posts the stint id, prevents duplicate clicks, and shows
   expect(screen.queryByRole("button", { name: /Stop/ })).not.toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "Stints" }));
   const history = screen.getByRole("list", { name: "Stint history" });
-  expect(history).toHaveTextContent("codex · Ticket 05 · stopped");
+  expect(history).toHaveTextContent("Codex · Ticket 05 · stopped");
   expect(within(history).getByRole("article", { name: "Handoff" })).toHaveTextContent(
     "Partial work",
   );
-  expect(history).toHaveTextContent("Checkpoint commit: checkpoint");
+  expect(history).toHaveTextContent("Checkpoint commit: checkpo");
+  expect(within(history).getByText("checkpo")).toHaveAttribute("title", "checkpoint");
 });
 
 test("a failed Stop displays its error and lets the developer retry", async () => {
@@ -139,10 +146,11 @@ test("a failed stint shows its error in history and in the stream, with its chec
   );
   await userEvent.click(screen.getByRole("tab", { name: "Stints" }));
   const history = screen.getByRole("list", { name: "Stint history" });
-  expect(history).toHaveTextContent("codex · Ticket 05 · failed");
+  expect(history).toHaveTextContent("Codex · Ticket 05 · failed");
   expect(within(history).getByRole("alert")).toHaveTextContent(failed.error as string);
   expect(history).toHaveTextContent("No handoff was given.");
-  expect(history).toHaveTextContent("Checkpoint commit: checkpoint");
+  expect(history).toHaveTextContent("Checkpoint commit: checkpo");
+  expect(within(history).getByText("checkpo")).toHaveAttribute("title", "checkpoint");
   expect(screen.queryByRole("button", { name: "Stop" })).not.toBeInTheDocument();
   render(<StintStream stint={failed} />);
   expect(

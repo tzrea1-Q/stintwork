@@ -37,6 +37,7 @@ import { Empty } from "./ui/Empty";
 import { Item, ItemContent, ItemMedia } from "./ui/Item";
 import { PropertyList, PropertyRow } from "./ui/PropertyRow";
 import { SelectField } from "./ui/SelectField";
+import { WarningCallout } from "./ui/WarningCallout";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import type { BoardWorkItem } from "./WorkItemCard";
 
@@ -410,8 +411,11 @@ function BriefPreviewSheet({
           </DialogDescription>
         </header>
         <div className="brief-preview-content min-h-0 flex-1 overflow-auto overscroll-contain space-y-5 p-4 text-sm leading-relaxed [overflow-wrap:anywhere] sm:p-6 [&>section+section]:mt-6 [&_h3]:mb-2 [&_h3]:font-medium [&_dt]:mt-2 [&_dt]:font-medium [&_dd]:whitespace-pre-wrap [&_pre]:mt-2">
-          <section aria-label={t.stints.agent}>
-            <PropertyList>
+          <section
+            aria-label={t.stints.agent}
+            className="brief-agent flex flex-wrap items-center gap-x-3"
+          >
+            <PropertyList className="[&_h3]:m-0 [&_[role=group]]:items-center [&_dd]:flex-none [&_dd]:w-auto">
               <PropertyRow
                 icon={User}
                 label={<h3>{t.stints.agent}</h3>}
@@ -456,13 +460,6 @@ function BriefPreviewSheet({
                 }
               />
             </PropertyList>
-            <p id={agentAvailabilityId} className="muted text-muted-foreground">
-              {brief
-                ? agents.length
-                  ? (unavailable ?? t.stints.chooseAgent)
-                  : t.stints.noAgents
-                : t.stints.readingAgents}
-            </p>
             {selectedAgent &&
               (() => {
                 const selection = preparation ?? selectedAgent.availability?.selection;
@@ -480,7 +477,7 @@ function BriefPreviewSheet({
                     : preparation?.phase;
                 const activePreparation = starting && !cancelled && state !== "ready";
                 return (
-                  <div className="mt-3 space-y-2 rounded-md border border-border bg-card p-3">
+                  <div className="mt-1 space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
                       {selectedAgent.experimental && (
                         <Badge variant="secondary">{t.stints.experimental}</Badge>
@@ -593,15 +590,16 @@ function BriefPreviewSheet({
                   </div>
                 );
               })()}
-            {warnings.length > 0 && (
-              <div className="mt-4 border-t border-border pt-4">
-                {warnings.map((warning) => (
-                  <p key={warning.text} role="alert" className="warning text-attention-foreground">
-                    {translateCoreText(warning, t)}
-                  </p>
-                ))}
-              </div>
-            )}
+            <p id={agentAvailabilityId} className="muted w-full text-muted-foreground">
+              {brief
+                ? agents.length
+                  ? (unavailable ?? t.stints.chooseAgent)
+                  : t.stints.noAgents
+                : t.stints.readingAgents}
+            </p>
+            <WarningCallout
+              warnings={warnings.map((warning) => ({ message: translateCoreText(warning, t) }))}
+            />
           </section>
           <section>
             <PropertyList>
@@ -676,8 +674,8 @@ function BriefPreviewSheet({
                 <h3>{t.stints.skill}</h3>
                 <code>{brief.skill ? brief.prompt.split("\n")[0] : t.stints.noSkill}</code>
               </section>
-              <Card>
-                <section className="p-4">
+              <Card className="p-4">
+                <section>
                   <h3>{t.stints.readFirst}</h3>
                   <ul>
                     {brief.pointers.map(({ path, reason }) => (
@@ -813,6 +811,11 @@ function BriefPreviewSheet({
           {starting && preparation?.phase !== "confirm" && (
             <Button variant="primary" disabled>
               {t.stints.starting}
+            </Button>
+          )}
+          {!starting && (
+            <Button variant="outline" onClick={onClose}>
+              {t.planning.create.cancel}
             </Button>
           )}
           {!starting && (

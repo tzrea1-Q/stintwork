@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { StintSummary } from "@stintwork/core";
-import { CircleHelp, Flag, ListTodo } from "lucide-react";
-import { useId } from "react";
+import { Copy } from "lucide-react";
+import { Fragment, useId } from "react";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { renderCoreText, useLanguage } from "./i18n/language";
 import { Markdown } from "./ui/Markdown";
-import { PropertyList, PropertyRow } from "./ui/PropertyRow";
+import { shortHash } from "./short-id";
+import { Button } from "./ui/Button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 export function HandoffCard({ stint }: { stint: StintSummary }) {
   const { t } = useLanguage();
@@ -19,20 +21,20 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
       <h4 id={title}>{t.stints.handoff}</h4>
       <CheckpointWarnings warnings={stint.checkpointWarnings} />
       {stint.handoff ? (
-        <PropertyList>
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-2 py-2">
           {[
-            { icon: Flag, heading: t.stints.whereIStopped, text: stint.handoff.stoppedAt },
-            { icon: CircleHelp, heading: t.stints.unresolved, text: stint.handoff.unresolved },
-            { icon: ListTodo, heading: t.stints.suggestedNext, text: stint.handoff.nextStep },
-          ].map(({ icon, heading, text }) => (
-            <PropertyRow
-              key={heading}
-              icon={icon}
-              label={heading}
-              value={<Markdown>{text}</Markdown>}
-            />
+            { heading: t.stints.whereIStopped, text: stint.handoff.stoppedAt },
+            { heading: t.stints.unresolved, text: stint.handoff.unresolved },
+            { heading: t.stints.suggestedNext, text: stint.handoff.nextStep },
+          ].map(({ heading, text }) => (
+            <Fragment key={heading}>
+              <dt className="text-sm text-muted-foreground">{heading}</dt>
+              <dd className="min-w-0">
+                <Markdown>{text}</Markdown>
+              </dd>
+            </Fragment>
           ))}
-        </PropertyList>
+        </dl>
       ) : (
         <p className="muted text-muted-foreground">
           {stint.handoffError
@@ -46,9 +48,27 @@ export function HandoffCard({ stint }: { stint: StintSummary }) {
         {stint.checkpointCommit ? (
           <>
             {t.stints.checkpointLabel}{" "}
-            <code className="block max-w-full overflow-auto font-mono">
-              {stint.checkpointCommit}
-            </code>
+            <code title={stint.checkpointCommit} className="font-mono">
+              {shortHash(stint.checkpointCommit)}
+            </code>{" "}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={t.review.diff.copyHash(t.stints.checkpointCommit)}
+                    onClick={() =>
+                      void navigator.clipboard.writeText(stint.checkpointCommit as string)
+                    }
+                  >
+                    <Copy aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t.review.diff.copyHash(t.stints.checkpointCommit)}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </>
         ) : (
           t.stints.noCheckpoint

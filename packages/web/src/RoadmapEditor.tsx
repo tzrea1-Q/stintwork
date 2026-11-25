@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
-import { m } from "motion/react";
-import { useId } from "react";
-import { spring, useReducedMotionSafe } from "./ui/motion";
+
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
-import { ChevronDown, ChevronUp } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
+import { m } from "motion/react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
-import { workItemDone } from "./overview-data";
+import { milestoneUnits } from "./overview-data";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
+import { Input } from "./ui/Input";
+import { spring, useReducedMotionSafe } from "./ui/motion";
 import { Progress } from "./ui/Progress";
 import { SelectField } from "./ui/SelectField";
 import { StatusChip } from "./ui/StatusChip";
@@ -60,6 +61,8 @@ function RoadmapSheet({
   const labels = t.planning.roadmap;
   const [milestones, setMilestones] = useState(snapshot.milestones);
   const indicatorId = useId();
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const autoFocusing = useRef(false);
   const reduced = useReducedMotionSafe();
   const [selected, setSelected] = useState(snapshot.milestones[0]?.id ?? "");
   const milestone = milestones.find((item) => item.id === selected);
@@ -167,7 +170,13 @@ function RoadmapSheet({
     >
       <DialogContent
         onExitComplete={onExitComplete}
-        className="roadmap-editor w-[960px] [&_input]:w-full [&_input]:rounded-sm [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          autoFocusing.current = true;
+          closeButton.current?.focus({ preventScroll: true });
+          autoFocusing.current = false;
+        }}
+        className="roadmap-editor w-[960px]"
         onEscapeKeyDown={(event) => {
           if (saving || adding) event.preventDefault();
           if (adding && !saving) {
@@ -181,9 +190,28 @@ function RoadmapSheet({
       >
         <header className="mb-2 flex items-center justify-between gap-3">
           <DialogTitle className="text-xl font-medium">{labels.title}</DialogTitle>
-          <Button disabled={saving} onClick={close}>
-            {labels.close}
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                asChild
+                onFocus={(event) => {
+                  if (autoFocusing.current) event.preventDefault();
+                }}
+              >
+                <Button
+                  ref={closeButton}
+                  variant="ghost"
+                  size="icon"
+                  aria-label={labels.close}
+                  disabled={saving}
+                  onClick={close}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{labels.close}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </header>
         <DialogDescription className="text-muted-foreground">
           {labels.description}
@@ -210,9 +238,10 @@ function RoadmapSheet({
                   void save({ kind: "add", name: newName });
                 }}
               >
-                <label className="min-w-0 flex-1 text-sm">
+                <label htmlFor="roadmap-new-name" className="min-w-0 flex-1 text-sm">
                   {labels.newName}
-                  <input
+                  <Input
+                    id="roadmap-new-name"
                     required
                     disabled={saving}
                     value={newName}
@@ -281,11 +310,7 @@ function RoadmapSheet({
             <div className="hidden md:block">
               <TooltipProvider>
                 {milestones.map((item, index) => {
-                  const total = item.workItemSlugs.length;
-                  const done = snapshot.workItems.filter(
-                    (workItem) =>
-                      item.workItemSlugs.includes(workItem.slug) && workItemDone(workItem),
-                  ).length;
+                  const { units: total, unitsDone: done } = milestoneUnits(item, snapshot);
                   return (
                     <m.section
                       layout={!reduced}
@@ -384,9 +409,10 @@ function RoadmapSheet({
           {milestone && (
             <fieldset disabled={saving} className="min-w-0 space-y-3">
               <legend className="font-semibold">{milestone.name}</legend>
-              <label className="block text-sm">
+              <label htmlFor="roadmap-name" className="block text-sm">
                 {labels.nameLabel}
-                <input
+                <Input
+                  id="roadmap-name"
                   aria-label={labels.name(milestone.name)}
                   required
                   value={name}
@@ -416,9 +442,10 @@ function RoadmapSheet({
                   ))}
                 </ToggleGroup>
               </div>
-              <label className="block text-sm">
+              <label htmlFor="roadmap-target" className="block text-sm">
                 {labels.targetLabel}
-                <input
+                <Input
+                  id="roadmap-target"
                   type="date"
                   aria-label={labels.target(milestone.name)}
                   value={target}

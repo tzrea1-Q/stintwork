@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
+
 import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
-import type { ProjectSnapshot } from "@stintwork/core";
+import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
+import { stageName } from "../src/i18n/workflow-names";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
 import { richClock, richSnapshotWithEveryKind } from "./rich.fixture";
+import { expectNoFocusRing } from "./support/focus-ring";
 
 const longPath = `/worktrees/${"long-directory-工程/".repeat(14)}example.ts`;
 const wideCode = `const longExample = "${"unbroken-code-原文".repeat(100)}";`;
@@ -64,6 +67,19 @@ async function scrollContent(content: Locator) {
 
 for (const language of ["en", "zh-CN"] as const) {
   const t = language === "en" ? en : zhCN;
+  test(`URL-opened detail keeps mouse tab focus invisible ${language}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const { item } = await openFixture(page, language);
+    await page.goto(`/?view=pipeline&item=${encodeURIComponent(item.slug)}`);
+    const panel = page.locator(".work-item-drawer");
+    await expect(panel).toBeVisible();
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    const tab = panel.getByRole("tab", { name: t.detailTabs.spec, exact: true });
+    const bounds = await tab.boundingBox();
+    if (!bounds) throw new Error("Missing Spec tab bounds");
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    await expectNoFocusRing(tab);
+  });
   for (const width of [1440, 1024, 768, 390, 360]) {
     for (const colorScheme of width === 1440 || width === 390
       ? (["light", "dark"] as const)
@@ -82,6 +98,7 @@ for (const language of ["en", "zh-CN"] as const) {
         });
         await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
+        if (width < 768 && item.column) await page.locator(`#stage-tab-${item.column}`).click();
         const trigger = page.locator('.board-scroll [data-work-item="long-title"]');
         await trigger.focus();
         await page.keyboard.press("Enter");
@@ -102,11 +119,23 @@ for (const language of ["en", "zh-CN"] as const) {
 
         await expect(close).toBeFocused();
         await expect(
+          sheet.locator(".drawer-footer .footer-primary button, .drawer-footer button.bg-primary"),
+        ).toHaveCount(1);
+        const conditionRows = sheet.locator(".handoff-card li:has(> div > strong)");
+        expect(await conditionRows.count()).toBeGreaterThan(0);
+        for (const row of await conditionRows.all()) {
+          const title = await row.locator("strong").boundingBox();
+          const chip = await row.locator("strong + span").boundingBox();
+          if (!title || !chip) throw new Error("Expected condition title and status");
+          expect(Math.abs(title.y - chip.y)).toBeLessThanOrEqual(4);
+        }
+
+        await expect(
           sheet.locator(".drawer-identity").getByRole("heading", { name: item.title, exact: true }),
         ).toHaveAttribute("title", item.title);
         await sheet.locator("summary", { hasText: t.drawerIdentity.agentsByStage }).click();
         await expect(sheet.getByRole("combobox").last()).toBeDisabled();
-        const rows = sheet.locator(".drawer-content > dl [role=group]");
+        const rows = sheet.locator(".drawer-content > div > dl [role=group]");
         const positions = await rows.evaluateAll((elements) =>
           elements.map((element) => {
             const label = element.querySelector("dt")?.getBoundingClientRect();
@@ -155,9 +184,18 @@ for (const language of ["en", "zh-CN"] as const) {
             await panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
           ).toBe(true);
         }
-        await sheet.getByRole("tab", { name: t.detailTabs.spec }).click();
+        const specTab = sheet.getByRole("tab", { name: t.detailTabs.spec });
+        const specBounds = await specTab.boundingBox();
+        if (!specBounds) throw new Error("Missing Spec tab bounds");
+        await page.mouse.click(
+          specBounds.x + specBounds.width / 2,
+          specBounds.y + specBounds.height / 2,
+        );
+        expect(await page.evaluate(() => document.activeElement?.matches(":focus-visible"))).toBe(
+          false,
+        );
         const content = sheet.getByRole("tabpanel");
-        await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(0);
+        await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(1);
         const header = sheet.locator(".drawer-header");
         const headerBefore = await header.boundingBox();
         await scrollContent(content);
@@ -194,9 +232,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(languageTrigger).toBeFocused();
         await trigger.click();
         await expect(sheet).toBeVisible();
-        await expect(
-          sheet.getByRole("button", { name: (other === "en" ? en : zhCN).stints.closeWorkItem }),
-        ).toBeFocused();
+        await expect(sheet).toBeFocused();
         await page.keyboard.press("Escape");
         await expect(sheet).not.toBeVisible();
         await expect
@@ -296,7 +332,8 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         await page.locator("#needs-you-trigger").click();
         const sheet = page.locator(".needs-you-queue");
-        const stage = language === "en" ? "Spec" : "规格说明";
+        const workflow = builtInWorkflows.feature;
+        const stage = stageName(workflow, workflow.stages.find((entry) => entry.id === "spec")!, t);
         await expect(
           sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
         ).toBeVisible();
@@ -572,6 +609,9 @@ test("detail resizing persists and full screen fills the board area", async ({ p
   const topBarBounds = await page.locator(".top-bar").boundingBox();
   if (!fullBounds || !topBarBounds) throw new Error("Expected detail and top bar bounds");
   expect(fullBounds.width).toBe(1440);
+  const gateBounds = await drawer.locator(".handoff-card").first().boundingBox();
+  if (!gateBounds) throw new Error("Expected gate");
+  expect(gateBounds.width).toBeLessThanOrEqual(1000);
   expect(fullBounds.y).toBe(topBarBounds.y + topBarBounds.height);
   expect(fullBounds.y + fullBounds.height).toBe(900);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -646,6 +686,40 @@ for (const language of ["en", "zh-CN"] as const) {
         await captureSheet(page, testInfo, ".needs-you-queue", `needs-you-all-kinds-${index}`);
         if (top === dimensions.max) break;
       }
+    });
+  }
+}
+
+for (const language of ["en", "zh-CN"] as const) {
+  for (const width of [1440, 390]) {
+    test(`rich stint identifiers ${width}px ${language}`, async ({ page }) => {
+      const t = language === "en" ? en : zhCN;
+      const snapshot = richSnapshotWithEveryKind();
+      const item = snapshot.workItems.find((entry) => entry.slug === "rich-clarify");
+      if (!item?.stints[0]) throw new Error("The rich stint fixture is required");
+      item.stints[0].id = "12345678-1234-1234-1234-123456789abc";
+      item.stints[0].checkpointCommit = "0123456789abcdef0123456789abcdef01234567";
+      await page.setViewportSize({ width, height: 900 });
+      await page.clock.setFixedTime(new Date(richClock));
+      await page.addInitScript(
+        (choice) => localStorage.setItem("stintwork.language", choice),
+        language,
+      );
+      await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+      await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
+      await page.goto("/?view=pipeline");
+      await page.locator('[data-work-item="rich-clarify"]').click();
+      const drawer = page.locator(".work-item-drawer");
+      await drawer.getByRole("tab", { name: t.detailTabs.stints }).click();
+      await expect(
+        drawer.getByRole("button", { name: t.stints.openStint("12345678") }),
+      ).toBeVisible();
+      const visibleText = await drawer.innerText();
+      expect(visibleText).not.toMatch(/\b[0-9a-f]{40}\b/i);
+      expect(visibleText).not.toMatch(
+        /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+      );
+      await assertLayout(page, { region: ".work-item-drawer" });
     });
   }
 }

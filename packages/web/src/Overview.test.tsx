@@ -129,7 +129,7 @@ test("Overview localizes attention titles and workflow stage names", () => {
   );
   expect(screen.getByRole("heading", { name: "需要你处理 1" })).toBeVisible();
   expect(screen.getByText("你的关注")).toBeVisible();
-  const title = zhCN.needsYou.stageReady("规格说明");
+  const title = zhCN.needsYou.stageReady("规格");
   expect(screen.getByRole("button", { name: `${title} · One` })).toBeVisible();
   expect(screen.getByText(`${title} · One`)).toHaveAttribute("title", `${title} · One`);
   localStorage.removeItem(languageStorageKey);
@@ -195,7 +195,9 @@ test("keeps older recent stints when the seven day chart is empty", () => {
     expect(screen.getByRole("heading", { name: "Recent stints" })).toBeVisible();
     expect(screen.getByText("6 weeks ago")).toHaveAttribute(
       "title",
-      new Date(at).toLocaleString("en"),
+      new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(
+        new Date(at),
+      ),
     );
   } finally {
     vi.useRealTimers();

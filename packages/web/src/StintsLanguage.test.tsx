@@ -100,7 +100,7 @@ test("Chinese drawer sections, stage agents and Stop keep repo content verbatim"
   await user.click(sections.getByRole("tab", { name: "规格" }));
   expect(drawer.getByText("Spec body café 中文")).toBeInTheDocument();
   await user.click(sections.getByRole("tab", { name: "概览" }));
-  expect(drawer.queryByRole("button", { name: "开始 Stint" })).not.toBeInTheDocument();
+  expect(drawer.getByRole("button", { name: "开始 Stint" })).toBeDisabled();
   await user.click(drawer.getByRole("button", { name: "停止" }));
   expect(fetch).toHaveBeenCalledWith("/api/stints/stint-%E4%B8%AD%E6%96%87/stop", {
     method: "POST",
@@ -213,11 +213,11 @@ test("Chinese history formats dates with Intl and replays original non-ASCII out
   );
   const history = screen.getByRole("list", { name: "Stint 历史" });
   const dates = history.querySelectorAll("time");
-  const date = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "medium" });
+  const date = new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short" });
   expect(dates[0]).toHaveAttribute("datetime", recorded.startedAt);
-  expect(dates[0]).toHaveTextContent(date.format(new Date(recorded.startedAt)));
-  expect(dates[1]).toHaveTextContent(date.format(new Date(recorded.endedAt as string)));
-  expect(history).toHaveTextContent("codex · 工单 01 · 已结束");
+  expect(dates[0]).toHaveAttribute("title", date.format(new Date(recorded.startedAt)));
+  expect(dates[1]).toHaveAttribute("title", date.format(new Date(recorded.endedAt as string)));
+  expect(history).toHaveTextContent("Codex · 工单 01 · 已结束");
   expect(within(history).getByRole("article", { name: "交接" })).toHaveTextContent(
     "Handoff 原文 café",
   );
@@ -367,9 +367,9 @@ test.each(["drawer", "gate"])(
       ["resolved", "已解决"],
       ["ready-for-agent", "待 Agent 处理"],
       ["deferred", "已延期"],
-      ["Team_status 原文", "Team_status 原文"],
-      ["constructor", "constructor"],
-      ["__proto__", "__proto__"],
+      ["Team_status 原文", "其他状态"],
+      ["constructor", "其他状态"],
+      ["__proto__", "其他状态"],
     ];
     const withTickets = indexProject(
       createMemoryRepoFiles({
@@ -400,11 +400,17 @@ test.each(["drawer", "gate"])(
     const list = within(screen.getByRole("region", { name: "工单 6" }));
     for (const [index, [, label]] of statuses.entries()) {
       const number = index + 1;
-      expect(list.getByText(label)).toBeInTheDocument();
+      if (label === "其他状态")
+        expect(list.getByTitle(statuses[index][0])).toHaveTextContent(label);
+      else expect(list.getByText(label)).toBeInTheDocument();
       expect(list.getByText(`0${number} · Ticket ${number} 原文`)).toBeInTheDocument();
     }
     act(() => changeLanguage("en"));
-    for (const [status] of statuses)
+    for (const [status] of statuses) {
+      if (!["resolved", "ready-for-agent", "deferred"].includes(status)) {
+        expect(list.getByTitle(status)).toHaveTextContent("Other status");
+        continue;
+      }
       expect(
         list.getByText(
           status === "resolved"
@@ -416,6 +422,7 @@ test.each(["drawer", "gate"])(
                 : status,
         ),
       ).toBeInTheDocument();
+    }
   },
 );
 
@@ -442,9 +449,8 @@ test("Chinese gate approval keeps ticket titles, warning paths and warning messa
   expect(screen.getByText("01 · Ticket title 原文")).toBeInTheDocument();
   expect(screen.getByText("已解决")).toBeInTheDocument();
   await user.click(screen.getByRole("tab", { name: "概览" }));
-  const reopenedGate = within(screen.getByRole("region", { name: "实现关卡" }));
-  await user.click(reopenedGate.getByRole("button", { name: "批准实现" }));
-  expect(await reopenedGate.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "批准实现" }));
+  expect(await screen.findByText("关卡已批准。阶段推进至审查。")).toBeInTheDocument();
 });
 
 test("Chinese rail localizes chrome while custom workflow and stage names remain verbatim", async () => {

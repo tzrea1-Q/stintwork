@@ -1,33 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
+import { fullTime, relativeTime } from "../time";
 import { AgentAvatar } from "../ui/AgentAvatar";
 import { Card, CardAction, CardContent, CardHeader, CardTitle, Eyebrow } from "../ui/Card";
 import { Item, ItemContent, ItemMedia } from "../ui/Item";
 import { StatusChip } from "../ui/StatusChip";
 import { RollingNumber } from "../ui/RollingNumber";
 import type { CardProps } from "./types";
-
-function relativeTime(at: string, now: number, language: string) {
-  const seconds = (Date.parse(at) - now) / 1000;
-  const magnitude = Math.abs(seconds);
-  const [divisor, unit] =
-    magnitude < 60
-      ? [1, "second"]
-      : magnitude < 3600
-        ? [60, "minute"]
-        : magnitude < 86400
-          ? [3600, "hour"]
-          : magnitude < 604800
-            ? [86400, "day"]
-            : magnitude < 4838400
-              ? [604800, "week"]
-              : magnitude < 31557600
-                ? [2629800, "month"]
-                : [31557600, "year"];
-  return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(
-    Math.round(seconds / (divisor as number)),
-    unit as Intl.RelativeTimeFormatUnit,
-  );
-}
 
 export function ActivityCard({
   data,
@@ -108,7 +86,7 @@ export function ActivityCard({
                     </span>
                     <span className="text-xs text-muted-foreground">
                       {stageLabel(item, stint.stage)} ·{" "}
-                      <time dateTime={at} title={new Date(at).toLocaleString(language)}>
+                      <time dateTime={at} title={fullTime(at, language)}>
                         {relativeTime(at, now, language)}
                       </time>
                     </span>

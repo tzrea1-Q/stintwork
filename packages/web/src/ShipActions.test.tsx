@@ -247,7 +247,7 @@ test("Ship is not Shipped until merged; the drawer then retains history, finding
       name: /^first:/,
     }),
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("heading", { name: "Shipped" }));
+  await user.click(screen.getByRole("heading", { name: "Shipped", level: 2 }));
   expect(screen.getByRole("article", { name: /^first:/ })).toBeInTheDocument();
   shippedBoard.unmount();
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
@@ -274,7 +274,8 @@ test("a finished Review stint predating reopen asks for a new Review stint, not 
   const conditions = screen.getByRole("list", { name: "Review gate conditions" });
   expect(
     within(conditions).getByText("Latest Review stint finished").closest("li"),
-  ).toHaveTextContent("Start a new Review stint");
+  ).toHaveTextContent("Blocked");
+  expect(screen.getAllByText(/Start a new Review stint/).length).toBeGreaterThan(0);
   expect(
     within(conditions).queryByText("The stage stint must finish before approving."),
   ).not.toBeInTheDocument();

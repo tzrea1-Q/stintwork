@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { Square } from "lucide-react";
+import { CircleStop } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
@@ -39,7 +39,7 @@ export function StopStint({
   return (
     <div className="min-w-0">
       <Button variant="secondary" size="sm" type="button" onClick={stop} disabled={requested}>
-        <Square aria-hidden="true" />
+        <CircleStop aria-hidden="true" />
         {requested ? t.stints.stopping : recovering ? t.stints.stopStint : t.stints.stop}
       </Button>
       {error && (

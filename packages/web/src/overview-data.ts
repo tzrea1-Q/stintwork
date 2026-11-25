@@ -60,6 +60,26 @@ export function stintDays(snapshot: ProjectSnapshot, now: Date) {
   return days;
 }
 
+export function milestoneUnits(
+  milestone: ProjectSnapshot["milestones"][number],
+  snapshot: ProjectSnapshot,
+) {
+  const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
+  return {
+    units: items.reduce((sum, item) => sum + Math.max(1, item.tickets.length), 0),
+    unitsDone: items.reduce(
+      (sum, item) =>
+        sum +
+        (item.merged
+          ? Math.max(1, item.tickets.length)
+          : item.tickets.length
+            ? item.tickets.filter((ticket) => ticket.resolved).length
+            : Number(workItemDone(item))),
+      0,
+    ),
+  };
+}
+
 export function overviewData(snapshot: ProjectSnapshot, now = new Date()) {
   const active = snapshot.workItems.filter((item) => !item.merged);
   const milestones = snapshot.milestones
@@ -67,17 +87,7 @@ export function overviewData(snapshot: ProjectSnapshot, now = new Date()) {
       const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
       return {
         milestone,
-        units: items.reduce((sum, item) => sum + Math.max(1, item.tickets.length), 0),
-        unitsDone: items.reduce(
-          (sum, item) =>
-            sum +
-            (item.merged
-              ? Math.max(1, item.tickets.length)
-              : item.tickets.length
-                ? item.tickets.filter((ticket) => ticket.resolved).length
-                : Number(workItemDone(item))),
-          0,
-        ),
+        ...milestoneUnits(milestone, snapshot),
         stintsThisWeek: stintDays({ ...snapshot, workItems: items }, now).reduce(
           (sum, day) => sum + day.count,
           0,

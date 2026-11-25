@@ -15,6 +15,7 @@ import { Board } from "./Board";
 import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { workItemInFlight } from "./overview-data";
 import { WorkItemCard } from "./WorkItemCard";
 
 const files = {
@@ -55,6 +56,7 @@ beforeEach(() => {
 afterEach(() => {
   window.history.replaceState(null, "", "/");
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 test.each([
@@ -71,9 +73,9 @@ test.each([
   expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   expect(screen.queryByRole("navigation", { name: /breadcrumb/i })).not.toBeInTheDocument();
   const toolbar = document.querySelector(".board-toolbar") as HTMLElement;
-  const shipped = snapshot.workItems.filter((item) => item.merged).length;
+  const inFlight = snapshot.workItems.filter((item) => workItemInFlight(item, snapshot)).length;
   expect(toolbar.querySelector(".board-stats")).toHaveTextContent(
-    t.board.counts(snapshot.workItems.length - shipped, shipped),
+    t.board.counts(inFlight, snapshot.workItems.length - inFlight),
   );
   expect(within(toolbar).getByRole("status")).toHaveTextContent(t.board.reconnecting);
   unmount();
@@ -185,11 +187,7 @@ test("hidden columns retain their layout and grid classes depend on the panel", 
   render(<Board snapshot={project()} />);
   const review = screen.getByRole("region", { name: "Review" });
   const list = review.querySelector(".flex.flex-col.gap-3") as HTMLElement;
-  const gridClasses = [
-    "lg:@min-[452px]:grid",
-    "lg:@min-[452px]:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]",
-    "lg:@min-[452px]:content-start",
-  ];
+  const gridClasses = ["stage-cards"];
   expect(review).toHaveClass("@container");
   expect(review).toHaveAttribute("data-layout", "grid");
   expect(list).toHaveClass(...gridClasses);
@@ -199,59 +197,8 @@ test("hidden columns retain their layout and grid classes depend on the panel", 
   width = 540;
   await userEvent.setup().click(within(review).getByRole("button", { name: /Open ready/ }));
   expect(review).toHaveAttribute("data-layout", "single");
-  for (const className of gridClasses) expect(list).not.toHaveClass(className);
+  expect(review.querySelector(".stage-cards")).toBeNull();
   vi.unstubAllGlobals();
-});
-
-test("stage navigation describes its keyboard controls without moving focus", async () => {
-  const user = userEvent.setup();
-  render(<Board snapshot={project()} />);
-  const navigation = screen.getByRole("navigation", { name: "Stage navigation" });
-  for (const name of ["Previous stages", "Next stages"]) {
-    const trigger = within(navigation).getByRole("button", { name });
-    trigger.focus();
-    await screen.findByRole("tooltip", { name });
-    expect(trigger).toHaveAccessibleDescription(name);
-    await user.keyboard("{Escape}");
-    expect(trigger).toHaveFocus();
-  }
-});
-
-test("stage navigation targets column snap positions", async () => {
-  const user = userEvent.setup();
-  const { container } = render(<Board snapshot={project()} />);
-  const scroller = container.querySelector<HTMLElement>(".board-scroll");
-  if (!scroller) throw new Error("Board scroller is missing");
-  scroller.style.scrollPaddingLeft = "28px";
-  const columns = container.querySelectorAll<HTMLElement>(".stage-column");
-  columns.forEach((column, index) => {
-    Object.defineProperty(column, "offsetLeft", { value: 24 + index * 180 });
-  });
-  const scrollTo = vi.fn();
-  scroller.scrollTo = scrollTo;
-  const navigation = screen.getByRole("navigation", { name: "Stage navigation" });
-  await user.click(within(navigation).getByRole("button", { name: "Next stages" }));
-  expect(scrollTo).toHaveBeenLastCalledWith({ left: 176 });
-  scroller.scrollLeft = 176;
-  await user.click(within(navigation).getByRole("button", { name: "Previous stages" }));
-  expect(scrollTo).toHaveBeenLastCalledWith({ left: 0 });
-});
-
-test("stage navigation skips collapsed rails", async () => {
-  const snapshot = project();
-  snapshot.workItems = snapshot.workItems.filter(
-    (item) => item.column === "implement" || item.column === "ship",
-  );
-  const { container } = render(<Board snapshot={snapshot} />);
-  const scroller = container.querySelector<HTMLElement>(".board-scroll");
-  if (!scroller) throw new Error("Board scroller is missing");
-  scroller.style.scrollPaddingLeft = "28px";
-  container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
-    Object.defineProperty(column, "offsetLeft", { value: 28 + index * 100 });
-  });
-  scroller.scrollTo = vi.fn();
-  await userEvent.setup().click(screen.getByRole("button", { name: "Next stages" }));
-  expect(scroller.scrollTo).toHaveBeenCalledWith({ left: 300 });
 });
 
 test("milestone filter counts resolved local tickets without a merge", async () => {
@@ -324,7 +271,11 @@ test("the toolbar milestone picker supports keyboard selection and dismissal wit
 
 test("shows blocked and exposes inference by keyboard", async () => {
   const user = userEvent.setup();
-  render(<Board snapshot={project()} />);
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  item.stints = attentionSnapshot().workItems[0].stints;
+  render(<Board snapshot={snapshot} />);
   const board = within(screen.getByRole("article", { name: /^board:/ }));
   expect(board.getByText("Blocked")).toBeInTheDocument();
   const trigger = board.getByRole("button", { name: /Inferred/ });
@@ -407,9 +358,9 @@ test.each([
 test("keeps shipped work collapsed and separate from active stages", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
-  const lane = screen.getByRole("heading", { name: "Shipped" }).closest("details");
+  const lane = screen.getByRole("heading", { name: "Shipped", level: 2 }).closest("details");
   expect(lane).not.toHaveAttribute("open");
-  await user.click(screen.getByRole("heading", { name: "Shipped" }));
+  await user.click(screen.getByRole("heading", { name: "Shipped", level: 2 }));
   expect(lane).toHaveAttribute("open");
   expect(screen.getByRole("article", { name: /^shipped:/ })).toBeInTheDocument();
   expect(screen.getByRole("article", { name: /^previous:/ })).toBeInTheDocument();
@@ -490,7 +441,7 @@ test("opens the drawer from a card and closes it with Esc", async () => {
   const card = screen.getByRole("button", { name: "Open board: The live board" });
   await user.click(card);
   const drawer = screen.getByRole("dialog", { name: "The live board" });
-  expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(drawer).toHaveFocus();
   expect(window.location.search).toBe("?view=pipeline&item=board");
   expect(window.history.state).toEqual({ preserved: true });
   expect(window.location.hash).toBe("#anchor");
@@ -572,7 +523,9 @@ test("opens the palette while Customise is still exiting", async () => {
     ).toHaveFocus();
     expect(document.querySelector(".customise-workflow")).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "Customise Feature workflow" }));
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).endsWith("/customise/preview")),
+    ).toHaveLength(2);
   } finally {
     MotionGlobalConfig.skipAnimations = true;
   }
@@ -618,7 +571,7 @@ test("?item=<slug> opens the drawer on load", async () => {
   window.history.replaceState(null, "", "/?item=board");
   render(<Board snapshot={project()} />);
   const drawer = screen.getByRole("dialog", { name: "The live board" });
-  expect(within(drawer).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(drawer).toBeVisible();
   await userEvent.setup().click(within(drawer).getByText("Agents by stage"));
   const rail = within(drawer).getByRole("list", { name: "Feature workflow stages" });
   expect(rail.querySelector('[aria-current="step"]')).toHaveTextContent("ImplementInferred");
@@ -753,12 +706,12 @@ test("keeps the drawer open when Esc dismisses a palette above it", async () => 
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
   await user.click(screen.getByRole("button", { name: "Open board: The live board" }));
-  const close = screen.getByRole("button", { name: "Close work item" });
+  const drawer = screen.getByRole("dialog", { name: "The live board" });
   await user.keyboard("{Control>}k{/Control}");
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: "The live board" })).toBeInTheDocument();
-  expect(close).toHaveFocus();
+  expect(drawer).toHaveFocus();
 });
 
 test("refreshes the open drawer and returns focus to a card that changed stage", async () => {
@@ -774,7 +727,7 @@ test("refreshes the open drawer and returns focus to a card that changed stage",
     />,
   );
   const drawer = screen.getByRole("dialog");
-  expect(screen.getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(drawer).toHaveFocus();
   await user.click(within(drawer).getByText("Agents by stage"));
   expect(
     within(drawer)
@@ -801,9 +754,9 @@ test("opens a shipped work item from the palette and reveals its card on return"
   expect(screen.getByRole("dialog", { name: "Merged work item" })).toBeInTheDocument();
   await user.keyboard("{Escape}");
   expect(screen.getByRole("button", { name: "Open shipped: Merged work item" })).toHaveFocus();
-  expect(screen.getByRole("heading", { name: "Shipped" }).closest("details")).toHaveAttribute(
-    "open",
-  );
+  expect(
+    screen.getByRole("heading", { name: "Shipped", level: 2 }).closest("details"),
+  ).toHaveAttribute("open");
 });
 
 test("searches the palette by slug and supports its keyboard close button", async () => {
@@ -1227,8 +1180,8 @@ test.each([
         <Board snapshot={snapshot()} />
       </LanguageProvider>,
     );
-    expect(card().querySelector(".ticket-progress")).toHaveTextContent("0/0");
-    expect(within(card()).getByRole("progressbar")).toBeInTheDocument();
+    expect(card().querySelector(".ticket-progress")).not.toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
     localStorage.removeItem(languageStorageKey);
   },
 );
@@ -1244,7 +1197,7 @@ test("workflow filter narrows the board without changing the URL", async () => {
   expect(window.location.href).toBe(url);
 });
 
-test("card tint, status and segmented progress follow snapshot state", () => {
+test("card status edge and segmented progress follow snapshot state", () => {
   const item = project().workItems.find((entry) => entry.slug === "board");
   if (!item) throw new Error("Missing board fixture");
   const stint = foldStintLog([
@@ -1269,11 +1222,11 @@ test("card tint, status and segmented progress follow snapshot state", () => {
   const card = screen.getByRole("article");
   expect(within(card).getByText(item.slug)).toHaveAttribute("data-truncate");
   expect(within(card).getByText(item.slug)).toHaveAttribute("title", item.slug);
-  expect(card).toHaveClass("bg-running-soft");
+  expect(card).toHaveClass("bg-muted", "status-edge-running");
   expect(within(card).getByRole("status")).toHaveTextContent("Stint running");
   expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
   rerender(<WorkItemCard item={item} attentionCount={1} selected onOpen={() => {}} />);
-  expect(card).toHaveClass("bg-attention-soft", "ring-ring");
+  expect(card).toHaveClass("bg-muted", "status-edge-attention", "ring-ring");
   expect(within(card).getByRole("status")).toHaveTextContent("Needs you");
   rerender(
     <WorkItemCard
@@ -1284,7 +1237,7 @@ test("card tint, status and segmented progress follow snapshot state", () => {
       onOpen={() => {}}
     />,
   );
-  expect(card).toHaveClass("bg-blocked-soft");
+  expect(card).toHaveClass("bg-muted", "status-edge-blocked");
   expect(within(card).getByText("Blocked")).toBeInTheDocument();
 });
 
@@ -1298,8 +1251,8 @@ test("empty stages remain named, counted and focusable", () => {
 });
 
 test.each([true, false])("board shortcuts while detail is open (docked=%s)", async (docked) => {
-  vi.stubGlobal("matchMedia", () => ({
-    matches: docked,
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("767") ? false : docked,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
@@ -1334,8 +1287,8 @@ test.each([true, false])("board shortcuts while detail is open (docked=%s)", asy
 });
 
 test("overview hides the pipeline wrapper and its docked detail", async () => {
-  vi.stubGlobal("matchMedia", () => ({
-    matches: true,
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: !query.includes("767"),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
@@ -1370,15 +1323,15 @@ test("idle card keeps its identity and progress without status rows", () => {
   const card = screen.getByRole("article");
   expect(within(card).getByText(item.title)).toBeInTheDocument();
   expect(within(card).getByText(item.slug)).toBeInTheDocument();
-  expect(within(card).getByText("m1")).toBeInTheDocument();
-  expect(within(card).getByRole("img", { name: "codex" })).toBeInTheDocument();
+  expect(within(card).getByText("M1")).toBeInTheDocument();
+  expect(within(card).queryByRole("img", { name: "codex" })).not.toBeInTheDocument();
   expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuemax", "2");
   expect(within(card).queryByText("No active stint")).not.toBeInTheDocument();
   expect(within(card).queryByText("Inferred")).not.toBeInTheDocument();
   expect(within(card).queryByText("Stopped")).not.toBeInTheDocument();
 });
 
-test("columns always show running and waiting counts", () => {
+test("columns show running and waiting counts only when nonzero", () => {
   const snapshot = project();
   const item = snapshot.workItems.find((entry) => entry.slug === "board");
   if (!item) throw new Error("Missing board fixture");
@@ -1404,8 +1357,8 @@ test("columns always show running and waiting counts", () => {
     within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 0 waiting"),
   ).toBeInTheDocument();
   expect(
-    within(screen.getByRole("region", { name: "Ship" })).getByText("0 running · 0 waiting"),
-  ).toBeInTheDocument();
+    within(screen.getByRole("region", { name: "Ship" })).queryByText("0 running · 0 waiting"),
+  ).not.toBeInTheDocument();
 });
 
 test("stopped chip reflects only a stopped stint in the current stage of an unmerged item", () => {
@@ -1446,8 +1399,8 @@ test("column header includes waiting count", () => {
 });
 
 test("detail width persists and full screen collapses before closing", async () => {
-  vi.stubGlobal("matchMedia", () => ({
-    matches: true,
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: !query.includes("767"),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
@@ -1484,8 +1437,8 @@ test("detail width persists and full screen collapses before closing", async () 
 });
 
 test("blocked detail storage falls back to the default width", async () => {
-  vi.stubGlobal("matchMedia", () => ({
-    matches: true,
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: !query.includes("767"),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
@@ -1506,8 +1459,8 @@ test("blocked detail storage falls back to the default width", async () => {
 
 test("opening a work item in Jump to from Overview shows its Pipeline detail", async () => {
   window.history.replaceState({}, "", "/?view=overview");
-  vi.stubGlobal("matchMedia", () => ({
-    matches: true,
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: !query.includes("767"),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
@@ -1522,8 +1475,8 @@ test("opening a work item in Jump to from Overview shows its Pipeline detail", a
 
 test("opening a Needs you work item from Overview closes the queue and shows its detail", async () => {
   window.history.replaceState({}, "", "/?view=overview");
-  vi.stubGlobal("matchMedia", () => ({
-    matches: true,
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: !query.includes("767"),
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }));
@@ -1588,4 +1541,194 @@ test("Overview attention rows focus their queue item; top bar opens at the top",
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
   queue = screen.getByRole("dialog", { name: "Needs you 1" });
   expect(within(queue).getByRole("button", { name: "Close Needs you" })).toHaveFocus();
+});
+
+test("separates merged and shipped milestone items from work in flight", async () => {
+  const snapshot = project();
+  const merged = snapshot.workItems.find((item) => item.slug === "shipped");
+  const historical = snapshot.workItems.find((item) => item.slug === "previous");
+  const active = snapshot.workItems.find((item) => item.slug === "board");
+  if (!merged || !historical || !active) throw new Error("Missing board fixtures");
+  historical.merged = undefined;
+  historical.column = "implement";
+  snapshot.workItems = [merged, historical, active];
+  render(<Board snapshot={snapshot} />);
+  const column = screen.getByRole("region", { name: "Implement" });
+  expect(within(column).getAllByRole("article")).toHaveLength(1);
+  expect(within(column).getByRole("article")).toHaveAccessibleName(/^board:/);
+  expect(document.querySelector(".board-stats")).toHaveTextContent("1 in flight · 2 shipped");
+  const lane = document.querySelector(".shipped-lane") as HTMLElement;
+  expect(lane.querySelector("summary .count")).toHaveTextContent("2");
+  await userEvent.setup().click(within(lane).getByRole("heading", { name: "Shipped", level: 2 }));
+  expect(within(lane).getByRole("heading", { name: "Shipped", level: 3 })).toBeInTheDocument();
+  expect(
+    within(lane).getByRole("heading", { name: "From shipped milestones · merge not recorded" }),
+  ).toBeInTheDocument();
+  expect(within(lane).getByRole("article", { name: /^shipped:/ })).toBeInTheDocument();
+  expect(within(lane).getByRole("article", { name: /^previous:/ })).toBeInTheDocument();
+  await userEvent.setup().click(within(lane).getByRole("button", { name: "Mark as shipped" }));
+  expect(screen.getByRole("dialog", { name: "Previous work item" })).toBeInTheDocument();
+});
+
+test("card hides empty ticket and stint data and formats milestone ids", () => {
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  render(
+    <WorkItemCard
+      item={{ ...item, milestone: "m15", tickets: [], stints: [], activeStint: null }}
+      milestone={{ ...snapshot.milestones[0], id: "m15" }}
+      workflow={snapshot.workflows[item.workflow]}
+      agents={snapshot.agents}
+      onOpen={() => {}}
+    />,
+  );
+  const card = screen.getByRole("article");
+  expect(within(card).getByText("M15")).toBeInTheDocument();
+  expect(card.querySelector(".ticket-progress")).not.toBeInTheDocument();
+  expect(within(card).queryByRole("progressbar")).not.toBeInTheDocument();
+  expect(within(card).queryByRole("img")).not.toBeInTheDocument();
+});
+
+test("narrow stage switcher selects cards with arrow keys and persists its choice", () => {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) =>
+      ({
+        matches: query.includes("767"),
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }) as unknown as MediaQueryList,
+  );
+  const { unmount } = render(<Board snapshot={project()} />);
+  const tabs = screen.getByRole("tablist", { name: en.board.stages });
+  const clarify = within(tabs).getByRole("tab", { name: /Clarify/ });
+  expect(clarify).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("region", { name: "Clarify" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Spec" })).not.toBeInTheDocument();
+  expect(screen.getByRole("article", { name: /^clarify:/ })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: /^next:/ })).not.toBeInTheDocument();
+  fireEvent.keyDown(clarify, { key: "ArrowRight" });
+  expect(within(tabs).getByRole("tab", { name: /Spec/ })).toHaveFocus();
+  expect(screen.getByRole("region", { name: "Spec" })).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "Clarify" })).not.toBeInTheDocument();
+  expect(screen.getByRole("article", { name: /^next:/ })).toBeInTheDocument();
+  expect(screen.queryByRole("article", { name: /^clarify:/ })).not.toBeInTheDocument();
+  expect(new URL(location.href).searchParams.get("stage")).toBe("spec");
+  unmount();
+  render(<Board snapshot={project()} />);
+  expect(screen.getByRole("tab", { name: /Spec/ })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getByRole("region", { name: "Spec" })).toBeInTheDocument();
+});
+
+test("stage overflow controls appear only for overflow and scroll", async () => {
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.classList.contains("board-scroll") ? 1000 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.classList.contains("board-scroll") ? 300 : 0;
+  });
+  const scrollTo = vi.fn();
+  const { unmount, container } = render(<Board snapshot={project()} />);
+  const strip = container.querySelector<HTMLElement>(".board-scroll");
+  if (!strip) throw new Error("Missing board scroller");
+  strip.scrollTo = scrollTo;
+  container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
+    Object.defineProperty(column, "offsetLeft", { value: index * 180 });
+  });
+  expect(await screen.findByRole("button", { name: en.board.previousStages })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: en.board.nextStages }));
+  expect(scrollTo).toHaveBeenCalledWith({ left: 180 });
+  strip.scrollLeft = 180;
+  fireEvent.scroll(strip);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: en.board.previousStages })).toBeEnabled(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: en.board.previousStages }));
+  expect(scrollTo).toHaveBeenLastCalledWith({ left: 0 });
+  unmount();
+  vi.restoreAllMocks();
+  const empty = render(<Board snapshot={project()} />);
+  expect(empty.container.querySelector(".stage-navigation")).toHaveAttribute("aria-hidden", "true");
+});
+
+test("empty stage labels are horizontal and expose the full name", () => {
+  const snapshot = project();
+  snapshot.workItems = snapshot.workItems.filter((item) => item.column !== "clarify");
+  render(<Board snapshot={snapshot} />);
+  const label = within(screen.getByRole("region", { name: "Clarify" })).getByText("Clarify");
+  expect(label).toHaveAttribute("title", "Clarify");
+  expect(label.className).not.toMatch(/writing-mode|text-orientation/);
+});
+
+test("workflow marks appear only for multiple displayed workflow types", () => {
+  const snapshot = project();
+  snapshot.workItems = snapshot.workItems.filter((item) => item.workflow === "feature");
+  const { rerender, container } = render(<Board snapshot={snapshot} />);
+  expect(container.querySelector("[data-workflow-icon]")).toBeNull();
+  const mixed = project();
+  rerender(<Board snapshot={mixed} />);
+  expect(container.querySelector("[data-workflow-icon]")).not.toBeNull();
+});
+
+test("stage navigation skips collapsed rails", async () => {
+  vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.classList.contains("board-scroll") ? 1000 : 0;
+  });
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (
+    this: HTMLElement,
+  ) {
+    return this.classList.contains("board-scroll") ? 300 : 0;
+  });
+  const snapshot = project();
+  snapshot.workItems = snapshot.workItems.filter(
+    (item) => item.column === "implement" || item.column === "ship",
+  );
+  const { container } = render(<Board snapshot={snapshot} />);
+  const strip = container.querySelector<HTMLElement>(".board-scroll");
+  if (!strip) throw new Error("Missing board scroller");
+  strip.scrollTo = vi.fn();
+  container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
+    Object.defineProperty(column, "offsetLeft", { value: index * 100 });
+  });
+  fireEvent.click(await screen.findByRole("button", { name: en.board.nextStages }));
+  expect(strip.scrollTo).toHaveBeenCalledWith({ left: 300 });
+});
+
+test("opening an item from Needs you selects its narrow stage and returns focus to its card", async () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("767"),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  window.history.replaceState(null, "", "/?view=pipeline&stage=spec");
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: /^Needs you/ }));
+  const queue = screen.getByRole("dialog", { name: /Needs you/ });
+  await user.click(within(queue).getByRole("button", { name: /First work item · first/ }));
+  const drawer = await screen.findByRole("dialog", { name: "First work item" });
+  expect(new URL(location.href).searchParams.get("stage")).toBe("implement");
+  await user.click(within(drawer).getByRole("button", { name: en.stints.closeWorkItem }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Open first:/ })).toHaveFocus());
+});
+
+test("an item opened by URL selects its narrow stage", () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("767"),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  window.history.replaceState(null, "", "/?view=pipeline&stage=clarify&item=board");
+  render(<Board snapshot={project()} />);
+  expect(new URL(location.href).searchParams.get("stage")).toBe("implement");
+  expect(document.querySelector("#stage-tab-implement")).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector('[data-work-item="board"]')).toBeInTheDocument();
 });

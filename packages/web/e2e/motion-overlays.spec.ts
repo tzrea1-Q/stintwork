@@ -50,7 +50,11 @@ for (const width of [1440, 390]) {
 test("sheet enters from the right at 390px", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 900 });
   await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));
+  const snapshot = await (await page.request.get("/api/project")).json();
+  const item = snapshot.workItems.find((entry: { slug: string }) => entry.slug === "long-title");
+  if (!item?.column) throw new Error("Missing shared fixture item or stage");
   await page.goto("/?view=pipeline");
+  await page.locator(`#stage-tab-${item.column}`).click();
   await page.locator('.board-scroll [data-work-item="long-title"]').click();
   const frames = await sampleFrames(page, '[role="dialog"]', 700);
   expect(frames[0].left).toBeGreaterThan(frames.at(-1)?.left ?? Infinity);

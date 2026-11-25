@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { builtInWorkflows } from "@stintwork/core";
+import { builtInWorkflows, type AgentProfile } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { agentName } from "./agent-name";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
@@ -31,6 +32,7 @@ export function CustomiseWorkflow({
     setInternalOpen(false);
     onClose();
   };
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [preview, setPreview] = useState<{ path: string; yaml: string } | null>(null);
   const [error, setError] = useErrorText();
   const [saving, setSaving] = useState(false);
@@ -44,6 +46,12 @@ export function CustomiseWorkflow({
     const controller = new AbortController();
     let disposed = false;
     setPreview(null);
+    void fetch("/api/agents", { signal: controller.signal })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!disposed && Array.isArray(data.agents)) setAgents(data.agents);
+      })
+      .catch(() => {});
     setError("");
     void (async () => {
       try {
@@ -101,7 +109,7 @@ export function CustomiseWorkflow({
       <DialogContent
         onExitComplete={onExitComplete}
         aria-describedby={undefined}
-        className="customise-workflow"
+        className="customise-workflow flex flex-col overflow-hidden p-0"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -109,75 +117,81 @@ export function CustomiseWorkflow({
           if (saving) event.preventDefault();
         }}
       >
-        <DialogTitle className="text-xl font-medium">
+        <DialogTitle className="shrink-0 px-6 pt-6 text-xl font-medium">
           {t.planning.customise.title(name)}
         </DialogTitle>
-        <fieldset disabled={saving} className="mt-5 grid min-w-0 gap-4">
-          {preview ? (
-            <>
-              <p>
-                {t.planning.customise.creates}
-                <code>{preview.path}</code>
-                {t.planning.customise.description}
+        <div className="customise-body min-h-0 min-w-0 flex-1 overflow-auto px-6 pt-5">
+          <fieldset disabled={saving} className="min-w-0 space-y-4">
+            {preview ? (
+              <>
+                <p>
+                  {t.planning.customise.creates}
+                  <code>{preview.path}</code>
+                  {t.planning.customise.description}
+                </p>
+                {workflow && (
+                  <ol className="space-y-2">
+                    {workflow.stages.map((stage, index) => {
+                      const agent = stage.agent ?? workflow.defaultAgent;
+                      return (
+                        <li key={stage.id}>
+                          <Item variant="outline">
+                            <ItemMedia>
+                              <span className="flex size-7 items-center justify-center rounded-full bg-muted">
+                                {index + 1}
+                              </span>
+                            </ItemMedia>
+                            <ItemContent>
+                              <span>{stageName(workflow, stage, t)}</span>
+                              <code>{stage.skill ?? "—"}</code>
+                            </ItemContent>
+                            <StatusChip status="stopped">
+                              {t.planning.customise.gateKinds[stage.gate]}
+                            </StatusChip>
+                            <AgentAvatar agent={agent} name={agentName(agent, agents)} />
+                            <span>{agentName(agent, agents)}</span>
+                          </Item>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                )}
+                <section aria-label={t.planning.customise.yaml} className="min-w-0">
+                  <CodeBlock className="max-h-[50dvh] overflow-auto rounded-xl border border-border bg-muted p-3 text-sm focus-visible:outline-ring">
+                    <code>{preview.yaml}</code>
+                  </CodeBlock>
+                </section>
+                <p className="muted text-muted-foreground">{t.planning.customise.commit(id)}</p>
+              </>
+            ) : (
+              <p role="status">
+                {error ? t.planning.customise.unavailable : t.planning.customise.loading}
+                {!error && <Skeleton aria-hidden="true" className="mt-3 h-24 w-full" />}
               </p>
-              {workflow && (
-                <ol className="space-y-2">
-                  {workflow.stages.map((stage, index) => {
-                    const agent = stage.agent ?? workflow.defaultAgent;
-                    return (
-                      <li key={stage.id}>
-                        <Item variant="outline">
-                          <ItemMedia>
-                            <span className="flex size-7 items-center justify-center rounded-full bg-muted">
-                              {index + 1}
-                            </span>
-                          </ItemMedia>
-                          <ItemContent>
-                            <span>{stageName(workflow, stage, t)}</span>
-                            <code>{stage.skill ?? "—"}</code>
-                          </ItemContent>
-                          <StatusChip status="stopped">
-                            {t.planning.customise.gateKinds[stage.gate]}
-                          </StatusChip>
-                          <AgentAvatar agent={agent} name={agent} />
-                          <span>{agent}</span>
-                        </Item>
-                      </li>
-                    );
-                  })}
-                </ol>
-              )}
-              <section aria-label={t.planning.customise.yaml} className="min-w-0">
-                <CodeBlock className="max-h-[50dvh] overflow-auto rounded-xl border border-border bg-muted p-3 text-sm focus-visible:outline-ring">
-                  <code>{preview.yaml}</code>
-                </CodeBlock>
-              </section>
-              <p className="muted text-muted-foreground">{t.planning.customise.commit(id)}</p>
-            </>
-          ) : (
-            <p role="status">
-              {error ? t.planning.customise.unavailable : t.planning.customise.loading}
-              {!error && <Skeleton aria-hidden="true" className="mt-3 h-24 w-full" />}
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="warning text-attention-foreground">
-              {Object.entries(en.planning.customise.errors).reduce(
-                (message, [key, original]) =>
-                  message === original
-                    ? t.planning.customise.errors[key as keyof typeof en.planning.customise.errors]
-                    : message,
-                error,
-              )}
-            </p>
-          )}
-          <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
-            <Button onClick={close}>{t.planning.customise.cancel}</Button>
-            <Button variant="primary" disabled={!preview} onClick={() => void customise()}>
-              {saving ? t.planning.customise.saving : t.planning.customise.confirm}
-            </Button>
-          </footer>
-        </fieldset>
+            )}
+            {error && (
+              <p role="alert" className="warning text-attention-foreground">
+                {Object.entries(en.planning.customise.errors).reduce(
+                  (message, [key, original]) =>
+                    message === original
+                      ? t.planning.customise.errors[
+                          key as keyof typeof en.planning.customise.errors
+                        ]
+                      : message,
+                  error,
+                )}
+              </p>
+            )}
+          </fieldset>
+        </div>
+        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border bg-card px-6 py-4">
+          <Button disabled={saving} onClick={close}>
+            {t.planning.customise.cancel}
+          </Button>
+          <Button variant="primary" disabled={!preview || saving} onClick={() => void customise()}>
+            {saving ? t.planning.customise.saving : t.planning.customise.confirm}
+          </Button>
+        </footer>
       </DialogContent>
     </Dialog>
   );

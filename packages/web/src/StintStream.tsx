@@ -7,20 +7,21 @@ import {
   type StintEvent,
   type StintToolContent,
 } from "@stintwork/core";
-import { useRef } from "react";
-import { m } from "motion/react";
-import { newlyArrived } from "./moments";
-import { blur, shift, spring, useReducedMotionSafe } from "./ui/motion";
 import { Check, FileCode2, ListChecks, Wrench } from "lucide-react";
+import { m } from "motion/react";
+import { useRef } from "react";
 import type { Catalog } from "./i18n/en";
 import { renderCoreText, stintEventKind, useLanguage } from "./i18n/language";
+import { newlyArrived } from "./moments";
 import { PermissionAnswer } from "./PermissionAnswer";
 import { PermissionDetails } from "./PermissionDetails";
 import { recoveryStatus, StintRecovery } from "./StintRecovery";
 import { readableToolOutput } from "./tool-output";
 import { Badge } from "./ui/Badge";
 import { CodeBlock } from "./ui/CodeBlock";
+import { Disclosure } from "./ui/Disclosure";
 import { Markdown } from "./ui/Markdown";
+import { blur, shift, spring, useReducedMotionSafe } from "./ui/motion";
 
 function toolOutput(content: StintToolContent, t: Catalog): string {
   if (content.type === "text") return readableToolOutput(content.text);
@@ -90,8 +91,13 @@ function PermissionPrompt({
       )}
       {pending ? (
         <>
-          {!pending.binding && <p>{t.stints.waitingForAnswer}</p>}
-          <PermissionAnswer stintId={stint.id} request={pending} profile={profile} />
+          <PermissionAnswer
+            notify
+            showContext={false}
+            stintId={stint.id}
+            request={pending}
+            profile={profile}
+          />
         </>
       ) : (
         <>
@@ -264,15 +270,17 @@ export function StintStream({
                     </p>
                   ))}
                   {event.content?.length || event.output ? (
-                    <details className="stint-tool-output [&_summary]:text-muted-foreground">
-                      <summary>{t.stints.toolOutput}</summary>
+                    <Disclosure
+                      label={t.stints.toolOutput}
+                      className="stint-tool-output [&_summary]:text-muted-foreground"
+                    >
                       {!!event.content?.length && (
                         <CodeBlock>
                           {event.content.map((content) => toolOutput(content, t)).join("\n\n")}
                         </CodeBlock>
                       )}
                       {event.output && <CodeBlock>{readableToolOutput(event.output)}</CodeBlock>}
-                    </details>
+                    </Disclosure>
                   ) : null}
                 </div>
               )}
@@ -298,10 +306,9 @@ export function StintStream({
                 </p>
               )}
               {event.type === "other" && (
-                <details>
-                  <summary>{stintEventKind(event.kind, t.stints.sessionUpdateKinds)}</summary>
+                <Disclosure label={stintEventKind(event.kind, t.stints.sessionUpdateKinds)}>
                   <CodeBlock>{JSON.stringify(event.update, null, 2)}</CodeBlock>
-                </details>
+                </Disclosure>
               )}
             </m.div>
           );
@@ -313,7 +320,7 @@ export function StintStream({
         )}
       </div>
       <p
-        className="stint-stream-status text-accent-foreground"
+        className="stint-stream-status text-muted-foreground"
         role="status"
         aria-label={t.stints.stint}
       >

@@ -355,7 +355,7 @@ test("an explicit no-findings review and a parse failure are distinct, with comm
   await user.click(rail.getByText("Raw findings reply"));
   expect(rail.getByText(/private reply/)).toHaveTextContent(raw.replace("\n", " "));
   expect(document.querySelector("script")).toBeNull();
-  await screen.findByText("reviewed", { selector: ".review-range code" });
+  await screen.findAllByTitle("reviewed");
   expect(rail.getByText(/Stale/)).toHaveTextContent("old");
 });
 
@@ -376,7 +376,7 @@ test("findings share core freshness, showing stale commit evidence only after no
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => diff }));
   const view = render(<ReviewOverlay item={reviewed} onClose={() => {}} />);
   const card = await screen.findByRole("article", { name: finding.title });
-  await screen.findByText(diff.headCommit, { selector: ".review-range code" });
+  await screen.findByTitle(diff.headCommit);
   expect(card).not.toHaveTextContent("Stale");
   view.rerender(
     <ReviewOverlay
@@ -397,8 +397,8 @@ test("a newer snapshot head marks findings from the loaded diff stale", async ()
   render(<ReviewOverlay item={reviewed} onClose={() => {}} />);
   await screen.findByRole("navigation", { name: "Changed files" });
   expect(await screen.findByRole("article", { name: finding.title })).toHaveTextContent("Stale");
-  expect(screen.getByText("new-head", { selector: ".review-range code" })).toBeInTheDocument();
-  expect(screen.getByText(/Branch head/)).toHaveTextContent("new-head");
+  expect(screen.getByTitle("new-head")).toBeInTheDocument();
+  expect(screen.getByText(/^Head/)).toHaveTextContent("new-hea");
 });
 
 test.each(["open", "sent-back"] as const)(

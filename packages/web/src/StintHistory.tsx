@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import type { Stint, StintSummary } from "@stintwork/core";
+import type { AgentProfile, Stint, StintSummary } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
+import { agentName } from "./agent-name";
+import { formatDuration } from "./duration";
 import { HandoffCard } from "./HandoffCard";
 import {
   CoreTextError,
@@ -12,12 +14,22 @@ import {
 } from "./i18n/language";
 import { StintRecovery } from "./StintRecovery";
 import { StintStream } from "./StintStream";
+import { shortStintId } from "./short-id";
+import { fullTime, relativeTime } from "./time";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import { Empty, EmptyDescription } from "./ui/Empty";
 
-function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boolean }) {
+function StintHistoryEntry({
+  stint,
+  github,
+  agents,
+}: {
+  stint: StintSummary;
+  github: boolean;
+  agents: AgentProfile[];
+}) {
   const { t, language } = useLanguage();
-  const date = new Intl.DateTimeFormat(language, { dateStyle: "medium", timeStyle: "medium" });
   const replayId = useId();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -60,10 +72,11 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
   }, [open, stint.id, stint.status, stint.recovery?.state, setError]);
 
   const recorded = open && replay?.status === stint.status ? replay : stint;
+  const now = Date.now();
   return (
-    <li>
+    <li className="border-t border-border py-4">
       <p>
-        {recorded.agent} ·{" "}
+        {agentName(recorded.agent, agents)} ·{" "}
         {recorded.ticket === null
           ? t.stints.noTicket
           : t.stints.briefTicket(recorded.ticket, github)}{" "}
@@ -82,17 +95,23 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
       </p>
       <p className="muted text-muted-foreground">
         {t.stints.started}{" "}
-        <time dateTime={recorded.startedAt}>
-          {language === "en" ? recorded.startedAt : date.format(new Date(recorded.startedAt))}
+        <time dateTime={recorded.startedAt} title={fullTime(recorded.startedAt, language)}>
+          {relativeTime(recorded.startedAt, now, language)}
         </time>
         {recorded.endedAt && (
           <>
             {" "}
-            {t.stints.ended}{" "}
-            <time dateTime={recorded.endedAt}>
-              {language === "en" ? recorded.endedAt : date.format(new Date(recorded.endedAt))}
+            ·{" "}
+            <time dateTime={recorded.endedAt} title={fullTime(recorded.endedAt, language)}>
+              {formatDuration(
+                (Date.parse(recorded.endedAt) - Date.parse(recorded.startedAt)) / 60000,
+                t,
+              )}
             </time>
           </>
+        )}
+        {!recorded.endedAt && (
+          <> · {formatDuration((now - Date.parse(recorded.startedAt)) / 60000, t)}</>
         )}
       </p>
       {!(open && replay) && <StintRecovery stint={stint} />}
@@ -104,6 +123,13 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
       <Button
         type="button"
         aria-expanded={open}
+        aria-label={
+          loading
+            ? t.stints.readingStint
+            : open
+              ? t.stints.closeStint(stint.id)
+              : t.stints.openStint(stint.id)
+        }
         aria-controls={replayId}
         disabled={loading}
         onClick={() => setOpen(!open)}
@@ -111,8 +137,8 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
         {loading
           ? t.stints.readingStint
           : open
-            ? t.stints.closeStint(stint.id)
-            : t.stints.openStint(stint.id)}
+            ? t.stints.closeStint(shortStintId(stint.id))
+            : t.stints.openStint(shortStintId(stint.id))}
       </Button>
       {error && (
         <p className="warning text-attention-foreground" role="alert">
@@ -134,18 +160,22 @@ function StintHistoryEntry({ stint, github }: { stint: StintSummary; github: boo
 export function StintHistory({
   stints,
   github = false,
+  agents = [],
 }: {
   stints: StintSummary[];
   github?: boolean;
+  agents?: AgentProfile[];
 }) {
   const { t } = useLanguage();
   return stints.length ? (
     <ol aria-label={t.stints.history}>
       {stints.map((stint) => (
-        <StintHistoryEntry key={stint.id} stint={stint} github={github} />
+        <StintHistoryEntry key={stint.id} stint={stint} github={github} agents={agents} />
       ))}
     </ol>
   ) : (
-    <p className="muted text-muted-foreground">{t.stints.noStints}</p>
+    <Empty>
+      <EmptyDescription>{t.stints.noStints}</EmptyDescription>
+    </Empty>
   );
 }

@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import type { ProjectSnapshot, PullRequest, PullRequestPreview, Stint } from "@stintwork/core";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
 import { dialogBrief, dialogItem, dialogSnapshot, gate as requestGate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
+import { expectNoAddedFocusRing, expectNoFocusRing } from "./support/focus-ring";
 
 const wideCode = `const result = ${JSON.stringify("Developer-authored content 原文 ".repeat(80))};`;
 const recorded: Stint = {
@@ -142,7 +143,8 @@ for (const language of ["en", "zh-CN"] as const) {
           const gate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
-          await gate
+          await drawer
+            .locator(".drawer-footer")
             .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
             .click();
           await expect(gate.getByText(t.stints.githubApproval.stale)).toBeVisible();
@@ -170,7 +172,8 @@ for (const language of ["en", "zh-CN"] as const) {
           const gate = drawer.getByRole("region", {
             name: t.stints.gate(t.workflows.feature.stages.spec),
           });
-          await gate
+          await drawer
+            .locator(".drawer-footer")
             .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
             .click();
           await expect(
@@ -250,10 +253,8 @@ for (const language of ["en", "zh-CN"] as const) {
             name: dialogItem.title,
             exact: true,
           });
-          const specGate = drawer.getByRole("region", {
-            name: t.stints.gate(t.workflows.feature.stages.spec),
-          });
-          await specGate
+          await drawer
+            .locator(".drawer-footer")
             .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) })
             .click();
           const gate = drawer.getByRole("region", {
@@ -302,7 +303,9 @@ for (const language of ["en", "zh-CN"] as const) {
           });
           await gate.scrollIntoViewIfNeeded();
           await expect(
-            gate.getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) }),
+            drawer
+              .locator(".drawer-footer")
+              .getByRole("button", { name: t.stints.approve(t.workflows.feature.stages.spec) }),
           ).toBeEnabled();
           await scrollCode(page, gate.locator("pre").first());
           await capture(page, drawer, info, "gate-handoff");
@@ -317,7 +320,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await capture(page, drawer, info, "stint-replay-details");
           await history.getByRole("button", { name: t.stints.closeStint(recorded.id) }).click();
           await drawer.getByRole("tab", { name: t.detailTabs.overview }).click();
-          const approve = gate.getByRole("button", {
+          const approve = drawer.getByRole("button", {
             name: t.stints.approve(t.workflows.feature.stages.spec),
           });
           await approve.click();
@@ -336,8 +339,9 @@ for (const language of ["en", "zh-CN"] as const) {
           const close = drawer.getByRole("button", { name: t.stints.closeWorkItem });
           await close.focus();
           await expect(close).toBeFocused();
-          const tooltip = page.getByRole("tooltip", { name: t.stints.closeWorkItem, exact: true });
-          await expect(tooltip).toHaveText(t.stints.closeWorkItem);
+          const tooltipText = `Esc${t.stints.returnToPipeline}`;
+          const tooltip = page.getByRole("tooltip", { name: tooltipText, exact: true });
+          await expect(tooltip).toHaveText(tooltipText);
           const tooltipBox = page
             .locator("[data-radix-popper-content-wrapper]")
             .filter({ has: tooltip });
@@ -359,10 +363,11 @@ for (const language of ["en", "zh-CN"] as const) {
           };
           await page.reload();
           await trigger.click();
-          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          await expect(drawer).toBeFocused();
+          await expectNoAddedFocusRing(drawer);
+          await expectNoFocusRing(drawer.getByRole("button", { name: t.stints.closeWorkItem }));
           await expect(approve).toBeDisabled();
-          await expect(gate.getByText(t.stints.noHandoffRecorded, { exact: true })).toBeVisible();
-          await expect(gate.getByText(t.stints.noWarnings, { exact: true })).toBeVisible();
+          await expect(gate.getByText(t.stints.emptyGateEvidence, { exact: true })).toBeVisible();
           await gate.scrollIntoViewIfNeeded();
           await capture(page, drawer, info, "gate-empty-blocked");
         });
@@ -456,7 +461,9 @@ for (const language of ["en", "zh-CN"] as const) {
             name: dialogItem.title,
             exact: true,
           });
-          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          await expect(drawer).toBeFocused();
+          await expectNoAddedFocusRing(drawer);
+          await expectNoFocusRing(drawer.getByRole("button", { name: t.stints.closeWorkItem }));
           const ship = drawer.getByRole("region", { name: t.review.ship.label, exact: true });
           const publish = drawer.getByRole("button", { name: t.review.ship.openPr });
           await ship.scrollIntoViewIfNeeded();
@@ -518,8 +525,9 @@ for (const language of ["en", "zh-CN"] as const) {
           const close = drawer.getByRole("button", { name: t.stints.closeWorkItem });
           await close.focus();
           await expect(close).toBeFocused();
-          const tooltip = page.getByRole("tooltip", { name: t.stints.closeWorkItem, exact: true });
-          await expect(tooltip).toHaveText(t.stints.closeWorkItem);
+          const tooltipText = `Esc${t.stints.returnToPipeline}`;
+          const tooltip = page.getByRole("tooltip", { name: tooltipText, exact: true });
+          await expect(tooltip).toHaveText(tooltipText);
           const tooltipBox = page
             .locator("[data-radix-popper-content-wrapper]")
             .filter({ has: tooltip });
@@ -619,7 +627,8 @@ for (const language of ["en", "zh-CN"] as const) {
             ],
           };
           await page.reload();
-          await expect(drawer.getByRole("button", { name: t.stints.closeWorkItem })).toBeFocused();
+          await expect(drawer).toBeVisible();
+          expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
           await expect(
             ship.getByRole("heading", { name: t.review.ship.shipped, exact: true }),
           ).toBeVisible();

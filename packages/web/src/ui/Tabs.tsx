@@ -1,15 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
 "use client";
 
+import { MotionGlobalConfig, m } from "motion/react";
 import * as React from "react";
-import { m, MotionGlobalConfig } from "motion/react";
 import { blur, shift, spring, tween, useReducedMotionSafe } from "./motion";
 
 const TabsContext = React.createContext("");
 const TabsListId = React.createContext("");
+
 import { cva, type VariantProps } from "class-variance-authority";
-import { cn } from "./cn";
 import { Tabs as TabsPrimitive } from "radix-ui";
+import { cn } from "./cn";
+import { isKeyboardInput } from "./input-modality";
 
 function Tabs({
   className,
@@ -76,16 +78,28 @@ function TabsList({
 function TabsTrigger({
   className,
   children,
+  onFocus,
+  onBlur,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
   const value = React.useContext(TabsContext);
   const id = React.useContext(TabsListId);
   const reduced = useReducedMotionSafe();
+  const [focusRing, setFocusRing] = React.useState(false);
   return (
     <TabsPrimitive.Trigger
+      data-focus-ring={focusRing ? "true" : undefined}
+      onFocus={(event) => {
+        setFocusRing(isKeyboardInput());
+        onFocus?.(event);
+      }}
+      onBlur={(event) => {
+        setFocusRing(false);
+        onBlur?.(event);
+      }}
       data-slot="tabs-trigger"
       className={cn(
-        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-[color,border-color] duration-(--motion-duration-color) ease-(--motion-ease-color) group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1 focus-visible:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+        "relative inline-flex h-[calc(100%-1px)] flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-1.5 py-0.5 text-sm font-medium whitespace-nowrap text-foreground/60 transition-[color,border-color] duration-(--motion-duration-color) ease-(--motion-ease-color) group-data-[orientation=vertical]/tabs:w-full group-data-[orientation=vertical]/tabs:justify-start hover:text-foreground outline-none data-[focus-ring=true]:border-ring data-[focus-ring=true]:ring-[3px] data-[focus-ring=true]:ring-ring/50 data-[focus-ring=true]:outline-1 data-[focus-ring=true]:outline-ring disabled:pointer-events-none disabled:opacity-50 has-data-[icon=inline-end]:pr-1 has-data-[icon=inline-start]:pl-1 dark:text-muted-foreground dark:hover:text-foreground group-data-[variant=line]/tabs-list:data-[state=active]:shadow-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
         "group-data-[variant=line]/tabs-list:bg-transparent group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:border-transparent dark:group-data-[variant=line]/tabs-list:data-[state=active]:bg-transparent",
         "data-[state=active]:text-foreground dark:data-[state=active]:text-foreground",
 
@@ -134,4 +148,4 @@ function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPr
   );
 }
 
-export { Tabs, TabsList, TabsTrigger, TabsContent, tabsListVariants };
+export { Tabs, TabsContent, TabsList, TabsTrigger, tabsListVariants };

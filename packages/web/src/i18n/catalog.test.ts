@@ -14,6 +14,7 @@ const unchanged = new Set([
   "简体中文",
 ]);
 const samples: Record<string, unknown[][]> = {
+  "review.diff.copyHash": [["head"]],
   "stints.preparation.reasons.native": [["Antigravity CLI"]],
   "board.githubStatus.incompleteItems": [[0], [1], [2]],
   "coreText.agent.antigravityVersion": [[{ reason: "unparseable" }]],
@@ -129,6 +130,7 @@ const samples: Record<string, unknown[][]> = {
   "stints.localApprovalStale": [["Stage 自定义"], ["审查"]],
   "stints.gateReopened": [["Stage 自定义"]],
   "stints.gate": [["Stage 自定义"]],
+  "stints.gateBlockedBy": [["Condition"]],
   "stints.gateConditions": [["Stage 自定义"]],
   "stints.approve": [["Stage 自定义"], ["实现"]],
   "stints.reopen": [["Stage 自定义"]],

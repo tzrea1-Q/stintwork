@@ -7,51 +7,19 @@ import {
 } from "@stintwork/core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { AnimatePresence, LazyMotion, domMax, MotionGlobalConfig } from "motion/react";
+import { AnimatePresence, domMax, LazyMotion, MotionGlobalConfig } from "motion/react";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { MarkShipped } from "./MarkShipped";
 import { recoveryStint } from "./recovery-test-fixtures";
-import { WorkItemDrawer } from "./WorkItemDrawer";
 import { MotionRoot } from "./ui/MotionRoot";
+import { WorkItemDrawer } from "./WorkItemDrawer";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   window.history.replaceState(null, "", "/");
-});
-
-test.each([
-  ["en", "Local Markdown tracker", "GitHub Issues tracker"],
-  ["zh-CN", "本地 Markdown 跟踪器", "GitHub Issues 跟踪器"],
-])("%s drawer footer identifies the tracker", (language, local, github) => {
-  localStorage.setItem(languageStorageKey, language);
-  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
-    name: "Project",
-  }).workItems[0];
-  const { rerender } = render(
-    <LanguageProvider>
-      <WorkItemDrawer item={item} onClose={() => {}} />
-    </LanguageProvider>,
-  );
-  expect(screen.getByText(local)).toBeInTheDocument();
-  item.github = {
-    repository: "github/gh-aw",
-    repositoryId: "R",
-    issueId: "I",
-    number: 1433,
-    url: "https://github.com/github/gh-aw/issues/1433",
-    complete: false,
-  };
-  rerender(
-    <LanguageProvider>
-      <WorkItemDrawer item={item} onClose={() => {}} />
-    </LanguageProvider>,
-  );
-  expect(screen.getByText(github)).toBeInTheDocument();
-  expect(screen.queryByText(local)).not.toBeInTheDocument();
-  localStorage.removeItem(languageStorageKey);
 });
 
 function DrawerExample({ worktree = false }: { worktree?: boolean }) {
@@ -86,7 +54,7 @@ test("the drawer is portalled, contains keyboard focus and returns it after dism
   expect(drawer).toContainElement(document.activeElement as HTMLElement);
   await user.tab();
   expect(first).toHaveFocus();
-  expect(await screen.findByRole("tooltip")).toHaveTextContent("Close work item");
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("Esc to return to Pipeline");
   await user.keyboard("{Escape}");
   expect(drawer).toBeInTheDocument();
   expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
@@ -146,7 +114,7 @@ test("Escape immediately after the close tooltip disappears dismisses the drawer
   await user.tab();
   const close = screen.getByRole("button", { name: "Close work item" });
   expect(close).toHaveFocus();
-  const tooltip = await screen.findByRole("tooltip", { name: "Close work item" });
+  const tooltip = await screen.findByRole("tooltip", { name: "Esc to return to Pipeline" });
   const nextEscape = vi.fn(() => {
     const drawerOpen = drawer.isConnected && drawer.getAttribute("data-state") === "open";
     const closeFocused = document.activeElement === close;
@@ -186,7 +154,10 @@ test("the drawer shows and copies the worktree path even when no stint is active
   }).workItems[0];
   item.worktreePath = "/project-worktrees/first";
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
-  expect(screen.getByText("Work item files live in this worktree:")).toBeInTheDocument();
+  expect(screen.getByText("Worktree")).toHaveAttribute(
+    "title",
+    "Work item files live in this worktree:",
+  );
   expect(screen.getByText(item.worktreePath)).toHaveAttribute("data-truncate");
   expect(screen.getByText(item.worktreePath)).toHaveAttribute("title", item.worktreePath);
   await user.click(screen.getByRole("button", { name: `Copy ${item.worktreePath}` }));
@@ -199,7 +170,7 @@ test("the drawer does not claim a worktree for a main-checkout work item", async
     name: "Project",
   }).workItems[0];
   render(<WorkItemDrawer item={item} onClose={() => {}} />);
-  expect(screen.queryByText("Work item files live in this worktree:")).not.toBeInTheDocument();
+  expect(screen.queryByText("Worktree")).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole("tab", { name: "Spec" }));
   expect(screen.getByText(".scratch/first/spec.md")).toBeInTheDocument();
 });
@@ -400,7 +371,7 @@ test("GitHub ticket numbers use issue format while local tickets keep Markdown f
   expect(screen.getByText(/Blocked by #1/)).toBeInTheDocument();
   item.tickets[0].status = "unknown";
   view.rerender(<WorkItemDrawer item={item} onClose={() => {}} />);
-  expect(screen.getByText("unknown")).toBeInTheDocument();
+  expect(screen.getByText("Unknown")).toBeInTheDocument();
   expect(screen.queryByText(/Blocked by #1/)).not.toBeInTheDocument();
 });
 
@@ -446,7 +417,7 @@ test("wide screens dock the detail, focus its close button and restore the opene
   await user.click(trigger);
   const panel = screen.getByRole("complementary", { name: "First" });
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(within(panel).getByRole("button", { name: "Close work item" })).toHaveFocus();
+  expect(panel).toHaveFocus();
   await user.keyboard("{Escape}");
   await waitFor(() => expect(trigger).toHaveFocus());
   expect(screen.queryByRole("complementary", { name: "First" })).not.toBeInTheDocument();
@@ -466,8 +437,8 @@ test("wide screens dock the detail, focus its close button and restore the opene
 test.each([
   ["stage", "spec", false, false, false, "Start stint", 1],
   ["ticket", "implement", true, false, false, "Start stint", 1],
-  ["review", "ship", false, false, true, "Open review", 1],
-  ["read-only", "spec", false, true, true, "Open review", 0],
+  ["review", "review", false, false, true, "Open review", 1],
+  ["read-only", "spec", false, true, true, "Start stint", 0],
   ["shipped", "spec", false, false, true, "Open review", 0],
 ] as const)(
   "footer primary action follows available %s state",
@@ -596,7 +567,7 @@ test("the header and footer remain bounded and scrollable in a short Sheet", () 
   expect(footer).toHaveClass("max-h-[40%]", "overflow-y-auto");
 });
 
-test("the identity avatar shows the running agent while the stage row keeps its configured agent", async () => {
+test("the stage row shows its configured agent without a header avatar", async () => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async () => new Response(JSON.stringify({ agents: [claudeProfile, codexProfile] }))),
@@ -611,7 +582,7 @@ test("the identity avatar shows the running agent while the stage row keeps its 
   ).workItems[0];
   item.activeStint = { ...recoveryStint(), workItem: item.slug, agent: "codex" };
   render(<WorkItemDrawer item={item} agents={[claudeProfile, codexProfile]} onClose={() => {}} />);
-  expect(screen.getByRole("img", { name: "Codex" })).toHaveClass("ring-running");
+  expect(document.querySelector(".drawer-identity img")).toBeNull();
   const row = screen.getByText("Agent for this stage").closest('[role="group"]');
   await waitFor(() => expect(row).toHaveTextContent("Claude Code"));
 });
@@ -1093,6 +1064,80 @@ test("an exiting mobile drawer is inert and hidden while it remains mounted", ()
     expect(drawer).toHaveAttribute("data-exiting", "true");
     expect(drawer).toHaveAttribute("inert");
     expect(drawer).toHaveAttribute("aria-hidden", "true");
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test.each(["clarify", "spec", "tickets", "implement", "review", "ship"])(
+  "footer has one primary in %s",
+  (stage) => {
+    const item = indexProject(
+      createMemoryRepoFiles({
+        ".scratch/first/spec.md": "# First",
+        ".scratch/first/workflow.yaml": `workflow: feature\nstage: ${stage}\n`,
+        ".scratch/first/issues/01-first.md":
+          "# First ticket\nStatus: ready-for-agent\nBlocked by: none",
+      }),
+      { name: "Project" },
+    ).workItems[0];
+    if (stage === "review") item.worktreePath = "/tree";
+    render(<WorkItemDrawer item={item} onClose={() => {}} />);
+    const footer = document.querySelector(".drawer-footer");
+    expect(
+      footer?.querySelectorAll(".footer-primary .brief-action > button, button.bg-primary"),
+    ).toHaveLength(1);
+  },
+);
+
+test("more actions opens customise workflow", async () => {
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  const customise = vi.fn();
+  render(<WorkItemDrawer item={item} onClose={() => {}} onCustomiseWorkflow={customise} />);
+  await userEvent.click(screen.getByRole("button", { name: "More actions" }));
+  await userEvent.click(
+    await screen.findByRole("menuitem", { name: "Customise Feature workflow" }),
+  );
+  expect(customise).toHaveBeenCalledWith("feature");
+});
+
+test.each(["pointer", "keyboard"])("%s opening focuses the appropriate target", async (input) => {
+  const user = userEvent.setup();
+  render(<DrawerExample />);
+  const trigger = screen.getByRole("button", { name: "Inspect First" });
+  if (input === "pointer") await user.click(trigger);
+  else {
+    trigger.focus();
+    await user.keyboard("{Enter}");
+  }
+  const panel = screen.getByRole("dialog", { name: "First" });
+  expect(
+    input === "pointer" ? panel : within(panel).getByRole("button", { name: "Close work item" }),
+  ).toHaveFocus();
+});
+
+test("overview defers gate details and agents while keeping summary and footer", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  item.activeStint = { ...recoveryStint(), workItem: item.slug };
+  try {
+    const { container } = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+    expect(
+      container.querySelector(".drawer-footer") ?? document.querySelector(".drawer-footer"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/conditions met/i)).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /gate conditions/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Agents by stage")).not.toBeInTheDocument();
+    expect(document.querySelector(".stint-stream")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("list", { name: /gate conditions/i })).toBeInTheDocument();
+      expect(screen.getByText("Agents by stage")).toBeInTheDocument();
+      expect(document.querySelector(".stint-stream")).toBeInTheDocument();
+    });
   } finally {
     MotionGlobalConfig.skipAnimations = true;
   }
