@@ -13,6 +13,6 @@ export type CardProps = {
   maxDay: number;
   stageLabel: (item: ProjectSnapshot["workItems"][number], id: string | undefined) => string;
   onOpenItem: (slug: string) => void;
-  onNeedsYou: () => void;
+  onNeedsYou: (id?: string) => void;
   onMilestone: (id: string) => void;
 };

@@ -16,6 +16,7 @@ type PermissionAnswerProps = {
   > & { answering?: boolean };
   profile?: AgentProfile;
   onError?: (reason: string | Error) => void;
+  onSuccess?: () => void;
 };
 
 export function PermissionAnswer(props: PermissionAnswerProps) {
@@ -37,6 +38,7 @@ function PermissionAnswerBinding({
   request,
   profile,
   onError,
+  onSuccess,
   showContext = true,
 }: PermissionAnswerProps) {
   const { t } = useLanguage();
@@ -65,9 +67,10 @@ function PermissionAnswerBinding({
         throw new CoreTextError(body, t.needsYou.permissionFailed);
       }
       setSubmitted(true);
-      toast.success(t.actionToast.permissionAnswered);
+      onSuccess?.();
+      if (showContext) toast.success(t.actionToast.permissionAnswered);
     } catch (cause) {
-      toast.error(t.actionToast.failed);
+      if (showContext) toast.error(t.actionToast.failed);
       const reason =
         cause instanceof CoreTextError && cause.reasonMessage !== undefined
           ? cause

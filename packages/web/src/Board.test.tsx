@@ -1576,3 +1576,16 @@ test.each(["overview", "pipeline"])("permission callout opens Needs you on %s", 
   await userEvent.setup().click(banner);
   expect(screen.getByRole("dialog", { name: /Needs you/ })).toBeVisible();
 });
+
+test("Overview attention rows focus their queue item; top bar opens at the top", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Check project request" }));
+  let queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  await waitFor(() => expect(within(queue).getByRole("article")).toHaveFocus());
+  await user.click(within(queue).getByRole("button", { name: "Close Needs you" }));
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  expect(within(queue).getByRole("button", { name: "Close Needs you" })).toHaveFocus();
+});

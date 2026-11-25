@@ -29,7 +29,7 @@ export function Overview({
   error?: string;
   onPipeline: () => void;
   onOpenItem: (slug: string) => void;
-  onNeedsYou: () => void;
+  onNeedsYou: (id?: string) => void;
   onCreate: () => void;
   onMilestone: (id: string) => void;
 }) {

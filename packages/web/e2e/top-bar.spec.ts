@@ -363,6 +363,10 @@ for (const language of ["en", "zh-CN"] as const) {
         await warningsTrigger.click();
         const warnings = page.locator(".needs-you-queue");
         await expect(warnings).toHaveAttribute("data-state", "open");
+        await expect(warnings.locator("footer")).toHaveCount(0);
+        await expect(
+          warnings.getByRole("button", { name: t.needsYou.enableNotifications }),
+        ).toBeInViewport();
         const projectWarnings = warnings.getByRole("region", { name: t.topBar.projectWarnings });
         await expect(projectWarnings).toBeVisible();
         await expect(warnings.getByText(t.needsYou.empty, { exact: true })).toBeVisible();

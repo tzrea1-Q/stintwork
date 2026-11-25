@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
-import { Bell, ChevronRight, CircleHelp, Inbox, X } from "lucide-react";
+import { Bell, BellOff, ChevronRight, CircleHelp, Inbox, X } from "lucide-react";
+import { m } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { kinds } from "./attention-kinds";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { formatDuration } from "./duration";
-import { GateView } from "./GateView";
+import { GateSummary } from "./GateSummary";
 import { HandoffAnswer } from "./HandoffAnswer";
 import {
   CoreTextError,
@@ -23,10 +25,11 @@ import { Button } from "./ui/Button";
 import { Eyebrow } from "./ui/Card";
 import { CodeBlock } from "./ui/CodeBlock";
 import { IconChip } from "./ui/IconChip";
+import { tween, useReducedMotionSafe } from "./ui/motion";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { WarningCallout } from "./ui/WarningCallout";
-import { attentionStageName, attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
+import { attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
 
 const kindOrder = Object.keys(kinds) as AttentionItem["kind"][];
 export function sortAttentionItems(items: readonly AttentionItem[]): AttentionItem[] {
@@ -44,6 +47,7 @@ export function NeedsYouQueue({
   openSlug,
   onClose,
   onOpenItem,
+  focusAttentionId,
 }: {
   snapshot: ProjectSnapshot;
   open?: boolean;
@@ -51,7 +55,8 @@ export function NeedsYouQueue({
   alerts: ReturnType<typeof useAttentionAlerts>;
   openSlug: string | null;
   onClose: () => void;
-  onOpenItem: (slug: string) => void;
+  onOpenItem: (slug: string, overview?: boolean) => void;
+  focusAttentionId?: string | null;
 }) {
   const { t, language } = useLanguage();
   const [internalOpen, setInternalOpen] = useState(true);
@@ -62,11 +67,29 @@ export function NeedsYouQueue({
   const opener = useRef<HTMLElement | null>(null);
   const navigating = useRef(false);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotionSafe();
+  const itemRefs = useRef(new Map<string, HTMLElement>());
   const [now, setNow] = useState(Date.now);
   const [answerError, setAnswerError] = useErrorText();
   const [answerItem, setAnswerItem] = useState<AttentionItem | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const answered = useRef(new Map<string, string>());
+  const presentIds = useRef(new Set(snapshot.attentionItems.map(({ id }) => id)));
+  presentIds.current = new Set(snapshot.attentionItems.map(({ id }) => id));
+  function answeredItem(id: string, message: string) {
+    if (presentIds.current.has(id)) answered.current.set(id, message);
+    else toast.success(message);
+  }
+  useEffect(() => {
+    for (const [id, message] of answered.current) {
+      if (!snapshot.attentionItems.some((item) => item.id === id)) {
+        toast.success(message);
+        answered.current.delete(id);
+      }
+    }
+  }, [snapshot.attentionItems]);
 
   async function reopen(item: Extract<AttentionItem, { kind: "approval-stale" }>) {
     setSaving(item.id);
@@ -100,6 +123,7 @@ export function NeedsYouQueue({
       if (!response.ok) throw new Error(t.needsYou.refreshFailed);
     } catch {
       setAnswerError(t.needsYou.refreshRetry);
+      setAnswerItem(snapshot.attentionItems.find((item) => item.kind === "login-required") ?? null);
     } finally {
       setRefreshing(false);
     }
@@ -126,7 +150,21 @@ export function NeedsYouQueue({
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             const previous = document.activeElement;
-            closeButton.current?.focus();
+            if (focusAttentionId) {
+              queueMicrotask(() => {
+                const target = itemRefs.current.get(focusAttentionId);
+                if (target) {
+                  target.scrollIntoView?.({ block: "nearest" });
+                  target.focus();
+                } else {
+                  if (contentRef.current) contentRef.current.scrollTop = 0;
+                  closeButton.current?.focus();
+                }
+              });
+            } else {
+              if (contentRef.current) contentRef.current.scrollTop = 0;
+              closeButton.current?.focus();
+            }
             opener.current = previous instanceof HTMLElement ? previous : null;
           }}
           onCloseAutoFocus={(event) => {
@@ -145,28 +183,68 @@ export function NeedsYouQueue({
                 </span>
               </SheetTitle>
             </div>
-            <Tooltip>
-              <TooltipTrigger
-                asChild
-                onFocus={(event) => {
-                  if (!opener.current) event.preventDefault();
-                }}
-              >
-                <SheetClose asChild>
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    ref={closeButton}
-                    aria-label={t.needsYou.close}
+                    aria-label={
+                      alerts.enabled
+                        ? t.needsYou.disableNotifications
+                        : t.needsYou.enableNotifications
+                    }
+                    aria-pressed={alerts.enabled}
+                    aria-describedby={
+                      !alerts.supported || alerts.error ? "notification-description" : undefined
+                    }
+                    aria-disabled={!alerts.supported || alerts.requesting}
+                    onClick={() => void alerts.toggle()}
                   >
-                    <X aria-hidden="true" />
+                    {alerts.enabled ? <Bell aria-hidden="true" /> : <BellOff aria-hidden="true" />}
                   </Button>
-                </SheetClose>
-              </TooltipTrigger>
-              <TooltipContent>{t.needsYou.close}</TooltipContent>
-            </Tooltip>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {alerts.enabled
+                    ? t.needsYou.disableNotifications
+                    : t.needsYou.enableNotifications}
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger
+                  asChild
+                  onFocus={(event) => {
+                    if (!opener.current) event.preventDefault();
+                  }}
+                >
+                  <SheetClose asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      ref={closeButton}
+                      aria-label={t.needsYou.close}
+                    >
+                      <X aria-hidden="true" />
+                    </Button>
+                  </SheetClose>
+                </TooltipTrigger>
+                <TooltipContent>{t.needsYou.close}</TooltipContent>
+              </Tooltip>
+            </div>
           </header>
-          <div className="needs-you-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 sm:p-6">
+          {(!alerts.supported || alerts.error) && (
+            <p
+              id="notification-description"
+              className="px-4 text-xs text-muted-foreground"
+              role={alerts.error ? "alert" : undefined}
+            >
+              {alerts.error || t.needsYou.notificationsUnsupported}
+            </p>
+          )}
+          <div
+            ref={contentRef}
+            className="needs-you-content min-h-0 flex-1 overflow-auto overscroll-contain p-4 sm:p-6"
+          >
             {snapshot.attentionItems.length === 0 && (
               <p role="status" className="needs-you-empty py-4 text-center text-muted-foreground">
                 {t.needsYou.empty}
@@ -197,9 +275,21 @@ export function NeedsYouQueue({
               };
               const minutes = Math.max(0, Math.floor((now - Date.parse(item.raisedAt)) / 60_000));
               return (
-                <article
+                <m.article
                   key={item.id}
-                  className="attention-item relative min-w-0 border-b border-border py-3 pl-12 text-xs [overflow-wrap:anywhere] [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-1 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
+                  ref={(node) => {
+                    if (node) itemRefs.current.set(item.id, node);
+                    else itemRefs.current.delete(item.id);
+                  }}
+                  tabIndex={-1}
+                  initial={
+                    !reduced && focusAttentionId === item.id
+                      ? { backgroundColor: "var(--attention-soft)" }
+                      : false
+                  }
+                  animate={{ backgroundColor: "transparent" }}
+                  transition={tween.overlay}
+                  className="attention-item relative min-w-0 focus:outline focus:outline-2 focus:outline-ring border-b border-border py-3 pl-12 text-xs [overflow-wrap:anywhere] [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-semibold [&_p]:my-1 [&_textarea]:mt-2 [&_textarea]:block [&_textarea]:min-h-24 [&_textarea]:w-full [&_textarea]:resize-y [&_textarea]:border [&_textarea]:border-input [&_textarea]:bg-card [&_textarea]:p-3 [&_textarea]:text-foreground"
                   aria-label={title}
                 >
                   <span className="absolute left-0 top-3">
@@ -271,16 +361,7 @@ export function NeedsYouQueue({
                   )}
                   {item.kind === "permission" && stint && <StintRecovery stint={stint} />}
                   {item.kind === "checkpoint-warning" && (
-                    <>
-                      <p>
-                        {language === "en"
-                          ? item.details
-                          : item.warnings.some((warning) => !warning.excluded)
-                            ? t.needsYou.committedRemediation
-                            : t.needsYou.excludedRemediation}
-                      </p>
-                      <CheckpointWarnings warnings={item.warnings} />
-                    </>
+                    <CheckpointWarnings warnings={item.warnings} />
                   )}
                   {item.kind === "approval-stale" && (
                     <Button
@@ -295,6 +376,7 @@ export function NeedsYouQueue({
                   )}
                   {item.kind === "permission" && (
                     <PermissionAnswer
+                      onSuccess={() => answeredItem(item.id, t.actionToast.permissionAnswered)}
                       showContext={false}
                       stintId={item.stintId}
                       request={item}
@@ -308,6 +390,7 @@ export function NeedsYouQueue({
                   {item.kind === "handoff-unresolved" && (
                     <HandoffAnswer
                       item={item}
+                      onSuccess={() => answeredItem(item.id, t.needsYou.handoffAnswered)}
                       onError={(reason) => {
                         setAnswerError(reason);
                         setAnswerItem(reason ? item : null);
@@ -317,6 +400,7 @@ export function NeedsYouQueue({
                   {item.kind === "memory-proposal" && (
                     <MemoryProposal
                       item={item}
+                      onSuccess={() => answeredItem(item.id, t.review.memory.recorded)}
                       onError={(reason) => {
                         setAnswerError(reason);
                         setAnswerItem(reason ? item : null);
@@ -324,16 +408,38 @@ export function NeedsYouQueue({
                     />
                   )}
                   {item.kind === "gate-ready" && workItem && (
-                    <GateView
+                    <GateSummary
                       item={workItem}
-                      showHandoffAnswer={false}
-                      warnings={snapshot.warnings}
+                      onSuccess={() => answeredItem(item.id, t.actionToast.gateChanged)}
                       workflows={snapshot.workflows}
+                      onOpen={() => {
+                        navigating.current = item.workItem !== openSlug;
+                        close();
+                        onOpenItem(item.workItem, true);
+                      }}
                     />
                   )}
-                </article>
+                  {answerError && answerItem?.id === item.id && (
+                    <p role="alert" className="text-attention-foreground">
+                      {answerError}
+                    </p>
+                  )}
+                </m.article>
               );
             })}
+            {answerError &&
+              answerItem &&
+              !snapshot.attentionItems.some(({ id }) => id === answerItem.id) && (
+                <article
+                  aria-label={attentionTitle(answerItem, t, language)}
+                  className="attention-item py-3"
+                >
+                  <h3>{attentionTitle(answerItem, t, language)}</h3>
+                  <p role="alert" className="text-attention-foreground">
+                    {answerError}
+                  </p>
+                </article>
+              )}
             {snapshot.warnings.length > 0 && (
               <section
                 aria-labelledby="project-warnings-heading"
@@ -349,32 +455,6 @@ export function NeedsYouQueue({
               </section>
             )}
           </div>
-          <footer className="needs-you-footer shrink-0 border-t border-border bg-card p-4 text-xs wrap-anywhere sm:p-6 [&_p]:mt-2">
-            {answerError && (
-              <p role="alert" className="warning text-attention-foreground">
-                {answerItem &&
-                  `${attentionTitle(answerItem, t, language, undefined, attentionStageName(answerItem, snapshot, t))}: `}
-                {answerError}
-              </p>
-            )}
-            <Button
-              className="h-auto min-h-8 max-w-full whitespace-normal py-1"
-              disabled={!alerts.supported || alerts.requesting}
-              aria-pressed={alerts.enabled}
-              onClick={() => void alerts.toggle()}
-            >
-              <Bell aria-hidden="true" />
-              {alerts.enabled ? t.needsYou.disableNotifications : t.needsYou.enableNotifications}
-            </Button>
-            {!alerts.supported && (
-              <p className="muted text-muted-foreground">{t.needsYou.notificationsUnsupported}</p>
-            )}
-            {alerts.error && (
-              <p role="alert" className="warning text-attention-foreground">
-                {alerts.error}
-              </p>
-            )}
-          </footer>
         </SheetContent>
       </TooltipProvider>
     </Sheet>

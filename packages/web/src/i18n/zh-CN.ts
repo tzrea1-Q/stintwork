@@ -494,9 +494,10 @@ export const zhCN: Catalog = {
     likelySecret: "疑似敏感信息",
     largeFile: "大于 1 MiB",
     generatedDirectory: "生成的目录",
-    excludedFiles: "已从检查点排除，保持未提交状态。不显示文件内容。",
+    excludedFiles:
+      "已从检查点排除，保持未提交状态。不显示文件内容。请移除或忽略这些文件；检查和本地合并要求工作树干净。",
     committedFiles:
-      "已提交到分支，未被检查点排除。请在后续提交中移除这些文件并将其加入 .gitignore，或在审查中明确接受每个路径并说明理由。发布前请轮换真实密钥并清理 Git 历史。不显示文件内容。",
+      "已提交到分支，未被检查点排除。风险文件会阻止交付。请在后续提交中移除这些文件并将其加入 .gitignore，或在审查中明确接受每个路径并说明理由。发布前请轮换真实密钥并清理 Git 历史。不显示文件内容。",
     committed: " · 已提交：",
     riskyCommitted: "分支中已提交风险文件",
     riskyExcluded: "已从检查点排除风险文件",
@@ -506,6 +507,8 @@ export const zhCN: Catalog = {
       "请移除这些文件或明确将其忽略，然后开始另一个 Stint。检查和本地合并要求工作树干净。",
     enableNotifications: "启用浏览器通知",
     disableNotifications: "禁用浏览器通知",
+    conditionsMet: (met, total) => `已满足 ${met}/${total} 项条件`,
+    openGate: "打开关卡",
     notificationsUnsupported: "此处不支持浏览器通知。",
     notificationsUnavailable: "浏览器通知不可用，你仍可使用待你处理队列。",
     notificationsDenied: "未启用浏览器通知。请检查此网站的浏览器权限后重试。",

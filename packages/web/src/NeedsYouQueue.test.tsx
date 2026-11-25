@@ -368,9 +368,7 @@ test("forwarding errors remain visible even if a decision snapshot removes the i
   fail(
     new Response(JSON.stringify({ reason: "Permission could not be forwarded" }), { status: 503 }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Check project request: Permission could not be forwarded",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Permission could not be forwarded");
   expect(screen.getByText("Nothing needs you right now.")).toBeInTheDocument();
 });
 
@@ -448,7 +446,10 @@ test("denied and unsupported browser notifications leave the queue usable withou
   vi.stubGlobal("Notification", undefined);
   render(<Board snapshot={attentionSnapshot()} />);
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
-  expect(screen.getByRole("button", { name: "Enable browser notifications" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Enable browser notifications" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   expect(screen.getByText("Browser notifications are not supported here.")).toBeInTheDocument();
 });
 
@@ -545,9 +546,10 @@ describe("Chinese Needs-you queue", () => {
     expect(queue.getByText("test-agent login", { selector: "code" })).toBeInTheDocument();
     const checkpoint = within(queue.getByRole("article", { name: "分支中已提交风险文件" }));
     const warnings = within(checkpoint.getByRole("region", { name: "检查点警告" }));
-    for (const path of ["/worktree/.env.中文", "/worktree/dist/中文.js", "a".repeat(40)])
+    for (const path of ["/worktree/.env.中文", "/worktree/dist/中文.js"])
       expect(warnings.getByText(path, { selector: "code" })).toBeInTheDocument();
-    expect(warnings.getByText(/疑似敏感信息, 大于 1 MiB/)).toBeInTheDocument();
+    expect(warnings.getByText("疑似敏感信息")).toBeInTheDocument();
+    expect(warnings.getByText("大于 1 MiB")).toBeInTheDocument();
     expect(warnings.getByText(/生成的目录/)).toBeInTheDocument();
     expect(warnings.getByText(/已从检查点排除，保持未提交状态/)).toBeInTheDocument();
     expect(warnings.getByText(/已提交到分支，未被检查点排除/)).toBeInTheDocument();
@@ -753,7 +755,10 @@ describe("Chinese Needs-you queue", () => {
     expect(
       within(screen.getByRole("dialog", { name: "待你处理 0" })).getByRole("status"),
     ).toHaveTextContent("目前没有待你处理的事项。");
-    expect(screen.getByRole("button", { name: "启用浏览器通知" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用浏览器通知" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.getByText("此处不支持浏览器通知。")).toBeInTheDocument();
     expect(document.title).toBe("Project · Stintwork");
   });
@@ -818,9 +823,7 @@ test.each(["en", "zh-CN"] as const)(
     resolve(new Response("{}"));
     await waitFor(() => expect(button).toBeEnabled());
     await user.click(button);
-    expect(await sheet.findByRole("alert")).toHaveTextContent(
-      `${t.needsYou.staleApprovalTitle(stage)}: Refused to reopen`,
-    );
+    expect(await sheet.findByRole("alert")).toHaveTextContent("Refused to reopen");
     expect(button).toBeEnabled();
   },
 );
@@ -1063,4 +1066,125 @@ test("StintStream retains permission context by default", () => {
     screen.getByText(en.review.visualRefresh07.permission, { exact: true }),
   ).toBeInTheDocument();
   expect(screen.getByText(/Agent: Test Agent · Stint:/)).toHaveTextContent("stint");
+});
+
+test("compact gate approves and opens the work item", async () => {
+  const { createMemoryRepoFiles, indexProject } = await import("@stintwork/core");
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/workflow.yaml": "workflow: feature\nstage: implement\n",
+      ".scratch/first/spec.md": "# First work item",
+      ".scratch/first/issues/01-first.md": "# First ticket\nStatus: resolved\nBlocked by: none",
+    }),
+    { name: "Test" },
+  );
+  const fetcher = vi.fn().mockResolvedValue(new Response('{"stage":"review"}'));
+  vi.stubGlobal("fetch", fetcher);
+  const user = userEvent.setup();
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  let article = within(screen.getByRole("article", { name: "Implement ready to approve" }));
+  expect(article.getByText(/\d+ of \d+ conditions met/)).toBeInTheDocument();
+  expect(article.queryByText("Last handoff")).not.toBeInTheDocument();
+  expect(article.queryByText("Open warnings")).not.toBeInTheDocument();
+  expect(article.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+  await user.click(article.getByRole("button", { name: "Approve Implement" }));
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/work-items/first/gates/implement/approve",
+    expect.objectContaining({ method: "POST", body: "{}" }),
+  );
+  expect(await article.findByRole("status")).toHaveTextContent("Gate approved");
+  snapshot.workItems[0].tickets[0].resolved = false;
+  rerender(<Board snapshot={{ ...snapshot }} />);
+  article = within(screen.getByRole("article", { name: "Implement ready to approve" }));
+  expect(article.getByRole("button", { name: "Approve Implement" })).toBeDisabled();
+  expect(article.getByText(/Every ticket must be resolved/)).toBeInTheDocument();
+  await user.click(article.getByRole("button", { name: "Open gate" }));
+  expect(screen.queryByRole("dialog", { name: "Needs you 1" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Close work item" })).toBeInTheDocument();
+});
+
+test("notification toggle is in the header with a tooltip and no footer", async () => {
+  vi.stubGlobal(
+    "Notification",
+    Object.assign(vi.fn(), {
+      permission: "default",
+      requestPermission: vi.fn().mockResolvedValue("granted"),
+    }),
+  );
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  const queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  const button = within(queue).getByRole("button", { name: "Enable browser notifications" });
+  expect(button.closest("header")).not.toBeNull();
+  expect(button).toHaveAttribute("aria-pressed", "false");
+  expect(queue.querySelector("footer")).toBeNull();
+  await user.hover(button);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("Enable browser notifications");
+  await user.click(button);
+  expect(button).toHaveAttribute("aria-pressed", "true");
+});
+
+test("permission failure is inline and a handoff success has one status without a toast", async () => {
+  const { toast } = await import("sonner");
+  const success = vi.spyOn(toast, "success");
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"reason":"Denied"}', { status: 409 }))
+      .mockResolvedValueOnce(new Response("{}")),
+  );
+  const user = userEvent.setup();
+  render(<Board snapshot={mixedAttentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 3" }));
+  const queue = screen.getByRole("dialog", { name: "Needs you 3" });
+  const permission = within(queue)
+    .getAllByRole("article")
+    .find((entry) => within(entry).queryByRole("button", { name: /Yes, proceed/ }));
+  if (!permission) throw new Error("Missing permission");
+  await user.click(within(permission).getByRole("button", { name: /Yes, proceed/ }));
+  expect(await within(permission).findByRole("alert")).toHaveTextContent("Denied");
+  expect(queue.querySelector("footer")).toBeNull();
+  const handoff = within(queue)
+    .getAllByRole("article")
+    .find((entry) => within(entry).queryByRole("textbox", { name: "Developer note" }));
+  if (!handoff) throw new Error("Missing handoff");
+  await user.click(within(handoff).getByRole("button", { name: "Dismiss" }));
+  expect(await within(handoff).findAllByRole("status")).toHaveLength(1);
+  expect(success).not.toHaveBeenCalled();
+});
+
+test("Open gate closes the queue and opens the associated work item", async () => {
+  const { createMemoryRepoFiles, indexProject } = await import("@stintwork/core");
+  const { NeedsYouQueue } = await import("./NeedsYouQueue");
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/workflow.yaml": "workflow: feature\nstage: implement\n",
+      ".scratch/first/spec.md": "# First work item",
+      ".scratch/first/issues/01-first.md": "# First ticket\nStatus: resolved\nBlocked by: none",
+    }),
+    { name: "Test" },
+  );
+  const onClose = vi.fn();
+  const onOpenItem = vi.fn();
+  render(
+    <NeedsYouQueue
+      snapshot={snapshot}
+      alerts={{
+        enabled: false,
+        supported: true,
+        requesting: false,
+        error: "",
+        toggle: async () => {},
+      }}
+      openSlug={null}
+      onClose={onClose}
+      onOpenItem={onOpenItem}
+    />,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "Open gate" }));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(onOpenItem).toHaveBeenCalledWith("first", true);
 });

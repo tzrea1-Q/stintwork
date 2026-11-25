@@ -31,59 +31,20 @@ import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { StatusChip } from "./ui/StatusChip";
 import type { BoardWorkItem } from "./WorkItemCard";
 
-export function GateView({
-  item,
-  warnings = [],
-  workflows = builtInWorkflows,
-  githubReadOnly = false,
-  showHandoffAnswer = true,
-}: {
-  item: BoardWorkItem;
-  githubReadOnly?: boolean;
-  showHandoffAnswer?: boolean;
-  warnings?: Warning[];
-  workflows?: WorkflowDefinitions;
-}) {
+export function useGateAction(
+  item: BoardWorkItem,
+  workflows: WorkflowDefinitions,
+  notify = true,
+  onSuccess?: () => void,
+) {
   const { t } = useLanguage();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useErrorText();
   const [refreshNeeded, setRefreshNeeded] = useState(false);
   const github = item.github;
-  const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
-  const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
-  const gate = gateReadiness(item, workflows);
-  const reduced = useReducedMotionSafe();
-  const previousConditions = useRef(
-    new Map(gate.conditions.map((condition) => [condition.id, condition.ready])),
-  );
-  const met = new Set(
-    gate.conditions
-      .filter((condition) =>
-        becameResolved(previousConditions.current.get(condition.id), condition.ready),
-      )
-      .map((condition) => condition.id),
-  );
-  useEffect(() => {
-    previousConditions.current = new Map(
-      gate.conditions.map((condition) => [condition.id, condition.ready]),
-    );
-  });
-  const emptyGithubSpec =
-    !!github &&
-    item.spec === null &&
-    gate.conditions.some((condition) => condition.action.code === "gate.githubSpecRequired");
   const stages = workflows[item.workflow].stages;
-  const position = stages.findIndex(({ id }) => id === item.stage);
-  const current = stages[position];
-  if (!current) return null;
-  const checkpoint = item.stints.find(({ checkpointCommit }) => checkpointCommit)?.checkpointCommit;
-  const lastHandoff = item.stints.find(({ handoff }) => handoff);
-  const unresolved = deriveAttentionItems({ workItems: [item], workflows }).find(
-    (entry) => entry.kind === "handoff-unresolved" && entry.stintId === lastHandoff?.id,
-  );
-  const earlier = stages.slice(0, position).filter(({ id }) => item.stages[id]?.approved);
-
+  const current = stages.find(({ id }) => id === item.stage);
   async function act(stage: StageId, action: "approve" | "reopen") {
     setSaving(true);
     setMessage("");
@@ -119,7 +80,8 @@ export function GateView({
           setRefreshNeeded(true);
         throw new CoreTextError(result, t.stints.changeGateFailed);
       }
-      toast.success(t.actionToast.gateChanged);
+      if (notify) toast.success(t.actionToast.gateChanged);
+      onSuccess?.();
       if (github) {
         setMessage(
           t.stints.githubApproval[result.approval as "current" | "stale" | "unknown"] ??
@@ -134,18 +96,91 @@ export function GateView({
         action === "approve"
           ? result.approval === "stale"
             ? t.stints.localApprovalStaleAfterApprove(
-                stageName(workflows[item.workflow], current, t),
+                current ? stageName(workflows[item.workflow], current, t) : stage,
               )
             : t.stints.gateApproved(name)
           : t.stints.gateReopened(name),
       );
     } catch (cause) {
-      toast.error(t.actionToast.failed);
+      if (notify) toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : t.stints.changeGateFailed);
     } finally {
       setSaving(false);
     }
   }
+
+  return {
+    saving,
+    setSaving,
+    message,
+    setMessage,
+    error,
+    setError,
+    refreshNeeded,
+    setRefreshNeeded,
+    act,
+  };
+}
+
+export function GateView({
+  item,
+  warnings = [],
+  workflows = builtInWorkflows,
+  githubReadOnly = false,
+  showHandoffAnswer = true,
+}: {
+  item: BoardWorkItem;
+  githubReadOnly?: boolean;
+  showHandoffAnswer?: boolean;
+  warnings?: Warning[];
+  workflows?: WorkflowDefinitions;
+}) {
+  const { t } = useLanguage();
+  const {
+    saving,
+    setSaving,
+    message,
+    setMessage,
+    error,
+    setError,
+    refreshNeeded,
+    setRefreshNeeded,
+    act,
+  } = useGateAction(item, workflows);
+  const github = item.github;
+  const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
+  const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
+  const gate = gateReadiness(item, workflows);
+  const reduced = useReducedMotionSafe();
+  const previousConditions = useRef(
+    new Map(gate.conditions.map((condition) => [condition.id, condition.ready])),
+  );
+  const met = new Set(
+    gate.conditions
+      .filter((condition) =>
+        becameResolved(previousConditions.current.get(condition.id), condition.ready),
+      )
+      .map((condition) => condition.id),
+  );
+  useEffect(() => {
+    previousConditions.current = new Map(
+      gate.conditions.map((condition) => [condition.id, condition.ready]),
+    );
+  });
+  const emptyGithubSpec =
+    !!github &&
+    item.spec === null &&
+    gate.conditions.some((condition) => condition.action.code === "gate.githubSpecRequired");
+  const stages = workflows[item.workflow].stages;
+  const position = stages.findIndex(({ id }) => id === item.stage);
+  const current = stages[position];
+  if (!current) return null;
+  const checkpoint = item.stints.find(({ checkpointCommit }) => checkpointCommit)?.checkpointCommit;
+  const lastHandoff = item.stints.find(({ handoff }) => handoff);
+  const unresolved = deriveAttentionItems({ workItems: [item], workflows }).find(
+    (entry) => entry.kind === "handoff-unresolved" && entry.stintId === lastHandoff?.id,
+  );
+  const earlier = stages.slice(0, position).filter(({ id }) => item.stages[id]?.approved);
 
   return (
     <section
