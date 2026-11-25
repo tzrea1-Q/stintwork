@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Page, type TestInfo, test } from "@playwright/test";
 import {
   coreText,
   coreTextFields,
   deriveAttentionItems,
   isRiskyPaths,
   type ProjectSnapshot,
-  summarizeStint,
   type Stint,
   type StintRecovery,
+  summarizeStint,
 } from "@stintwork/core";
 import { codexProfile } from "../../agents/src/profiles";
+import { en } from "../src/i18n/en";
+import { zhCN } from "../src/i18n/zh-CN";
 import {
   recoveryPath,
   recoveryPermission,
   recoverySnapshot,
   recoveryStint,
 } from "../src/recovery-test-fixtures";
-import { en } from "../src/i18n/en";
-import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
 
 const fixtureSnapshots = new WeakMap<Page, ProjectSnapshot>();
@@ -256,7 +256,9 @@ for (const language of ["en", "zh-CN"] as const) {
             await route.fulfill({ status: 503, json: { reason: t.stints.readHistoryFailed } });
           else await route.fulfill({ json: { stint: f.stint } });
         });
-        await history.getByRole("button", { name: t.stints.openStint(f.stint.id) }).click();
+        const openHistory = history.getByRole("button", { name: t.stints.openStint(f.stint.id) });
+        await expect(openHistory).toHaveText(t.stints.openStint(f.stint.id.slice(0, 8)));
+        await openHistory.click();
         await expect(history.getByRole("button", { name: t.stints.readingStint })).toBeDisabled();
         await capture(page, info, "history-loading", ".work-item-drawer");
         release();

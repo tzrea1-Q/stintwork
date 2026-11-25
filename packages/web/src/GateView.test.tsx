@@ -993,3 +993,51 @@ test("gate summarizes conditions and links a disabled approval to its reason", (
     /./,
   );
 });
+
+test.each(["local", "github"])(
+  "footer approval shares %s results with the gate",
+  async (tracker) => {
+    const item = project("spec").workItems[0];
+    item.stints = [{ ...stint, stage: "spec", ticket: null }];
+    if (tracker === "github") {
+      item.stages.clarify = { approved: { remoteState: "current" } };
+    }
+    if (tracker === "github")
+      item.github = {
+        repository: "a/b",
+        repositoryId: "R",
+        issueId: "I",
+        number: 1,
+        url: "https://github.com/a/b/issues/1",
+        complete: true,
+        reviewDigest: "digest",
+        reviewHead: "head",
+      };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async (url: string) =>
+          new Response(
+            JSON.stringify(
+              url.endsWith("/refresh")
+                ? {}
+                : { stage: "tickets", approval: "stale", reason: "head-changed" },
+            ),
+          ),
+      ),
+    );
+    render(<WorkItemDrawer item={item} onClose={() => {}} />);
+    const gate = screen.getByRole("region", { name: "Spec gate" });
+    await userEvent.click(screen.getByRole("button", { name: "Approve Spec" }));
+    if (tracker === "github") {
+      expect(
+        await within(gate).findByText("Approval is stale; GitHub evidence changed."),
+      ).toBeInTheDocument();
+      expect(
+        within(gate).getByRole("button", { name: "Refresh GitHub evidence" }),
+      ).toBeInTheDocument();
+    } else {
+      expect(await within(gate).findByText(/Gate approved, but HEAD changed/)).toBeInTheDocument();
+    }
+  },
+);

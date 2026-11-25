@@ -127,16 +127,19 @@ export function GateView({
   showHandoffAnswer = true,
   hideApprove = false,
   details = true,
+  action,
 }: {
   item: BoardWorkItem;
   githubReadOnly?: boolean;
   showHandoffAnswer?: boolean;
   hideApprove?: boolean;
   details?: boolean;
+  action?: ReturnType<typeof useGateAction>;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
   const { t } = useLanguage();
+  const localAction = useGateAction(item, workflows);
   const {
     saving,
     setSaving,
@@ -147,7 +150,7 @@ export function GateView({
     refreshNeeded,
     setRefreshNeeded,
     act,
-  } = useGateAction(item, workflows);
+  } = action ?? localAction;
   const github = item.github;
   const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
   const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;

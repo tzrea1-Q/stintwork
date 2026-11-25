@@ -4,9 +4,6 @@ import type { AgentProfile, Stint, StintSummary } from "@stintwork/core";
 import { useEffect, useId, useState } from "react";
 import { agentName } from "./agent-name";
 import { formatDuration } from "./duration";
-import { shortStintId } from "./short-id";
-import { fullTime, relativeTime } from "./time";
-import { Empty, EmptyDescription } from "./ui/Empty";
 import { HandoffCard } from "./HandoffCard";
 import {
   CoreTextError,
@@ -17,8 +14,11 @@ import {
 } from "./i18n/language";
 import { StintRecovery } from "./StintRecovery";
 import { StintStream } from "./StintStream";
+import { shortStintId } from "./short-id";
+import { fullTime, relativeTime } from "./time";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import { Empty, EmptyDescription } from "./ui/Empty";
 
 function StintHistoryEntry({
   stint,
@@ -123,6 +123,13 @@ function StintHistoryEntry({
       <Button
         type="button"
         aria-expanded={open}
+        aria-label={
+          loading
+            ? t.stints.readingStint
+            : open
+              ? t.stints.closeStint(stint.id)
+              : t.stints.openStint(stint.id)
+        }
         aria-controls={replayId}
         disabled={loading}
         onClick={() => setOpen(!open)}

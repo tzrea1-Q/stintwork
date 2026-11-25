@@ -21,6 +21,7 @@ export function Footer({ state }: { state: DrawerState }) {
     showStageAction,
     nextTicket,
     gateAction,
+    activeTab,
     approvePrimary,
     reviewPrimary,
     startPrimary,
@@ -84,8 +85,12 @@ export function Footer({ state }: { state: DrawerState }) {
               {t.stints.approve(stageName(workflow, stage, t))}
             </Button>
           )}
-          {gateAction.message && <p role="status">{gateAction.message}</p>}
-          {gateAction.error && <p role="alert">{gateAction.error}</p>}
+          {(activeTab !== "overview" || item.merged) && gateAction.message && (
+            <p role="status">{gateAction.message}</p>
+          )}
+          {(activeTab !== "overview" || item.merged) && gateAction.error && (
+            <p role="alert">{gateAction.error}</p>
+          )}
           {localTracker &&
             !item.github &&
             !item.worktreePath &&

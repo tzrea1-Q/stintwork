@@ -20,6 +20,7 @@ export function OverviewTab({ state }: { state: DrawerState }) {
     warnings,
     workflows,
     githubReadOnly,
+    gateAction,
     t,
     setShipPaused,
     activeProfile,
@@ -144,6 +145,7 @@ export function OverviewTab({ state }: { state: DrawerState }) {
             githubReadOnly={githubReadOnly}
             workflows={workflows}
             details={details}
+            action={gateAction}
             hideApprove
           />
         )}

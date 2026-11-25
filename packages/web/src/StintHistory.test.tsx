@@ -11,12 +11,12 @@ import {
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
-import { LanguageProvider } from "./i18n/language";
-import { en } from "./i18n/en";
-import { zhCN } from "./i18n/zh-CN";
-import { fullTime } from "./time";
 import { HandoffCard } from "./HandoffCard";
+import { en } from "./i18n/en";
+import { LanguageProvider } from "./i18n/language";
+import { zhCN } from "./i18n/zh-CN";
 import { StintHistory } from "./StintHistory";
+import { fullTime } from "./time";
 import { WorkItemDrawer } from "./WorkItemDrawer";
 
 test("GitHub history labels tickets with a hash", () => {
@@ -222,9 +222,9 @@ test("history loading failures are visible and can be retried; interrupted repla
       .mockResolvedValueOnce(new Response(JSON.stringify({ stint: recorded }))),
   );
   render(<StintHistory stints={[summarizeStint(recorded)]} />);
-  await user.click(screen.getByRole("button", { name: "Open stint interrup" }));
+  await user.click(screen.getByRole("button", { name: "Open stint interrupted" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Cannot read stint log.");
-  await user.click(screen.getByRole("button", { name: "Open stint interrup" }));
+  await user.click(screen.getByRole("button", { name: "Open stint interrupted" }));
   expect(await screen.findByRole("log")).toHaveTextContent("Full recorded stream");
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.getByRole("article", { name: "Handoff" })).toHaveTextContent(
@@ -329,7 +329,9 @@ test.each([
     "title",
     fullTime(recorded.endedAt as string, language),
   );
-  expect(screen.getByRole("button", { name: t.stints.openStint("12345678") })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: t.stints.openStint(recorded.id) })).toHaveTextContent(
+    t.stints.openStint("12345678"),
+  );
   expect(screen.getByText("0123456")).toHaveAttribute("title", recorded.checkpointCommit);
   expect(
     screen.getByRole("button", { name: t.review.diff.copyHash(t.stints.checkpointCommit) }),
@@ -403,4 +405,15 @@ test("spec contents disclosure toggles", async () => {
   expect(details).not.toHaveAttribute("open");
   await userEvent.click(summary);
   expect(details).toHaveAttribute("open");
+});
+
+test("history controls distinguish IDs with the same visible prefix", () => {
+  const first = stint("12345678-first");
+  const second = stint("12345678-second");
+  render(<StintHistory stints={[summarizeStint(first), summarizeStint(second)]} />);
+  for (const entry of [first, second]) {
+    expect(screen.getByRole("button", { name: `Open stint ${entry.id}` })).toHaveTextContent(
+      "Open stint 12345678",
+    );
+  }
 });
