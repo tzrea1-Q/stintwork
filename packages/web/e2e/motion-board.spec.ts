@@ -115,7 +115,12 @@ for (const width of [1440, 390]) {
     const arrival = await sampleFrames(page, '[data-work-item="motion-arrival"]', 800);
     expect(arrival.some((frame) => Number(frame.opacity) < 1)).toBe(true);
     expect(Number(arrival.at(-1)?.opacity)).toBeCloseTo(1);
-    const bulk = sampleFrames(page, '[data-work-item="motion-1"]', 500);
+    // On narrow screens moved cards unmount; sample a surviving card to check bulk updates do not animate it.
+    const bulk = sampleFrames(
+      page,
+      width < 768 ? '[data-work-item="motion-14"]' : '[data-work-item="motion-1"]',
+      500,
+    );
     for (let i = 1; i <= 13; i++) moveMotionCard(snapshot, i, "tickets");
     socket?.send(JSON.stringify(snapshot));
     expect(new Set((await bulk).map((frame) => Math.round(frame.left))).size).toBeLessThanOrEqual(

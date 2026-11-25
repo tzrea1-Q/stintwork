@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+
 import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
@@ -7,6 +8,7 @@ import { stageName } from "../src/i18n/workflow-names";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
 import { richClock, richSnapshotWithEveryKind } from "./rich.fixture";
+import { expectNoFocusRing } from "./support/focus-ring";
 
 const longPath = `/worktrees/${"long-directory-工程/".repeat(14)}example.ts`;
 const wideCode = `const longExample = "${"unbroken-code-原文".repeat(100)}";`;
@@ -76,12 +78,7 @@ for (const language of ["en", "zh-CN"] as const) {
     const bounds = await tab.boundingBox();
     if (!bounds) throw new Error("Missing Spec tab bounds");
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    expect(
-      await tab.evaluate((element) => {
-        const style = getComputedStyle(element);
-        return { shadow: style.boxShadow, outline: style.outlineStyle };
-      }),
-    ).toEqual({ shadow: "none", outline: "none" });
+    await expectNoFocusRing(tab);
   });
   for (const width of [1440, 1024, 768, 390, 360]) {
     for (const colorScheme of width === 1440 || width === 390
