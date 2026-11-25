@@ -313,6 +313,16 @@ export function Board({
         >
           <BoardWorkflowFilter snapshot={snapshot} items={visible} openSlug={openSlug}>
             {(filtered, workflowPicker) => {
+              const showStages =
+                snapshot.workItems.length > 0 &&
+                !(
+                  githubTracker &&
+                  (snapshot.github?.verifying ||
+                    !snapshot.github ||
+                    (!snapshot.github.fetchedAt &&
+                      !snapshot.github.repositoryId &&
+                      !!snapshot.github.error))
+                );
               const showWorkflow = new Set(filtered.map((item) => item.workflow)).size > 1;
               const filteredActive = inFlight.filter((item) => filtered.includes(item));
               const filteredShipped = shipped.filter((item) => filtered.includes(item));
@@ -373,60 +383,67 @@ export function Board({
                       }
                     >
                       <LayoutGroup>
-                        <section
-                          className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-y-auto overscroll-contain px-4 pb-6 sm:px-6"
-                          onScroll={(event) => {
-                            const grid = event.currentTarget.querySelector(".stage-grid");
-                            event.currentTarget.dataset.scrolled = String(
-                              !!grid &&
-                                grid.getBoundingClientRect().top <
-                                  event.currentTarget.getBoundingClientRect().top,
-                            );
-                          }}
-                          ref={scroll}
-                          aria-label={t.board.stages}
+                        <StageStrip
+                          items={filteredActive}
+                          openItem={openItem}
+                          scrollRef={scroll}
+                          enabled={showStages}
                         >
-                          {githubTracker && snapshot.github?.verifying ? (
-                            <p className="mt-4 text-muted-foreground" role="status">
-                              {t.board.verifyingGithub}
-                            </p>
-                          ) : githubTracker &&
-                            (!snapshot.github ||
-                              (!snapshot.github.fetchedAt &&
-                                !snapshot.github.repositoryId &&
-                                !!snapshot.github.error) ||
-                              (!snapshot.github.complete &&
-                                snapshot.workItems.length === 0)) ? null : snapshot.workItems
-                              .length === 0 ? (
-                            <section className="empty-project flex min-h-64 flex-col items-center justify-center text-center leading-relaxed">
-                              <FolderOpen
-                                className="size-icon-lg muted text-muted-foreground"
-                                aria-hidden="true"
-                              />
-                              <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
-                              {!githubTracker && (
-                                <>
-                                  <p className="mt-2 muted text-muted-foreground">
-                                    {t.board.startWithSpec}
-                                    <code>.scratch/&lt;work-item&gt;/spec.md</code>.
-                                  </p>
-                                  <p className="mt-2 text-xs muted text-muted-foreground">
-                                    {t.board.addTickets}
-                                    <code>.scratch/&lt;work-item&gt;/issues/</code>
-                                    {t.board.updatesAsYouEdit}
-                                  </p>
-                                </>
-                              )}
-                            </section>
-                          ) : (
-                            <>
-                              {filtered.length === 0 && (
-                                <p className="mt-4 muted text-muted-foreground" role="status">
-                                  {t.board.emptyMilestone}
+                          {(narrow, activeStage, edges) => (
+                            <section
+                              className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
+                              data-fade-left={edges.left}
+                              data-fade-right={edges.right}
+                              onScroll={(event) => {
+                                const grid = event.currentTarget.querySelector(".stage-grid");
+                                event.currentTarget.dataset.scrolled = String(
+                                  !!grid &&
+                                    grid.getBoundingClientRect().top <
+                                      event.currentTarget.getBoundingClientRect().top,
+                                );
+                              }}
+                              ref={scroll}
+                              aria-label={t.board.stages}
+                            >
+                              {githubTracker && snapshot.github?.verifying ? (
+                                <p className="mt-4 text-muted-foreground" role="status">
+                                  {t.board.verifyingGithub}
                                 </p>
-                              )}
-                              <StageStrip items={filteredActive} openItem={openItem}>
-                                {(narrow, activeStage) => (
+                              ) : githubTracker &&
+                                (!snapshot.github ||
+                                  (!snapshot.github.fetchedAt &&
+                                    !snapshot.github.repositoryId &&
+                                    !!snapshot.github.error) ||
+                                  (!snapshot.github.complete &&
+                                    snapshot.workItems.length === 0)) ? null : snapshot.workItems
+                                  .length === 0 ? (
+                                <section className="empty-project flex min-h-64 flex-col items-center justify-center text-center leading-relaxed">
+                                  <FolderOpen
+                                    className="size-icon-lg muted text-muted-foreground"
+                                    aria-hidden="true"
+                                  />
+                                  <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
+                                  {!githubTracker && (
+                                    <>
+                                      <p className="mt-2 muted text-muted-foreground">
+                                        {t.board.startWithSpec}
+                                        <code>.scratch/&lt;work-item&gt;/spec.md</code>.
+                                      </p>
+                                      <p className="mt-2 text-xs muted text-muted-foreground">
+                                        {t.board.addTickets}
+                                        <code>.scratch/&lt;work-item&gt;/issues/</code>
+                                        {t.board.updatesAsYouEdit}
+                                      </p>
+                                    </>
+                                  )}
+                                </section>
+                              ) : (
+                                <>
+                                  {filtered.length === 0 && (
+                                    <p className="mt-4 muted text-muted-foreground" role="status">
+                                      {t.board.emptyMilestone}
+                                    </p>
+                                  )}
                                   <m.div
                                     layout={!skip && !reduced ? "position" : false}
                                     transition={instant || skip ? { duration: 0 } : spring.layout}
@@ -468,26 +485,26 @@ export function Board({
                                         ))}
                                     </m.div>
                                   </m.div>
-                                )}
-                              </StageStrip>
-                              <UnstagedLane
+                                  <UnstagedLane
+                                    snapshot={snapshot}
+                                    filteredUnstaged={filteredUnstaged}
+                                    showWorkflow={showWorkflow}
+                                    openSlug={openSlug}
+                                    openWorkItem={openWorkItem}
+                                  />
+                                </>
+                              )}
+                              <ShippedLane
                                 snapshot={snapshot}
-                                filteredUnstaged={filteredUnstaged}
-                                showWorkflow={showWorkflow}
+                                filteredShipped={filteredShipped}
+                                filteredMilestoneShipped={filteredMilestoneShipped}
                                 openSlug={openSlug}
                                 openWorkItem={openWorkItem}
+                                showWorkflow={showWorkflow}
                               />
-                            </>
+                            </section>
                           )}
-                          <ShippedLane
-                            snapshot={snapshot}
-                            filteredShipped={filteredShipped}
-                            filteredMilestoneShipped={filteredMilestoneShipped}
-                            openSlug={openSlug}
-                            openWorkItem={openWorkItem}
-                            showWorkflow={showWorkflow}
-                          />
-                        </section>
+                        </StageStrip>
                       </LayoutGroup>
                     </MotionConfig>
                   </BoardMotionContext.Provider>

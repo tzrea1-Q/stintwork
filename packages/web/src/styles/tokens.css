@@ -254,13 +254,13 @@
 .stage-grid {
   min-width: max-content;
 }
-.stage-strip[data-fade-left="true"] {
+.board-scroll[data-fade-left="true"] {
   mask-image: linear-gradient(to right, transparent, black var(--board-fade));
 }
-.stage-strip[data-fade-right="true"] {
+.board-scroll[data-fade-right="true"] {
   mask-image: linear-gradient(to left, transparent, black var(--board-fade));
 }
-.stage-strip[data-fade-left="true"][data-fade-right="true"] {
+.board-scroll[data-fade-left="true"][data-fade-right="true"] {
   mask-image: linear-gradient(
     to right,
     transparent,

@@ -281,7 +281,7 @@ for (const language of ["en", "zh-CN"] as const) {
               nodes.every((node) => getComputedStyle(node).writingMode === "horizontal-tb"),
             ),
         ).toBe(true);
-        const strip = page.locator(".stage-strip");
+        const strip = page.locator(".board-scroll");
         if (width < 768) {
           await expect(page.getByRole("tablist", { name: t.board.stages })).toBeVisible();
           await expect(columns).toHaveCount(1);
