@@ -309,3 +309,18 @@ test("new workflow ids appear in the create dialog without a built-in copy actio
   expect(within(drawer).getByText(/Team ·/)).toBeVisible();
   expect(screen.queryByRole("button", { name: "Customise" })).not.toBeInTheDocument();
 });
+
+test("shows registered agent display names", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (path: string) =>
+      response(
+        path === "/api/agents"
+          ? { agents: [{ id: "codex", displayName: "Codex Display" }] }
+          : { path: "workflow.yaml", yaml: "workflow" },
+      ),
+    ),
+  );
+  render(<CustomiseWorkflow id="feature" onClose={vi.fn()} />);
+  expect((await screen.findAllByText("Codex Display")).length).toBeGreaterThan(0);
+});

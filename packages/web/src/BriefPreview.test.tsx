@@ -154,7 +154,7 @@ test.each([
     expect(alerts.filter((alert) => alert.textContent === "Fixture start refusal.")).toHaveLength(
       1,
     );
-    expect(alerts.filter((alert) => alert.textContent?.startsWith(warning))).toHaveLength(1);
+    expect(alerts.filter((alert) => alert.textContent?.includes(warning))).toHaveLength(1);
     expect(action).toBeEnabled();
   },
 );
@@ -171,6 +171,7 @@ test("Chinese brief translates the Codex permission warning, not the agent promp
   expect(
     await screen.findByText(
       "Codex 的沙盒可以不经问询执行命令。Stintwork 只能控制 Codex 发出的请求；命令和工作树外的访问可能不会产生请求。",
+      { selector: "p" },
     ),
   ).toBeInTheDocument();
   expect(
@@ -864,3 +865,17 @@ test.each([
     ).toBeInTheDocument();
   },
 );
+
+test("Cancel closes the brief without starting and warning uses a callout", async () => {
+  const fetch = previewFetch();
+  vi.stubGlobal("fetch", fetch);
+  const user = userEvent.setup();
+  render(<TicketBriefPreview item={item} ticket={ticket} />);
+  await user.click(screen.getByRole("button", { name: "Start stint" }));
+  const dialog = await screen.findByRole("dialog", { name: "Brief preview" });
+  const callout = await within(dialog).findByRole("alert", { name: /warning/i });
+  expect(callout).toHaveTextContent(/sandbox/i);
+  await user.click(within(dialog).getByRole("button", { name: /^Cancel$/ }));
+  expect(screen.queryByRole("dialog", { name: "Brief preview" })).not.toBeInTheDocument();
+  expect(fetch.mock.calls.some(([url]) => url === "/api/stints")).toBe(false);
+});

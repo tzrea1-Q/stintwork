@@ -444,6 +444,26 @@ for (const language of ["en", "zh-CN"] as const) {
           preview.release();
           const confirm = dialog.getByRole("button", { name: t.planning.customise.confirm });
           await expect(confirm).toBeEnabled();
+          const body = dialog.locator(".customise-body");
+          const footer = dialog.locator("footer");
+          const bodyBox = await body.boundingBox();
+          const footerBox = await footer.boundingBox();
+          expect(bodyBox && footerBox && footerBox.y >= bodyBox.y + bodyBox.height - 1).toBe(true);
+          expect(
+            await dialog.evaluate((element) => {
+              const footer = element.querySelector("footer");
+              const body = element.querySelector(".customise-body");
+              if (!footer || !body) return false;
+              const bottom = footer.getBoundingClientRect().bottom;
+              return [...element.querySelectorAll("*")].every((child) => {
+                const rect = child.getBoundingClientRect();
+                const visibleBottom = body.contains(child)
+                  ? Math.min(rect.bottom, body.getBoundingClientRect().bottom)
+                  : rect.bottom;
+                return rect.height === 0 || visibleBottom <= bottom + 1;
+              });
+            }),
+          ).toBe(true);
           const yaml = dialog.locator("pre");
           expect(await yaml.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
             true,
@@ -654,6 +674,7 @@ for (const language of ["en", "zh-CN"] as const) {
           await capture(page, dialog, testInfo, "review-loading");
           load.release();
           await expect(dialog.getByRole("status")).toHaveText(t.review.diff.empty);
+          await expect(dialog.locator(".review-header")).not.toContainText(/[a-f0-9]{40}/i);
           await capture(page, dialog, testInfo, "review-empty");
           state = "long";
           const refresh = dialog.getByRole("button", { name: t.review.diff.refresh });
@@ -671,15 +692,6 @@ for (const language of ["en", "zh-CN"] as const) {
             await expect(dialog.locator(".review-files")).toBeHidden();
             await expect(dialog.locator(".review-evidence")).toBeHidden();
             expect((await diffRegion.boundingBox())?.height).toBeGreaterThanOrEqual(900 * 0.6);
-            const details = dialog.getByRole("button", {
-              name: t.review.diff.details,
-              exact: true,
-            });
-            await details.click();
-            await expect(details).toHaveAttribute("aria-expanded", "true");
-            await capture(page, dialog, testInfo, "review-details");
-            await details.click();
-            await expect(details).toHaveAttribute("aria-expanded", "false");
             await panes.getByRole("button", { name: t.review.diff.files, exact: true }).click();
             const files = dialog.getByRole("navigation", {
               name: t.review.diff.changedFiles,
@@ -846,6 +858,18 @@ for (const language of ["en", "zh-CN"] as const) {
             await findingsButton.click();
             await expect(findingsButton).toHaveAttribute("aria-pressed", "true");
             await expect(dialog.locator(".review-evidence")).toBeVisible();
+            for (const chip of await dialog.locator(".review-evidence .finding-severity").all()) {
+              expect(
+                await chip.evaluate((element) => {
+                  const range = document.createRange();
+                  range.selectNodeContents(element);
+                  return (
+                    element.getBoundingClientRect().width <=
+                    range.getBoundingClientRect().width + 32
+                  );
+                }),
+              ).toBe(true);
+            }
             await capture(page, dialog, testInfo, "review-findings-navigation");
             await dialog
               .locator(".review-evidence")
@@ -862,6 +886,16 @@ for (const language of ["en", "zh-CN"] as const) {
           for (const finding of dialogReview.findings?.findings ?? []) {
             const card = dialog.getByRole("article", { name: finding.title, exact: true });
             await expect(card).toBeVisible();
+            const chip = card.locator(".finding-severity");
+            expect(
+              await chip.evaluate((element) => {
+                const range = document.createRange();
+                range.selectNodeContents(element);
+                return (
+                  element.getBoundingClientRect().width <= range.getBoundingClientRect().width + 32
+                );
+              }),
+            ).toBe(true);
             await card.scrollIntoViewIfNeeded();
             await capture(page, dialog, testInfo, `review-finding-${finding.id.split(":")[1]}`);
           }

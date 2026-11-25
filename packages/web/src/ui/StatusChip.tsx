@@ -51,10 +51,12 @@ export function StatusChip({
   status,
   pulse,
   children,
+  className,
 }: {
   status: Status;
   pulse?: boolean;
   children: ReactNode;
+  className?: string;
 }) {
   return (
     <m.span
@@ -62,6 +64,7 @@ export function StatusChip({
       className={cn(
         "inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs",
         statusColors[status],
+        className,
       )}
     >
       <AnimatePresence initial={false} mode="popLayout">

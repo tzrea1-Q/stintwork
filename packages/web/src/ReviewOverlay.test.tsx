@@ -80,11 +80,7 @@ test("review defaults to Diff and file navigation returns to it without losing f
   await user.click(findingsButton);
   expect(findingsButton).toHaveAttribute("aria-pressed", "true");
   expect(screen.getByText("Finding original")).toBeInTheDocument();
-  const details = screen.getByRole("button", { name: "Review details" });
-  expect(details).toHaveAttribute("aria-expanded", "false");
-  await user.click(details);
-  expect(details).toHaveAttribute("aria-expanded", "true");
-  expect(screen.getByText(diff.headCommit)).toBeInTheDocument();
+  expect(screen.getByTitle(diff.headCommit)).toHaveTextContent(diff.headCommit.slice(0, 7));
 });
 
 test("Files remains available for findings outside an otherwise empty diff", async () => {
@@ -193,8 +189,8 @@ test("the overlay fetches the work item diff, labels the exact commits and reser
   vi.stubGlobal("fetch", fetch);
   render(<ReviewOverlay item={item} onClose={() => {}} />);
   expect(screen.getByRole("status")).toHaveTextContent("Reading the work item diff…");
-  expect(await screen.findByText(diff.headCommit)).toBeInTheDocument();
-  expect(screen.getByText(diff.mergeBase)).toBeInTheDocument();
+  expect(await screen.findByTitle(diff.headCommit)).toBeInTheDocument();
+  expect(screen.getByTitle(diff.mergeBase)).toBeInTheDocument();
   expect(screen.getByText("stintwork/first")).toBeInTheDocument();
   expect(screen.getByRole("dialog", { name: item.title })).toHaveClass("review-overlay");
   expect(fetch).toHaveBeenCalledWith(
@@ -271,10 +267,10 @@ test("refresh displays the new branch head rather than presenting old diff data 
       .mockResolvedValueOnce(reply({ ...diff, headCommit, files: [] })),
   );
   render(<ReviewOverlay item={item} onClose={() => {}} />);
-  await screen.findByText(diff.headCommit);
+  await screen.findByTitle(diff.headCommit);
   await user.click(screen.getByRole("button", { name: "Refresh diff" }));
-  expect(await screen.findByText(headCommit)).toBeInTheDocument();
-  expect(screen.queryByText(diff.headCommit)).not.toBeInTheDocument();
+  expect(await screen.findByTitle(headCommit)).toBeInTheDocument();
+  expect(screen.queryByTitle(diff.headCommit)).not.toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
 });
 
@@ -325,7 +321,7 @@ test("the drawer opens review only for a worktree, and Escape closes only review
   );
   const trigger = screen.getByRole("button", { name: "Open review" });
   await user.click(trigger);
-  await screen.findByText(diff.headCommit);
+  await screen.findByTitle(diff.headCommit);
   expect(await screen.findByRole("button", { name: "Run checks" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Close review" })).toHaveFocus();
   await user.keyboard("{Escape}");
@@ -336,4 +332,20 @@ test("the drawer opens review only for a worktree, and Escape closes only review
   await user.click(screen.getByRole("button", { name: "Close review" }));
   expect(screen.queryByRole("button", { name: "Close review" })).not.toBeInTheDocument();
   expect(trigger).toHaveFocus();
+});
+
+test("review header shortens and copies both hashes", async () => {
+  const user = userEvent.setup();
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(reply(diff)));
+  render(<ReviewOverlay item={item} onClose={() => {}} />);
+  const head = await screen.findByTitle(diff.headCommit);
+  expect(head).toHaveTextContent(diff.headCommit.slice(0, 7));
+  expect(screen.getByTitle(diff.mergeBase)).toHaveTextContent(diff.mergeBase.slice(0, 7));
+  const buttons = within(
+    screen.getByRole("dialog").querySelector("header") as HTMLElement,
+  ).getAllByRole("button", { name: /^Copy / });
+  expect(buttons).toHaveLength(2);
+  await user.click(buttons[0]);
+  expect(writeText).toHaveBeenCalledWith(diff.headCommit);
 });

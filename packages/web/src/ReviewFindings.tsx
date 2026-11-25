@@ -91,6 +91,7 @@ export function FindingCard({
         <ItemContent className="min-w-0">
           <h4>{finding.title}</h4>
           <StatusChip
+            className="finding-severity self-start"
             status={
               finding.severity === "blocker" || finding.severity === "major"
                 ? "blocked"
@@ -231,7 +232,7 @@ export function FindingsRail({
   );
   return (
     <>
-      <div className="review-filters mb-3 grid gap-2 [&_label]:grid [&_label]:min-w-0 [&_label]:gap-2">
+      <div className="review-filters mb-3 grid grid-cols-3 gap-2 [&_label]:grid [&_label]:min-w-0 [&_label]:gap-2">
         <label htmlFor={`${selectId}-axis`}>
           {t.review.findings.axis}
           <SelectField
@@ -320,6 +321,7 @@ export function FindingsRail({
             <Item variant="outline">
               <ItemContent className="min-w-0">
                 <StatusChip
+                  className="finding-severity self-start"
                   status={
                     finding.severity === "blocker" || finding.severity === "major"
                       ? "blocked"
