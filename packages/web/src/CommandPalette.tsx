@@ -54,7 +54,7 @@ export function CommandPalette({
         <Command
           label={t.planning.palette.search}
           vimBindings={false}
-          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:tracking-widest [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:text-accent-foreground [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
+          className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-3 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-item]]:flex [&_[cmdk-item]]:min-w-0 [&_[cmdk-item]]:cursor-pointer [&_[cmdk-item]]:items-center [&_[cmdk-item]]:gap-3 [&_[cmdk-item]]:rounded-lg [&_[cmdk-item]]:p-2 [&_[cmdk-item]]:text-sm [&_[cmdk-item]]:[overflow-wrap:anywhere] [&_[cmdk-item][data-selected=true]]:bg-accent [&_[cmdk-item][data-selected=true]]:text-accent-foreground [&_[cmdk-item]_code]:text-xs [&_[cmdk-item]_code]:text-muted-foreground"
         >
           <div className="command-search flex items-center gap-3 border-b border-border px-4 py-2">
             <Search className="size-icon-sm shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -64,7 +64,6 @@ export function CommandPalette({
               placeholder={t.planning.palette.placeholder}
               aria-label={t.planning.palette.search}
             />
-            <Kbd>Esc</Kbd>
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>

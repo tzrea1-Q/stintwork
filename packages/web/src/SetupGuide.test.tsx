@@ -535,3 +535,29 @@ test.each(["network", "server", "invalid"])(
     expect(fetch).toHaveBeenCalledTimes(2);
   },
 );
+
+test("setup checks use distinct ready and attention chips without empty circles", async () => {
+  const initial = guide();
+  initial.checks = initial.checks.map((check, index) =>
+    index === 0
+      ? { ...check, status: "ready", ready: true }
+      : index === 1
+        ? { ...check, status: "needs-change", ready: false }
+        : check,
+  );
+  server(initial);
+  const user = userEvent.setup();
+  renderSetup();
+  const { dialog } = await open(user);
+  expect(dialog.querySelector(".lucide-circle")).toBeNull();
+  expect(
+    within(dialog)
+      .getAllByText("Ready")
+      .some((node) => node.closest(".bg-success-soft")),
+  ).toBe(true);
+  expect(
+    within(dialog)
+      .getAllByText("Needs a change")
+      .some((node) => node.closest(".bg-attention-soft")),
+  ).toBe(true);
+});
