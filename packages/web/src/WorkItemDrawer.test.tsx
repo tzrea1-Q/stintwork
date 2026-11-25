@@ -1028,11 +1028,12 @@ test("an exiting docked drawer is inert and hidden while it remains mounted", ()
   const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
     name: "Project",
   }).workItems[0];
-  const tree = (open: boolean) => (
+  const tree = (open: boolean, second = false) => (
     <LazyMotion features={domMax} strict>
       <button type="button">Open</button>
       <AnimatePresence>
         {open && <WorkItemDrawer key="first" item={item} onClose={() => {}} />}
+        {second && <WorkItemDrawer key="second" item={item} onClose={() => {}} />}
       </AnimatePresence>
     </LazyMotion>
   );
@@ -1043,13 +1044,24 @@ test("an exiting docked drawer is inert and hidden while it remains mounted", ()
     view.rerender(tree(true));
     const drawer = view.container.querySelector(".work-item-drawer") as HTMLElement;
     expect(drawer).toContainElement(document.activeElement as HTMLElement);
+    expect(drawer.parentElement).not.toHaveClass("absolute");
     view.rerender(tree(false));
     expect(drawer).toBeInTheDocument();
+    expect(drawer.parentElement).toHaveClass("absolute", "right-0");
     expect(drawer).toHaveAttribute("data-exiting", "true");
     expect(drawer).toHaveAttribute("inert");
     expect(drawer).toHaveAttribute("aria-hidden", "true");
     expect(opener).toHaveFocus();
     expect(screen.queryByRole("button", { name: "Close work item" })).not.toBeInTheDocument();
+    view.unmount();
+    const switching = render(tree(true));
+    switching.rerender(tree(false, true));
+    const drawers = switching.container.querySelectorAll(".work-item-drawer");
+    expect(drawers).toHaveLength(2);
+    expect(drawers[0].parentElement).toHaveClass("absolute");
+    expect(drawers[0]).toHaveAttribute("inert");
+    expect(drawers[0]).toHaveAttribute("aria-hidden", "true");
+    expect(drawers[1].parentElement).not.toHaveClass("absolute");
   } finally {
     MotionGlobalConfig.skipAnimations = true;
   }

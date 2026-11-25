@@ -12,6 +12,7 @@ export async function sampleElementFrames(page: Page, selector: string, ms: numb
           y: number;
           width: number;
           height: number;
+          timestamp: number;
         }[][]
       >((resolve) => {
         const frames: {
@@ -21,6 +22,7 @@ export async function sampleElementFrames(page: Page, selector: string, ms: numb
           y: number;
           width: number;
           height: number;
+          timestamp: number;
         }[][] = [];
         let start = 0;
         const sample = (timestamp: number) => {
@@ -31,7 +33,15 @@ export async function sampleElementFrames(page: Page, selector: string, ms: numb
               elements.map((element) => {
                 const { x, y, width, height } = element.getBoundingClientRect();
                 const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
-                return { translateX: matrix.m41, translateY: matrix.m42, x, y, width, height };
+                return {
+                  translateX: matrix.m41,
+                  translateY: matrix.m42,
+                  x,
+                  y,
+                  width,
+                  height,
+                  timestamp,
+                };
               }),
             );
           }

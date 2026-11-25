@@ -1034,7 +1034,7 @@ export function WorkItemDrawer({
     <TooltipProvider>
       {docked ? (
         <div
-          className="min-h-0 min-w-0 shrink-0 overflow-hidden rounded-2xl"
+          className={`min-h-0 min-w-0 shrink-0 overflow-hidden rounded-2xl ${isPresent ? "" : "absolute inset-y-0 right-0 z-10"}`}
           style={{ width: full ? "100%" : width }}
         >
           <m.aside
@@ -1045,7 +1045,7 @@ export function WorkItemDrawer({
             onAnimationComplete={() => {
               if (!isPresent) safeToRemove?.();
             }}
-            layout={!reduced}
+            layout={!reduced && isPresent}
             layoutDependency={full}
             initial={reduced ? { opacity: 0 } : { x: "100%", opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}

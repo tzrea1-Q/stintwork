@@ -1,12 +1,112 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type Page } from "@playwright/test";
 import { spring, tween } from "../src/ui/motion";
-import { sampleFrames } from "./support/frames";
+import { motionBoardSnapshot } from "./motion-board.fixture";
+import { sampleElementFrames, sampleFrames, waitForRest } from "./support/frames";
 
 test.use({ contextOptions: { reducedMotion: "no-preference", colorScheme: "light" } });
 
 const indicator = '.work-item-drawer [data-slot="tabs-indicator"]';
 const duration = spring.layout.visualDuration * 1000 * 3;
+
+test("closing docked detail reflows the board during the panel exit", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));
+  const { snapshot } = motionBoardSnapshot();
+  snapshot.workItems = snapshot.workItems.slice(0, 6);
+  await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+  await page.routeWebSocket("**/api/live", (connection) =>
+    connection.send(JSON.stringify(snapshot)),
+  );
+  await page.goto("/?view=pipeline");
+  const cards = ".stage-column .work-item";
+  await expect(page.locator(cards)).toHaveCount(6);
+  await waitForRest(page, cards);
+  const closed = (await sampleElementFrames(page, cards, 50)).at(-1);
+  const closedBoard = await page.locator(".stage-board").boundingBox();
+  if (!closed || !closedBoard) throw new Error("Missing resting board");
+  await page.locator('[data-work-item="motion-0"]').click();
+  const drawer = page.locator("aside.work-item-drawer");
+  await expect(drawer).toBeVisible();
+  await waitForRest(page, cards);
+  await waitForRest(page, "aside.work-item-drawer");
+  const panelBox = await drawer.boundingBox();
+  const opened = (await sampleElementFrames(page, cards, 50)).at(-1);
+  if (!opened || !panelBox) throw new Error("Missing resting panel");
+  expect(
+    opened.some(
+      (card, index) => Math.hypot(card.x - closed[index].x, card.y - closed[index].y) > 1,
+    ),
+  ).toBe(true);
+  await drawer.getByRole("button", { name: "Close work item" }).evaluate((button) => {
+    button.addEventListener(
+      "click",
+      () => {
+        (window as typeof window & { closeTime: number }).closeTime = performance.now();
+      },
+      { once: true },
+    );
+  });
+  const cardSamples = sampleElementFrames(page, cards, 700);
+  const panelSamples = sampleFrames(page, "aside.work-item-drawer", 700);
+  await drawer.getByRole("button", { name: "Close work item" }).click();
+  const [frames, panelFrames] = await Promise.all([cardSamples, panelSamples]);
+  const closeTime = await page.evaluate(
+    () => (window as typeof window & { closeTime: number }).closeTime,
+  );
+  expect(
+    frames.some(
+      (frame) =>
+        frame[0].timestamp >= closeTime &&
+        frame[0].timestamp - closeTime <= 120 &&
+        frame.some((card) => Math.hypot(card.translateX, card.translateY) > 1),
+    ),
+  ).toBe(true);
+  const last = frames.at(-1);
+  if (!last) throw new Error("Missing card frames");
+  last.forEach((end, index) => {
+    const start = frames[0][index];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const travel = Math.hypot(dx, dy);
+    if (travel < 5) return;
+    const steps = frames
+      .slice(1)
+      .map((frame, i) =>
+        Math.hypot(frame[index].x - frames[i][index].x, frame[index].y - frames[i][index].y),
+      );
+    expect(Math.max(...steps)).toBeLessThanOrEqual(travel * 0.2);
+    if (travel > 5) {
+      const intermediate = frames.filter((frame) => {
+        const progress = (frame[index].x - start.x) * dx + (frame[index].y - start.y) * dy;
+        return progress > 0 && progress < travel * travel;
+      });
+      expect(intermediate.length).toBeGreaterThanOrEqual(8);
+    }
+  });
+  await waitForRest(page, cards);
+  const resting = (await sampleElementFrames(page, cards, 50)).at(-1);
+  const restingBoard = (await sampleElementFrames(page, ".stage-board", 50)).at(-1)?.[0];
+  if (!resting || !restingBoard) throw new Error("Missing resting board");
+  resting.forEach((card, index) => {
+    expect(Math.abs(card.x - closed[index].x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(card.y - closed[index].y)).toBeLessThanOrEqual(1);
+  });
+  expect(Math.abs(restingBoard.width - closedBoard.width)).toBeLessThanOrEqual(1);
+  await expect(drawer).toHaveCount(0);
+  const exiting = panelFrames.filter(
+    (frame) =>
+      frame.timestamp >= closeTime && frame.timestamp - closeTime < tween.dismiss.duration * 1000,
+  );
+  expect(exiting.some((frame) => frame.left > panelBox.x + 1 && Number(frame.opacity) < 0.99)).toBe(
+    true,
+  );
+  const firstExit = exiting[0];
+  const translateX = Number(
+    firstExit.transform.match(/^matrix\([^,]+, [^,]+, [^,]+, [^,]+, ([^,]+)/)?.[1] ?? 0,
+  );
+  expect(Math.abs(firstExit.left - translateX - panelBox.x)).toBeLessThanOrEqual(1);
+});
 
 async function openDetail(page: Page) {
   await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));

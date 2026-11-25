@@ -312,7 +312,7 @@ export function Board({
       )}
       <div
         hidden={view === "overview"}
-        className={`${view === "overview" ? "hidden" : "flex"} min-h-0 min-w-0 flex-1 gap-4`}
+        className={`${view === "overview" ? "hidden" : "flex"} relative min-h-0 min-w-0 flex-1 gap-4`}
       >
         <main
           hidden={view === "overview"}
