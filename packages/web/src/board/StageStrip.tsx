@@ -9,9 +9,11 @@ import { Button } from "../ui/Button";
 const stages = builtInWorkflows.feature.stages;
 export function StageStrip({
   items,
+  openItem,
   children,
 }: {
   items: ProjectSnapshot["workItems"];
+  openItem?: ProjectSnapshot["workItems"][number];
   children: (narrow: boolean, stage: string) => ReactNode;
 }) {
   const { t } = useLanguage();
@@ -35,6 +37,9 @@ export function StageStrip({
     media.addEventListener?.("change", change);
     return () => media.removeEventListener?.("change", change);
   }, []);
+  useLayoutEffect(() => {
+    if (narrow && openItem?.slug && openItem.column) setChoice(openItem.column);
+  }, [narrow, openItem?.slug, openItem?.column]);
   useEffect(() => {
     if (!narrow) return;
     const url = new URL(location.href);
