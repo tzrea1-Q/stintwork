@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 04 — Needs you queue
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -22,9 +22,27 @@ Scope: `NeedsYouQueue.tsx`, `GateView.tsx` (a compact variant only; the detail p
 
 ## Acceptance criteria
 
-- [ ] jsdom tests cover ordering, scroll-to-item with focus from Overview, the compact gate (Approve and Open gate) and that each kind renders the shared layout.
-- [ ] In `zh-CN` no English Stintwork copy remains in any of the seven kinds.
-- [ ] Browser cases at 1440 and 390px in both languages with the rich fixture plus every attention kind pass the layout checks; screenshots are saved.
-- [ ] `pnpm test` passes.
+- [x] jsdom tests cover ordering, scroll-to-item with focus from Overview, the compact gate (Approve and Open gate) and that each kind renders the shared layout.
+- [x] In `zh-CN` no English Stintwork copy remains in any of the seven kinds.
+- [x] Browser cases at 1440 and 390px in both languages with the rich fixture plus every attention kind pass the layout checks; screenshots are saved.
+- [x] `pnpm test` passes.
 
 ## Comments
+
+**Coordinator, 2026-11-25:** Verification.
+
+- Codex implemented it in two slices: 04a, the shared item layout, icons, ordering and durations; 04b, the compact gate, memory and checkpoint content, inline feedback, the header notification toggle and opening at an item.
+- Coordinator review on real data and the rich fixture with all seven kinds found two problems, both fixed by Codex:
+  - Memory proposals, checkpoint warnings and Stint recovery nested a card inside the item. They now render flat (`variant="inline"`).
+  - Checkpoint explanations ran long. They are now short strings.
+- Real data: Overview rows open the queue scrolled to the item, with focus on it and a brief highlight; the top bar's Needs you opens at the top. zh-CN shows "已等待 34 天", "Stint" and "重新开启「工单」阶段".
+- Tests:
+  - jsdom: `sortAttentionItems` ordering; all seven kinds share the layout in both languages; the compact gate approves and Open gate opens the work item; inline failure and a single success status; the header notification toggle; and in `Board.test.tsx`, Overview rows focusing their queue item.
+  - A further Codex round added the browser case `Needs you all seven kinds` at 1440 and 390px in both languages. It checks:
+    - the priority order;
+    - one heading per item;
+    - Open gate;
+    - no English titles in zh-CN headings or metadata;
+    - layout checks at every scroll position, with screenshots.
+  - `drawer-and-needs-you.spec.ts` with `overview.spec.ts`: 90/90.
+  - Full suite: see ticket 02.

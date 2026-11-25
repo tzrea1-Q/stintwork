@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 03 — Overview layout and visuals
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 
 ## What to build
@@ -23,10 +23,27 @@ Scope: `Overview.tsx` and new `src/overview/` files, `Board.tsx` (banner only), 
 
 ## Acceptance criteria
 
-- [ ] At 1440, 1024, 768, 390 and 360px in `en` and `zh-CN`, light and dark at 1440 and 390px, with this repository's data and the rich fixture: no grid hole wider than one card, no card more than 24px taller than its content, card headers in a row aligned within 1px, and the layout checks pass.
-- [ ] No arbitrary pixel, colour or tracking values remain in the Overview files; a test reads the files and fails on `-[` values outside an allow list.
-- [ ] Stage legend swatches equal the bar colours; contrast of bars against their track is at least 3:1 in both schemes.
-- [ ] The badge shows 7, 42 and 99+ without overflow.
-- [ ] `pnpm test` and `e2e/overview.spec.ts` pass. Screenshots are saved as artifacts.
+- [x] At 1440, 1024, 768, 390 and 360px in `en` and `zh-CN`, light and dark at 1440 and 390px, with this repository's data and the rich fixture: no grid hole wider than one card, no card more than 24px taller than its content, card headers in a row aligned within 1px, and the layout checks pass.
+- [x] No arbitrary pixel, colour or tracking values remain in the Overview files; a test reads the files and fails on `-[` values outside an allow list.
+- [x] Stage legend swatches equal the bar colours; contrast of bars against their track is at least 3:1 in both schemes.
+- [x] The badge shows 7, 42 and 99+ without overflow.
+- [x] `pnpm test` and `e2e/overview.spec.ts` pass. Screenshots are saved as artifacts.
 
 ## Comments
+
+**Coordinator, 2026-11-25:** Verification.
+
+- Codex implemented it in two slices (03a layout and card split, 03b colours, avatars, logo, badge and rolling numbers) and three fix rounds from the coordinator's real-data review:
+  - Columns were measured after first paint, so the page flashed a one-column layout; now measured in a layout effect.
+  - The milestone card's gap was larger than its neighbours'.
+  - With fewer cards than columns, cards stretched to fill the row; the measured column count is now kept, with trailing empty columns as spacers.
+- Layout: cards stack in measured columns (3 at 1280px and wider, 2 from 769px, 1 below), each in a fixed reading order; a column with spare cards fills an empty one.
+- Real data at 1440, 1024, 768 and 390px in both languages and both schemes: no holes, Next up sized to content, headers aligned, the offline state as an attention callout, the pending-permissions banner inside the content width.
+- The acceptance checks were missing from the browser cases, so a further Codex round added `e2e/overview-checks.ts`, run in every rich and real-data Overview case:
+  - no hole except trailing spacer columns, and no card more than 24px taller than its content;
+  - first headers aligned within 1px;
+  - every legend swatch equal to its bar colour, with bars at least 3:1 against the track;
+  - a case for the badge at 7, 42 and 99+.
+  A mutation (changing a swatch's colour) failed the check as expected.
+- `src/overview/no-hardcoded.test.ts` fails on arbitrary `-[` values outside its allow list.
+- Browser: `overview.spec.ts` 43/43, screenshots saved as test outputs. Full suite: see ticket 02.
