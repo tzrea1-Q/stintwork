@@ -65,6 +65,21 @@ async function scrollContent(content: Locator) {
 
 for (const language of ["en", "zh-CN"] as const) {
   const t = language === "en" ? en : zhCN;
+  test(`URL-opened detail keeps mouse tab focus invisible ${language}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const { item } = await openFixture(page, language);
+    await page.goto(`/?view=pipeline&item=${encodeURIComponent(item.slug)}`);
+    const panel = page.locator(".work-item-drawer");
+    await expect(panel).toBeVisible();
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    const tab = panel.getByRole("tab", { name: t.detailTabs.spec, exact: true });
+    const bounds = await tab.boundingBox();
+    if (!bounds) throw new Error("Missing Spec tab bounds");
+    await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+    expect(await page.evaluate(() => document.activeElement?.matches(":focus-visible"))).toBe(
+      false,
+    );
+  });
   for (const width of [1440, 1024, 768, 390, 360]) {
     for (const colorScheme of width === 1440 || width === 390
       ? (["light", "dark"] as const)

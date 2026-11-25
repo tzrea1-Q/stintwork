@@ -67,18 +67,24 @@ export function StageStrip({
           : { overflow, left, right },
       );
     };
-    const observer = new ResizeObserver(measure);
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
+    const observer = new ResizeObserver(schedule);
     observer.observe(element);
     if (element.firstElementChild) observer.observe(element.firstElementChild);
     const grid = element.querySelector(".stage-grid");
     if (grid) observer.observe(grid);
-    element.addEventListener("scroll", measure);
-    measure();
+    element.addEventListener("scroll", schedule);
+    schedule();
     return () => {
       observer.disconnect();
-      element.removeEventListener("scroll", measure);
+      cancelAnimationFrame(frame);
+      element.removeEventListener("scroll", schedule);
     };
-  });
+  }, [enabled, narrow, scrollRef]);
   function scrollStages(direction: -1 | 1) {
     const viewport = scrollRef.current;
     if (!viewport) return;
@@ -105,8 +111,8 @@ export function StageStrip({
   }
   return (
     <>
-      {enabled &&
-        (narrow ? (
+      {narrow ? (
+        enabled && (
           <div
             role="tablist"
             aria-label={t.board.stages}
@@ -134,23 +140,31 @@ export function StageStrip({
               </button>
             ))}
           </div>
-        ) : (
-          edges.overflow && (
-            <nav
-              className="stage-navigation flex justify-end gap-1"
-              aria-label={t.board.stageNavigation}
-            >
-              <Button variant="ghost" disabled={!edges.left} onClick={() => scrollStages(-1)}>
-                <ChevronLeft aria-hidden="true" />
-                {t.board.previousStages}
-              </Button>
-              <Button variant="ghost" disabled={!edges.right} onClick={() => scrollStages(1)}>
-                {t.board.nextStages}
-                <ChevronRight aria-hidden="true" />
-              </Button>
-            </nav>
-          )
-        ))}
+        )
+      ) : (
+        <nav
+          className={`stage-navigation flex justify-end gap-1 ${enabled && edges.overflow ? "visible" : "invisible"}`}
+          aria-label={t.board.stageNavigation}
+          aria-hidden={!enabled || !edges.overflow}
+        >
+          <Button
+            variant="ghost"
+            disabled={!enabled || !edges.overflow || !edges.left}
+            onClick={() => scrollStages(-1)}
+          >
+            <ChevronLeft aria-hidden="true" />
+            {t.board.previousStages}
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={!enabled || !edges.overflow || !edges.right}
+            onClick={() => scrollStages(1)}
+          >
+            {t.board.nextStages}
+            <ChevronRight aria-hidden="true" />
+          </Button>
+        </nav>
+      )}
       {children(narrow, active, {
         left: enabled && edges.left && !narrow,
         right: enabled && edges.right && !narrow,

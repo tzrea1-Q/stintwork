@@ -69,6 +69,7 @@ export function Board({
   const [openSlug, setOpenSlug] = useState<string | null>(() =>
     new URL(window.location.href).searchParams.get("item"),
   );
+  const initialItem = useRef(openSlug);
   const [fullDetail, setFullDetail] = useState(
     () => new URL(window.location.href).searchParams.get("detail") === "full",
   );
@@ -116,6 +117,7 @@ export function Board({
 
   const [drawerVersion, setDrawerVersion] = useState(0);
   function openWorkItem(slug: string, overview = false) {
+    initialItem.current = null;
     if (overview) {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", "overview");
@@ -213,6 +215,7 @@ export function Board({
       target?.focus();
     }
     function handlePopstate() {
+      initialItem.current = null;
       const params = new URL(window.location.href).searchParams;
       setOpenSlug(params.get("item"));
       setFullDetail(params.get("detail") === "full");
@@ -390,119 +393,129 @@ export function Board({
                           enabled={showStages}
                         >
                           {(narrow, activeStage, edges) => (
-                            <section
-                              className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
+                            <div
+                              className="board-viewport relative min-h-0 min-w-0 w-full flex-1"
                               data-fade-left={edges.left}
                               data-fade-right={edges.right}
-                              onScroll={(event) => {
-                                const grid = event.currentTarget.querySelector(".stage-grid");
-                                event.currentTarget.dataset.scrolled = String(
-                                  !!grid &&
-                                    grid.getBoundingClientRect().top <
-                                      event.currentTarget.getBoundingClientRect().top,
-                                );
-                              }}
-                              ref={scroll}
-                              aria-label={t.board.stages}
                             >
-                              {githubTracker && snapshot.github?.verifying ? (
-                                <p className="mt-4 text-muted-foreground" role="status">
-                                  {t.board.verifyingGithub}
-                                </p>
-                              ) : githubTracker &&
-                                (!snapshot.github ||
-                                  (!snapshot.github.fetchedAt &&
-                                    !snapshot.github.repositoryId &&
-                                    !!snapshot.github.error) ||
-                                  (!snapshot.github.complete &&
-                                    snapshot.workItems.length === 0)) ? null : snapshot.workItems
-                                  .length === 0 ? (
-                                <section className="empty-project flex min-h-64 flex-col items-center justify-center text-center leading-relaxed">
-                                  <FolderOpen
-                                    className="size-icon-lg muted text-muted-foreground"
-                                    aria-hidden="true"
-                                  />
-                                  <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
-                                  {!githubTracker && (
-                                    <>
-                                      <p className="mt-2 muted text-muted-foreground">
-                                        {t.board.startWithSpec}
-                                        <code>.scratch/&lt;work-item&gt;/spec.md</code>.
+                              <section
+                                className="board-scroll relative h-full min-h-0 min-w-0 w-full max-w-full overflow-auto overscroll-contain px-4 pb-6 sm:px-6"
+                                data-fade-left={edges.left}
+                                data-fade-right={edges.right}
+                                onScroll={(event) => {
+                                  const grid = event.currentTarget.querySelector(".stage-grid");
+                                  event.currentTarget.dataset.scrolled = String(
+                                    !!grid &&
+                                      grid.getBoundingClientRect().top <
+                                        event.currentTarget.getBoundingClientRect().top,
+                                  );
+                                }}
+                                ref={scroll}
+                                aria-label={t.board.stages}
+                              >
+                                {githubTracker && snapshot.github?.verifying ? (
+                                  <p className="mt-4 text-muted-foreground" role="status">
+                                    {t.board.verifyingGithub}
+                                  </p>
+                                ) : githubTracker &&
+                                  (!snapshot.github ||
+                                    (!snapshot.github.fetchedAt &&
+                                      !snapshot.github.repositoryId &&
+                                      !!snapshot.github.error) ||
+                                    (!snapshot.github.complete &&
+                                      snapshot.workItems.length === 0)) ? null : snapshot.workItems
+                                    .length === 0 ? (
+                                  <section className="empty-project flex min-h-64 flex-col items-center justify-center text-center leading-relaxed">
+                                    <FolderOpen
+                                      className="size-icon-lg muted text-muted-foreground"
+                                      aria-hidden="true"
+                                    />
+                                    <h2 className="mt-4 text-base font-medium">{t.board.empty}</h2>
+                                    {!githubTracker && (
+                                      <>
+                                        <p className="mt-2 muted text-muted-foreground">
+                                          {t.board.startWithSpec}
+                                          <code>.scratch/&lt;work-item&gt;/spec.md</code>.
+                                        </p>
+                                        <p className="mt-2 text-xs muted text-muted-foreground">
+                                          {t.board.addTickets}
+                                          <code>.scratch/&lt;work-item&gt;/issues/</code>
+                                          {t.board.updatesAsYouEdit}
+                                        </p>
+                                      </>
+                                    )}
+                                  </section>
+                                ) : (
+                                  <>
+                                    {filtered.length === 0 && (
+                                      <p className="mt-4 muted text-muted-foreground" role="status">
+                                        {t.board.emptyMilestone}
                                       </p>
-                                      <p className="mt-2 text-xs muted text-muted-foreground">
-                                        {t.board.addTickets}
-                                        <code>.scratch/&lt;work-item&gt;/issues/</code>
-                                        {t.board.updatesAsYouEdit}
-                                      </p>
-                                    </>
-                                  )}
-                                </section>
-                              ) : (
-                                <>
-                                  {filtered.length === 0 && (
-                                    <p className="mt-4 muted text-muted-foreground" role="status">
-                                      {t.board.emptyMilestone}
-                                    </p>
-                                  )}
-                                  <m.div
-                                    layout={!skip && !reduced ? "position" : false}
-                                    transition={instant || skip ? { duration: 0 } : spring.layout}
-                                    className="stage-board w-full rounded-3xl bg-card p-3 shadow-card"
-                                  >
+                                    )}
                                     <m.div
                                       layout={!skip && !reduced ? "position" : false}
                                       transition={instant || skip ? { duration: 0 } : spring.layout}
-                                      className="stage-grid flex justify-start gap-2"
+                                      className="stage-board w-full rounded-3xl bg-card p-3 shadow-card"
                                     >
-                                      {builtInWorkflows.feature.stages
-                                        .filter((stage) => !narrow || stage.column === activeStage)
-                                        .map((stage) => (
-                                          <Column
-                                            key={stage.id}
-                                            id={stage.column}
-                                            name={stageName(builtInWorkflows.feature, stage, t)}
-                                            items={filteredActive.filter(
-                                              (item) => item.column === stage.column,
-                                            )}
-                                            milestones={snapshot.milestones}
-                                            workflows={snapshot.workflows}
-                                            attentionItems={snapshot.attentionItems}
-                                            agents={snapshot.agents}
-                                            selectedSlug={openSlug}
-                                            expanded={expandedStages.includes(stage.column)}
-                                            onToggle={() =>
-                                              setExpandedStages((current) =>
-                                                current.includes(stage.column)
-                                                  ? current.filter((id) => id !== stage.column)
-                                                  : [...current, stage.column],
-                                              )
-                                            }
-                                            narrow={narrow}
-                                            showWorkflow={showWorkflow}
-                                            panelOpen={!!openItem}
-                                            onOpen={openWorkItem}
-                                          />
-                                        ))}
+                                      <m.div
+                                        layout={!skip && !reduced ? "position" : false}
+                                        transition={
+                                          instant || skip ? { duration: 0 } : spring.layout
+                                        }
+                                        className="stage-grid flex justify-start gap-2"
+                                      >
+                                        {builtInWorkflows.feature.stages
+                                          .filter(
+                                            (stage) => !narrow || stage.column === activeStage,
+                                          )
+                                          .map((stage) => (
+                                            <Column
+                                              key={stage.id}
+                                              id={stage.column}
+                                              name={stageName(builtInWorkflows.feature, stage, t)}
+                                              items={filteredActive.filter(
+                                                (item) => item.column === stage.column,
+                                              )}
+                                              milestones={snapshot.milestones}
+                                              workflows={snapshot.workflows}
+                                              attentionItems={snapshot.attentionItems}
+                                              agents={snapshot.agents}
+                                              selectedSlug={openSlug}
+                                              expanded={expandedStages.includes(stage.column)}
+                                              onToggle={() =>
+                                                setExpandedStages((current) =>
+                                                  current.includes(stage.column)
+                                                    ? current.filter((id) => id !== stage.column)
+                                                    : [...current, stage.column],
+                                                )
+                                              }
+                                              narrow={narrow}
+                                              showWorkflow={showWorkflow}
+                                              panelOpen={!!openItem}
+                                              onOpen={openWorkItem}
+                                            />
+                                          ))}
+                                      </m.div>
                                     </m.div>
-                                  </m.div>
-                                  <UnstagedLane
-                                    snapshot={snapshot}
-                                    filteredUnstaged={filteredUnstaged}
-                                    showWorkflow={showWorkflow}
-                                    openSlug={openSlug}
-                                    openWorkItem={openWorkItem}
-                                  />
-                                </>
-                              )}
-                              <ShippedLane
-                                snapshot={snapshot}
-                                filteredShipped={filteredShipped}
-                                filteredMilestoneShipped={filteredMilestoneShipped}
-                                openSlug={openSlug}
-                                openWorkItem={openWorkItem}
-                                showWorkflow={showWorkflow}
-                              />
-                            </section>
+                                    <UnstagedLane
+                                      snapshot={snapshot}
+                                      filteredUnstaged={filteredUnstaged}
+                                      showWorkflow={showWorkflow}
+                                      openSlug={openSlug}
+                                      openWorkItem={openWorkItem}
+                                    />
+                                  </>
+                                )}
+                                <ShippedLane
+                                  snapshot={snapshot}
+                                  filteredShipped={filteredShipped}
+                                  filteredMilestoneShipped={filteredMilestoneShipped}
+                                  openSlug={openSlug}
+                                  openWorkItem={openWorkItem}
+                                  showWorkflow={showWorkflow}
+                                />
+                              </section>
+                            </div>
                           )}
                         </StageStrip>
                       </LayoutGroup>
@@ -532,6 +545,7 @@ export function Board({
               warnings={snapshot.warnings}
               key={`${openItem.slug}:${drawerVersion}`}
               item={drawerItem}
+              initialUrlOpen={initialItem.current === openItem.slug}
               githubRetryAt={snapshot.github?.retryAt}
               githubReadOnly={
                 githubTracker &&
