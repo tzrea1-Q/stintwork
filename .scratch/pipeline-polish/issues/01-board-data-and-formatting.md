@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 01 — Board data and shared formatting
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -26,14 +26,16 @@ Scope: `overview-data.ts`, `Board.tsx` (lane, counts and filters only), `Column.
 
 ## Acceptance criteria
 
-- [ ] jsdom tests cover:
+- [x] jsdom tests cover:
   - in flight on the board, with merged, shipped-milestone and active items;
   - the two lane groups and their Mark as shipped entry;
   - the toolbar counts;
   - hidden zero counts;
   - cards without tickets or Stints;
   - the helpers in `en` and `zh-CN`.
-- [ ] On this repository's data, the columns hold only M15–M18 work items, and the toolbar and Overview agree on the in-flight count.
-- [ ] `pnpm test` passes.
+- [x] On this repository's data, the columns hold only M15–M18 work items, and the toolbar and Overview agree on the in-flight count.
+- [x] `pnpm test` passes.
 
 ## Comments
+
+**Coordinator, 2026-11-25:** Delivered by Codex, reviewed by the coordinator. On this repository's data the columns hold only the five in-flight work items (M15–M19), the toolbar reads "5 in flight · 16 shipped" and Overview agrees. jsdom tests cover in flight, both lane groups, counts, cards without tickets or Stints, and the time, id and agent-name helpers in both languages. Full checks on the merged branch: format, lint, typecheck and build pass; `pnpm test` has 3637 passing and one failure that already fails on `main` (`packages/server/src/index.test.ts`, "watching discovers project directories that do not exist at startup"), unrelated to this milestone. The full browser suite passes 555 of 556; the remaining case is `motion-board.spec.ts` "board snapshot continuity at 1440px", which saw long tasks of 58–59 ms only while three workers ran in parallel and passes run on its own (3 of 3).

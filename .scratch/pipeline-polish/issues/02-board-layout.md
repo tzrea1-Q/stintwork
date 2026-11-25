@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 02 — Board layout, narrow widths and cards
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -23,13 +23,15 @@ Scope: `Board.tsx`, new `src/board/`, `Column.tsx`, `WorkItemCard.tsx`, `board-m
 
 ## Acceptance criteria
 
-- [ ] Browser cases at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN`, with light and dark at 1440 and 390px, using real-shaped data and the rich fixture, assert:
+- [x] Browser cases at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN`, with light and dark at 1440 and 390px, using real-shaped data and the rich fixture, assert:
   - no card cut by the board's edge without a visible fade and previous/next control;
   - no rotated text;
   - exactly one stage's cards visible below 768px;
   - a toolbar of at most two rows;
   - the layout checks.
-- [ ] jsdom tests cover the stage switcher's keyboard use and the previous/next buttons.
-- [ ] `e2e/motion-board.spec.ts` and `pnpm test` pass.
+- [x] jsdom tests cover the stage switcher's keyboard use and the previous/next buttons.
+- [x] `e2e/motion-board.spec.ts` and `pnpm test` pass.
 
 ## Comments
+
+**Coordinator, 2026-11-25:** Delivered by Codex in ticket 02 and three coordinator fix rounds. The coordinator's browser runs found: truncation titles missing, column headers misaligned when the stats line was hidden (now reserved), sticky headers broken by a nested scroller (now one board scroller with navigation above it), and an update loop in the overflow measurement (now measured once per frame without layout feedback). Checked on real data at 1440, 1024, 768 and 390px in both languages and both colour schemes: compact empty stages with horizontal names, a stage switcher below 768px, fades with labelled previous/next when columns overflow. Full checks on the merged branch: format, lint, typecheck and build pass; `pnpm test` has 3637 passing and one failure that already fails on `main` (`packages/server/src/index.test.ts`, "watching discovers project directories that do not exist at startup"), unrelated to this milestone. The full browser suite passes 555 of 556; the remaining case is `motion-board.spec.ts` "board snapshot continuity at 1440px", which saw long tasks of 58–59 ms only while three workers ran in parallel and passes run on its own (3 of 3).

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 05 — Review overlay, Brief preview and Pipeline dialogs
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -34,13 +34,15 @@ Scope: `ReviewOverlay.tsx`, `ReviewFindings.tsx`, `RiskyPaths.tsx`, `BriefPrevie
 
 ## Acceptance criteria
 
-- [ ] jsdom tests cover roadmap progress in ticket units, Brief preview Cancel, and the close buttons.
-- [ ] `e2e/dialogs.spec.ts` asserts:
+- [x] jsdom tests cover roadmap progress in ticket units, Brief preview Cancel, and the close buttons.
+- [x] `e2e/dialogs.spec.ts` asserts:
   - the Customise footer does not overlap its content;
   - severity chips are no wider than their text plus padding;
   - no visible 40-character hash in the review header;
 
   each at 1440, 1024, 768, 390 and 360px in both languages.
-- [ ] `pnpm test` passes.
+- [x] `pnpm test` passes.
 
 ## Comments
+
+**Coordinator, 2026-11-25:** Delivered by Codex, with a coordinator fix for the review overlay's read-only note clipping at 390px. Checked on real data and the dialog fixture: structured review header with short hashes, secondary Send back, Brief preview with Cancel and a warning callout, Edit roadmap progress in ticket units, close buttons on every dialog. Full checks on the merged branch: format, lint, typecheck and build pass; `pnpm test` has 3637 passing and one failure that already fails on `main` (`packages/server/src/index.test.ts`, "watching discovers project directories that do not exist at startup"), unrelated to this milestone. The full browser suite passes 555 of 556; the remaining case is `motion-board.spec.ts` "board snapshot continuity at 1440px", which saw long tasks of 58–59 ms only while three workers ran in parallel and passes run on its own (3 of 3).

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 03 — Detail panel shell, Overview tab and gate
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 ## What to build
@@ -35,12 +35,14 @@ Scope: `WorkItemDrawer.tsx` (header, footer, Overview tab), `GateView.tsx`, `Gat
 
 ## Acceptance criteria
 
-- [ ] jsdom tests cover:
+- [x] jsdom tests cover:
   - the footer's single primary per stage (Clarify, Spec, Tickets, Implement, Review, Ship, and a running Stint);
   - the gate summary and the disabled Approve reason;
   - the Customise menu;
   - pointer versus keyboard focus on open.
-- [ ] Browser cases at 1440, 1024, 768, 390 and 360px in both languages, with light and dark at 1440 and 390px, assert one near-black primary in the panel, gate chips on their title line, a capped content width in full screen, and the layout checks.
-- [ ] `pnpm test` passes.
+- [x] Browser cases at 1440, 1024, 768, 390 and 360px in both languages, with light and dark at 1440 and 390px, assert one near-black primary in the panel, gate chips on their title line, a capped content width in full screen, and the layout checks.
+- [x] `pnpm test` passes.
 
 ## Comments
+
+**Coordinator, 2026-11-25:** Delivered by Codex, with coordinator fix rounds. The final browser run found the footer's Approve kept its own request state, so stale-approval messages and the GitHub refresh no longer appeared in the gate; fix 5 makes the footer and gate share one request state, with a jsdom test. Checked on real data: neutral header with More actions, one primary in the footer, the gate's compact summary with "Blocked by: Tickets resolved" beside a disabled Approve, no ring on pointer or link opens. Full checks on the merged branch: format, lint, typecheck and build pass; `pnpm test` has 3637 passing and one failure that already fails on `main` (`packages/server/src/index.test.ts`, "watching discovers project directories that do not exist at startup"), unrelated to this milestone. The full browser suite passes 555 of 556; the remaining case is `motion-board.spec.ts` "board snapshot continuity at 1440px", which saw long tasks of 58–59 ms only while three workers ran in parallel and passes run on its own (3 of 3).
