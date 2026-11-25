@@ -9,10 +9,7 @@ import {
   type WorkflowDefinitions,
 } from "@stintwork/core";
 import { CheckCircle2, Circle, GitCommitHorizontal } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { m } from "motion/react";
-import { becameResolved } from "./moments";
-import { spring, staggerDelay, useReducedMotionSafe } from "./ui/motion";
+import { useState } from "react";
 import { toast } from "sonner";
 import { refreshGithubItem } from "./github-refresh";
 import { HandoffAnswer } from "./HandoffAnswer";
@@ -128,10 +125,12 @@ export function GateView({
   workflows = builtInWorkflows,
   githubReadOnly = false,
   showHandoffAnswer = true,
+  hideApprove = false,
 }: {
   item: BoardWorkItem;
   githubReadOnly?: boolean;
   showHandoffAnswer?: boolean;
+  hideApprove?: boolean;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
@@ -151,22 +150,10 @@ export function GateView({
   const reviewAvailable = !!github?.reviewDigest && !!github.reviewHead;
   const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
   const gate = gateReadiness(item, workflows);
-  const reduced = useReducedMotionSafe();
-  const previousConditions = useRef(
-    new Map(gate.conditions.map((condition) => [condition.id, condition.ready])),
-  );
-  const met = new Set(
-    gate.conditions
-      .filter((condition) =>
-        becameResolved(previousConditions.current.get(condition.id), condition.ready),
-      )
-      .map((condition) => condition.id),
-  );
-  useEffect(() => {
-    previousConditions.current = new Map(
-      gate.conditions.map((condition) => [condition.id, condition.ready]),
-    );
-  });
+  const disabledReason =
+    gate.reason?.code === "gate.running"
+      ? gate.reason
+      : (gate.conditions.find((condition) => !condition.ready)?.action ?? gate.reason);
   const emptyGithubSpec =
     !!github &&
     item.spec === null &&
@@ -190,99 +177,117 @@ export function GateView({
       <h3 className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold">
         {t.stints.gate(stageName(workflows[item.workflow], current, t))}
       </h3>
-      <p role="status">
-        {gate.ready ? t.stints.readyToApprove : translateCoreText(gate.reason, t)}
-      </p>
       {gate.conditions.length > 0 && (
         <div className="my-3 space-y-3">
+          <p>
+            {t.needsYou.conditionsMet(
+              gate.conditions.filter((condition) => condition.ready).length,
+              gate.conditions.length,
+            )}
+          </p>
           <SegmentedProgress
             value={gate.conditions.filter((condition) => condition.ready).length}
             total={gate.conditions.length}
             label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
           />
+          <ul>
+            {gate.conditions
+              .filter((condition) => !condition.ready)
+              .map((condition) => (
+                <li key={condition.id}>
+                  <strong>{translateCoreText(condition.label, t)}</strong> ·{" "}
+                  {translateCoreText(condition.action, t)}
+                </li>
+              ))}
+          </ul>
           <ul
             aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
             className="space-y-2"
           >
-            {gate.conditions.map((condition, index) => (
+            {gate.conditions.map((condition) => (
               <li key={condition.id} className="rounded-xl border border-border p-3">
-                {condition.ready ? (
-                  <m.span
-                    key={`${condition.id}:${condition.ready}`}
-                    className="inline-flex"
-                    initial={
-                      met.has(condition.id)
-                        ? reduced
-                          ? { opacity: 0 }
-                          : { scale: 0.5, opacity: 0 }
-                        : false
-                    }
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ ...spring.celebrate, delay: reduced ? 0 : staggerDelay(index) }}
-                  >
-                    <CheckCircle2
-                      aria-hidden="true"
-                      className="mr-2 inline size-4 text-success-foreground"
-                    />
-                  </m.span>
-                ) : (
-                  <Circle aria-hidden="true" className="mr-2 inline size-4 text-muted-foreground" />
+                <div className="flex items-start gap-2">
+                  <strong className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                    {condition.ready ? (
+                      <CheckCircle2
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-success-foreground"
+                      />
+                    ) : (
+                      <Circle
+                        aria-hidden="true"
+                        className="size-4 shrink-0 text-muted-foreground"
+                      />
+                    )}
+                    {translateCoreText(condition.label, t)}
+                  </strong>
+                  <span className="shrink-0">
+                    <StatusChip status={condition.ready ? "success" : "attention"}>
+                      {condition.ready ? t.stints.ready : t.stints.blocked}
+                    </StatusChip>
+                  </span>
+                </div>
+                {condition.id === "ticket-resolution" && (
+                  <p>
+                    {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length}
+                    {t.stints.ticketsResolved}
+                  </p>
                 )}
-                <strong>{translateCoreText(condition.label, t)}</strong> ·{" "}
-                <StatusChip status={condition.ready ? "success" : "attention"}>
-                  {condition.ready ? t.stints.ready : t.stints.blocked}
-                </StatusChip>
-                <p>
-                  {condition.ready ? t.stints.noAction : translateCoreText(condition.action, t)}
-                </p>
+                {condition.ready ? (
+                  <p>{t.stints.noAction}</p>
+                ) : (
+                  translateCoreText(condition.action, t) !== translateCoreText(gate.reason, t) && (
+                    <p>{translateCoreText(condition.action, t)}</p>
+                  )
+                )}
               </li>
             ))}
           </ul>
         </div>
       )}
-      <p>
-        {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length}
-        {t.stints.ticketsResolved}
+      <p role="status">
+        {gate.ready ? t.stints.readyToApprove : translateCoreText(gate.reason, t)}
       </p>
-      <SegmentedProgress
-        value={item.tickets.filter(({ resolved }) => resolved).length}
-        total={item.tickets.length}
-        label={t.stints.ticketsResolved.trim()}
-      />
-      <PropertyList>
-        <PropertyRow
-          icon={GitCommitHorizontal}
-          label={t.stints.lastCheckpoint}
-          value={
-            checkpoint ? (
-              <code className="block max-w-full overflow-auto font-mono">{checkpoint}</code>
-            ) : (
-              t.stints.noneRecorded
-            )
-          }
-        />
-      </PropertyList>
-      <h4>{t.stints.lastHandoff}</h4>
-      {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
-      {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
-        <HandoffAnswer
-          key={unresolved.stintId}
-          item={unresolved}
-          onError={setError}
-          showDetails={false}
-        />
-      )}
-      <h4>{t.stints.openWarnings}</h4>
-      {warnings.length ? (
-        <ul>
-          {warnings.map(({ path, message }) => (
-            <li key={`${path}:${message}`}>
-              <code>{path}</code> {message}
-            </li>
-          ))}
-        </ul>
+      {!checkpoint && !lastHandoff && !warnings.length ? (
+        <p className="text-muted-foreground">{t.stints.emptyGateEvidence}</p>
       ) : (
-        <p>{t.stints.noWarnings}</p>
+        <>
+          <PropertyList>
+            <PropertyRow
+              icon={GitCommitHorizontal}
+              label={t.stints.lastCheckpoint}
+              value={
+                checkpoint ? (
+                  <code className="block max-w-full overflow-auto font-mono">{checkpoint}</code>
+                ) : (
+                  t.stints.noneRecorded
+                )
+              }
+            />
+          </PropertyList>
+          <h4>{t.stints.lastHandoff}</h4>
+          {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
+          {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
+            <HandoffAnswer
+              key={unresolved.stintId}
+              item={unresolved}
+              onError={setError}
+              showDetails={false}
+            />
+          )}
+          <h4>{t.stints.openWarnings}</h4>
+          {warnings.length ? (
+            <ul>
+              {warnings.map(({ path, message }) => (
+                <li key={`${path}:${message}`}>
+                  <code>{path}</code> {message}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>{t.stints.noWarnings}</p>
+          )}
+        </>
       )}
       {emptyGithubSpec && github && (
         <p>
@@ -328,24 +333,42 @@ export function GateView({
           ) : null;
         })}
       {githubReadOnly && <p>{t.board.githubStatus.readOnly}</p>}
-      {gate.nextStage && (
-        <Button
-          type="button"
-          variant="primary"
-          aria-busy={saving}
-          disabled={
-            githubReadOnly ||
-            !gate.ready ||
-            saving ||
-            !!message ||
-            refreshNeeded ||
-            (!!github && !reviewAvailable)
-          }
-          onClick={() => void act(current.id, "approve")}
-        >
-          {t.stints.approve(stageName(workflows[item.workflow], current, t))}
-          {saving && <span aria-hidden="true"> · {t.stints.approving}</span>}
-        </Button>
+      {gate.nextStage && !hideApprove && (
+        <>
+          <Button
+            type="button"
+            variant="secondary"
+            aria-describedby={!gate.ready ? "gate-approve-reason" : undefined}
+            aria-busy={saving}
+            disabled={
+              githubReadOnly ||
+              !gate.ready ||
+              saving ||
+              !!message ||
+              refreshNeeded ||
+              (!!github && !reviewAvailable)
+            }
+            onClick={() => void act(current.id, "approve")}
+          >
+            {t.stints.approve(stageName(workflows[item.workflow], current, t))}
+            {saving && <span aria-hidden="true"> · {t.stints.approving}</span>}
+          </Button>
+          {!gate.ready && (
+            <span id="gate-approve-reason" className="ml-2 text-muted-foreground">
+              {translateCoreText(disabledReason, t)}
+            </span>
+          )}
+        </>
+      )}
+      {hideApprove && !gate.ready && gate.nextStage && (
+        <div>
+          <Button disabled aria-describedby="gate-approve-reason">
+            {t.stints.approve(stageName(workflows[item.workflow], current, t))}
+          </Button>
+          <span id="gate-approve-reason" className="ml-2 text-muted-foreground">
+            {translateCoreText(disabledReason, t)}
+          </span>
+        </div>
       )}
       {earlier.map((stage) => (
         <Button

@@ -128,7 +128,8 @@ test.each(["drawer", "palette"])(
     render(<Board snapshot={snapshot()} />);
     if (entry === "drawer") {
       await user.click(screen.getByRole("button", { name: "Open example: Example" }));
-      await user.click(screen.getByRole("button", { name: "Customise" }));
+      await user.click(screen.getByRole("button", { name: "More actions" }));
+      await user.click(screen.getByRole("menuitem", { name: "Customise Feature workflow" }));
     } else {
       fireEvent.keyDown(document, { key: "k", metaKey: true });
       await user.type(
@@ -159,7 +160,8 @@ test.each(["drawer", "palette"])(
         screen.queryByRole("dialog", { name: "Customise Feature workflow" }),
       ).not.toBeInTheDocument(),
     );
-    if (entry === "drawer") expect(screen.getByRole("button", { name: "Customise" })).toHaveFocus();
+    if (entry === "drawer")
+      expect(screen.getByRole("button", { name: "More actions" })).toHaveFocus();
   },
 );
 
@@ -185,7 +187,8 @@ test("Cancel and Escape do not write and restore the drawer action's focus", asy
   render(<Board snapshot={snapshot()} />);
   await user.click(screen.getByRole("button", { name: "Open example: Example" }));
   for (const dismissal of ["Cancel", "Escape"]) {
-    await user.click(screen.getByRole("button", { name: "Customise" }));
+    await user.click(screen.getByRole("button", { name: "More actions" }));
+    await user.click(screen.getByRole("menuitem", { name: "Customise Feature workflow" }));
     const dialog = within(screen.getByRole("dialog", { name: "Customise Feature workflow" }));
     await dialog.findByLabelText("Built-in workflow YAML");
     if (dismissal === "Cancel") await user.click(dialog.getByRole("button", { name: "Cancel" }));
@@ -194,7 +197,7 @@ test("Cancel and Escape do not write and restore the drawer action's focus", asy
       screen.queryByRole("dialog", { name: "Customise Feature workflow" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Example" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Customise" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "More actions" })).toHaveFocus();
   }
   expect(fetch.mock.calls.filter(([path]) => path.endsWith("/customise"))).toHaveLength(0);
 });

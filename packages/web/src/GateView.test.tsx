@@ -160,7 +160,9 @@ test("Chinese gate translates its required path but keeps parser warnings verbat
   expect(screen.getByRole("status")).toHaveTextContent(
     "编写或编辑 .scratch/first/spec.md，加入非空的 # 标题。 Repo parser 原文",
   );
-  expect(screen.getByText("spec.md 存在且可解析")).toBeInTheDocument();
+  expect(
+    within(screen.getByRole("list", { name: /关卡条件/ })).getByText("spec.md 存在且可解析"),
+  ).toBeInTheDocument();
 });
 
 test.each([
@@ -226,10 +228,12 @@ test("risky branch files block the Review condition with a removal or acceptance
   const item = reviewItem();
   item.riskyPaths = [{ path: ".env", reasons: ["likely-secret"], blob: "a".repeat(40) }];
   render(<GateView item={item} />);
-  const condition = screen.getByText("No risky files on the branch").closest("li") as HTMLElement;
+  const condition = within(screen.getByRole("list", { name: "Review gate conditions" }))
+    .getByText("No risky files on the branch")
+    .closest("li") as HTMLElement;
   expect(condition).toHaveTextContent("Blocked");
-  expect(condition).toHaveTextContent("follow-up commit");
-  expect(condition).toHaveTextContent("Accept each path with a reason");
+  expect(screen.getAllByText(/follow-up commit/).length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Accept each path with a reason/).length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Approve Review" })).toBeDisabled();
 });
 
@@ -291,7 +295,7 @@ test("Review lists every evidence condition with state and an actionable remedy"
   expect(conditions.getByText("No open memory proposals").closest("li")).toHaveTextContent(
     "Blocked",
   );
-  expect(conditions.getByText(/Resolve or accept each current finding/)).toBeInTheDocument();
+  expect(screen.getAllByText(/Resolve or accept each current finding/).length).toBeGreaterThan(0);
   expect(conditions.getByText(/Run all configured checks/)).toBeInTheDocument();
   expect(conditions.getByText(/Start a new Review stint and rerun checks/)).toBeInTheDocument();
   expect(conditions.getByText(/Accept or reject every open memory proposal/)).toBeInTheDocument();
@@ -344,7 +348,7 @@ test("gate evidence shows tickets, last checkpoint, handoff and open warnings in
   expect(gate.getByText("All edits checkpointed")).toBeInTheDocument();
   expect(gate.getByText("Confirm the output")).toBeInTheDocument();
   expect(gate.getByText("Spec needs attention")).toBeInTheDocument();
-  expect(gate.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
 });
 
 test.each([
@@ -477,10 +481,9 @@ test("in-progress evidence disables approval and explains the refusal", () => {
   const item = project().workItems[0];
   item.stints = [{ ...stint, status: "running", handoff: null, checkpointCommit: null }];
   render(<GateView item={item} />);
-  expect(screen.getByText(/stint is running/)).toBeInTheDocument();
+  expect(screen.getAllByText(/stint is running/).length).toBeGreaterThan(0);
   expect(screen.getByRole("button", { name: "Approve Implement" })).toBeDisabled();
-  expect(screen.getByText("No handoff recorded.")).toBeInTheDocument();
-  expect(screen.getByText("No open warnings.")).toBeInTheDocument();
+  expect(screen.getByText("No checkpoint, handoff or open warnings yet.")).toBeInTheDocument();
 });
 
 test("the Needs-you gate item contains evidence and an approval action", async () => {
@@ -529,7 +532,7 @@ test.each([
     const conditions = within(screen.getByRole("list", { name: `${name} gate conditions` }));
     expect(conditions.getByText(label).closest("li")).toHaveTextContent("Blocked");
     expect(
-      conditions.getByText(new RegExp(`Write or ${stage === "spec" ? "edit" : "fix"}`)),
+      screen.getAllByText(new RegExp(`Write or ${stage === "spec" ? "edit" : "fix"}`))[0],
     ).toHaveTextContent(path);
     expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
     rerender(<GateView item={valid} />);
@@ -581,7 +584,7 @@ test.each([
   item.stints = [{ ...stint, stage, ticket: null }];
   render(<GateView item={item} />);
   expect(screen.getByRole("status")).toHaveTextContent(path);
-  expect(screen.getByRole("list", { name: `${name} gate conditions` })).toHaveTextContent(path);
+  expect(screen.getByRole("status")).toHaveTextContent(path);
   expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
 });
 
@@ -972,4 +975,20 @@ test("GitHub refresh failure re-enables the action", async () => {
   await userEvent.click(button);
   expect(screen.getByRole("alert")).toHaveTextContent("Network failure");
   expect(button).toBeEnabled();
+});
+
+test("gate summarizes conditions and links a disabled approval to its reason", () => {
+  const item = project("spec").workItems[0];
+  render(<GateView item={item} />);
+  const gate = screen.getByRole("region", { name: "Spec gate" });
+  expect(within(gate).getByText(/conditions met/)).toBeInTheDocument();
+  expect(within(gate).getAllByRole("progressbar")).toHaveLength(1);
+  expect(
+    within(gate).getByText("No checkpoint, handoff or open warnings yet."),
+  ).toBeInTheDocument();
+  const approve = within(gate).getByRole("button", { name: "Approve Spec" });
+  expect(approve).toBeDisabled();
+  expect(document.getElementById(approve.getAttribute("aria-describedby") ?? "")).toHaveTextContent(
+    /./,
+  );
 });

@@ -152,13 +152,16 @@ export function StintRecovery({
       </div>
     );
   return (
-    <Card className="stint-recovery my-3 min-w-0 overflow-visible [overflow-wrap:anywhere]">
+    <Card
+      size="sm"
+      className="stint-recovery my-3 min-w-0 overflow-visible [overflow-wrap:anywhere]"
+    >
       <CardHeader className="flex min-w-0 flex-row flex-wrap items-center gap-3">
         <IconChip icon={RotateCcw} tone="attention" />
         <strong className="min-w-0">{t.review.visualRefresh07.recovery}</strong>
         {status}
       </CardHeader>
-      <CardContent>{content}</CardContent>
+      <CardContent className="pt-0">{content}</CardContent>
     </Card>
   );
 }

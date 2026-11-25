@@ -4,8 +4,8 @@ import {
   type AgentProfile,
   briefAvailability,
   builtInWorkflows,
+  gateReadiness,
   type Milestone,
-  stageAgent,
   type Warning,
   type WorkflowDefinitions,
 } from "@stintwork/core";
@@ -20,18 +20,19 @@ import {
   LockKeyhole,
   Maximize2,
   Minimize2,
+  MoreHorizontal,
   X,
 } from "lucide-react";
 import { MotionGlobalConfig, m, usePresence } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StageBriefPreview, TicketBriefPreview } from "./BriefPreview";
 import { ChecksPanel } from "./ChecksPanel";
-import { GateView } from "./GateView";
+import { GateView, useGateAction } from "./GateView";
 import { GithubRefreshConflict, refreshGithubItem } from "./github-refresh";
 import { ticketStatus, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
-import { becameResolved } from "./moments";
 import { MarkShipped } from "./MarkShipped";
+import { becameResolved } from "./moments";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
 import { ReviewOverlay } from "./ReviewOverlay";
 import { ShipActions } from "./ShipActions";
@@ -40,9 +41,14 @@ import { StintHistory } from "./StintHistory";
 import { recoveryStatus } from "./StintRecovery";
 import { StintStream } from "./StintStream";
 import { StopStint } from "./StopStint";
-import { AgentAvatar } from "./ui/AgentAvatar";
 import { Badge } from "./ui/Badge";
 import { Button } from "./ui/Button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./ui/DropdownMenu";
 import { Markdown } from "./ui/Markdown";
 import { spring, tween, useReducedMotionSafe } from "./ui/motion";
 import { PropertyList, PropertyRow } from "./ui/PropertyRow";
@@ -52,6 +58,24 @@ import { StatusChip } from "./ui/StatusChip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/Tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import type { BoardWorkItem } from "./WorkItemCard";
+
+let keyboardInput = false;
+if (typeof window !== "undefined") {
+  window.addEventListener(
+    "keydown",
+    () => {
+      keyboardInput = true;
+    },
+    true,
+  );
+  window.addEventListener(
+    "pointerdown",
+    () => {
+      keyboardInput = false;
+    },
+    true,
+  );
+}
 
 const maxDetailWidth = () => Math.max(400, Math.floor(window.innerWidth * 0.6));
 
@@ -201,6 +225,8 @@ export function WorkItemDrawer({
   }, [githubNumber, githubRetryAt, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const customisePending = useRef(false);
   const autoFocusing = useRef(false);
   const panel = useRef<HTMLElement>(null);
   const sheetPanel = useRef<HTMLDivElement>(null);
@@ -251,12 +277,13 @@ export function WorkItemDrawer({
     const previous = document.activeElement;
     opener.current = previous instanceof HTMLElement ? previous : null;
     autoFocusing.current = true;
-    closeButton.current?.focus();
+    (keyboardInput && previous !== document.body ? closeButton.current : panel.current)?.focus();
     autoFocusing.current = false;
     return () => {
       if (
         (document.activeElement === document.body ||
-          document.activeElement === closeButton.current) &&
+          document.activeElement === closeButton.current ||
+          document.activeElement === panel.current) &&
         opener.current?.isConnected
       )
         opener.current.focus();
@@ -304,19 +331,6 @@ export function WorkItemDrawer({
   const activeProfile = agents.find((agent) => agent.id === item.activeStint?.agent);
   const workflow = workflows[item.workflow];
   const stage = workflow.stages.find(({ id }) => id === item.stage);
-  const [agentChoice, setAgentChoice] = useState<{
-    source: BoardWorkItem["stages"];
-    slug: string;
-    agent: string;
-  }>();
-  const agent = item.stage
-    ? agentChoice?.source === item.stages && agentChoice.slug === item.slug
-      ? agentChoice.agent
-      : stageAgent(item, item.stage, agents, workflows)
-    : undefined;
-  const identityAgent = item.activeStint?.status === "running" ? item.activeStint.agent : agent;
-  const agentName =
-    agents.find((profile) => profile.id === identityAgent)?.displayName ?? identityAgent;
   const branch =
     item.activeStint?.worktree.branch ??
     item.pullRequest?.branch ??
@@ -333,8 +347,6 @@ export function WorkItemDrawer({
   const showStageAction =
     !!item.stage && !item.merged && (!item.tickets.length || stage?.column !== "implement");
   const canStart = !githubReadOnly && !item.activeStint && !item.merged;
-  const stageAvailable =
-    showStageAction && canStart && briefAvailability(item, null, workflows) === null;
   const candidateTicket =
     !showStageAction && canStart
       ? item.tickets.find((ticket) => briefAvailability(item, ticket, workflows) === null)
@@ -348,17 +360,25 @@ export function WorkItemDrawer({
   }, [candidateTicket, item.activeStint, item.slug, item.stage]);
   const nextTicket =
     candidateTicket ??
+    (item.activeStint?.ticket != null
+      ? item.tickets.find((ticket) => ticket.number === item.activeStint?.ticket)
+      : undefined) ??
     (item.activeStint &&
     selectedTicket.current?.slug === item.slug &&
     selectedTicket.current.stage === item.stage
       ? item.tickets.find((ticket) => ticket.number === selectedTicket.current?.number)
       : undefined);
-  const reviewPrimary =
-    !!item.worktreePath &&
-    !item.merged &&
+  const gate = gateReadiness(item, workflows);
+  const gateAction = useGateAction(item, workflows);
+  const approvePrimary =
+    !!gate.nextStage &&
+    gate.ready &&
+    stage?.column !== "review" &&
     !githubReadOnly &&
-    !stageAvailable &&
-    !(canStart && nextTicket);
+    !item.activeStint &&
+    (!item.github || !!(item.github.reviewDigest && item.github.reviewHead));
+  const reviewPrimary = stage?.column === "review" && !item.activeStint && !!item.worktreePath;
+  const startPrimary = !approvePrimary && !reviewPrimary && !item.activeStint;
 
   const hasTickets = workflow.stages.some(({ gate }) => gate === "tickets");
   const tabs = hasTickets
@@ -472,6 +492,44 @@ export function WorkItemDrawer({
             </StatusChip>
           )}
           <span className="flex-1" />
+          {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      ref={moreButton}
+                      variant="ghost"
+                      size="icon"
+                      aria-label={t.stints.moreActions}
+                    >
+                      <MoreHorizontal aria-hidden="true" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>{t.stints.moreActions}</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent
+                align="end"
+                onCloseAutoFocus={(event) => {
+                  if (customisePending.current) {
+                    customisePending.current = false;
+                    event.preventDefault();
+                    moreButton.current?.focus();
+                    onCustomiseWorkflow(item.workflow);
+                  }
+                }}
+              >
+                <DropdownMenuItem
+                  onSelect={() => {
+                    customisePending.current = true;
+                  }}
+                >
+                  {t.planning.palette.customise(workflowName(workflow, t))}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           {docked && onFullChange && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -508,7 +566,7 @@ export function WorkItemDrawer({
                 <X aria-hidden="true" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{t.stints.closeWorkItem}</TooltipContent>
+            <TooltipContent>{`Esc${t.stints.returnToPipeline}`}</TooltipContent>
           </Tooltip>
         </div>
 
@@ -525,7 +583,7 @@ export function WorkItemDrawer({
             </Button>
           </div>
         )}
-        <div className="drawer-identity my-3 min-w-0 rounded-2xl bg-accent p-4">
+        <div className="drawer-identity my-3 min-w-0">
           {docked ? (
             <h2
               className="truncate text-lg font-semibold leading-tight tracking-[-0.03em]"
@@ -553,25 +611,8 @@ export function WorkItemDrawer({
               {milestone?.name ?? item.milestone ?? t.stints.noMilestone}
               {stage && <> · {stageName(workflow, stage, t)}</>}
             </p>
-            {onCustomiseWorkflow && Object.hasOwn(builtInWorkflows, item.workflow) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-[11px]"
-                onClick={() => onCustomiseWorkflow(item.workflow)}
-              >
-                {t.stints.customise}
-              </Button>
-            )}
           </div>
           <div className="flex min-w-0 items-center gap-2">
-            {identityAgent && agentName && (
-              <AgentAvatar
-                agent={identityAgent}
-                name={agentName}
-                active={item.activeStint?.status === "running"}
-              />
-            )}
             {branch && (
               <code
                 className="min-w-0 truncate rounded-full bg-card px-2 py-1 font-mono text-[10px]"
@@ -605,124 +646,120 @@ export function WorkItemDrawer({
             value="overview"
             className="drawer-content relative min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-4 pt-4 pb-4 sm:px-7 [&_section+section]:mt-5 [&_.drawer-section-heading]:text-sm [&_.drawer-section-heading]:font-medium"
           >
-            {item.activeStint && (
-              <section aria-labelledby="drawer-live-stint-title">
-                <h3
-                  id="drawer-live-stint-title"
-                  className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
-                >
-                  {t.stints.liveStint}
-                </h3>
-                <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-                  <p role="status">
-                    {activeProfile?.displayName ?? item.activeStint.agent}
-                    {item.activeStint.ticket !== null && (
-                      <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
-                    )}{" "}
-                    · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
-                  </p>
-                  <StopStint
-                    key={`stop:${item.activeStint.id}`}
-                    stintId={item.activeStint.id}
-                    recovering={!!item.activeStint.recovery?.state}
+            <div className="mx-auto w-full max-w-4xl">
+              {item.activeStint && (
+                <section aria-labelledby="drawer-live-stint-title">
+                  <h3
+                    id="drawer-live-stint-title"
+                    className="drawer-section-heading mb-3 flex items-center gap-2 text-base font-semibold"
+                  >
+                    {t.stints.liveStint}
+                  </h3>
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+                    <p role="status">
+                      {activeProfile?.displayName ?? item.activeStint.agent}
+                      {item.activeStint.ticket !== null && (
+                        <> · {t.stints.briefTicket(item.activeStint.ticket, !!item.github)}</>
+                      )}{" "}
+                      · <Badge variant="accent">{t.stints.statuses[item.activeStint.status]}</Badge>
+                    </p>
+                    <StopStint
+                      key={`stop:${item.activeStint.id}`}
+                      stintId={item.activeStint.id}
+                      recovering={!!item.activeStint.recovery?.state}
+                    />
+                  </div>
+                  <StintStream
+                    key={`stream:${item.activeStint.id}`}
+                    stint={item.activeStint}
+                    profile={activeProfile}
                   />
+                </section>
+              )}
+              {item.merged?.outside && (
+                <div className="flex min-w-0 items-center gap-2 py-2 text-[11px] text-muted-foreground">
+                  <GitBranch aria-hidden="true" className="size-4 shrink-0" />
+                  <span>
+                    {t.markShipped.outside} · {item.merged.commit.slice(0, 7)}
+                  </span>
                 </div>
-                <StintStream
-                  key={`stream:${item.activeStint.id}`}
-                  stint={item.activeStint}
-                  profile={activeProfile}
-                />
-              </section>
-            )}
-            {item.merged?.outside && (
-              <div className="flex min-w-0 items-center gap-2 py-2 text-[11px] text-muted-foreground">
-                <GitBranch aria-hidden="true" className="size-4 shrink-0" />
-                <span>
-                  {t.markShipped.outside} · {item.merged.commit.slice(0, 7)}
-                </span>
-              </div>
-            )}
-            <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dt]:text-[11px] [&_dd]:text-[11px] [&_dd]:whitespace-normal">
-              {stage && (
-                <PropertyRow
-                  icon={LayoutGrid}
-                  label={t.detailPanel.stage}
-                  value={stageName(workflow, stage, t)}
-                />
               )}
-              {item.worktreePath && (
-                <PropertyRow
-                  icon={FolderGit2}
-                  label={t.stints.worktreeFiles}
-                  value={<FilePath path={item.worktreePath} compact />}
-                />
-              )}
-              {item.pullRequest && (
-                <>
+              <PropertyList className="relative [&_[role=group]]:grid [&_[role=group]]:grid-cols-[1rem_7.75rem_minmax(0,1fr)] [&_[role=group]]:items-center [&_dt]:text-[11px] [&_dd]:text-[11px] [&_dd]:whitespace-normal">
+                {stage && (
                   <PropertyRow
-                    icon={GitBranch}
-                    label={t.detailPanel.branch}
-                    value={
-                      <span
-                        className="block truncate"
-                        data-truncate
-                        title={item.pullRequest.branch}
-                      >
-                        {item.pullRequest.branch}
-                      </span>
-                    }
-                    fullText={item.pullRequest.branch}
+                    icon={LayoutGrid}
+                    label={t.detailPanel.stage}
+                    value={stageName(workflow, stage, t)}
                   />
+                )}
+                {item.worktreePath && (
                   <PropertyRow
-                    icon={GitPullRequest}
-                    label={t.detailPanel.pullRequest}
-                    value={
-                      <a
-                        className="block truncate"
-                        data-truncate
-                        title={item.pullRequest.url}
-                        href={item.pullRequest.url}
-                      >
-                        {item.pullRequest.url}
-                      </a>
-                    }
-                    fullText={item.pullRequest.url}
+                    icon={FolderGit2}
+                    label={<span title={t.stints.worktreeFiles}>{t.stints.worktreeShort}</span>}
+                    value={<FilePath path={item.worktreePath} compact />}
                   />
-                </>
-              )}
-              {item.pullRequestChecks && (
-                <PropertyRow
-                  icon={CheckCircle2}
-                  label={t.stints.checks}
-                  value={`${item.pullRequestChecks.checks.filter((check) => check.bucket === "pass").length}/${item.pullRequestChecks.checks.length} ${t.review.visualRefresh07.passing}`}
-                />
-              )}
-              {item.stage && !item.merged && (
-                <StageAgentRail
-                  key={item.slug}
+                )}
+                {item.pullRequest && (
+                  <>
+                    <PropertyRow
+                      icon={GitBranch}
+                      label={t.detailPanel.branch}
+                      value={
+                        <span
+                          className="block truncate"
+                          data-truncate
+                          title={item.pullRequest.branch}
+                        >
+                          {item.pullRequest.branch}
+                        </span>
+                      }
+                      fullText={item.pullRequest.branch}
+                    />
+                    <PropertyRow
+                      icon={GitPullRequest}
+                      label={t.detailPanel.pullRequest}
+                      value={
+                        <a
+                          className="block truncate"
+                          data-truncate
+                          title={item.pullRequest.url}
+                          href={item.pullRequest.url}
+                        >
+                          {item.pullRequest.url}
+                        </a>
+                      }
+                      fullText={item.pullRequest.url}
+                    />
+                  </>
+                )}
+                {item.pullRequestChecks && (
+                  <PropertyRow
+                    icon={CheckCircle2}
+                    label={t.stints.checks}
+                    value={`${item.pullRequestChecks.checks.filter((check) => check.bucket === "pass").length}/${item.pullRequestChecks.checks.length} ${t.review.visualRefresh07.passing}`}
+                  />
+                )}
+                {item.stage && !item.merged && (
+                  <StageAgentRail key={item.slug} item={item} workflows={workflows} />
+                )}
+              </PropertyList>
+              {!item.stage && !item.merged ? (
+                <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
+                  {t.stints.noStage}
+                </p>
+              ) : null}
+              <ShipActions item={item} workflows={workflows} onPausePolling={setShipPaused} />
+              {!item.merged && (
+                <GateView
+                  key={item.github ? item.slug : `${item.slug}:${item.stage}`}
                   item={item}
+                  warnings={warnings}
+                  githubReadOnly={githubReadOnly}
                   workflows={workflows}
-                  onAgentChange={(agent) =>
-                    setAgentChoice({ source: item.stages, slug: item.slug, agent })
-                  }
+                  hideApprove
                 />
               )}
-            </PropertyList>
-            {!item.stage && !item.merged ? (
-              <p className="drawer-stage-note px-4 py-4 sm:px-7 muted text-muted-foreground">
-                {t.stints.noStage}
-              </p>
-            ) : null}
-            <ShipActions item={item} workflows={workflows} onPausePolling={setShipPaused} />
-            {!item.merged && (
-              <GateView
-                key={item.github ? item.slug : `${item.slug}:${item.stage}`}
-                item={item}
-                warnings={warnings}
-                githubReadOnly={githubReadOnly}
-                workflows={workflows}
-              />
-            )}
+            </div>
           </TabsContent>
           <TabsContent
             value="spec"
@@ -950,7 +987,7 @@ export function WorkItemDrawer({
               <section
                 aria-label={t.stints.stageStintSection}
                 className={
-                  stageAvailable
+                  startPrimary
                     ? "footer-primary contents [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
                     : "contents [&_.brief-action]:mb-0"
                 }
@@ -968,7 +1005,7 @@ export function WorkItemDrawer({
             {nextTicket && (
               <div
                 className={
-                  canStart
+                  startPrimary
                     ? "footer-primary contents [&_.brief-action]:mb-0 [&_.brief-action>button]:border-transparent [&_.brief-action>button]:bg-primary [&_.brief-action>button]:text-primary-foreground"
                     : "contents [&_.brief-action]:mb-0"
                 }
@@ -978,7 +1015,7 @@ export function WorkItemDrawer({
                   data-truncate
                   title={`${ticketNumber(nextTicket.number)} · ${nextTicket.title}`}
                 >
-                  {ticketNumber(nextTicket.number)} · {nextTicket.title}
+                  {t.stints.nextTicket}: {ticketNumber(nextTicket.number)} · {nextTicket.title}
                 </span>
                 <TicketBriefPreview
                   item={item}
@@ -988,6 +1025,18 @@ export function WorkItemDrawer({
                 />
               </div>
             )}
+            {approvePrimary && stage && (
+              <Button
+                variant="primary"
+                size="sm"
+                disabled={gateAction.saving || !!gateAction.message || gateAction.refreshNeeded}
+                onClick={() => void gateAction.act(stage.id, "approve")}
+              >
+                {t.stints.approve(stageName(workflow, stage, t))}
+              </Button>
+            )}
+            {gateAction.message && <p role="status">{gateAction.message}</p>}
+            {gateAction.error && <p role="alert">{gateAction.error}</p>}
             {localTracker &&
               !item.github &&
               !item.worktreePath &&
@@ -1005,15 +1054,6 @@ export function WorkItemDrawer({
                 {t.stints.openReview}
               </Button>
             )}
-          </div>
-          <div className="mt-1 flex min-w-0 items-center gap-3 overflow-hidden whitespace-nowrap">
-            <span className="truncate">
-              {item.github ? t.stints.githubTracker : t.stints.tracker}
-            </span>
-            <span className="truncate">
-              <kbd>Esc</kbd>
-              {t.stints.returnToPipeline}
-            </span>
           </div>
         </div>
       </m.footer>
@@ -1039,6 +1079,7 @@ export function WorkItemDrawer({
         >
           <m.aside
             ref={panel}
+            tabIndex={-1}
             data-exiting={isPresent ? undefined : "true"}
             aria-hidden={isPresent ? undefined : true}
             {...(isPresent ? {} : { inert: "" })}
@@ -1055,7 +1096,7 @@ export function WorkItemDrawer({
             }}
             transition={{ ...tween.sheet, layout: spring.layout }}
             aria-label={item.title}
-            className="work-item-drawer relative flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
+            className="work-item-drawer relative outline-none flex min-h-0 min-w-0 shrink-0 flex-col rounded-2xl bg-card shadow-card"
             style={{ width: full ? "100%" : width, height: "100%" }}
             onKeyDown={(event) => {
               if (
@@ -1093,14 +1134,18 @@ export function WorkItemDrawer({
         >
           <SheetContent
             ref={sheetPanel}
+            tabIndex={-1}
             onExitComplete={safeToRemove ?? undefined}
-            className="work-item-drawer flex min-h-0 min-w-0 w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col overflow-hidden p-0 [&_button]:min-h-10 [&_button]:min-w-10 [&_summary]:min-h-10"
+            className="work-item-drawer outline-none flex min-h-0 min-w-0 w-[60vw] min-w-[min(600px,calc(100vw-32px))] flex-col overflow-hidden p-0 [&_button]:min-h-10 [&_button]:min-w-10 [&_summary]:min-h-10"
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => {
               event.preventDefault();
               const previous = document.activeElement;
               autoFocusing.current = true;
-              closeButton.current?.focus();
+              (keyboardInput && previous !== document.body
+                ? closeButton.current
+                : sheetPanel.current
+              )?.focus();
               autoFocusing.current = false;
               opener.current = previous instanceof HTMLElement ? previous : null;
             }}

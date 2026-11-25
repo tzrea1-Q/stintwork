@@ -294,8 +294,8 @@ test.each(["allow", "cancel"])(
         profile={{ ...attentionProfile, id: "codex", displayName: "Codex" }}
       />,
     );
-    expect(screen.getByText("Declining ends Codex’s turn.")).toBeInTheDocument();
-    expect(screen.getByText(/even when this drawer is closed/)).toBeInTheDocument();
+    expect(screen.getByText("Declining ends the agent’s turn.")).toBeInTheDocument();
+    expect(screen.queryByText(/even when this drawer is closed/)).not.toBeInTheDocument();
     const option = request.options.find((entry) => entry.optionId === optionId);
     await user.click(
       screen.getByRole("button", {
@@ -425,4 +425,11 @@ test("only live messages are marked as arriving", () => {
     </LanguageProvider>,
   );
   expect(screen.getByText("Live message").closest("[data-arriving]")).toBeInTheDocument();
+});
+
+test("live permission omits duplicate stint context", () => {
+  render(<StintStream stint={stint([request])} />);
+  const permission = screen.getByRole("region", { name: /git add/ });
+  expect(permission).toHaveTextContent("git add");
+  expect(permission).not.toHaveTextContent("Stint: stint");
 });

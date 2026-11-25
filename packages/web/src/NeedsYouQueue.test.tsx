@@ -1058,15 +1058,15 @@ test.each(["en", "zh-CN"] as const)(
   },
 );
 
-test("StintStream retains permission context by default", () => {
+test("StintStream omits repeated permission context", () => {
   const snapshot = attentionSnapshot();
   const stint = snapshot.workItems[0].activeStint;
   if (!stint) throw new Error("Expected active stint");
   render(<StintStream stint={stint} profile={attentionProfile} />);
   expect(
-    screen.getByText(en.review.visualRefresh07.permission, { exact: true }),
-  ).toBeInTheDocument();
-  expect(screen.getByText(/Agent: Test Agent · Stint:/)).toHaveTextContent("stint");
+    screen.queryByText(en.review.visualRefresh07.permission, { exact: true }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/Agent: Test Agent · Stint:/)).not.toBeInTheDocument();
 });
 
 test("compact gate approves and opens the work item", async () => {
