@@ -152,7 +152,9 @@ export function Column({
               </button>
             )}
           </div>
-          <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
+          {(running > 0 || waiting > 0) && (
+            <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
+          )}
         </header>
       )}
       <m.div

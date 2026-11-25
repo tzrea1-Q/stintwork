@@ -183,6 +183,7 @@ export const zhCN: Catalog = {
     unstaged: "未指定阶段的工作项",
     unstagedCount: (count) => `未指定阶段的工作项 · ${count}`,
     shipped: "已交付",
+    milestoneShipped: "来自已交付里程碑 · 未记录合并",
     emptyShipped: "还没有已交付的工作项。",
   },
   column: {

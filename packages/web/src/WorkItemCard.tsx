@@ -181,7 +181,9 @@ export const WorkItemCard = forwardRef<
               className="milestone-tag shrink-0 whitespace-nowrap rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
               title={milestone?.name}
             >
-              {milestone?.id ?? item.milestone}
+              {/^m\d+$/i.test(milestone?.id ?? item.milestone)
+                ? (milestone?.id ?? item.milestone).toUpperCase()
+                : (milestone?.name ?? item.milestone)}
             </span>
           )}
         </div>
@@ -236,6 +238,7 @@ export const WorkItemCard = forwardRef<
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
           {agent &&
+            (item.activeStint || item.stints.length > 0) &&
             (item.inferred ? (
               <TooltipProvider>
                 <Tooltip>
@@ -263,28 +266,31 @@ export const WorkItemCard = forwardRef<
             ) : (
               <AgentAvatar agent={agent.id} name={agent.displayName} active={running} size="sm" />
             ))}
-          <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
-              <span>
-                {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
-              </span>
-            ) : (
-              <>
+          {(item.tickets.length > 0 ||
+            (item.github && (!item.github.ticketsKnown || item.github.ticketsStale))) && (
+            <div className="ticket-progress ml-auto flex min-w-0 flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              {item.github && (!item.github.ticketsKnown || item.github.ticketsStale) ? (
                 <span>
-                  <RollingNumber value={resolved} />/{item.tickets.length}{" "}
-                  <span className="sr-only">{t.card.resolved}</span>
-                  {t.card.tickets}
+                  {item.github.ticketsKnown ? t.card.ticketsOutdated : t.card.ticketsNotLoaded}
                 </span>
-                <div className="w-11 shrink-0">
-                  <SegmentedProgress
-                    label={t.card.progress(item.slug)}
-                    total={item.tickets.length}
-                    value={resolved}
-                  />
-                </div>
-              </>
-            )}
-          </div>
+              ) : (
+                <>
+                  <span>
+                    <RollingNumber value={resolved} />/{item.tickets.length}{" "}
+                    <span className="sr-only">{t.card.resolved}</span>
+                    {t.card.tickets}
+                  </span>
+                  <div className="w-11 shrink-0">
+                    <SegmentedProgress
+                      label={t.card.progress(item.slug)}
+                      total={item.tickets.length}
+                      value={resolved}
+                    />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </m.div>
     </m.article>

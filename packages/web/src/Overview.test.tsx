@@ -195,7 +195,9 @@ test("keeps older recent stints when the seven day chart is empty", () => {
     expect(screen.getByRole("heading", { name: "Recent stints" })).toBeVisible();
     expect(screen.getByText("6 weeks ago")).toHaveAttribute(
       "title",
-      new Date(at).toLocaleString("en"),
+      new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short" }).format(
+        new Date(at),
+      ),
     );
   } finally {
     vi.useRealTimers();

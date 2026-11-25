@@ -247,7 +247,7 @@ test("Ship is not Shipped until merged; the drawer then retains history, finding
       name: /^first:/,
     }),
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("heading", { name: "Shipped" }));
+  await user.click(screen.getByRole("heading", { name: "Shipped", level: 2 }));
   expect(screen.getByRole("article", { name: /^first:/ })).toBeInTheDocument();
   shippedBoard.unmount();
   render(<WorkItemDrawer item={item} onClose={() => {}} />);

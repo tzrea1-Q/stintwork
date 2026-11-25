@@ -127,7 +127,7 @@ export const en = {
     reconnecting: "Reconnecting · Reading project periodically",
     lastAvailable: " Showing the last available project; retrying automatically.",
     allMilestones: "All milestones",
-    counts: (active: number, shipped: number) => `${active} active · ${shipped} shipped`,
+    counts: (active: number, shipped: number) => `${active} in flight · ${shipped} shipped`,
     createWorkItem: "New work item",
     githubStatus: {
       label: "GitHub discovery status",
@@ -176,6 +176,7 @@ export const en = {
     unstaged: "Work items without a stage",
     unstagedCount: (count: number) => `Work items without a stage · ${count}`,
     shipped: "Shipped",
+    milestoneShipped: "From shipped milestones · merge not recorded",
     emptyShipped: "No shipped work items yet.",
   },
   column: {

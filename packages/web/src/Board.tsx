@@ -21,7 +21,7 @@ import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { NeedsYouQueue } from "./NeedsYouQueue";
 import { Overview } from "./Overview";
-import { viewFromSearch, workItemDone } from "./overview-data";
+import { viewFromSearch, workItemDone, workItemInFlight } from "./overview-data";
 import { RoadmapEditor } from "./RoadmapEditor";
 import { TopBar } from "./TopBar";
 import { Button } from "./ui/Button";
@@ -114,10 +114,12 @@ export function Board({
     ? selectedMilestone
     : "";
   const visible = snapshot.workItems.filter((item) => !milestone || item.milestone === milestone);
-  const isShipped = (item: ProjectSnapshot["workItems"][number]) => !!item.merged;
-  const active = visible.filter((item) => !isShipped(item));
-  const shipped = visible.filter(isShipped);
-  const unstaged = active.filter((item) => item.column === undefined);
+  const inFlight = visible.filter((item) => workItemInFlight(item, snapshot));
+  const shipped = visible.filter((item) => item.merged);
+  const milestoneShipped = visible.filter(
+    (item) => !item.merged && !workItemInFlight(item, snapshot),
+  );
+  const unstaged = inFlight.filter((item) => item.column === undefined);
   const selected = snapshot.milestones.find((entry) => entry.id === milestone);
 
   function scrollStages(direction: -1 | 1) {
@@ -342,8 +344,11 @@ export function Board({
         >
           <BoardWorkflowFilter snapshot={snapshot} items={visible} openSlug={openSlug}>
             {(filtered, workflowPicker) => {
-              const filteredActive = active.filter((item) => filtered.includes(item));
+              const filteredActive = inFlight.filter((item) => filtered.includes(item));
               const filteredShipped = shipped.filter((item) => filtered.includes(item));
+              const filteredMilestoneShipped = milestoneShipped.filter((item) =>
+                filtered.includes(item),
+              );
               const filteredUnstaged = unstaged.filter((item) => filtered.includes(item));
               return (
                 <>
@@ -425,7 +430,9 @@ export function Board({
                                 {before}
                                 <RollingNumber value={filteredActive.length} />
                                 {middle}
-                                <RollingNumber value={filteredShipped.length} />
+                                <RollingNumber
+                                  value={filteredShipped.length + filteredMilestoneShipped.length}
+                                />
                                 {after}
                               </>
                             );
@@ -645,36 +652,75 @@ export function Board({
                               />
                               <h2>{t.board.shipped}</h2>
                               <span className="count min-w-5 rounded-sm bg-muted px-1 text-center text-xs text-muted-foreground">
-                                {filteredShipped.length}
+                                {filteredShipped.length + filteredMilestoneShipped.length}
                               </span>
                             </summary>
-                            {filteredShipped.length ? (
-                              <div
-                                className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3"
-                                data-card-column="shipped"
-                              >
-                                <AnimatePresence mode="popLayout">
-                                  {filteredShipped.map((item, index) => (
-                                    <WorkItemCard
-                                      workflow={snapshot.workflows[item.workflow]}
-                                      key={item.slug}
-                                      item={item}
-                                      index={index}
-                                      agents={snapshot.agents}
-                                      selected={openSlug === item.slug}
-                                      attentionCount={
-                                        snapshot.attentionItems.filter(
-                                          (entry) => entry.workItem === item.slug,
-                                        ).length
-                                      }
-                                      milestone={snapshot.milestones.find(
-                                        (entry) => entry.id === item.milestone,
-                                      )}
-                                      onOpen={openWorkItem}
-                                    />
-                                  ))}
-                                </AnimatePresence>
-                              </div>
+                            {filteredShipped.length + filteredMilestoneShipped.length ? (
+                              <>
+                                {filteredShipped.length > 0 && (
+                                  <h3 className="mt-3 text-xs">{t.board.shipped}</h3>
+                                )}
+                                <div
+                                  className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3"
+                                  data-card-column="shipped"
+                                >
+                                  <AnimatePresence mode="popLayout">
+                                    {filteredShipped.map((item, index) => (
+                                      <WorkItemCard
+                                        workflow={snapshot.workflows[item.workflow]}
+                                        key={item.slug}
+                                        item={item}
+                                        index={index}
+                                        agents={snapshot.agents}
+                                        selected={openSlug === item.slug}
+                                        attentionCount={
+                                          snapshot.attentionItems.filter(
+                                            (entry) => entry.workItem === item.slug,
+                                          ).length
+                                        }
+                                        milestone={snapshot.milestones.find(
+                                          (entry) => entry.id === item.milestone,
+                                        )}
+                                        onOpen={openWorkItem}
+                                      />
+                                    ))}
+                                  </AnimatePresence>
+                                </div>
+                                {filteredMilestoneShipped.length > 0 && (
+                                  <section>
+                                    <h3 className="mt-3 text-xs">{t.board.milestoneShipped}</h3>
+                                    <div className="auxiliary-items grid grid-cols-[repeat(auto-fill,minmax(180px,220px))] gap-3 mt-3">
+                                      {filteredMilestoneShipped.map((item, index) => (
+                                        <div key={item.slug}>
+                                          <WorkItemCard
+                                            workflow={snapshot.workflows[item.workflow]}
+                                            item={item}
+                                            index={index}
+                                            agents={snapshot.agents}
+                                            selected={openSlug === item.slug}
+                                            attentionCount={
+                                              snapshot.attentionItems.filter(
+                                                (entry) => entry.workItem === item.slug,
+                                              ).length
+                                            }
+                                            milestone={snapshot.milestones.find(
+                                              (entry) => entry.id === item.milestone,
+                                            )}
+                                            onOpen={openWorkItem}
+                                          />
+                                          <Button
+                                            variant="link"
+                                            type="button"
+                                            onClick={() => openWorkItem(item.slug)}
+                                          >
+                                            {t.markShipped.mark}
+                                          </Button>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </section>
+                                )}
+                              </>
                             ) : (
                               <p className="py-4 text-xs muted text-muted-foreground">
                                 {t.board.emptyShipped}

@@ -16,6 +16,7 @@ import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
 import { WorkItemCard } from "./WorkItemCard";
+import { workItemInFlight } from "./overview-data";
 
 const files = {
   ".stintwork/roadmap.md":
@@ -71,9 +72,9 @@ test.each([
   expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
   expect(screen.queryByRole("navigation", { name: /breadcrumb/i })).not.toBeInTheDocument();
   const toolbar = document.querySelector(".board-toolbar") as HTMLElement;
-  const shipped = snapshot.workItems.filter((item) => item.merged).length;
+  const inFlight = snapshot.workItems.filter((item) => workItemInFlight(item, snapshot)).length;
   expect(toolbar.querySelector(".board-stats")).toHaveTextContent(
-    t.board.counts(snapshot.workItems.length - shipped, shipped),
+    t.board.counts(inFlight, snapshot.workItems.length - inFlight),
   );
   expect(within(toolbar).getByRole("status")).toHaveTextContent(t.board.reconnecting);
   unmount();
@@ -324,7 +325,11 @@ test("the toolbar milestone picker supports keyboard selection and dismissal wit
 
 test("shows blocked and exposes inference by keyboard", async () => {
   const user = userEvent.setup();
-  render(<Board snapshot={project()} />);
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  item.stints = attentionSnapshot().workItems[0].stints;
+  render(<Board snapshot={snapshot} />);
   const board = within(screen.getByRole("article", { name: /^board:/ }));
   expect(board.getByText("Blocked")).toBeInTheDocument();
   const trigger = board.getByRole("button", { name: /Inferred/ });
@@ -407,9 +412,9 @@ test.each([
 test("keeps shipped work collapsed and separate from active stages", async () => {
   const user = userEvent.setup();
   render(<Board snapshot={project()} />);
-  const lane = screen.getByRole("heading", { name: "Shipped" }).closest("details");
+  const lane = screen.getByRole("heading", { name: "Shipped", level: 2 }).closest("details");
   expect(lane).not.toHaveAttribute("open");
-  await user.click(screen.getByRole("heading", { name: "Shipped" }));
+  await user.click(screen.getByRole("heading", { name: "Shipped", level: 2 }));
   expect(lane).toHaveAttribute("open");
   expect(screen.getByRole("article", { name: /^shipped:/ })).toBeInTheDocument();
   expect(screen.getByRole("article", { name: /^previous:/ })).toBeInTheDocument();
@@ -801,9 +806,9 @@ test("opens a shipped work item from the palette and reveals its card on return"
   expect(screen.getByRole("dialog", { name: "Merged work item" })).toBeInTheDocument();
   await user.keyboard("{Escape}");
   expect(screen.getByRole("button", { name: "Open shipped: Merged work item" })).toHaveFocus();
-  expect(screen.getByRole("heading", { name: "Shipped" }).closest("details")).toHaveAttribute(
-    "open",
-  );
+  expect(
+    screen.getByRole("heading", { name: "Shipped", level: 2 }).closest("details"),
+  ).toHaveAttribute("open");
 });
 
 test("searches the palette by slug and supports its keyboard close button", async () => {
@@ -1227,8 +1232,8 @@ test.each([
         <Board snapshot={snapshot()} />
       </LanguageProvider>,
     );
-    expect(card().querySelector(".ticket-progress")).toHaveTextContent("0/0");
-    expect(within(card()).getByRole("progressbar")).toBeInTheDocument();
+    expect(card().querySelector(".ticket-progress")).not.toBeInTheDocument();
+    expect(within(card()).queryByRole("progressbar")).not.toBeInTheDocument();
     localStorage.removeItem(languageStorageKey);
   },
 );
@@ -1370,15 +1375,15 @@ test("idle card keeps its identity and progress without status rows", () => {
   const card = screen.getByRole("article");
   expect(within(card).getByText(item.title)).toBeInTheDocument();
   expect(within(card).getByText(item.slug)).toBeInTheDocument();
-  expect(within(card).getByText("m1")).toBeInTheDocument();
-  expect(within(card).getByRole("img", { name: "codex" })).toBeInTheDocument();
+  expect(within(card).getByText("M1")).toBeInTheDocument();
+  expect(within(card).queryByRole("img", { name: "codex" })).not.toBeInTheDocument();
   expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuemax", "2");
   expect(within(card).queryByText("No active stint")).not.toBeInTheDocument();
   expect(within(card).queryByText("Inferred")).not.toBeInTheDocument();
   expect(within(card).queryByText("Stopped")).not.toBeInTheDocument();
 });
 
-test("columns always show running and waiting counts", () => {
+test("columns show running and waiting counts only when nonzero", () => {
   const snapshot = project();
   const item = snapshot.workItems.find((entry) => entry.slug === "board");
   if (!item) throw new Error("Missing board fixture");
@@ -1404,8 +1409,8 @@ test("columns always show running and waiting counts", () => {
     within(screen.getByRole("region", { name: "Implement" })).getByText("1 running · 0 waiting"),
   ).toBeInTheDocument();
   expect(
-    within(screen.getByRole("region", { name: "Ship" })).getByText("0 running · 0 waiting"),
-  ).toBeInTheDocument();
+    within(screen.getByRole("region", { name: "Ship" })).queryByText("0 running · 0 waiting"),
+  ).not.toBeInTheDocument();
 });
 
 test("stopped chip reflects only a stopped stint in the current stage of an unmerged item", () => {
@@ -1588,4 +1593,51 @@ test("Overview attention rows focus their queue item; top bar opens at the top",
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
   queue = screen.getByRole("dialog", { name: "Needs you 1" });
   expect(within(queue).getByRole("button", { name: "Close Needs you" })).toHaveFocus();
+});
+
+test("separates merged and shipped milestone items from work in flight", async () => {
+  const snapshot = project();
+  const merged = snapshot.workItems.find((item) => item.slug === "shipped");
+  const historical = snapshot.workItems.find((item) => item.slug === "previous");
+  const active = snapshot.workItems.find((item) => item.slug === "board");
+  if (!merged || !historical || !active) throw new Error("Missing board fixtures");
+  historical.merged = undefined;
+  historical.column = "implement";
+  snapshot.workItems = [merged, historical, active];
+  render(<Board snapshot={snapshot} />);
+  const column = screen.getByRole("region", { name: "Implement" });
+  expect(within(column).getAllByRole("article")).toHaveLength(1);
+  expect(within(column).getByRole("article")).toHaveAccessibleName(/^board:/);
+  expect(document.querySelector(".board-stats")).toHaveTextContent("1 in flight · 2 shipped");
+  const lane = document.querySelector(".shipped-lane") as HTMLElement;
+  expect(lane.querySelector("summary .count")).toHaveTextContent("2");
+  await userEvent.setup().click(within(lane).getByRole("heading", { name: "Shipped", level: 2 }));
+  expect(within(lane).getByRole("heading", { name: "Shipped", level: 3 })).toBeInTheDocument();
+  expect(
+    within(lane).getByRole("heading", { name: "From shipped milestones · merge not recorded" }),
+  ).toBeInTheDocument();
+  expect(within(lane).getByRole("article", { name: /^shipped:/ })).toBeInTheDocument();
+  expect(within(lane).getByRole("article", { name: /^previous:/ })).toBeInTheDocument();
+  await userEvent.setup().click(within(lane).getByRole("button", { name: "Mark as shipped" }));
+  expect(screen.getByRole("dialog", { name: "Previous work item" })).toBeInTheDocument();
+});
+
+test("card hides empty ticket and stint data and formats milestone ids", () => {
+  const snapshot = project();
+  const item = snapshot.workItems.find((entry) => entry.slug === "board");
+  if (!item) throw new Error("Missing board fixture");
+  render(
+    <WorkItemCard
+      item={{ ...item, milestone: "m15", tickets: [], stints: [], activeStint: null }}
+      milestone={{ ...snapshot.milestones[0], id: "m15" }}
+      workflow={snapshot.workflows[item.workflow]}
+      agents={snapshot.agents}
+      onOpen={() => {}}
+    />,
+  );
+  const card = screen.getByRole("article");
+  expect(within(card).getByText("M15")).toBeInTheDocument();
+  expect(card.querySelector(".ticket-progress")).not.toBeInTheDocument();
+  expect(within(card).queryByRole("progressbar")).not.toBeInTheDocument();
+  expect(within(card).queryByRole("img")).not.toBeInTheDocument();
 });
