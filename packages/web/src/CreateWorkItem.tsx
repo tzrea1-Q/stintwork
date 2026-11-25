@@ -2,7 +2,7 @@
 
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
 import { FileText, X } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
@@ -42,6 +42,7 @@ export function CreateWorkItem({
   onCreated: () => void;
 }) {
   const { t } = useLanguage();
+  const titleRef = useRef<HTMLInputElement>(null);
   const slugHintId = useId();
   const selectId = useId();
   const [title, setTitle] = useState("");
@@ -145,6 +146,10 @@ export function CreateWorkItem({
     >
       <DialogContent
         onExitComplete={onExitComplete}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          titleRef.current?.focus();
+        }}
         className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
@@ -156,7 +161,9 @@ export function CreateWorkItem({
         <div className="flex items-start justify-between gap-3">
           <div>
             <DialogTitle className="text-xl font-medium">{t.planning.create.title}</DialogTitle>
-            <DialogDescription>{t.planning.create.description}</DialogDescription>
+            <DialogDescription className="mt-1 text-sm text-muted-foreground">
+              {t.planning.create.description}
+            </DialogDescription>
           </div>
           <TooltipProvider>
             <Tooltip>
@@ -186,7 +193,7 @@ export function CreateWorkItem({
               {t.planning.create.titleLabel}
               <Input
                 id={`${selectId}-title`}
-                autoFocus
+                ref={titleRef}
                 required
                 value={title}
                 onChange={(event) => setTitle(event.target.value)}

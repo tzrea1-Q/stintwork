@@ -18,7 +18,9 @@ for (const width of [1440, 390]) {
       socket.send(JSON.stringify(dialogSnapshot)),
     );
     await page.goto("/?view=pipeline");
-    const trigger = page.getByRole("button", { name: en.planning.create.title, exact: true });
+    const trigger = page
+      .locator(".board-toolbar-actions")
+      .getByRole("button", { name: en.board.createWorkItem, exact: true });
     const selector = '[role="dialog"]';
     await trigger.click();
     const frames = await sampleFrames(page, selector, 700);
