@@ -242,6 +242,17 @@ Spec: `.scratch/motion/spec.md`. Decision: ADR 0022.
 
 **Exit test:** `e2e/motion.spec.ts` and the full browser suite pass. The maintainer walks the main surfaces on this repository's real data at 1440 and 390px, with motion on and with reduced motion, and accepts the result.
 
+### M18 · Overview polish · M
+
+Spec: `.scratch/overview-polish/spec.md`.
+
+- Fix the 2026-11-24 audit of Overview and the surfaces it opens: opening work items from Overview, one setup count, honest Overview numbers (work in flight, ticket-based milestone progress, recent activity, readable durations).
+- Rebuild the Overview layout without holes or empty card space, with status colours, tokens and aligned edges.
+- Give the Needs you queue one item layout, ordering by urgency and a compact gate summary.
+- Tidy Create work item, Jump to and Project setup, with shared Input and Textarea components.
+
+**Exit test:** the browser suite passes at 1440, 1024, 768, 390 and 360px in `en` and `zh-CN` and both colour schemes, and the maintainer walks Overview, Needs you, Create work item, Jump to, Settings and Project setup on this repository's real data at 1440, 768 and 390px in both languages and accepts the result.
+
 ### Open questions for v0.2
 
 1. **GitHub tracker files — decided.** The parent issue body is the spec; the issue-keyed committed workflow file holds revision-bound approvals. See ADR 0013 and `.scratch/github-tracker/spec.md`.

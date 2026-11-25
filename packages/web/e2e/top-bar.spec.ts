@@ -363,6 +363,10 @@ for (const language of ["en", "zh-CN"] as const) {
         await warningsTrigger.click();
         const warnings = page.locator(".needs-you-queue");
         await expect(warnings).toHaveAttribute("data-state", "open");
+        await expect(warnings.locator("footer")).toHaveCount(0);
+        await expect(
+          warnings.getByRole("button", { name: t.needsYou.enableNotifications }),
+        ).toBeInViewport();
         const projectWarnings = warnings.getByRole("region", { name: t.topBar.projectWarnings });
         await expect(projectWarnings).toBeVisible();
         await expect(warnings.getByText(t.needsYou.empty, { exact: true })).toBeVisible();
@@ -403,12 +407,21 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.keyboard.press("Escape");
         await expect(warningsTrigger).toBeFocused();
 
+        const snapshotResponse = await page.request.get("/api/project");
+        expect(snapshotResponse.ok()).toBe(true);
+        const snapshot = await snapshotResponse.json();
+        const checks: { status: string }[] = snapshot.setup.checks;
+        const ready = checks.filter((check) => check.status === "ready").length;
         const setupTrigger = header.locator("#settings-trigger");
-        await expect(setupTrigger).toHaveAccessibleDescription(t.topBar.setupIncomplete);
+        if (checks.some((check) => check.status === "needs-change"))
+          await expect(setupTrigger).toHaveAccessibleDescription(t.topBar.setupIncomplete);
+        else await expect(setupTrigger).not.toHaveAttribute("aria-describedby");
         const openSetup = async () => {
           await setupTrigger.click();
           await expect(page.getByRole("menu")).toHaveAttribute("data-state", "open");
-          const item = page.getByRole("menuitem", { name: `${t.topBar.projectSetup} 3/5` });
+          const item = page.getByRole("menuitem", {
+            name: `${t.topBar.projectSetup} ${ready}/${checks.length}`,
+          });
           await expect(item).toBeVisible();
           await item.click();
           await expect(page.locator(".setup-guide")).toHaveAttribute("data-state", "open");
@@ -425,17 +438,17 @@ for (const language of ["en", "zh-CN"] as const) {
         ).toBeChecked();
         await expect(setup).toHaveAccessibleDescription(t.planning.setup.description);
         const setupBody = setup.locator(".setup-body");
-        const checks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
-        await expect(checks).toBeVisible();
+        const setupChecks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
+        await expect(setupChecks).toBeVisible();
         const bodyBounds = await setupBody.boundingBox();
-        const checksBounds = await checks.boundingBox();
+        const checksBounds = await setupChecks.boundingBox();
         expect(bodyBounds).not.toBeNull();
         expect(checksBounds).not.toBeNull();
         expect((checksBounds?.y ?? 0) - (bodyBounds?.y ?? 0)).toBeLessThan(
           (bodyBounds?.height ?? 0) * 0.4,
         );
         await expect(
-          checks.getByText(t.planning.setup.checks.agents.name, { exact: true }),
+          setupChecks.getByText(t.planning.setup.checks.agents.name, { exact: true }),
         ).toBeVisible();
         const setupWarnings = setup.getByRole("alert", { name: t.warningCallout.title(2) });
         await expect(setupWarnings.getByText(warningFirstLine, { exact: true })).toBeVisible();
@@ -562,7 +575,7 @@ for (const language of ["en", "zh-CN"] as const) {
           else if (state === "error")
             await expect(setup.getByRole("alert")).toHaveText(t.planning.setup.errors.load);
           else {
-            const checks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
+            const setupChecks = setup.getByRole("group", { name: t.planning.setup.projectChecks });
             const complete = setup.getByText(t.planning.setup.noChanges, { exact: true });
             await expect(
               setup.getByText(t.planning.setup.skillSummary("Codex", 0, 1, 0), { exact: true }),
@@ -570,15 +583,15 @@ for (const language of ["en", "zh-CN"] as const) {
             await expect(setup.getByRole("checkbox")).toHaveCount(0);
             if (state === "empty") {
               await expect(complete).toBeVisible();
-              await expect(checks).toHaveCount(0);
+              await expect(setupChecks).toHaveCount(0);
               await expect(
                 setup.getByRole("button", { name: t.planning.setup.close, exact: true }),
               ).toBeEnabled();
             } else {
               await expect(complete).toHaveCount(0);
-              await expect(checks).toBeVisible();
+              await expect(setupChecks).toBeVisible();
               await expect(
-                checks.getByText(t.planning.setup.noAutomaticFix, { exact: true }),
+                setupChecks.getByText(t.planning.setup.noAutomaticFix, { exact: true }),
               ).toBeVisible();
               await expect(
                 setup.getByRole("button", { name: t.planning.setup.review(0), exact: true }),

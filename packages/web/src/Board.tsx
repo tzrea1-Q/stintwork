@@ -1,8 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
-import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
+import {
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  Layers3,
+  ShieldAlert,
+} from "lucide-react";
 import { AnimatePresence, LayoutGroup, MotionConfig, MotionGlobalConfig, m } from "motion/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
 import { BoardMotionContext, countBoardChanges } from "./board-motion";
 import { Column } from "./Column";
@@ -88,6 +95,7 @@ export function Board({
   useEffect(() => {
     if (customiseId) setCustomiseMounted(true);
   }, [customiseId]);
+  const [focusAttentionId, setFocusAttentionId] = useState<string | null>(null);
   const [needsYouOpen, setNeedsYouOpen] = useState(false);
   const [needsYouMounted, setNeedsYouMounted] = useState(false);
   useEffect(() => {
@@ -135,17 +143,19 @@ export function Board({
     });
   }
 
-  const openWorkItem = useCallback(
-    (slug: string) => {
-      if (
-        milestone &&
-        snapshot.workItems.find((item) => item.slug === slug)?.milestone !== milestone
-      )
-        setSelectedMilestone("");
-      setOpenSlug(slug);
-    },
-    [milestone, snapshot.workItems],
-  );
+  const [drawerVersion, setDrawerVersion] = useState(0);
+  function openWorkItem(slug: string, overview = false) {
+    if (overview) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "overview");
+      window.history.replaceState(window.history.state, "", url);
+      setDrawerVersion((version) => version + 1);
+    }
+    if (view === "overview") changeView("pipeline");
+    if (milestone && snapshot.workItems.find((item) => item.slug === slug)?.milestone !== milestone)
+      setSelectedMilestone("");
+    setOpenSlug(slug);
+  }
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -277,20 +287,32 @@ export function Board({
         snapshot={snapshot}
         view={view}
         onViewChange={changeView}
-        onOpenNeedsYou={() => setNeedsYouOpen(true)}
+        onOpenNeedsYou={() => {
+          setFocusAttentionId(null);
+          setNeedsYouOpen(true);
+        }}
         onOpenPalette={() => {
           if (!paletteOpen) setPaletteInstance((instance) => instance + 1);
           setPaletteOpen(true);
         }}
       />
       {snapshot.attentionItems.some((item) => item.kind === "permission") && (
-        <button
-          type="button"
-          className="border-b border-attention/30 bg-card px-4 py-2 text-left text-sm text-attention-foreground"
-          onClick={() => setNeedsYouOpen(true)}
-        >
-          {t.needsYou.pendingPermissions}
-        </button>
+        <div className="page-width pt-4">
+          <button
+            type="button"
+            aria-label={t.needsYou.pendingPermissions}
+            className="flex w-full items-center gap-2 rounded-lg bg-attention-soft p-3 text-left text-sm text-attention-foreground"
+            onClick={() => {
+              setFocusAttentionId(null);
+              setNeedsYouOpen(true);
+            }}
+          >
+            <ShieldAlert className="size-icon-md shrink-0" aria-hidden="true" />
+            <span className="flex-1">{t.needsYou.pendingPermissions}</span>
+            <span aria-hidden="true">{t.overview.openQueue}</span>
+            <ChevronRight className="size-icon-sm shrink-0" aria-hidden="true" />
+          </button>
+        </div>
       )}
       {view === "overview" && (
         <Overview
@@ -298,11 +320,11 @@ export function Board({
           connection={connection}
           error={error}
           onPipeline={() => changeView("pipeline")}
-          onOpenItem={(slug) => {
-            changeView("pipeline");
-            openWorkItem(slug);
+          onOpenItem={openWorkItem}
+          onNeedsYou={(id) => {
+            setFocusAttentionId(id ?? null);
+            setNeedsYouOpen(true);
           }}
-          onNeedsYou={() => setNeedsYouOpen(true)}
           onCreate={() => setCreateOpen(true)}
           onMilestone={(id) => {
             setSelectedMilestone(id);
@@ -680,9 +702,12 @@ export function Board({
               pendingPermissions={snapshot.attentionItems.some(
                 (item) => item.kind === "permission",
               )}
-              onOpenNeedsYou={() => setNeedsYouOpen(true)}
+              onOpenNeedsYou={() => {
+                setFocusAttentionId(null);
+                setNeedsYouOpen(true);
+              }}
               warnings={snapshot.warnings}
-              key={openItem.slug}
+              key={`${openItem.slug}:${drawerVersion}`}
               item={drawerItem}
               githubRetryAt={snapshot.github?.retryAt}
               githubReadOnly={
@@ -715,6 +740,7 @@ export function Board({
       {(needsYouOpen || needsYouMounted) && (
         <NeedsYouQueue
           open={needsYouOpen}
+          focusAttentionId={focusAttentionId}
           onExitComplete={() => setNeedsYouMounted(false)}
           snapshot={snapshot}
           alerts={alerts}

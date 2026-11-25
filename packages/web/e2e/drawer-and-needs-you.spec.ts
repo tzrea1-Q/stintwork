@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import type { ProjectSnapshot } from "@stintwork/core";
-import { codexProfile, claudeProfile } from "../../agents/src/profiles";
+import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
+import { richClock, richSnapshotWithEveryKind } from "./rich.fixture";
 
 const longPath = `/worktrees/${"long-directory-工程/".repeat(14)}example.ts`;
 const wideCode = `const longExample = "${"unbroken-code-原文".repeat(100)}";`;
@@ -300,7 +301,7 @@ for (const language of ["en", "zh-CN"] as const) {
           sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
         ).toBeVisible();
         await expect(sheet.getByText(t.needsYou.staleApprovalDetails(stage))).toBeVisible();
-        const reopen = sheet.getByRole("button", { name: t.stints.reopen(stage) });
+        const reopen = sheet.getByRole("button", { name: t.needsYou.reopenStage(stage) });
         await reopen.scrollIntoViewIfNeeded();
         await expect(reopen).toBeVisible();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-approval-stale");
@@ -437,9 +438,7 @@ for (const language of ["en", "zh-CN"] as const) {
         ).toBeDisabled();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-answer-pending");
         releaseAnswer();
-        await expect(sheet.locator('.needs-you-footer [role="alert"]')).toContainText(
-          t.needsYou.permissionFailed,
-        );
+        await expect(first.getByRole("alert")).toContainText(t.needsYou.permissionFailed);
         await expect(answer).toBeEnabled();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-error");
         await answer.click();
@@ -580,3 +579,73 @@ test("detail resizing persists and full screen fills the board area", async ({ p
   await expect(drawer.getByRole("button", { name: en.stints.collapseDetail })).toHaveCount(0);
   await expect(drawer.getByRole("button", { name: en.stints.expandDetail })).toHaveCount(0);
 });
+
+for (const language of ["en", "zh-CN"] as const) {
+  for (const width of [1440, 390]) {
+    test(`Needs you all seven kinds ${width}px ${language}`, async ({ page }, testInfo) => {
+      const t = language === "en" ? en : zhCN;
+      const snapshot = richSnapshotWithEveryKind();
+      await page.setViewportSize({ width, height: 900 });
+      await page.clock.setFixedTime(new Date(richClock));
+      await page.addInitScript(
+        (choice) => localStorage.setItem("stintwork.language", choice),
+        language,
+      );
+      await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+      await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
+      await page.goto("/?view=overview");
+      await expect(page.locator("html")).toHaveAttribute("lang", language);
+      await page.locator("#needs-you-trigger").click();
+      const sheet = page.locator(".needs-you-queue");
+      const items = sheet.locator("[data-attention-kind]");
+      await expect(items).toHaveCount(snapshot.attentionItems.length);
+      const priority = [
+        "permission",
+        "login-required",
+        "gate-ready",
+        "handoff-unresolved",
+        "memory-proposal",
+        "checkpoint-warning",
+        "approval-stale",
+      ];
+      const kinds = await items.evaluateAll((elements) =>
+        elements.map((element) => element.getAttribute("data-attention-kind")),
+      );
+      expect(kinds.length).toBeGreaterThanOrEqual(7);
+      expect([...new Set(kinds)]).toEqual(priority);
+      expect(kinds.map((kind) => priority.indexOf(kind ?? ""))).toEqual(
+        kinds.map((kind) => priority.indexOf(kind ?? "")).sort((a, b) => a - b),
+      );
+      for (const item of await items.all())
+        await expect(item.locator(":scope > h3")).toHaveCount(1);
+      await expect(
+        sheet
+          .locator('[data-attention-kind="gate-ready"]')
+          .getByRole("button", { name: t.needsYou.openGate }),
+      ).toHaveCount(1);
+      if (language === "zh-CN") {
+        const copy = await items
+          .locator(":scope > h3, :scope > [data-queue-metadata]")
+          .allTextContents();
+        for (const line of copy)
+          expect(line).not.toMatch(
+            /Memory proposal|Login required|Gate ready|Approval stale|Unresolved handoff|Checkpoint warnings/i,
+          );
+      }
+      const content = sheet.locator(".needs-you-content");
+      await scrollContent(content);
+      const dimensions = await content.evaluate((element) => ({
+        max: element.scrollHeight - element.clientHeight,
+        step: Math.max(1, Math.floor(element.clientHeight * 0.8)),
+      }));
+      for (let offset = 0, index = 0; ; offset += dimensions.step, index++) {
+        const top = Math.min(offset, dimensions.max);
+        await content.evaluate((element, value) => {
+          element.scrollTop = value;
+        }, top);
+        await captureSheet(page, testInfo, ".needs-you-queue", `needs-you-all-kinds-${index}`);
+        if (top === dimensions.max) break;
+      }
+    });
+  }
+}

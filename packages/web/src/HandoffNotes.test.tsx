@@ -56,7 +56,7 @@ test.each(["note", "dismiss"])(
     const { rerender } = render(<Board snapshot={snapshot} />);
     await user.click(screen.getByRole("button", { name: "Needs you 1" }));
     const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
-    expect(queue.getByText("Handoff · Test Agent")).toBeInTheDocument();
+    expect(queue.getByRole("heading", { name: "Unresolved handoff" })).toBeInTheDocument();
     expect(queue.getByText("format", { selector: "strong" })).toBeInTheDocument();
     expect(queue.getByText(/Ticket 01 · Stint/)).toHaveTextContent("stint");
     expect(queue.getByRole("button", { name: "Save developer note" })).toBeDisabled();
@@ -92,7 +92,8 @@ test("cancel keeps the handoff; confirming records its resolution and returns fo
   await user.click(trigger);
   await user.keyboard("{Escape}");
   expect(trigger).toHaveFocus();
-  expect(screen.getByText("Handoff · Test Agent")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Unresolved handoff" })).toBeInTheDocument();
+  expect(screen.getByText(/Test Agent · Ticket 01 · Stint/)).toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
   await user.click(trigger);
   await user.click(
@@ -131,10 +132,10 @@ test("failed handoff answers keep the note editable and allow retry without clai
   const textarea = screen.getByRole("textbox", { name: "Developer note" });
   await user.type(textarea, "Use CSV.");
   await user.click(screen.getByRole("button", { name: "Save developer note" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Unresolved handoff: Could not persist the answer.",
-  );
+  const item = screen.getByRole("article", { name: "Unresolved handoff" });
+  expect(await within(item).findByRole("alert")).toHaveTextContent("Could not persist the answer.");
   expect(textarea).toHaveValue("Use CSV.");
+  expect(textarea).toBeEnabled();
   expect(screen.queryByText("Handoff answered.")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Save developer note" }));
   expect(await screen.findByText("Handoff answered.")).toBeInTheDocument();

@@ -66,7 +66,10 @@ function append(existing: string | null, block: string) {
   return existing ? `${existing}${existing.endsWith("\n") ? "\n" : "\n\n"}${block}` : block;
 }
 
-export function planSetup(files: RepoFiles): SetupPlan {
+export function planSetup(
+  files: RepoFiles,
+  github?: { repositoryId: string; error?: string },
+): SetupPlan {
   const setup = detectSetup(files);
   const plan: SetupPlan = {
     tracker: setup.tracker,
@@ -158,5 +161,7 @@ export function planSetup(files: RepoFiles): SetupPlan {
     { id: "glossary", ready: setup.hasGlossary, status: setup.hasGlossary ? "ready" : "optional" },
     { id: "adrs", ready: setup.hasAdrs, status: setup.hasAdrs ? "ready" : "optional" },
   ];
+  if (plan.tracker === "github-issues" && github?.repositoryId && !github.error)
+    plan.checks[0] = { id: "tracker", ready: true, status: "ready" };
   return plan;
 }

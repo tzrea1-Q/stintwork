@@ -54,12 +54,14 @@
   --agent-grok-soft: oklch(0.657 0.016 286 / 14%);
   --agent-antigravity: oklch(0.6304 0.18 259.96);
   --agent-antigravity-soft: oklch(0.624 0.188 259.81 / 14%);
-  --overview-focus-start: #39307a;
-  --overview-focus-middle: #574dc1;
-  --overview-focus-end: #567dbc;
-  --overview-focus-glow: #ce9069;
-  --overview-chart: #bdb5ed;
-  --overview-chart-today: #7163d5;
+  --overview-focus-text: oklch(1 0 0);
+  --overview-focus-muted: oklch(1 0 0 / 80%);
+  --overview-focus-button: oklch(1 0 0);
+  --overview-focus-button-foreground: oklch(0.2775 0.044 292.87);
+  --overview-focus-start: oklch(0.3633 0.1212 284.12);
+  --overview-focus-middle: oklch(0.4968 0.175 281.83);
+  --overview-focus-end: oklch(0.5888 0.1067 259.64);
+  --overview-focus-glow: oklch(0.7057 0.0924 52.85);
   --chart-1: oklch(0.5632 0.1404 256.72);
   --chart-2: oklch(0.6543 0.1719 285.99);
   --chart-3: oklch(0.5502 0.0963 162.79);
@@ -71,6 +73,10 @@
   --space-unit: 4px;
   --shadow-card: 0 1px 2px oklch(0 0 0 / 4%), 0 8px 24px -8px oklch(0 0 0 / 6%);
   --shadow-overlay: 0 8px 32px oklch(0 0 0 / 20%);
+  --page-width: 1500px;
+  --type-display: 66px;
+  --type-display-unit: 33px;
+  --type-hero-title: 28px;
   --type-xs: 11px;
   --type-sm: 12px;
   --type-base: 14px;
@@ -123,12 +129,14 @@
   --stopped: oklch(0.7638 0.0155 286.03);
   --stopped-soft: oklch(0.2624 0.0093 285.74);
   --stopped-foreground: oklch(0.7638 0.0155 286.03);
-  --overview-focus-start: #272052;
-  --overview-focus-middle: #494095;
-  --overview-focus-end: #39557f;
-  --overview-focus-glow: #a86d50;
-  --overview-chart: #796fba;
-  --overview-chart-today: #a99ff3;
+  --overview-focus-text: oklch(1 0 0);
+  --overview-focus-muted: oklch(1 0 0 / 80%);
+  --overview-focus-button: oklch(1 0 0);
+  --overview-focus-button-foreground: oklch(0.2775 0.044 292.87);
+  --overview-focus-start: oklch(0.2823 0.0878 285.7);
+  --overview-focus-middle: oklch(0.4283 0.1346 283.95);
+  --overview-focus-end: oklch(0.4471 0.0772 258.28);
+  --overview-focus-glow: oklch(0.5908 0.0864 46.75);
   --chart-1: oklch(0.7962 0.1039 256.74);
   --chart-2: oklch(0.7376 0.1368 289.78);
   --chart-3: oklch(0.8181 0.1058 160.8);
@@ -198,6 +206,16 @@
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
   --radius-2xl: calc(var(--radius) + 8px);
+  --text-display: var(--type-display);
+  --text-display-unit: var(--type-display-unit);
+  --text-hero-title: var(--type-hero-title);
+  --font-weight-display: 650;
+  --tracking-display: -0.08em;
+  --spacing-overview-chart: 140px;
+  --color-overview-focus-text: var(--overview-focus-text);
+  --color-overview-focus-muted: var(--overview-focus-muted);
+  --color-overview-focus-button: var(--overview-focus-button);
+  --color-overview-focus-button-foreground: var(--overview-focus-button-foreground);
   --text-xs: var(--type-xs);
   --text-sm: var(--type-sm);
   --text-base: var(--type-base);
@@ -208,4 +226,17 @@
   --spacing-icon-lg: 24px;
   --shadow-card: var(--shadow-card);
   --shadow-overlay: var(--shadow-overlay);
+}
+
+@utility page-width {
+  width: 100%;
+  max-width: var(--page-width);
+  margin-inline: auto;
+  padding-inline: --spacing(2);
+  @media (width >= 40rem) {
+    padding-inline: --spacing(4);
+  }
+  @media (width >= 80rem) {
+    padding-inline: --spacing(7);
+  }
 }

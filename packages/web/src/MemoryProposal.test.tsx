@@ -45,6 +45,9 @@ test.each(["accepted", "rejected"] as const)(
     const { rerender } = render(<Board snapshot={snapshot} />);
     await user.click(screen.getByRole("button", { name: "Needs you 1" }));
     const article = within(screen.getByRole("article", { name: proposal.title }));
+    expect(article.queryByRole("heading", { name: "GLOSSARY.md" })).not.toBeInTheDocument();
+    expect(article.getByRole("heading", { name: proposal.title })).toBeInTheDocument();
+    expect(article.getByLabelText("Diff for GLOSSARY.md").closest("[data-slot=card]")).toBeNull();
     expect(article.getByLabelText("Diff for GLOSSARY.md").textContent).toBe(proposal.diff);
     expect(article.getByLabelText("Diff for GLOSSARY.md").querySelector("script")).toBeNull();
     expect(article.getByText(/including any later committed changes/)).toBeInTheDocument();

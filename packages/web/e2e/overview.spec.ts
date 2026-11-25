@@ -7,6 +7,7 @@ import { overviewData } from "../src/overview-data";
 import { recoveryStint } from "../src/recovery-test-fixtures";
 import { dialogReview, dialogSnapshot, gate } from "./dialogs.fixture";
 import { assertLayout } from "./layout-check";
+import { assertOverviewCards } from "./overview-checks";
 import { richClock, richSnapshot } from "./rich.fixture";
 
 for (const language of ["en", "zh-CN"] as const) {
@@ -29,14 +30,26 @@ for (const language of ["en", "zh-CN"] as const) {
         );
         await page.goto("/?view=overview");
         await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
-        const next = page
-          .locator('[data-slot="card"]')
-          .filter({ hasText: t.overview.eyebrows.next });
+        const next = page.locator('[data-slot="card"]').filter({ hasText: t.overview.next });
         await expect(
           next.getByRole("heading", { name: richSnapshot.workItems[3].title }),
         ).toBeVisible();
-        await expect(page.getByText(/30 (min elapsed|分钟)/)).toBeVisible();
+        await expect(page.getByText(/(Elapsed 30 min|已运行 30 分钟)/)).toBeVisible();
+        const stacks = page.locator("[data-overview-column]");
+        await expect(stacks).toHaveCount(width >= 1280 ? 3 : width >= 769 ? 2 : 1);
+        const cards = stacks.locator(':scope > [data-slot="card"]');
+        expect(await cards.count()).toBeGreaterThan(0);
+        for (const card of await cards.all()) {
+          await expect(card.locator(':scope > [data-slot="card-header"]')).toHaveCount(1);
+          expect(await card.getAttribute("class")).not.toContain("min-h-");
+        }
+        if (width === 1440) {
+          const firstCard = await cards.first().boundingBox();
+          const logo = await page.locator(".top-project > span").first().boundingBox();
+          expect(firstCard && logo && Math.abs(firstCard.x - logo.x)).toBeLessThanOrEqual(1);
+        }
         await assertLayout(page);
+        await assertOverviewCards(page);
         await page.screenshot({ path: info.outputPath("rich-overview.png"), fullPage: true });
       });
       test(`Overview ${width}px ${language} ${colorScheme}`, async ({ page }, info) => {
@@ -85,11 +98,16 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           overview.getByRole("heading", { name: item.title, exact: true }),
         ).toBeVisible();
-        const disclosure = overview.locator("summary");
+        const disclosure = overview.getByRole("button", {
+          name: `1 ${t.overview.shippedMilestone}`,
+        });
         await disclosure.focus();
         await page.keyboard.press("Enter");
-        await expect(overview.getByRole("button", { name: "Shipped milestone" })).toBeVisible();
+        await expect(
+          overview.getByRole("button", { name: "Shipped milestone", exact: true }),
+        ).toBeVisible();
         await assertLayout(page);
+        await assertOverviewCards(page);
         await page.screenshot({ path: info.outputPath("overview.png"), fullPage: true });
         await overview
           .locator('[data-slot="card"]')
@@ -268,3 +286,53 @@ for (const language of ["en", "zh-CN"] as const) {
     }
   }
 }
+
+test("Needs you badge fits 7, 42 and 99+", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));
+  const permission = richSnapshot.attentionItems.find((item) => item.kind === "permission");
+  if (!permission) throw new Error("Rich fixture is missing a permission item");
+  let snapshot = structuredClone(richSnapshot);
+  await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+  await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
+  for (const [count, text] of [
+    [7, "7"],
+    [42, "42"],
+    [150, "99+"],
+  ] as const) {
+    snapshot = {
+      ...richSnapshot,
+      attentionItems: Array.from({ length: count }, (_, index) => ({
+        ...structuredClone(permission),
+        id: `permission-${index}`,
+      })),
+    };
+    await page.goto("/?view=overview");
+    const trigger = page.locator("#needs-you-trigger");
+    const badge = trigger.locator("[data-needs-you-badge]");
+    await expect(badge).toHaveText(text);
+    const bounds = await badge.evaluate((element) => {
+      const badge = element.getBoundingClientRect();
+      const parent = element.closest("#needs-you-trigger");
+      if (!parent) throw new Error("Badge is missing its trigger");
+      const trigger = parent.getBoundingClientRect();
+      return {
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        left: badge.left,
+        right: badge.right,
+        triggerLeft: trigger.left,
+        triggerRight: trigger.right,
+      };
+    });
+    expect(bounds.scrollWidth, `Badge ${text} must not overflow`).toBeLessThanOrEqual(
+      bounds.clientWidth,
+    );
+    expect(bounds.left, `Badge ${text} extends too far left`).toBeGreaterThanOrEqual(
+      bounds.triggerLeft - 8,
+    );
+    expect(bounds.right, `Badge ${text} extends too far right`).toBeLessThanOrEqual(
+      bounds.triggerRight + 8,
+    );
+  }
+});

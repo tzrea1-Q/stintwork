@@ -47,3 +47,40 @@ test("spacing stays in pixels and status text meets 4.5:1 contrast", () => {
     }
   }
 });
+
+test("Overview colors and type scales use shared theme tokens", () => {
+  const [light, dark] = css.split(".dark {");
+  for (const theme of [light, dark.split("@theme inline")[0]]) {
+    for (const name of [
+      "focus-start",
+      "focus-middle",
+      "focus-end",
+      "focus-glow",
+      "focus-text",
+      "focus-muted",
+      "focus-button",
+      "focus-button-foreground",
+    ]) {
+      expect(theme).toMatch(new RegExp(`--overview-${name}: oklch\\(`));
+    }
+  }
+  for (const name of ["display", "display-unit", "hero-title"]) {
+    expect(css).toContain(`--text-${name}: var(--type-${name});`);
+  }
+});
+
+test("stage other contrasts with its track in both themes", () => {
+  const [light, dark] = css.split(".dark {");
+  for (const theme of [light, dark.split("@theme inline")[0]]) {
+    const value = (name: string) => {
+      const match = new RegExp(`--${name}: (oklch\\([^;]+\\));`).exec(theme);
+      if (!match) throw new Error(`Missing ${name}`);
+      return luminance(match[1]);
+    };
+    const track = value("muted");
+    const other = value("stopped");
+    expect(
+      (Math.max(track, other) + 0.05) / (Math.min(track, other) + 0.05),
+    ).toBeGreaterThanOrEqual(3);
+  }
+});

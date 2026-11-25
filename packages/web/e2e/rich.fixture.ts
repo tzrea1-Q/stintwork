@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { type ProjectSnapshot, summarizeStint } from "@stintwork/core";
+import { type AttentionItem, type ProjectSnapshot, summarizeStint } from "@stintwork/core";
 import { attentionSnapshot } from "../src/attention-test-fixtures";
 import { recoveryStint } from "../src/recovery-test-fixtures";
 import { dialogSnapshot } from "./dialogs.fixture";
@@ -106,3 +106,99 @@ richSnapshot.milestones = [
   { id: "shipped-1", name: "Shipped one 已交付一", status: "shipped", workItemSlugs: [] },
   { id: "shipped-2", name: "Shipped two 已交付二", status: "shipped", workItemSlugs: [] },
 ];
+
+export function richSnapshotWithEveryKind(): ProjectSnapshot {
+  const snapshot = structuredClone(richSnapshot);
+  const [a0, a1, a2, a3] = snapshot.workItems;
+  if (!a2.stage || !a3.stage) throw new Error("Rich fixture work items require stages");
+  const agent = snapshot.attentionItems[0]?.agent ?? "claude";
+  const raisedAt = "2026-11-12T09:10:00Z";
+  const additions: AttentionItem[] = [
+    {
+      id: "handoff-1",
+      kind: "handoff-unresolved",
+      workItem: a2.slug,
+      ticket: 2,
+      stintId: a2.stints[0]?.id ?? "s",
+      agent,
+      title: "Unresolved handoff",
+      details: "**Which export format?** The agent stopped before choosing CSV or JSON.",
+      raisedAt,
+    },
+    {
+      id: "checkpoint-1",
+      kind: "checkpoint-warning",
+      workItem: a0.slug,
+      ticket: null,
+      stintId: a0.stints[0]?.id ?? "s",
+      agent,
+      title: "Checkpoint warnings",
+      details: "The checkpoint committed files that look risky.",
+      raisedAt,
+      warnings: [
+        {
+          path: ".env.local",
+          reasons: ["likely-secret"],
+          excluded: false,
+          committed: true,
+          commits: ["a".repeat(40), "b".repeat(40)],
+        },
+        { path: "dist/bundle.js", reasons: ["large-file", "generated-directory"], excluded: true },
+      ],
+    },
+    {
+      id: "memory-1",
+      kind: "memory-proposal",
+      workItem: a1.slug,
+      ticket: null,
+      stintId: a1.stints[0]?.id ?? "s",
+      agent,
+      title: "Memory proposal: AGENTS.md",
+      details: "Record that e2e runs need port 4500.",
+      raisedAt,
+      path: "AGENTS.md",
+      diff: "@@ -1,3 +1,4 @@\n # Working\n+Use port 4500 for parallel e2e runs.\n",
+      baseCommit: "abc1234",
+      checkpointCommit: "def5678",
+    },
+    {
+      id: "gate-1",
+      kind: "gate-ready",
+      workItem: a3.slug,
+      ticket: null,
+      stintId: null,
+      agent: null,
+      title: "Gate ready",
+      details: "",
+      raisedAt,
+      stage: a3.stage,
+    },
+    {
+      id: "stale-1",
+      kind: "approval-stale",
+      workItem: a2.slug,
+      ticket: null,
+      stintId: null,
+      agent: null,
+      title: "Approval stale",
+      details: "",
+      raisedAt: "2026-11-09T09:10:00Z",
+      stage: a2.stage,
+    },
+    {
+      id: "login-1",
+      kind: "login-required",
+      workItem: null,
+      ticket: null,
+      stintId: null,
+      agent,
+      title: "Login required",
+      details: "Run the login command, then refresh availability.",
+      raisedAt,
+      loginCommand: "claude /login",
+    },
+  ];
+  const existing = new Set(snapshot.attentionItems.map((item) => item.kind));
+  snapshot.attentionItems.push(...additions.filter((item) => !existing.has(item.kind)));
+  return snapshot;
+}

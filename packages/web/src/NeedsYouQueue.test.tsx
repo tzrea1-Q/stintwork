@@ -15,6 +15,8 @@ import { Board } from "./Board";
 import { en } from "./i18n/en";
 import { LanguageProvider, languageStorageKey, useLanguage } from "./i18n/language";
 import { zhCN } from "./i18n/zh-CN";
+import { sortAttentionItems } from "./NeedsYouQueue";
+import { StintStream } from "./StintStream";
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/?view=pipeline");
@@ -244,25 +246,26 @@ test.each([attentionProfile, loginAttentionProfile])(
       .getAllByRole("article")
       .filter((article) => article.classList.contains("attention-item"));
     expect(articles.map((article) => article.getAttribute("aria-label"))).toEqual(
-      snapshot.attentionItems.map(({ title }) => title),
+      sortAttentionItems(snapshot.attentionItems).map(({ title }) => title),
     );
-    expect(within(articles[0]).getByText("Permission · Test Agent")).toBeInTheDocument();
     expect(within(articles[0]).getByRole("button", { name: /Yes, proceed/ })).toBeEnabled();
-    expect(within(articles[1]).getByText("Gate ready · Test Agent")).toBeInTheDocument();
-    expect(within(articles[1]).getByRole("button", { name: "Approve Implement" })).toBeEnabled();
-    expect(within(articles[2]).getByText("Handoff · Test Agent")).toBeInTheDocument();
-    expect(
-      within(articles[2]).getByRole("textbox", { name: "Developer note" }),
-    ).toBeInTheDocument();
-    expect(within(articles[2]).getByRole("button", { name: "Dismiss" })).toBeEnabled();
+    const gate = articles.find((article) =>
+      article.getAttribute("aria-label")?.includes("ready to approve"),
+    );
+    const handoff = articles.find(
+      (article) => article.getAttribute("aria-label") === "Unresolved handoff",
+    );
+    if (!gate || !handoff) throw new Error("Expected gate and handoff");
+    expect(within(gate).getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+    expect(within(handoff).getByRole("textbox", { name: "Developer note" })).toBeInTheDocument();
+    expect(within(handoff).getByRole("button", { name: "Dismiss" })).toBeEnabled();
     if (profile.availability?.kind === "login-required") {
       expect(
-        within(articles[3]).getByText("test-agent login", { selector: "code" }),
+        within(articles[1]).getByText("test-agent login", { selector: "code" }),
       ).toBeInTheDocument();
       expect(
-        within(articles[3]).getByRole("button", { name: "Refresh agent availability" }),
+        within(articles[1]).getByRole("button", { name: "Refresh agent availability" }),
       ).toBeEnabled();
-      expect(within(articles[3]).queryByText(/Ticket|Stint|No ticket/)).not.toBeInTheDocument();
     }
   },
 );
@@ -276,13 +279,13 @@ test("Needs you opens a slide-over with source, waiting time, full command and p
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
   const queue = screen.getByRole("dialog", { name: "Needs you 1" });
   expect(screen.getByRole("button", { name: "Close Needs you" })).toHaveFocus();
-  expect(within(queue).getByText("Permission · Test Agent")).toBeInTheDocument();
+  expect(within(queue).getByText(/Test Agent · Ticket 01/)).toBeInTheDocument();
   expect(within(queue).getByText(/Ticket 01 · Stint/)).toHaveTextContent("stint");
   expect(within(queue).getByText(/Waiting/)).toHaveAttribute("datetime", "2026-10-09T10:15:00Z");
   expect(within(queue).getByText(/pnpm test --filter/).textContent).toBe(
     "pnpm test --filter /full/path/to/project\n/full/path/to/file.ts",
   );
-  expect(within(queue).getByText("Declining ends Test Agent’s turn.")).toBeInTheDocument();
+  expect(within(queue).getByText("Declining ends the agent’s turn.")).toBeInTheDocument();
   rerender(<Board snapshot={attentionSnapshot([])} />);
   expect(screen.getByRole("button", { name: "Needs you 0", hidden: true })).toBeInTheDocument();
   expect(document.title).toBe("Project · Stintwork");
@@ -365,9 +368,7 @@ test("forwarding errors remain visible even if a decision snapshot removes the i
   fail(
     new Response(JSON.stringify({ reason: "Permission could not be forwarded" }), { status: 503 }),
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Check project request: Permission could not be forwarded",
-  );
+  expect(await screen.findByRole("alert")).toHaveTextContent("Permission could not be forwarded");
   expect(screen.getByText("Nothing needs you right now.")).toBeInTheDocument();
 });
 
@@ -445,7 +446,10 @@ test("denied and unsupported browser notifications leave the queue usable withou
   vi.stubGlobal("Notification", undefined);
   render(<Board snapshot={attentionSnapshot()} />);
   await user.click(screen.getByRole("button", { name: "Needs you 1" }));
-  expect(screen.getByRole("button", { name: "Enable browser notifications" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Enable browser notifications" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
   expect(screen.getByText("Browser notifications are not supported here.")).toBeInTheDocument();
 });
 
@@ -531,7 +535,7 @@ describe("Chinese Needs-you queue", () => {
     for (const option of attentionOptions) expect(queue.getByText(option.name)).toBeInTheDocument();
     for (const name of ["允许一次", "始终允许", "拒绝"])
       expect(queue.getByRole("button", { name: new RegExp(`^${name}`) })).toBeEnabled();
-    expect(queue.getByText("拒绝将结束 Test Agent 的本轮工作。")).toBeInTheDocument();
+    expect(queue.getByText("拒绝将结束 Agent 的本轮工作。")).toBeInTheDocument();
     expect(
       within(queue.getByRole("article", { name: "未解决的交接" })).getByText("Which format?"),
     ).toBeInTheDocument();
@@ -542,13 +546,15 @@ describe("Chinese Needs-you queue", () => {
     expect(queue.getByText("test-agent login", { selector: "code" })).toBeInTheDocument();
     const checkpoint = within(queue.getByRole("article", { name: "分支中已提交风险文件" }));
     const warnings = within(checkpoint.getByRole("region", { name: "检查点警告" }));
-    for (const path of ["/worktree/.env.中文", "/worktree/dist/中文.js", "a".repeat(40)])
+    for (const path of ["/worktree/.env.中文", "/worktree/dist/中文.js"])
       expect(warnings.getByText(path, { selector: "code" })).toBeInTheDocument();
-    expect(warnings.getByText(/疑似敏感信息, 大于 1 MiB/)).toBeInTheDocument();
+    expect(warnings.getByText("疑似敏感信息")).toBeInTheDocument();
+    expect(warnings.getByText("大于 1 MiB")).toBeInTheDocument();
     expect(warnings.getByText(/生成的目录/)).toBeInTheDocument();
-    expect(warnings.getByText(/已从检查点排除，保持未提交状态/)).toBeInTheDocument();
-    expect(warnings.getByText(/已提交到分支，未被检查点排除/)).toBeInTheDocument();
-    expect(queue.getByText(/风险文件会阻止交付/)).toBeInTheDocument();
+    expect(warnings.getByText("已从检查点排除，尚未提交。")).toBeInTheDocument();
+    expect(
+      warnings.getByText("已提交到分支，请在后续提交中移除，或在审查中接受。"),
+    ).toBeInTheDocument();
   });
 
   test("permission JSON disclosure translates without changing its command, paths or raw JSON", async () => {
@@ -606,7 +612,7 @@ describe("Chinese Needs-you queue", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 5" }));
     const article = within(screen.getByRole("article", { name: "已从检查点排除风险文件" }));
     expect(article.getByText("未记录就绪时间")).toBeInTheDocument();
-    expect(article.getByText(/检查和本地合并要求工作树干净/)).toBeInTheDocument();
+    expect(article.getByText("已从检查点排除，尚未提交。")).toBeInTheDocument();
   });
 
   test("agent login reasons stay verbatim and refresh failure is Chinese", async () => {
@@ -623,7 +629,7 @@ describe("Chinese Needs-you queue", () => {
     render(chineseBoard(snapshot));
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "待你处理 4" }));
-    expect(screen.getByText("Agent login reason 原文")).toBeInTheDocument();
+    expect(screen.queryByText("Agent login reason 原文")).not.toBeInTheDocument();
     expect(screen.getByText("请运行 test-agent login 登录。")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "刷新 Agent 可用状态" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("无法刷新 Agent 可用状态，请重试。");
@@ -750,7 +756,10 @@ describe("Chinese Needs-you queue", () => {
     expect(
       within(screen.getByRole("dialog", { name: "待你处理 0" })).getByRole("status"),
     ).toHaveTextContent("目前没有待你处理的事项。");
-    expect(screen.getByRole("button", { name: "启用浏览器通知" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "启用浏览器通知" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(screen.getByText("此处不支持浏览器通知。")).toBeInTheDocument();
     expect(document.title).toBe("Project · Stintwork");
   });
@@ -803,7 +812,7 @@ test.each(["en", "zh-CN"] as const)(
       sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
     ).toBeVisible();
     expect(sheet.getByText(t.needsYou.staleApprovalDetails(stage))).toBeVisible();
-    const button = sheet.getByRole("button", { name: t.stints.reopen(stage) });
+    const button = sheet.getByRole("button", { name: t.needsYou.reopenStage(stage) });
     await user.click(button);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledWith("/api/work-items/first/gates/spec/reopen", {
@@ -815,9 +824,7 @@ test.each(["en", "zh-CN"] as const)(
     resolve(new Response("{}"));
     await waitFor(() => expect(button).toBeEnabled());
     await user.click(button);
-    expect(await sheet.findByRole("alert")).toHaveTextContent(
-      `${t.needsYou.staleApprovalTitle(stage)}: Refused to reopen`,
-    );
+    expect(await sheet.findByRole("alert")).toHaveTextContent("Refused to reopen");
     expect(button).toBeEnabled();
   },
 );
@@ -923,3 +930,262 @@ test.each(["en", "zh-CN"] as const)(
     expect(document.title).not.toContain(t.needsYou.pendingPermissions);
   },
 );
+
+function sevenKinds() {
+  const snapshot = mixedAttentionSnapshot(loginAttentionProfile);
+  const permission = snapshot.attentionItems.find((item) => item.kind === "permission");
+  if (!permission) throw new Error("Expected permission");
+  const base = { ...permission, raisedAt: "2026-10-09T10:15:00Z" };
+  snapshot.attentionItems.push(
+    {
+      ...base,
+      kind: "memory-proposal",
+      id: "memory",
+      path: "AGENTS.md",
+      diff: "diff",
+      baseCommit: "base",
+      checkpointCommit: "commit",
+    },
+    { ...base, kind: "checkpoint-warning", id: "checkpoint", warnings: [] },
+    {
+      ...base,
+      kind: "approval-stale",
+      id: "stale",
+      agent: null,
+      ticket: null,
+      stintId: null,
+      stage: "tickets",
+      title: "Tickets approval is stale",
+    },
+  );
+  return snapshot;
+}
+
+test("sorts kinds by priority and oldest first without mutating input", () => {
+  const items = sevenKinds().attentionItems;
+  const permission = items.find((item) => item.kind === "permission");
+  if (!permission) throw new Error("Expected permission");
+  const shuffled = [
+    ...items.reverse(),
+    { ...permission, id: "older", raisedAt: "2000-01-01T00:00:00Z" },
+  ];
+  const before = [...shuffled];
+  expect(sortAttentionItems(shuffled).map((item) => item.kind)).toEqual([
+    "permission",
+    "permission",
+    "login-required",
+    "gate-ready",
+    "handoff-unresolved",
+    "memory-proposal",
+    "checkpoint-warning",
+    "approval-stale",
+  ]);
+  expect(sortAttentionItems(shuffled)[0].id).toBe("older");
+  expect(shuffled).toEqual(before);
+});
+
+test.each(["en", "zh-CN"] as const)(
+  "all seven kinds share title, metadata, icon and work item placement (%s)",
+  async (language) => {
+    localStorage.setItem(languageStorageKey, language);
+    const snapshot = sevenKinds();
+    const now = Date.parse("2026-10-09T10:15:00Z") + 49065 * 60_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const permission = snapshot.attentionItems.find((item) => item.kind === "permission");
+    if (!permission) throw new Error("Expected permission");
+    permission.raisedAt = "2026-10-09T10:15:00Z";
+    render(
+      <LanguageProvider>
+        <Board snapshot={snapshot} />
+      </LanguageProvider>,
+    );
+    const t = language === "en" ? en : zhCN;
+    await userEvent.setup().click(screen.getByRole("button", { name: `${t.topBar.needsYou} 7` }));
+    const articles = within(screen.getByRole("dialog"))
+      .getAllByRole("article")
+      .filter((article) => article.classList.contains("attention-item"));
+    expect(articles).toHaveLength(7);
+    const sorted = sortAttentionItems(snapshot.attentionItems);
+    const icons = [
+      "shield-check",
+      "key-round",
+      "list-checks",
+      "message-circle-question",
+      "brain",
+      "triangle-alert",
+      "history",
+    ];
+    for (const [index, article] of articles.entries()) {
+      expect(article.querySelectorAll(":scope > span > .size-9")).toHaveLength(1);
+      expect(
+        article.querySelector(`:scope > span > .size-9 > .lucide-${icons[index]}`),
+      ).toBeInTheDocument();
+      const item = sorted[index];
+      if (item.agent) expect(article.textContent?.match(/Test Agent/g)).toHaveLength(1);
+      if (item.stintId)
+        expect(
+          [...article.querySelectorAll("code")].filter((code) => code.textContent === item.stintId),
+        ).toHaveLength(1);
+      expect(article.querySelectorAll(":scope > h3")).toHaveLength(1);
+      expect(article.querySelectorAll(":scope > [data-queue-metadata]")).toHaveLength(1);
+      const link = article.querySelector(":scope > .attention-work-item");
+      expect(Boolean(link)).toBe(index !== 1);
+      if (link) expect(link.previousElementSibling).toHaveAttribute("data-queue-metadata");
+      const metadata = article.querySelector("[data-queue-metadata]");
+      expect(metadata).toBeInTheDocument();
+      if (index === 0) {
+        expect(article.textContent?.match(/Test Agent/g)).toHaveLength(1);
+        expect(article.textContent?.match(/stint/g)).toHaveLength(1);
+        expect(metadata).toHaveTextContent(language === "en" ? "Waiting 34 days" : "已等待 34 天");
+        expect(metadata).toHaveTextContent("Stint");
+        expect(article).not.toHaveTextContent("工作段");
+        expect(
+          within(article).queryByText(t.review.visualRefresh07.permission, { exact: true }),
+        ).not.toBeInTheDocument();
+      }
+    }
+    if (language === "zh-CN") {
+      expect(
+        within(articles[4]).getByRole("heading", { name: "记忆提案：AGENTS.md" }),
+      ).toBeInTheDocument();
+      expect(articles[1]).not.toHaveTextContent("Sign in with");
+    }
+    expect(
+      within(articles[6]).getByRole("button", {
+        name: language === "en" ? "Reopen the Tickets stage" : "重新开启「工单」阶段",
+      }),
+    ).toBeInTheDocument();
+  },
+);
+
+test("StintStream retains permission context by default", () => {
+  const snapshot = attentionSnapshot();
+  const stint = snapshot.workItems[0].activeStint;
+  if (!stint) throw new Error("Expected active stint");
+  render(<StintStream stint={stint} profile={attentionProfile} />);
+  expect(
+    screen.getByText(en.review.visualRefresh07.permission, { exact: true }),
+  ).toBeInTheDocument();
+  expect(screen.getByText(/Agent: Test Agent · Stint:/)).toHaveTextContent("stint");
+});
+
+test("compact gate approves and opens the work item", async () => {
+  const { createMemoryRepoFiles, indexProject } = await import("@stintwork/core");
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/workflow.yaml": "workflow: feature\nstage: implement\n",
+      ".scratch/first/spec.md": "# First work item",
+      ".scratch/first/issues/01-first.md": "# First ticket\nStatus: resolved\nBlocked by: none",
+    }),
+    { name: "Test" },
+  );
+  const fetcher = vi.fn().mockResolvedValue(new Response('{"stage":"review"}'));
+  vi.stubGlobal("fetch", fetcher);
+  const user = userEvent.setup();
+  const { rerender } = render(<Board snapshot={snapshot} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  let article = within(screen.getByRole("article", { name: "Implement ready to approve" }));
+  expect(article.getByText(/\d+ of \d+ conditions met/)).toBeInTheDocument();
+  expect(article.queryByText("Last handoff")).not.toBeInTheDocument();
+  expect(article.queryByText("Open warnings")).not.toBeInTheDocument();
+  expect(article.getByRole("button", { name: "Approve Implement" })).toBeEnabled();
+  await user.click(article.getByRole("button", { name: "Approve Implement" }));
+  expect(fetcher).toHaveBeenCalledWith(
+    "/api/work-items/first/gates/implement/approve",
+    expect.objectContaining({ method: "POST", body: "{}" }),
+  );
+  expect(await article.findByRole("status")).toHaveTextContent("Gate approved");
+  snapshot.workItems[0].tickets[0].resolved = false;
+  rerender(<Board snapshot={{ ...snapshot }} />);
+  article = within(screen.getByRole("article", { name: "Implement ready to approve" }));
+  expect(article.getByRole("button", { name: "Approve Implement" })).toBeDisabled();
+  expect(article.getByText(/Every ticket must be resolved/)).toBeInTheDocument();
+  await user.click(article.getByRole("button", { name: "Open gate" }));
+  expect(screen.queryByRole("dialog", { name: "Needs you 1" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Close work item" })).toBeInTheDocument();
+});
+
+test("notification toggle is in the header with a tooltip and no footer", async () => {
+  vi.stubGlobal(
+    "Notification",
+    Object.assign(vi.fn(), {
+      permission: "default",
+      requestPermission: vi.fn().mockResolvedValue("granted"),
+    }),
+  );
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  const queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  const button = within(queue).getByRole("button", { name: "Enable browser notifications" });
+  expect(button.closest("header")).not.toBeNull();
+  expect(button).toHaveAttribute("aria-pressed", "false");
+  expect(queue.querySelector("footer")).toBeNull();
+  await user.hover(button);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("Enable browser notifications");
+  await user.click(button);
+  expect(button).toHaveAttribute("aria-pressed", "true");
+});
+
+test("permission failure is inline and a handoff success has one status without a toast", async () => {
+  const { toast } = await import("sonner");
+  const success = vi.spyOn(toast, "success");
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{"reason":"Denied"}', { status: 409 }))
+      .mockResolvedValueOnce(new Response("{}")),
+  );
+  const user = userEvent.setup();
+  render(<Board snapshot={mixedAttentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: "Needs you 3" }));
+  const queue = screen.getByRole("dialog", { name: "Needs you 3" });
+  const permission = within(queue)
+    .getAllByRole("article")
+    .find((entry) => within(entry).queryByRole("button", { name: /Yes, proceed/ }));
+  if (!permission) throw new Error("Missing permission");
+  await user.click(within(permission).getByRole("button", { name: /Yes, proceed/ }));
+  expect(await within(permission).findByRole("alert")).toHaveTextContent("Denied");
+  expect(queue.querySelector("footer")).toBeNull();
+  const handoff = within(queue)
+    .getAllByRole("article")
+    .find((entry) => within(entry).queryByRole("textbox", { name: "Developer note" }));
+  if (!handoff) throw new Error("Missing handoff");
+  await user.click(within(handoff).getByRole("button", { name: "Dismiss" }));
+  expect(await within(handoff).findAllByRole("status")).toHaveLength(1);
+  expect(success).not.toHaveBeenCalled();
+});
+
+test("Open gate closes the queue and opens the associated work item", async () => {
+  const { createMemoryRepoFiles, indexProject } = await import("@stintwork/core");
+  const { NeedsYouQueue } = await import("./NeedsYouQueue");
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/first/workflow.yaml": "workflow: feature\nstage: implement\n",
+      ".scratch/first/spec.md": "# First work item",
+      ".scratch/first/issues/01-first.md": "# First ticket\nStatus: resolved\nBlocked by: none",
+    }),
+    { name: "Test" },
+  );
+  const onClose = vi.fn();
+  const onOpenItem = vi.fn();
+  render(
+    <NeedsYouQueue
+      snapshot={snapshot}
+      alerts={{
+        enabled: false,
+        supported: true,
+        requesting: false,
+        error: "",
+        toggle: async () => {},
+      }}
+      openSlug={null}
+      onClose={onClose}
+      onOpenItem={onOpenItem}
+    />,
+  );
+  await userEvent.setup().click(screen.getByRole("button", { name: "Open gate" }));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(onOpenItem).toHaveBeenCalledWith("first", true);
+});

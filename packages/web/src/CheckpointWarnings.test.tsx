@@ -54,7 +54,7 @@ test("handoff cards name committed risks and commits without claiming they were 
     },
   ];
   render(<HandoffCard stint={item.stints[0]} />);
-  expect(screen.getByText("a".repeat(40), { exact: false, selector: "code" })).toBeInTheDocument();
+  expect(screen.getByText(/aaaaaaa/)).toBeInTheDocument();
   expect(screen.getByText(/Already committed on the branch/)).toHaveTextContent("follow-up commit");
   expect(
     screen.queryByText(/Excluded from the checkpoint and left uncommitted/),
@@ -123,7 +123,7 @@ test("committed risky paths remain in Needs you after a clean follow-up until ac
   await userEvent.setup().click(screen.getByRole("button", { name: "Needs you 1" }));
   const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
   expect(queue.getByText(".env.fixture", { selector: "code" })).toBeInTheDocument();
-  expect(queue.getByText(/Risky files block shipping/)).toBeInTheDocument();
+  expect(queue.getByText(/Already committed on the branch/)).toBeInTheDocument();
   item.reviewDecisions = [
     {
       id: ".env.fixture",
@@ -174,10 +174,12 @@ test("Needs you raises a checkpoint attention item with paths and remediation", 
   render(<Board snapshot={project} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Needs you 1" }));
   const queue = screen.getByRole("dialog", { name: "Needs you 1" });
-  expectWarnings(within(queue).getByRole("region", { name: "Checkpoint warnings" }));
+  const region = within(queue).getByRole("region", { name: "Checkpoint warnings" });
+  expect(region.querySelector("[data-slot=card]")).toBeNull();
   expect(
-    within(queue).getByText(/Remove these files or deliberately ignore them/),
+    within(region).getByText("Excluded from the checkpoint and left uncommitted."),
   ).toBeInTheDocument();
+  for (const { path } of warnings) expect(within(region).getByText(path)).toBeInTheDocument();
 });
 
 test("a clean follow-up stint clears attention but keeps the earlier warning in history", () => {
@@ -191,4 +193,61 @@ test("a clean follow-up stint clears attention but keeps the earlier warning in 
 test("legacy stint handoffs do not invent checkpoint warnings", () => {
   render(<HandoffCard stint={attentionSnapshot([]).workItems[0].stints[0]} />);
   expect(screen.queryByRole("region", { name: "Checkpoint warnings" })).not.toBeInTheDocument();
+});
+
+test("warning rows group paths, reason chips and short commit hashes", async () => {
+  const { CheckpointWarnings } = await import("./CheckpointWarnings");
+  render(
+    <CheckpointWarnings
+      warnings={[
+        {
+          path: ".env",
+          reasons: ["likely-secret", "large-file"],
+          excluded: false,
+          committed: true,
+          commits: ["abcdef012345", "123456789abc"],
+        },
+        { path: "dist/out", reasons: ["generated-directory"], excluded: true },
+      ]}
+    />,
+  );
+  const rows = screen.getAllByRole("listitem");
+  expect(rows).toHaveLength(2);
+  expect(rows[0]).toHaveTextContent(".env");
+  expect(rows[0]).toHaveTextContent("Likely secret");
+  expect(rows[0]).toHaveTextContent("Larger than 1 MiB");
+  expect(rows[0]).toHaveTextContent("abcdef0, 1234567");
+  expect(rows[0].querySelector("code")?.textContent).toBe(".env");
+  expect(rows[1]).toHaveTextContent("Generated directory");
+});
+
+test("inline mixed warnings show short explanations and keep paths and hashes", async () => {
+  const { CheckpointWarnings } = await import("./CheckpointWarnings");
+  render(
+    <CheckpointWarnings
+      variant="inline"
+      warnings={[
+        { path: ".env", reasons: ["likely-secret"], excluded: true },
+        {
+          path: "dist/out",
+          reasons: ["generated-directory"],
+          excluded: false,
+          committed: true,
+          commits: ["abcdef012345"],
+        },
+      ]}
+    />,
+  );
+  const region = screen.getByRole("region", { name: "Checkpoint warnings" });
+  expect(region.querySelector("[data-slot=card]")).toBeNull();
+  expect(
+    within(region).getByText("Excluded from the checkpoint and left uncommitted."),
+  ).toBeInTheDocument();
+  expect(
+    within(region).getByText(
+      "Already committed on the branch — remove them in a later commit or accept them in review.",
+    ),
+  ).toBeInTheDocument();
+  expect(region).toHaveTextContent("abcdef0");
+  expect(region).toHaveTextContent("Generated directory");
 });

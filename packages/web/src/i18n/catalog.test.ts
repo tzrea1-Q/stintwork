@@ -79,6 +79,10 @@ const samples: Record<string, unknown[][]> = {
     ["Codex", "/to-spec", undefined],
     ["Claude Code", "/to-tickets", "~/.claude/skills/, <project>/.agents/skills/"],
   ],
+  "needsYou.conditionsMet": [
+    [0, 1],
+    [2, 3],
+  ],
   "needsYou.permissionRequest": [["Agent title 原文"]],
   "needsYou.stageReady": [["Stage 自定义"]],
   "needsYou.staleApprovalTitle": [["Stage 自定义"]],
@@ -86,7 +90,9 @@ const samples: Record<string, unknown[][]> = {
   "needsYou.loginTitle": [["Codex"]],
   "needsYou.loginInstructions": [["codex login"]],
   "needsYou.ticket": [[1], [2]],
-  "needsYou.waiting": [[0], [1], [2]],
+  "needsYou.waiting": [["1 min"], ["34 days"]],
+  "needsYou.memoryProposalTitle": [["AGENTS.md"]],
+  "needsYou.reopenStage": [["Tickets"]],
   "needsYou.declineEndsTurn": [["Codex"]],
   "needsYou.tabTitle": [
     [1, "Project 原文"],

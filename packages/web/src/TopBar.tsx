@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/DropdownMenu";
+import { Logo } from "./ui/Logo";
 import { Kbd } from "./ui/Kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
@@ -40,15 +41,9 @@ export function TopBar({
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupMounted, setSetupMounted] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
-  const setup = snapshot.setup;
-  const checks = [
-    setup.hasIssueTracker,
-    setup.usesLocalMarkdown,
-    setup.hasAgents || setup.hasClaude,
-    setup.hasGlossary,
-    setup.hasAdrs,
-  ];
-  const ready = checks.filter(Boolean).length;
+  const checks = snapshot.setup.checks;
+  const ready = checks.filter((check) => check.status === "ready").length;
+  const needsChange = checks.some((check) => check.status === "needs-change");
   const warnings = snapshot.warnings.length;
   const previousCount = useRef(snapshot.attentionItems.length);
   const pop = rose(previousCount.current, snapshot.attentionItems.length);
@@ -72,13 +67,13 @@ export function TopBar({
   }, [badgeScale, reduced, snapshot.attentionItems.length]);
 
   return (
-    <header className="top-bar mx-auto flex min-h-16 w-full max-w-[1500px] shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-7">
+    <header className="top-bar page-width flex min-h-16 shrink-0 items-center gap-1 bg-background sm:gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
       <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <span
           aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-primary text-[17px] text-primary-foreground"
+          className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-primary text-primary-foreground"
         >
-          ✳
+          <Logo />
         </span>
         <strong className="hidden font-bold tracking-tight sm:inline">Stintwork</strong>
         <div
@@ -167,10 +162,14 @@ export function TopBar({
                     data-needs-you-badge
                     data-pop={pop || undefined}
                     style={{ scale: badgeScale }}
-                    className="absolute -right-[3px] -top-[3px] grid size-4 place-items-center rounded-full bg-attention text-[9px] tabular-nums text-background"
+                    className="absolute -right-[3px] -top-[3px] grid h-4 min-w-4 place-items-center rounded-full bg-attention px-1 text-eyebrow tabular-nums text-background"
                     aria-hidden="true"
                   >
-                    <RollingNumber value={snapshot.attentionItems.length} />
+                    {snapshot.attentionItems.length > 99 ? (
+                      "99+"
+                    ) : (
+                      <RollingNumber value={snapshot.attentionItems.length} />
+                    )}
                   </m.span>
                 )}
                 {warnings > 0 && (
@@ -191,14 +190,14 @@ export function TopBar({
                   <Button
                     id="settings-trigger"
                     ref={settingsTrigger}
-                    variant="ghost"
+                    variant="secondary"
                     size="icon"
                     className="relative size-9"
                     aria-label={t.topBar.settings}
-                    aria-describedby={ready < checks.length ? "setup-status" : undefined}
+                    aria-describedby={needsChange ? "setup-status" : undefined}
                   >
                     <Settings aria-hidden="true" />
-                    {ready < checks.length && (
+                    {needsChange && (
                       <span
                         data-warning-dot
                         className="absolute right-1 top-1 size-1 rounded-full bg-attention"
@@ -240,7 +239,7 @@ export function TopBar({
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>
-        {ready < checks.length && (
+        {needsChange && (
           <span id="setup-status" className="sr-only">
             {t.topBar.setupIncomplete}
           </span>

@@ -143,6 +143,16 @@ function readSnapshot(value: unknown): ProjectSnapshot {
       "hasAdrs",
     ].every((key) => typeof (value.setup as Record<string, unknown>)[key] === "boolean") ||
     !warningsValid(value.setup.warnings) ||
+    !Array.isArray(value.setup.checks) ||
+    !value.setup.checks.every(
+      (check) =>
+        isRecord(check) &&
+        ["tracker", "agents", "localRunData", "roadmap", "glossary", "adrs"].includes(
+          String(check.id),
+        ) &&
+        typeof check.ready === "boolean" &&
+        ["ready", "needs-change", "optional", "other-tracker"].includes(String(check.status)),
+    ) ||
     !isRecord(value.workflows) ||
     !Array.isArray(value.milestones) ||
     !value.milestones.every(

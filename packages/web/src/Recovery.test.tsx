@@ -597,3 +597,15 @@ test.each(["en", "zh-CN"] as const)(
     ).toHaveTextContent(recoveryPath);
   },
 );
+
+test("inline recovery keeps its status and details without a nested card", async () => {
+  const { StintRecovery } = await import("./StintRecovery");
+  const { container } = render(
+    <LanguageProvider>
+      <StintRecovery stint={recoveryStint("resuming")} variant="inline" />
+    </LanguageProvider>,
+  );
+  expect(container.querySelector("[data-slot=card]")).toBeNull();
+  expect(screen.getByText("Resuming stint…")).toBeInTheDocument();
+  expect(screen.getByText("Recovery details")).toBeInTheDocument();
+});

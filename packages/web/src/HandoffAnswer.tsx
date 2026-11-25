@@ -10,11 +10,13 @@ import { Markdown } from "./ui/Markdown";
 export function HandoffAnswer({
   item,
   onError,
+  onSuccess,
   showDetails = true,
 }: {
   item: HandoffUnresolvedAttentionItem;
   showDetails?: boolean;
   onError: (reason: string | Error) => void;
+  onSuccess?: () => void;
 }) {
   const { t } = useLanguage();
   const noteId = useId();
@@ -42,6 +44,7 @@ export function HandoffAnswer({
         throw new CoreTextError(body, t.needsYou.handoffFailed);
       }
       setSubmitted(true);
+      onSuccess?.();
       setConfirming(false);
     } catch (cause) {
       setConfirming(false);

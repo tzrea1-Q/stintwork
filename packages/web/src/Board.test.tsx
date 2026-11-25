@@ -354,14 +354,14 @@ test.each([
     "en",
     "GitHub work items are issues created through agent skills, such as to-spec.",
     "View repository issues",
-    "Create work item",
+    "New work item",
     "Open command palette",
   ],
   [
     "zh-CN",
     "GitHub 工作项是 Issue，请通过智能体技能（如 to-spec）创建。",
     "查看仓库 Issue",
-    "创建工作项",
+    "新建工作项",
     "打开命令面板",
   ],
 ])(
@@ -397,7 +397,9 @@ test.each([
     await user.keyboard("c");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: palette }));
-    expect(screen.queryByText(create)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(language === "en" ? "New work item" : "新建工作项"),
+    ).not.toBeInTheDocument();
     localStorage.removeItem(languageStorageKey);
   },
 );
@@ -1315,17 +1317,17 @@ test.each([true, false])("board shortcuts while detail is open (docked=%s)", asy
   await user.click(alpha);
   if (docked) {
     await user.keyboard("c");
-    expect(screen.queryByRole("dialog", { name: /create work item/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /new work item/i })).not.toBeInTheDocument();
     alpha.focus();
     await user.keyboard("{ArrowDown}");
     expect(beta).toHaveFocus();
     await user.keyboard("c");
-    expect(screen.getByRole("dialog", { name: /create work item/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /new work item/i })).toBeInTheDocument();
   } else {
     fireEvent.keyDown(alpha, { key: "ArrowDown" });
     fireEvent.keyDown(alpha, { key: "c" });
     expect(beta).not.toHaveFocus();
-    expect(screen.queryByRole("dialog", { name: /create work item/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /new work item/i })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Alpha" })).toBeInTheDocument();
   }
   vi.unstubAllGlobals();
@@ -1500,4 +1502,90 @@ test("blocked detail storage falls back to the default width", async () => {
   fireEvent.keyDown(within(drawer).getByRole("separator"), { key: "ArrowLeft" });
   expect(drawer).toHaveStyle({ width: "576px" });
   vi.unstubAllGlobals();
+});
+
+test("opening a work item in Jump to from Overview shows its Pipeline detail", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  await user.click(screen.getByRole("button", { name: "Open command palette" }));
+  await user.click(screen.getByRole("option", { name: /board The live board/ }));
+  expect(await screen.findByRole("complementary", { name: "The live board" })).toBeInTheDocument();
+  expect(window.location.search).toBe("?view=pipeline&item=board");
+  vi.unstubAllGlobals();
+});
+
+test("opening a Needs you work item from Overview closes the queue and shows its detail", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: /^Needs you/ }));
+  const queue = await screen.findByRole("dialog", { name: /Needs you/ });
+  await user.click(within(queue).getByRole("button", { name: /First work item · first/ }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: /Needs you/ })).not.toBeInTheDocument(),
+  );
+  expect(await screen.findByRole("complementary", { name: "First work item" })).toBeInTheDocument();
+  expect(window.location.search).toBe("?view=pipeline&item=first");
+  vi.unstubAllGlobals();
+});
+
+test("switching from Overview to Pipeline does not open a work item", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  await user.click(
+    within(screen.getByRole("navigation", { name: en.viewNavigation.label })).getByRole("button", {
+      name: "Pipeline",
+    }),
+  );
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  expect(new URLSearchParams(window.location.search).has("item")).toBe(false);
+});
+
+test.each([
+  ["en", "New work item"],
+  ["zh-CN", "新建工作项"],
+])("Pipeline names the creation entry in %s", (language, label) => {
+  localStorage.setItem(languageStorageKey, language);
+  render(
+    <LanguageProvider>
+      <Board snapshot={project()} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+  localStorage.removeItem(languageStorageKey);
+});
+
+test.each(["overview", "pipeline"])("permission callout opens Needs you on %s", async (view) => {
+  window.history.replaceState(null, "", `/?view=${view}`);
+  render(<Board snapshot={attentionSnapshot()} />);
+  const banner = screen.getByRole("button", { name: /Permission requests need your attention/ });
+  expect(banner).toHaveClass("bg-attention-soft");
+  expect(banner.querySelector("svg.lucide-shield-alert")).toBeInTheDocument();
+  await userEvent.setup().click(banner);
+  expect(screen.getByRole("dialog", { name: /Needs you/ })).toBeVisible();
+});
+
+test("Overview attention rows focus their queue item; top bar opens at the top", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: /^Check project request/ }));
+  let queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  await waitFor(() => expect(within(queue).getByRole("article")).toHaveFocus());
+  await user.click(within(queue).getByRole("button", { name: "Close Needs you" }));
+  await user.click(screen.getByRole("button", { name: "Needs you 1" }));
+  queue = screen.getByRole("dialog", { name: "Needs you 1" });
+  expect(within(queue).getByRole("button", { name: "Close Needs you" })).toHaveFocus();
 });

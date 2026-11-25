@@ -8,6 +8,7 @@ import { PermissionDetails } from "./PermissionDetails";
 import { Button } from "./ui/Button";
 
 type PermissionAnswerProps = {
+  showContext?: boolean;
   stintId: string;
   request: Pick<
     Extract<StintEvent, { type: "permission_request" }>,
@@ -15,6 +16,7 @@ type PermissionAnswerProps = {
   > & { answering?: boolean };
   profile?: AgentProfile;
   onError?: (reason: string | Error) => void;
+  onSuccess?: () => void;
 };
 
 export function PermissionAnswer(props: PermissionAnswerProps) {
@@ -31,7 +33,14 @@ export function PermissionAnswer(props: PermissionAnswerProps) {
   );
 }
 
-function PermissionAnswerBinding({ stintId, request, profile, onError }: PermissionAnswerProps) {
+function PermissionAnswerBinding({
+  stintId,
+  request,
+  profile,
+  onError,
+  onSuccess,
+  showContext = true,
+}: PermissionAnswerProps) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -58,9 +67,10 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
         throw new CoreTextError(body, t.needsYou.permissionFailed);
       }
       setSubmitted(true);
-      toast.success(t.actionToast.permissionAnswered);
+      onSuccess?.();
+      if (showContext) toast.success(t.actionToast.permissionAnswered);
     } catch (cause) {
-      toast.error(t.actionToast.failed);
+      if (showContext) toast.error(t.actionToast.failed);
       const reason =
         cause instanceof CoreTextError && cause.reasonMessage !== undefined
           ? cause
@@ -83,19 +93,25 @@ function PermissionAnswerBinding({ stintId, request, profile, onError }: Permiss
             : t.needsYou.waitingPermission}
         </p>
       )}
-      <p className="font-medium">{t.review.visualRefresh07.permission}</p>
-      <p className="text-muted-foreground">
-        {profile && (
-          <>
-            {t.review.visualRefresh07.agent}: {profile.displayName} ·{" "}
-          </>
-        )}
-        {t.review.visualRefresh07.stint}: <code>{stintId}</code>
-      </p>
+      {showContext && (
+        <>
+          <p className="font-medium">{t.review.visualRefresh07.permission}</p>
+          <p className="text-muted-foreground">
+            {profile && (
+              <>
+                {t.review.visualRefresh07.agent}: {profile.displayName} ·{" "}
+              </>
+            )}
+            {t.review.visualRefresh07.stint}: <code>{stintId}</code>
+          </p>
+        </>
+      )}
       <PermissionDetails details={request.details} />
       {profile?.capabilities.declineEndsTurn && (
         <p className="warning text-attention-foreground">
-          {t.needsYou.declineEndsTurn(profile.displayName)}
+          {showContext
+            ? t.needsYou.declineEndsTurn(profile.displayName)
+            : t.needsYou.declineEndsCurrentTurn}
         </p>
       )}
       <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">

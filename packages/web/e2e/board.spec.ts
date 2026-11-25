@@ -379,7 +379,9 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(page.getByRole("heading", { name: t.board.empty, exact: true })).toBeVisible();
         await expect(page.getByRole("alert")).toHaveCount(0);
         await expect(
-          page.getByRole("button", { name: t.planning.create.title, exact: true }),
+          page
+            .locator(".board-toolbar-actions")
+            .getByRole("button", { name: t.board.createWorkItem, exact: true }),
         ).toBeInViewport();
         await assertLayout(page);
         await page.screenshot({ path: testInfo.outputPath("board-empty.png"), fullPage: true });

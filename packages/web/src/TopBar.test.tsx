@@ -109,7 +109,7 @@ test.each(["en", "zh-CN"] as const)(
       trigger.focus();
       await user.keyboard("{Enter}");
       const item = await screen.findByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) });
-      expect(item).toHaveTextContent("0/5");
+      expect(item).toHaveTextContent("0/6");
       await user.keyboard("{End}");
       expect(item).toHaveFocus();
       await user.keyboard("{Enter}");
@@ -131,11 +131,11 @@ test("complete setup removes the warning description and keeps its count in Sett
     ...snapshot,
     setup: {
       ...snapshot.setup,
-      hasIssueTracker: true,
-      usesLocalMarkdown: true,
-      hasAgents: true,
-      hasGlossary: true,
-      hasAdrs: true,
+      checks: snapshot.setup.checks.map((check) => ({
+        ...check,
+        ready: true,
+        status: "ready" as const,
+      })),
     },
   };
   const user = userEvent.setup();
@@ -144,7 +144,51 @@ test("complete setup removes the warning description and keeps its count in Sett
   expect(trigger).not.toHaveAttribute("aria-describedby");
   expect(trigger.querySelector("[data-warning-dot]")).not.toBeInTheDocument();
   await user.click(trigger);
-  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("5/5");
+  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("6/6");
+});
+
+test("only required setup changes show the warning dot", async () => {
+  const checks = snapshot.setup.checks.map((check) => ({
+    ...check,
+    ready: true,
+    status: "ready" as const,
+  }));
+  const project = {
+    ...snapshot,
+    setup: {
+      ...snapshot.setup,
+      checks: checks.map((check, index) =>
+        index === 0 ? { ...check, ready: false, status: "needs-change" as const } : check,
+      ),
+    },
+  };
+  const user = userEvent.setup();
+  renderTopBar(project);
+  const trigger = screen.getByRole("button", { name: "Settings" });
+  expect(trigger.querySelector("[data-warning-dot]")).toBeInTheDocument();
+  await user.click(trigger);
+  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("5/6");
+});
+
+test("optional incomplete checks do not show the setup warning", () => {
+  const checks = snapshot.setup.checks.map((check) => ({
+    ...check,
+    ready: true,
+    status: "ready" as const,
+  }));
+  const project = {
+    ...snapshot,
+    setup: {
+      ...snapshot.setup,
+      checks: checks.map((check, index) =>
+        index === 2 ? { ...check, ready: false, status: "optional" as const } : check,
+      ),
+    },
+  };
+  renderTopBar(project);
+  expect(
+    screen.getByRole("button", { name: "Settings" }).querySelector("[data-warning-dot]"),
+  ).not.toBeInTheDocument();
 });
 
 test("the top bar exposes only the three actions and announces warnings without adding them to the count", async () => {
@@ -186,9 +230,7 @@ test("view navigation preserves URL parameters and restores history", async () =
   expect(within(screen.getByRole("main")).getByText(en.board.empty)).toBeVisible();
   expect(window.location.search).toContain("milestone=m1");
   expect(window.location.search).toContain("view=overview");
-  await user.click(
-    within(screen.getByRole("main")).getByRole("button", { name: en.viewNavigation.pipeline }),
-  );
+  await user.click(pipeline);
   expect(pipeline).toHaveAttribute("aria-current", "page");
   expect(window.location.search).toContain("view=pipeline");
   window.history.back();
@@ -283,9 +325,7 @@ test("switching views moves focus to the selected navigation pill", async () => 
   );
   const nav = screen.getByRole("navigation", { name: en.viewNavigation.label });
   const pipeline = within(nav).getByRole("button", { name: en.viewNavigation.pipeline });
-  await user.click(
-    within(screen.getByRole("main")).getByRole("button", { name: en.viewNavigation.pipeline }),
-  );
+  await user.click(pipeline);
   expect(pipeline).toHaveFocus();
   const overview = within(nav).getByRole("button", { name: en.viewNavigation.overview });
   await user.click(overview);
@@ -295,7 +335,7 @@ test("switching views moves focus to the selected navigation pill", async () => 
 test("shows the wordmark and project identity and hides an empty badge", () => {
   renderTopBar();
   expect(screen.getByText("Stintwork")).toBeInTheDocument();
-  expect(screen.getByText("✳")).toBeInTheDocument();
+  expect(document.querySelector("svg[data-logo]")).toHaveAttribute("aria-hidden", "true");
   const project = screen.getByText("Project");
   expect(project).toBeInTheDocument();
   expect(project).not.toHaveClass("flex-[2_1_0%]");
@@ -381,5 +421,24 @@ test("the needs you badge springs up on a first arrival and a later rise", async
     await waitFor(() => expect(scale()).toBeCloseTo(1, 2), { interval: 20, timeout: 3000 });
   } finally {
     MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test.each([
+  [7, "7"],
+  [42, "42"],
+  [150, "99+"],
+])("badge fits %i items", (count, label) => {
+  const item = attentionSnapshot().attentionItems[0];
+  const { container } = renderTopBar({
+    ...snapshot,
+    attentionItems: Array.from({ length: count }, () => item),
+  });
+  expect(container.querySelector("[data-needs-you-badge]")).toHaveTextContent(label);
+  const buttons = ["command-palette-trigger", "needs-you-trigger", "settings-trigger"].map(
+    (id) => container.querySelector(`#${id}`)!,
+  );
+  for (const button of buttons) {
+    expect(button).toHaveClass("border-border", "bg-card", "text-foreground", "rounded-full");
   }
 });

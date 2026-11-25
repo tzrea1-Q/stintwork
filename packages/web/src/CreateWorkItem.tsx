@@ -1,16 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { deriveWorkItemSlug, type ProjectSnapshot } from "@stintwork/core";
-import { FileText } from "lucide-react";
-import { useEffect, useId, useState } from "react";
+import { FileText, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { workflowName } from "./i18n/workflow-names";
 import { Button } from "./ui/Button";
-import { Dialog, DialogContent, DialogTitle } from "./ui/Dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
+import { Input } from "./ui/Input";
 import { Item, ItemContent, ItemMedia } from "./ui/Item";
 import { SelectField } from "./ui/SelectField";
+import { Textarea } from "./ui/Textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
+
+function errorFieldFor(cause: unknown): "title" | "slug" | "form" {
+  const reason = cause instanceof CoreTextError ? cause.reasonMessage : null;
+  const code = reason && typeof reason === "object" && "code" in reason ? reason.code : null;
+  if (code === "workItem.titleSlug") return "title";
+  if (
+    code === "creation.exists" ||
+    code === "creation.existsInGit" ||
+    code === "creation.invalidSlug"
+  )
+    return "slug";
+  return "form";
+}
 
 export function CreateWorkItem({
   snapshot,
@@ -26,6 +42,7 @@ export function CreateWorkItem({
   onCreated: () => void;
 }) {
   const { t } = useLanguage();
+  const titleRef = useRef<HTMLInputElement>(null);
   const slugHintId = useId();
   const selectId = useId();
   const [title, setTitle] = useState("");
@@ -37,6 +54,13 @@ export function CreateWorkItem({
   const [error, setError] = useErrorText();
   const [errorField, setErrorField] = useState<"title" | "slug" | "form">("form");
   const [saving, setSaving] = useState(false);
+  const errorText = Object.entries(en.planning.create.errors).reduce(
+    (message, [key, original]) =>
+      message === original
+        ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
+        : message,
+    error,
+  );
   let derivedSlug = "";
   try {
     derivedSlug = deriveWorkItemSlug(title);
@@ -78,14 +102,7 @@ export function CreateWorkItem({
         if (!disposed) setPreview({ input, slug: result.slug });
       } catch (cause) {
         if (!disposed) {
-          const message = cause instanceof Error ? cause.message : "";
-          setErrorField(
-            message === "Title must produce a valid ASCII work item slug."
-              ? "title"
-              : /Work item .+ already exists/.test(message)
-                ? "slug"
-                : "form",
-          );
+          setErrorField(errorFieldFor(cause));
           setError(cause instanceof Error ? cause : en.planning.create.errors.preview);
         }
       }
@@ -113,14 +130,7 @@ export function CreateWorkItem({
       toast.success(t.actionToast.created);
       onCreated();
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "";
-      setErrorField(
-        message === "Title must produce a valid ASCII work item slug."
-          ? "title"
-          : /Work item .+ already exists/.test(message)
-            ? "slug"
-            : "form",
-      );
+      setErrorField(errorFieldFor(cause));
       toast.error(t.actionToast.failed);
       setError(cause instanceof Error ? cause : en.planning.create.errors.save);
       setSaving(false);
@@ -136,8 +146,11 @@ export function CreateWorkItem({
     >
       <DialogContent
         onExitComplete={onExitComplete}
-        aria-describedby={undefined}
-        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-xl [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2 [&_textarea]:w-full [&_textarea]:rounded-xl [&_textarea]:border [&_textarea]:border-border [&_textarea]:bg-card [&_textarea]:p-2"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          titleRef.current?.focus();
+        }}
+        className="create-work-item [&_label]:grid [&_label]:gap-1 [&_label]:text-sm"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -145,7 +158,30 @@ export function CreateWorkItem({
           if (saving) event.preventDefault();
         }}
       >
-        <DialogTitle className="text-xl font-medium">{t.planning.create.title}</DialogTitle>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <DialogTitle className="text-xl font-medium">{t.planning.create.title}</DialogTitle>
+            <DialogDescription className="mt-1 text-sm text-muted-foreground">
+              {t.planning.create.description}
+            </DialogDescription>
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t.planning.create.close}
+                  onClick={onClose}
+                  disabled={saving}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t.planning.create.close}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -153,24 +189,26 @@ export function CreateWorkItem({
           }}
         >
           <fieldset disabled={saving} className="mt-5 grid min-w-0 gap-4">
-            <label>
+            <label htmlFor={`${selectId}-title`}>
               {t.planning.create.titleLabel}
-              <input required value={title} onChange={(event) => setTitle(event.target.value)} />
+              <Input
+                id={`${selectId}-title`}
+                ref={titleRef}
+                required
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+              />
             </label>
             {error && errorField === "title" && (
               <p role="alert" className="warning text-attention-foreground">
-                {Object.entries(en.planning.create.errors).reduce(
-                  (message, [key, original]) =>
-                    message === original
-                      ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
-                      : message,
-                  error,
-                )}
+                {errorText}
               </p>
             )}
-            <label>
+            <label htmlFor={`${selectId}-slug`}>
               {t.slugInput.label}
-              <input
+              <Input
+                id={`${selectId}-slug`}
+                className="font-mono"
                 required
                 value={folderName}
                 aria-describedby={derivedSlug ? undefined : slugHintId}
@@ -180,13 +218,7 @@ export function CreateWorkItem({
             </label>
             {error && errorField === "slug" && (
               <p role="alert" className="warning text-attention-foreground">
-                {Object.entries(en.planning.create.errors).reduce(
-                  (message, [key, original]) =>
-                    message === original
-                      ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
-                      : message,
-                  error,
-                )}
+                {errorText}
               </p>
             )}
             {!validSlug && title.trim() && editedSlug !== null && (
@@ -227,9 +259,10 @@ export function CreateWorkItem({
                 ]}
               />
             </label>
-            <label>
+            <label htmlFor={`${selectId}-intent`}>
               {t.planning.create.intent}
-              <textarea
+              <Textarea
+                id={`${selectId}-intent`}
                 rows={4}
                 value={intent}
                 onChange={(event) => setIntent(event.target.value)}
@@ -267,20 +300,13 @@ export function CreateWorkItem({
             </div>
             {error && errorField === "form" && (
               <p role="alert" className="warning text-attention-foreground">
-                {Object.entries(en.planning.create.errors).reduce(
-                  (message, [key, original]) =>
-                    message === original
-                      ? t.planning.create.errors[key as keyof typeof en.planning.create.errors]
-                      : message,
-                  error,
-                )}
+                {errorText}
               </p>
             )}
-            <p className="muted text-muted-foreground">{t.planning.create.description}</p>
             <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
               <Button onClick={onClose}>{t.planning.create.cancel}</Button>
               <Button variant="primary" type="submit" disabled={!slug}>
-                {saving ? t.planning.create.saving : t.planning.create.title}
+                {saving ? t.planning.create.saving : t.planning.create.submit}
               </Button>
             </footer>
           </fieldset>

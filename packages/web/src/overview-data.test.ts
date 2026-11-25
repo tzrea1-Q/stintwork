@@ -7,6 +7,7 @@ import {
   stintDays,
   viewFromSearch,
   workItemDone,
+  workItemInFlight,
 } from "./overview-data";
 
 test("restores default and explicit views", () => {
@@ -15,6 +16,90 @@ test("restores default and explicit views", () => {
   expect(viewFromSearch("?view=overview&item=one")).toBe("overview");
   expect(viewFromSearch("?view=pipeline")).toBe("pipeline");
   expect(viewFromSearch("?view=")).toBe("overview");
+});
+
+test("counts only work items in flight in columns", () => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/a/spec.md": "# A",
+      ".scratch/b/spec.md": "# B",
+      ".scratch/c/spec.md": "# C",
+    }),
+    { name: "Test" },
+  );
+  const [merged, shipped, unassigned] = snapshot.workItems;
+  merged.merged = { at: "2026-01-01", commit: "abc" };
+  shipped.milestone = "shipped";
+  snapshot.milestones = [
+    { id: "shipped", name: "Shipped", status: "shipped", workItemSlugs: [shipped.slug] },
+  ];
+  expect(snapshot.workItems.map((item) => workItemInFlight(item, snapshot))).toEqual([
+    false,
+    false,
+    true,
+  ]);
+  expect(overviewData(snapshot).columns.reduce((sum, column) => sum + column.count, 0)).toBe(1);
+  expect(workItemInFlight(unassigned, snapshot)).toBe(true);
+});
+
+test("counts milestone progress units and known unavailable tickets", () => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({
+      ".scratch/a/spec.md": "# A",
+      ".scratch/b/spec.md": "# B",
+      ".scratch/c/spec.md": "# C",
+      ".scratch/d/spec.md": "# D",
+    }),
+    { name: "Test" },
+  );
+  snapshot.milestones = [{ id: "m", name: "M", status: "active", workItemSlugs: [] }];
+  const [a, b, c, d] = snapshot.workItems;
+  const ticket = {
+    number: 1,
+    slug: "t",
+    title: "T",
+    status: "open",
+    resolved: true,
+    blockedBy: [],
+    blocked: false,
+    comments: [],
+    body: "",
+    path: "",
+  };
+  a.milestone = "m";
+  a.tickets = Array.from({ length: 6 }, (_, i) => ({ ...ticket, number: i + 1, resolved: i < 5 }));
+  expect(overviewData(snapshot).featured).toMatchObject({ unitsDone: 5, units: 6 });
+  b.milestone = "m";
+  expect(overviewData(snapshot).featured).toMatchObject({ unitsDone: 5, units: 7 });
+  c.milestone = "m";
+  c.merged = { at: "2026-01-01", commit: "abc" };
+  expect(overviewData(snapshot).featured).toMatchObject({ unitsDone: 6, units: 8 });
+  d.milestone = "m";
+  d.merged = { at: "2026-01-01", commit: "abc" };
+  d.tickets = Array.from({ length: 3 }, (_, i) => ({ ...ticket, number: i + 1, resolved: false }));
+  a.github = { ticketsKnown: false } as NonNullable<typeof a.github>;
+  expect(overviewData(snapshot).featured).toMatchObject({
+    unitsDone: 9,
+    units: 11,
+    incomplete: true,
+  });
+});
+
+test("counts only milestone stints in the chart's seven calendar days", () => {
+  const snapshot = indexProject(
+    createMemoryRepoFiles({ ".scratch/a/spec.md": "# A", ".scratch/b/spec.md": "# B" }),
+    { name: "Test" },
+  );
+  snapshot.milestones = [{ id: "m", name: "M", status: "active", workItemSlugs: ["a"] }];
+  const [a, b] = snapshot.workItems;
+  a.milestone = "m";
+  const now = new Date(2026, 2, 9, 12);
+  a.stints = [
+    { startedAt: new Date(2026, 2, 3).toISOString() },
+    { startedAt: new Date(2026, 2, 2).toISOString() },
+  ] as typeof a.stints;
+  b.stints = [{ startedAt: now.toISOString() }] as typeof b.stints;
+  expect(overviewData(snapshot, now).featured?.stintsThisWeek).toBe(1);
 });
 
 test("derives only available cards and chooses the first untouched item in milestone order", () => {

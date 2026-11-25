@@ -19,6 +19,17 @@ export function AgentAvatar({
   active?: boolean;
   size?: "sm" | "md";
 }) {
+  const words = name
+    .trim()
+    .split(/[\s_-]+/)
+    .filter(Boolean);
+  const initials =
+    words.length > 1
+      ? words
+          .slice(0, 2)
+          .map((word) => word.charAt(0).toUpperCase())
+          .join("")
+      : (words[0]?.charAt(0).toUpperCase() ?? "") + (words[0]?.charAt(1).toLowerCase() ?? "");
   const pulseProps = usePulse<HTMLSpanElement>();
   return (
     <Avatar
@@ -30,8 +41,13 @@ export function AgentAvatar({
         active && "ring-2 ring-running motion-safe:animate-pulse",
       )}
     >
-      <AvatarFallback className={colors[agent] ?? "bg-stopped-soft text-stopped-foreground"}>
-        {name.trim().charAt(0).toUpperCase()}
+      <AvatarFallback
+        className={cn(
+          colors[agent] ?? "bg-stopped-soft text-stopped-foreground",
+          size === "sm" && "text-eyebrow",
+        )}
+      >
+        {initials}
       </AvatarFallback>
     </Avatar>
   );

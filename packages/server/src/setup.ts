@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import {
   coreTextWire,
+  detectSetup,
   errorText,
   coreText,
   CoreTextError,
@@ -65,17 +66,16 @@ export function addSetupRoutes(
 ) {
   function guide() {
     const loaded = loadWorkflows(files);
-    const plan = planSetup(files);
-    const remote = plan.tracker === "github-issues" ? github?.() : undefined;
-    if (remote?.repositoryId && !remote.error)
-      plan.checks[0] = { id: "tracker", ready: true, status: "ready" };
+    const remote = detectSetup(files).tracker === "github-issues" ? github?.() : undefined;
+    const plan = planSetup(files, remote);
+    const trackerRemote = plan.tracker === "github-issues" ? remote : undefined;
     return {
-      ...(remote
+      ...(trackerRemote
         ? {
             github: {
-              repository: remote.repository,
-              repositoryId: remote.repositoryId,
-              ...(remote.error ? { error: remote.error } : {}),
+              repository: trackerRemote.repository,
+              repositoryId: trackerRemote.repositoryId,
+              ...(trackerRemote.error ? { error: trackerRemote.error } : {}),
             },
           }
         : {}),

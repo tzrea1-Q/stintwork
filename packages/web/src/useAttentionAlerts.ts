@@ -14,6 +14,7 @@ export function attentionTitle(
   agent = item.agent ?? "",
   stage = item.kind === "gate-ready" || item.kind === "approval-stale" ? item.stage : "",
 ) {
+  if (item.kind === "memory-proposal") return t.needsYou.memoryProposalTitle(item.path);
   if (item.kind === "approval-stale" && language === "en")
     return stage === item.stage ? item.title : t.needsYou.staleApprovalTitle(stage);
   if (language === "en") return item.title;
@@ -35,7 +36,7 @@ export function attentionTitle(
         ? t.needsYou.riskyCommitted
         : t.needsYou.riskyExcluded;
     default:
-      return item.title;
+      return (item as AttentionItem).title;
   }
 }
 
