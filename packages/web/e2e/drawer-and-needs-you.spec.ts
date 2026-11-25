@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import type { ProjectSnapshot } from "@stintwork/core";
-import { codexProfile, claudeProfile } from "../../agents/src/profiles";
+import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
@@ -300,7 +300,7 @@ for (const language of ["en", "zh-CN"] as const) {
           sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
         ).toBeVisible();
         await expect(sheet.getByText(t.needsYou.staleApprovalDetails(stage))).toBeVisible();
-        const reopen = sheet.getByRole("button", { name: t.stints.reopen(stage) });
+        const reopen = sheet.getByRole("button", { name: t.needsYou.reopenStage(stage) });
         await reopen.scrollIntoViewIfNeeded();
         await expect(reopen).toBeVisible();
         await captureSheet(page, testInfo, ".needs-you-queue", "needs-you-approval-stale");

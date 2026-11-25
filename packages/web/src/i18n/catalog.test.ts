@@ -86,7 +86,9 @@ const samples: Record<string, unknown[][]> = {
   "needsYou.loginTitle": [["Codex"]],
   "needsYou.loginInstructions": [["codex login"]],
   "needsYou.ticket": [[1], [2]],
-  "needsYou.waiting": [[0], [1], [2]],
+  "needsYou.waiting": [["1 min"], ["34 days"]],
+  "needsYou.memoryProposalTitle": [["AGENTS.md"]],
+  "needsYou.reopenStage": [["Tickets"]],
   "needsYou.declineEndsTurn": [["Codex"]],
   "needsYou.tabTitle": [
     [1, "Project 原文"],
