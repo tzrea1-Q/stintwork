@@ -289,12 +289,13 @@ export function Board({
         <div className="page-width pt-4">
           <button
             type="button"
+            aria-label={t.needsYou.pendingPermissions}
             className="flex w-full items-center gap-2 rounded-lg bg-attention-soft p-3 text-left text-sm text-attention-foreground"
             onClick={() => setNeedsYouOpen(true)}
           >
             <ShieldAlert className="size-icon-md shrink-0" aria-hidden="true" />
             <span className="flex-1">{t.needsYou.pendingPermissions}</span>
-            <span>{t.overview.openQueue}</span>
+            <span aria-hidden="true">{t.overview.openQueue}</span>
             <ChevronRight className="size-icon-sm shrink-0" aria-hidden="true" />
           </button>
         </div>

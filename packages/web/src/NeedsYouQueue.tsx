@@ -227,11 +227,11 @@ export function NeedsYouQueue({
                   <span className="absolute left-0 top-3">
                     <IconChip icon={presentation.icon} tone={presentation.tone} />
                   </span>
-                  <h3>
-                    {item.kind === "login-required" ? t.needsYou[kinds[item.kind].label] : title}
-                  </h3>
+                  <h3>{title}</h3>
                   <p className="muted text-muted-foreground" data-queue-metadata>
-                    {item.agent && <>{profile?.displayName ?? item.agent} · </>}
+                    {item.agent && item.kind !== "login-required" && (
+                      <>{profile?.displayName ?? item.agent} · </>
+                    )}
                     {item.ticket !== null && (
                       <>{t.needsYou.ticket(item.ticket, !!workItem?.github)} · </>
                     )}

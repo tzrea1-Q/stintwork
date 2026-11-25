@@ -230,9 +230,7 @@ test("view navigation preserves URL parameters and restores history", async () =
   expect(within(screen.getByRole("main")).getByText(en.board.empty)).toBeVisible();
   expect(window.location.search).toContain("milestone=m1");
   expect(window.location.search).toContain("view=overview");
-  await user.click(
-    within(screen.getByRole("main")).getByRole("button", { name: en.viewNavigation.pipeline }),
-  );
+  await user.click(pipeline);
   expect(pipeline).toHaveAttribute("aria-current", "page");
   expect(window.location.search).toContain("view=pipeline");
   window.history.back();
@@ -327,9 +325,7 @@ test("switching views moves focus to the selected navigation pill", async () => 
   );
   const nav = screen.getByRole("navigation", { name: en.viewNavigation.label });
   const pipeline = within(nav).getByRole("button", { name: en.viewNavigation.pipeline });
-  await user.click(
-    within(screen.getByRole("main")).getByRole("button", { name: en.viewNavigation.pipeline }),
-  );
+  await user.click(pipeline);
   expect(pipeline).toHaveFocus();
   const overview = within(nav).getByRole("button", { name: en.viewNavigation.overview });
   await user.click(overview);

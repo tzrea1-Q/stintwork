@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { ProjectSnapshot } from "@stintwork/core";
 import { RefreshCw, WifiOff } from "lucide-react";
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { overviewData, stintDays } from "./overview-data";
@@ -41,7 +41,7 @@ export function Overview({
   const days = stintDays(snapshot, new Date(now));
   const weekTotal = days.reduce((sum, day) => sum + day.count, 0);
   const maxDay = Math.max(1, ...days.map((day) => day.count));
-  useEffect(() => {
+  useLayoutEffect(() => {
     const node = container.current;
     if (!node) return;
     const measure = () => {

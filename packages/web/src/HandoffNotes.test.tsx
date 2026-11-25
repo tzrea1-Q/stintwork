@@ -56,7 +56,7 @@ test.each(["note", "dismiss"])(
     const { rerender } = render(<Board snapshot={snapshot} />);
     await user.click(screen.getByRole("button", { name: "Needs you 1" }));
     const queue = within(screen.getByRole("dialog", { name: "Needs you 1" }));
-    expect(queue.getByText("Handoff · Test Agent")).toBeInTheDocument();
+    expect(queue.getByRole("heading", { name: "Unresolved handoff" })).toBeInTheDocument();
     expect(queue.getByText("format", { selector: "strong" })).toBeInTheDocument();
     expect(queue.getByText(/Ticket 01 · Stint/)).toHaveTextContent("stint");
     expect(queue.getByRole("button", { name: "Save developer note" })).toBeDisabled();
@@ -92,7 +92,8 @@ test("cancel keeps the handoff; confirming records its resolution and returns fo
   await user.click(trigger);
   await user.keyboard("{Escape}");
   expect(trigger).toHaveFocus();
-  expect(screen.getByText("Handoff · Test Agent")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Unresolved handoff" })).toBeInTheDocument();
+  expect(screen.getByText(/Test Agent · Ticket 01 · Stint/)).toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
   await user.click(trigger);
   await user.click(

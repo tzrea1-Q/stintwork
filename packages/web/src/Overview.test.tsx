@@ -499,6 +499,31 @@ test("uses content-sized column stacks and hides the live status", () => {
   }
 });
 
+test("renders three columns at desktop width without a resize notification", () => {
+  const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(1440);
+  try {
+    const snapshot = project({ ".scratch/one/spec.md": "# One" });
+    snapshot.milestones = [
+      { id: "active", name: "Active milestone", status: "active", workItemSlugs: ["one"] },
+    ];
+    snapshot.workItems[0].milestone = "active";
+    const { container } = render(
+      <Overview
+        snapshot={snapshot}
+        connection="live"
+        onPipeline={() => {}}
+        onOpenItem={() => {}}
+        onNeedsYou={() => {}}
+        onCreate={() => {}}
+        onMilestone={() => {}}
+      />,
+    );
+    expect(container.querySelectorAll("[data-overview-column]")).toHaveLength(3);
+  } finally {
+    width.mockRestore();
+  }
+});
+
 test("reconnecting status and error share a visible callout", () => {
   render(
     <Overview
