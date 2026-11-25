@@ -170,3 +170,12 @@ test("roadmap progress uses ticket units and the close icon dismisses", async ()
   await user.click(close);
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
+
+test("one Escape closes the initially focused roadmap and returns focus", async () => {
+  const { user, sheet } = await open();
+  const trigger = screen.getByRole("button", { name: "Edit roadmap", hidden: true });
+  expect(sheet.getByRole("button", { name: "Close roadmap" })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  await vi.waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(trigger).toHaveFocus();
+});

@@ -126,11 +126,13 @@ export function GateView({
   githubReadOnly = false,
   showHandoffAnswer = true,
   hideApprove = false,
+  details = true,
 }: {
   item: BoardWorkItem;
   githubReadOnly?: boolean;
   showHandoffAnswer?: boolean;
   hideApprove?: boolean;
+  details?: boolean;
   warnings?: Warning[];
   workflows?: WorkflowDefinitions;
 }) {
@@ -197,14 +199,14 @@ export function GateView({
             total={gate.conditions.length}
             label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
           />
-          <ul
-            aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
-            className="space-y-2"
-          >
-            {gate.conditions.map((condition) => (
-              <li key={condition.id} className="rounded-xl border border-border p-3">
-                <div className="flex items-start gap-2">
-                  <>
+          {details && (
+            <ul
+              aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
+              className="space-y-2"
+            >
+              {gate.conditions.map((condition) => (
+                <li key={condition.id} className="rounded-xl border border-border p-3">
+                  <div className="flex items-start gap-2">
                     {condition.ready ? (
                       <CheckCircle2
                         aria-hidden="true"
@@ -216,107 +218,115 @@ export function GateView({
                         className="size-4 shrink-0 text-muted-foreground"
                       />
                     )}
-                  </>
-                  <strong className="min-w-0 flex-1">
-                    {translateCoreText(condition.label, t)}
-                  </strong>
-                  <span className="shrink-0">
-                    <StatusChip status={condition.ready ? "success" : "attention"}>
-                      {condition.ready ? t.stints.ready : t.stints.blocked}
-                    </StatusChip>
-                  </span>
-                </div>
-                {!condition.ready && <p>{translateCoreText(condition.action, t)}</p>}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-      {!checkpoint && !lastHandoff && !warnings.length ? (
-        <p className="text-muted-foreground">{t.stints.emptyGateEvidence}</p>
-      ) : (
-        <>
-          <PropertyList>
-            <PropertyRow
-              icon={GitCommitHorizontal}
-              label={t.stints.lastCheckpoint}
-              value={
-                checkpoint ? (
-                  <code className="block max-w-full overflow-auto font-mono">{checkpoint}</code>
-                ) : (
-                  t.stints.noneRecorded
-                )
-              }
-            />
-          </PropertyList>
-          <h4>{t.stints.lastHandoff}</h4>
-          {lastHandoff ? <HandoffCard stint={lastHandoff} /> : <p>{t.stints.noHandoffRecorded}</p>}
-          {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
-            <HandoffAnswer
-              key={unresolved.stintId}
-              item={unresolved}
-              onError={setError}
-              showDetails={false}
-            />
-          )}
-          <h4>{t.stints.openWarnings}</h4>
-          {warnings.length ? (
-            <ul>
-              {warnings.map(({ path, message }) => (
-                <li key={`${path}:${message}`}>
-                  <code>{path}</code> {message}
+                    <strong className="min-w-0 flex-1">
+                      {translateCoreText(condition.label, t)}
+                    </strong>
+                    <span className="shrink-0">
+                      <StatusChip status={condition.ready ? "success" : "attention"}>
+                        {condition.ready ? t.stints.ready : t.stints.blocked}
+                      </StatusChip>
+                    </span>
+                  </div>
+                  {!condition.ready && <p>{translateCoreText(condition.action, t)}</p>}
                 </li>
               ))}
             </ul>
-          ) : (
-            <p>{t.stints.noWarnings}</p>
           )}
+        </div>
+      )}
+      {details && (
+        <>
+          {!checkpoint && !lastHandoff && !warnings.length ? (
+            <p className="text-muted-foreground">{t.stints.emptyGateEvidence}</p>
+          ) : (
+            <>
+              <PropertyList>
+                <PropertyRow
+                  icon={GitCommitHorizontal}
+                  label={t.stints.lastCheckpoint}
+                  value={
+                    checkpoint ? (
+                      <code className="block max-w-full overflow-auto font-mono">{checkpoint}</code>
+                    ) : (
+                      t.stints.noneRecorded
+                    )
+                  }
+                />
+              </PropertyList>
+              <h4>{t.stints.lastHandoff}</h4>
+              {lastHandoff ? (
+                <HandoffCard stint={lastHandoff} />
+              ) : (
+                <p>{t.stints.noHandoffRecorded}</p>
+              )}
+              {showHandoffAnswer && unresolved?.kind === "handoff-unresolved" && (
+                <HandoffAnswer
+                  key={unresolved.stintId}
+                  item={unresolved}
+                  onError={setError}
+                  showDetails={false}
+                />
+              )}
+              <h4>{t.stints.openWarnings}</h4>
+              {warnings.length ? (
+                <ul>
+                  {warnings.map(({ path, message }) => (
+                    <li key={`${path}:${message}`}>
+                      <code>{path}</code> {message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>{t.stints.noWarnings}</p>
+              )}
+            </>
+          )}
+          {emptyGithubSpec && github && (
+            <p>
+              <a href={github.url} target="_blank" rel="noreferrer">
+                {t.stints.githubOpenIssue}
+              </a>
+            </p>
+          )}
+          {github && !reviewAvailable && <p>{t.stints.githubDetailRequired}</p>}
+          {github &&
+            stages
+              .filter(({ id }) => item.stages[id]?.approved)
+              .map((stage) => {
+                const approval = item.stages[stage.id]?.approved;
+                const state =
+                  approval && typeof approval === "object" && "remoteState" in approval
+                    ? approval.remoteState
+                    : "unknown";
+                return (
+                  <p key={stage.id}>
+                    {stageName(workflows[item.workflow], stage, t)}:{" "}
+                    {
+                      t.stints.githubApproval[
+                        state === "current" || state === "stale" ? state : "unknown"
+                      ]
+                    }
+                  </p>
+                );
+              })}
+          {!github &&
+            earlier.map((stage) => {
+              const approval = item.stages[stage.id]?.approved;
+              return approval &&
+                typeof approval === "object" &&
+                "state" in approval &&
+                approval.state === "stale" &&
+                "stateReason" in approval &&
+                approval.stateReason === "head-changed" ? (
+                <p key={stage.id}>
+                  {stageName(workflows[item.workflow], stage, t)}:{" "}
+                  {t.stints.localApprovalStale(stageName(workflows[item.workflow], stage, t))}
+                </p>
+              ) : null;
+            })}
+          {githubReadOnly && <p>{t.board.githubStatus.readOnly}</p>}
         </>
       )}
-      {emptyGithubSpec && github && (
-        <p>
-          <a href={github.url} target="_blank" rel="noreferrer">
-            {t.stints.githubOpenIssue}
-          </a>
-        </p>
-      )}
-      {github && !reviewAvailable && <p>{t.stints.githubDetailRequired}</p>}
-      {github &&
-        stages
-          .filter(({ id }) => item.stages[id]?.approved)
-          .map((stage) => {
-            const approval = item.stages[stage.id]?.approved;
-            const state =
-              approval && typeof approval === "object" && "remoteState" in approval
-                ? approval.remoteState
-                : "unknown";
-            return (
-              <p key={stage.id}>
-                {stageName(workflows[item.workflow], stage, t)}:{" "}
-                {
-                  t.stints.githubApproval[
-                    state === "current" || state === "stale" ? state : "unknown"
-                  ]
-                }
-              </p>
-            );
-          })}
-      {!github &&
-        earlier.map((stage) => {
-          const approval = item.stages[stage.id]?.approved;
-          return approval &&
-            typeof approval === "object" &&
-            "state" in approval &&
-            approval.state === "stale" &&
-            "stateReason" in approval &&
-            approval.stateReason === "head-changed" ? (
-            <p key={stage.id}>
-              {stageName(workflows[item.workflow], stage, t)}:{" "}
-              {t.stints.localApprovalStale(stageName(workflows[item.workflow], stage, t))}
-            </p>
-          ) : null;
-        })}
-      {githubReadOnly && <p>{t.board.githubStatus.readOnly}</p>}
       {gate.nextStage && !hideApprove && (
         <>
           <Button

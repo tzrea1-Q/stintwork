@@ -26,6 +26,7 @@ for (const width of [1440, 390]) {
     });
     await page.goto("/?view=pipeline");
     await expect.poll(() => !!socket).toBe(true);
+    if (width < 768) await page.locator(`#stage-tab-${snapshot.workItems[1].column}`).click();
     const card = page.locator('[data-work-item="rich-spec"]');
     await card.click();
     const drawer = page.locator(".work-item-drawer:not([data-exiting])");
@@ -57,6 +58,7 @@ for (const width of [1440, 390]) {
     ).toBeLessThanOrEqual(1);
     await drawer.getByRole("button", { name: /close work item/i }).click();
     await expect(page.locator(".work-item-drawer")).toHaveCount(0);
+    if (width < 768) await page.locator(`#stage-tab-${snapshot.workItems[3].column}`).click();
     await page.locator('[data-work-item="rich-implement"]').click();
     await drawer.getByRole("tab", { name: "Tickets" }).click();
     const ticket = snapshot.workItems[3].tickets[0];

@@ -25,3 +25,5 @@ Scope: `WorkItemDrawer.tsx` and new `src/work-item/`, `Board.tsx` and `board-mot
 - [ ] All `e2e/motion-*.spec.ts` and `pnpm test` pass.
 
 ## Comments
+
+**Codex, 2026-11-25:** The coordinator measured the docked panel opening on the 60-card fixture with Chrome at 3x CPU throttling. The remaining floor is about 90–125 ms, with no long task unthrottled; this build produced 105–123 ms versus 90–127 ms before. The profile shows Motion card snapshots (`getSnapshotBeforeUpdate`/`willUpdate`) falling from about 84 ms to 22 ms and `measureDocumentScroll` self time falling from 107 ms to 25 ms. The remaining work is mostly native style and layout (`(program)`) when the panel mounts beside 60 cards. Reaching 60 ms would require changing the visible panel or board reflow, so the target remains unmet pending coordinator acceptance.

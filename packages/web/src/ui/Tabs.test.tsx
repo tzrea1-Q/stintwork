@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "./Tabs";
+import { expect, test } from "vitest";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./Tabs";
+
 test("navigates with arrows", async () => {
   const user = userEvent.setup();
   render(
@@ -99,4 +100,22 @@ test("each tab list owns its indicator", () => {
   expect(
     screen.getByRole("tab", { name: "Two" }).querySelector('[data-slot="tabs-indicator"]'),
   ).toBeInTheDocument();
+});
+
+test("shows the focus ring only for keyboard focus", () => {
+  render(
+    <Tabs defaultValue="a">
+      <TabsList>
+        <TabsTrigger value="a">A</TabsTrigger>
+      </TabsList>
+    </Tabs>,
+  );
+  const tab = screen.getByRole("tab", { name: "A" });
+  fireEvent.keyDown(window, { key: "Tab" });
+  fireEvent.focus(tab);
+  expect(tab).toHaveAttribute("data-focus-ring", "true");
+  fireEvent.blur(tab);
+  fireEvent.pointerDown(window);
+  fireEvent.focus(tab);
+  expect(tab).not.toHaveAttribute("data-focus-ring");
 });

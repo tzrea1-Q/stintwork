@@ -1,5 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 :root {
+  --detail-small-text: 11px;
+  --detail-tiny-text: 10px;
+  --detail-heading-tracking: -0.03em;
+  --detail-spec-columns: 220px minmax(0, 1fr);
+  --detail-sheet-min-width: min(600px, calc(100vw - 32px));
   --motion-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --motion-ease-soft: cubic-bezier(0.215, 0.61, 0.355, 1);
   --motion-ease-away: cubic-bezier(0.33, 0.17, 0.67, 0.5);
