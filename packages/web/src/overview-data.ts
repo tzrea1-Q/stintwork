@@ -24,6 +24,16 @@ export function workItemDone(item: ProjectSnapshot["workItems"][number]): boolea
   );
 }
 
+export function workItemInFlight(
+  item: ProjectSnapshot["workItems"][number],
+  snapshot: ProjectSnapshot,
+) {
+  return (
+    !item.merged &&
+    snapshot.milestones.find((milestone) => milestone.id === item.milestone)?.status !== "shipped"
+  );
+}
+
 // The snapshot has a target date but no milestone start or end, so a time-based
 // marker cannot be placed without inventing a span. Display the date alone.
 export function milestonePercent(resolved: number, total: number) {
@@ -50,14 +60,28 @@ export function stintDays(snapshot: ProjectSnapshot, now: Date) {
   return days;
 }
 
-export function overviewData(snapshot: ProjectSnapshot) {
+export function overviewData(snapshot: ProjectSnapshot, now = new Date()) {
   const active = snapshot.workItems.filter((item) => !item.merged);
   const milestones = snapshot.milestones
     .map((milestone) => {
       const items = snapshot.workItems.filter((item) => item.milestone === milestone.id);
       return {
         milestone,
-        tickets: items.flatMap((item) => item.tickets),
+        units: items.reduce((sum, item) => sum + Math.max(1, item.tickets.length), 0),
+        unitsDone: items.reduce(
+          (sum, item) =>
+            sum +
+            (item.merged
+              ? Math.max(1, item.tickets.length)
+              : item.tickets.length
+                ? item.tickets.filter((ticket) => ticket.resolved).length
+                : Number(workItemDone(item))),
+          0,
+        ),
+        stintsThisWeek: stintDays({ ...snapshot, workItems: items }, now).reduce(
+          (sum, day) => sum + day.count,
+          0,
+        ),
         total: items.length,
         resolved: items.filter(workItemDone).length,
         incomplete: items.some(ticketsUnavailable),
@@ -69,7 +93,9 @@ export function overviewData(snapshot: ProjectSnapshot) {
     });
   const columns = (["clarify", "spec", "tickets", "implement", "review", "ship"] as const).map(
     (column) => {
-      const items = active.filter((item) => item.column === column);
+      const items = snapshot.workItems.filter(
+        (item) => workItemInFlight(item, snapshot) && item.column === column,
+      );
       const waiting = items.filter((item) =>
         snapshot.attentionItems.some((attention) => attention.workItem === item.slug),
       );

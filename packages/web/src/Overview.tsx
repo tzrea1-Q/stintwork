@@ -2,6 +2,7 @@
 import type { ProjectSnapshot } from "@stintwork/core";
 import { ArrowRight, CircleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
+import { formatDuration } from "./duration";
 import { useLanguage } from "./i18n/language";
 import { stageName } from "./i18n/workflow-names";
 import { milestonePercent, overviewData, stintDays, ticketsUnavailable } from "./overview-data";
@@ -16,6 +17,29 @@ import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { StatusChip } from "./ui/StatusChip";
 import { attentionStageName, attentionTitle } from "./useAttentionAlerts";
 import type { Connection } from "./useProjectSnapshot";
+
+function relativeTime(at: string, now: number, language: string) {
+  const seconds = (Date.parse(at) - now) / 1000;
+  const magnitude = Math.abs(seconds);
+  const [divisor, unit] =
+    magnitude < 60
+      ? [1, "second"]
+      : magnitude < 3600
+        ? [60, "minute"]
+        : magnitude < 86400
+          ? [3600, "hour"]
+          : magnitude < 604800
+            ? [86400, "day"]
+            : magnitude < 4838400
+              ? [604800, "week"]
+              : magnitude < 31557600
+                ? [2629800, "month"]
+                : [31557600, "year"];
+  return new Intl.RelativeTimeFormat(language, { numeric: "auto" }).format(
+    Math.round(seconds / (divisor as number)),
+    unit as Intl.RelativeTimeFormatUnit,
+  );
+}
 
 export function Overview({
   snapshot,
@@ -37,8 +61,8 @@ export function Overview({
   onMilestone: (id: string) => void;
 }) {
   const { t, language } = useLanguage();
-  const data = overviewData(snapshot);
   const [now, setNow] = useState(Date.now);
+  const data = overviewData(snapshot, new Date(now));
   const days = stintDays(snapshot, new Date(now));
   const weekTotal = days.reduce((sum, day) => sum + day.count, 0);
   const maxDay = Math.max(1, ...days.map((day) => day.count));
@@ -142,81 +166,89 @@ export function Overview({
             <CardContent>
               {data.milestones
                 .filter(({ milestone }) => milestone.id === data.featured?.milestone.id)
-                .map(({ milestone, resolved, total, incomplete, tickets }) => (
-                  <div key={milestone.id} className="py-1">
-                    <CardHeader className="px-0">
-                      <Eyebrow>{t.overview.eyebrows.milestones}</Eyebrow>
-                      <CardTitle className="min-w-0">
-                        <button
-                          type="button"
-                          className="block max-w-full truncate text-left hover:underline"
-                          data-truncate
-                          title={milestone.name}
-                          onClick={() => onMilestone(milestone.id)}
-                        >
-                          {milestone.name}
-                        </button>
-                      </CardTitle>
-                      <CardAction>
-                        <StatusChip
-                          status={
-                            milestone.status === "active"
-                              ? "running"
-                              : milestone.status === "shipped"
-                                ? "success"
-                                : "stopped"
-                          }
-                        >
-                          {t.planning.roadmap[milestone.status]}
-                        </StatusChip>
-                      </CardAction>
-                    </CardHeader>
-                    {incomplete && (
-                      <p className="text-xs text-muted-foreground">
-                        {t.overview.progressIncomplete}
-                      </p>
-                    )}
-                    <div className="mt-8 text-[66px] leading-none font-[650] tracking-[-.08em] tabular-nums">
-                      {milestonePercent(resolved, total)}
-                      <span className="text-[33px]">%</span>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">{t.overview.completed}</p>
-                    <Progress
-                      className="mt-5 h-2.5 [&_[data-slot=progress-indicator]]:bg-[var(--overview-chart-today)]"
-                      value={resolved}
-                      max={total || 1}
-                      aria-label={milestone.name}
-                    />
-                    <div className="mt-2 flex justify-between gap-2 text-xs text-muted-foreground">
-                      <span>{t.overview.progress}</span>
-                      {milestone.target && (
-                        <span>
-                          {t.overview.target} · {milestone.target}
-                        </span>
+                .map(
+                  ({
+                    milestone,
+                    resolved,
+                    total,
+                    incomplete,
+                    unitsDone,
+                    units,
+                    stintsThisWeek,
+                  }) => (
+                    <div key={milestone.id} className="py-1">
+                      <CardHeader className="px-0">
+                        <Eyebrow>{t.overview.eyebrows.milestones}</Eyebrow>
+                        <CardTitle className="min-w-0">
+                          <button
+                            type="button"
+                            className="block max-w-full truncate text-left hover:underline"
+                            data-truncate
+                            title={milestone.name}
+                            onClick={() => onMilestone(milestone.id)}
+                          >
+                            {milestone.name}
+                          </button>
+                        </CardTitle>
+                        <CardAction>
+                          <StatusChip
+                            status={
+                              milestone.status === "active"
+                                ? "running"
+                                : milestone.status === "shipped"
+                                  ? "success"
+                                  : "stopped"
+                            }
+                          >
+                            {t.planning.roadmap[milestone.status]}
+                          </StatusChip>
+                        </CardAction>
+                      </CardHeader>
+                      {incomplete && (
+                        <p className="text-xs text-muted-foreground">
+                          {t.overview.progressIncomplete}
+                        </p>
                       )}
+                      <div className="mt-8 text-[66px] leading-none font-[650] tracking-[-.08em] tabular-nums">
+                        {milestonePercent(unitsDone, units)}
+                        <span className="text-[33px]">%</span>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">{t.overview.completed}</p>
+                      <Progress
+                        className="mt-5 h-2.5 [&_[data-slot=progress-indicator]]:bg-[var(--overview-chart-today)]"
+                        value={unitsDone}
+                        max={units || 1}
+                        aria-label={milestone.name}
+                      />
+                      <div className="mt-2 flex justify-between gap-2 text-xs text-muted-foreground">
+                        <span>{t.overview.progress}</span>
+                        {milestone.target && (
+                          <span>
+                            {t.overview.target} · {milestone.target}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-6 space-y-0 text-xs">
+                        <div className="flex justify-between gap-2 border-t border-border py-3">
+                          <span className="text-muted-foreground">{t.overview.workItemMetric}</span>
+                          <strong className="tabular-nums">
+                            {resolved}/{total}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between gap-2 border-t border-border py-3">
+                          <span className="text-muted-foreground">{t.overview.tickets}</span>
+                          <strong className="tabular-nums">
+                            {unitsDone}/{units}
+                          </strong>
+                        </div>
+                        <div className="flex justify-between gap-2 border-t border-border py-3">
+                          <span className="text-muted-foreground">{t.overview.stintsThisWeek}</span>
+                          <strong className="tabular-nums">{stintsThisWeek}</strong>
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-6 space-y-0 text-xs">
-                      <div className="flex justify-between gap-2 border-t border-border py-3">
-                        <span className="text-muted-foreground">{t.overview.workItemMetric}</span>
-                        <strong className="tabular-nums">
-                          {resolved}/{total}
-                        </strong>
-                      </div>
-                      <div className="flex justify-between gap-2 border-t border-border py-3">
-                        <span className="text-muted-foreground">{t.overview.tickets}</span>
-                        <strong className="tabular-nums">
-                          {incomplete
-                            ? t.overview.unavailable
-                            : `${tickets.filter((ticket) => ticket.resolved).length}/${tickets.length}`}
-                        </strong>
-                      </div>
-                      <div className="flex justify-between gap-2 border-t border-border py-3">
-                        <span className="text-muted-foreground">{t.overview.stintsThisWeek}</span>
-                        <strong className="tabular-nums">{weekTotal}</strong>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  ),
+                )}
               {otherMilestones.length > 0 && (
                 <details className="py-2">
                   <summary className="cursor-pointer text-sm font-medium">
@@ -465,33 +497,36 @@ export function Overview({
               {weekTotal === 0 && (
                 <p className="text-xs text-muted-foreground">{t.overview.noStintsThisWeek}</p>
               )}
-              <ul
-                className={`mt-4 flex ${weekTotal ? "h-[140px]" : "h-6"} items-end gap-3`}
-                aria-label={t.overview.lastSevenDays}
-              >
-                {days.map(({ date, count }, index) => {
-                  const fullDate = date.toLocaleDateString(language, {
-                    year: "numeric",
-                    month: "short",
-                    day: "numeric",
-                  });
-                  return (
-                    <li
-                      key={date.toISOString()}
-                      aria-label={`${fullDate}: ${count} ${t.overview.stintCount}`}
-                      className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
-                    >
-                      <div
-                        className={`w-full max-w-8 rounded-t ${index === 6 ? "bg-[var(--overview-chart-today)]" : "bg-[var(--overview-chart)]"}`}
-                        style={{ height: count ? `${(count / maxDay) * 100}%` : "2px" }}
-                      />
-                      <span className="text-xs text-muted-foreground">
-                        {date.toLocaleDateString(language, { weekday: "short" })}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
+              {weekTotal > 0 && (
+                <ul
+                  className="mt-4 flex h-[140px] items-end gap-3"
+                  aria-label={t.overview.lastSevenDays}
+                >
+                  {days.map(({ date, count }, index) => {
+                    const fullDate = date.toLocaleDateString(language, {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    });
+                    return (
+                      <li
+                        key={date.toISOString()}
+                        aria-label={`${fullDate}: ${count} ${t.overview.stintCount}`}
+                        className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
+                      >
+                        <div
+                          className={`w-full max-w-8 rounded-t ${index === 6 ? "bg-[var(--overview-chart-today)]" : "bg-[var(--overview-chart)]"}`}
+                          style={{ height: count ? `${(count / maxDay) * 100}%` : "2px" }}
+                        />
+                        <span className="text-xs text-muted-foreground">
+                          {date.toLocaleDateString(language, { weekday: "short" })}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              <h3>{t.overview.activity}</h3>
               {data.activity.map(({ item, stint, at }) => (
                 <Item asChild key={`${item.slug}-${stint.id}`}>
                   <button
@@ -514,7 +549,9 @@ export function Overview({
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {stageLabel(item, stint.stage)} ·{" "}
-                        <time dateTime={at}>{new Date(at).toLocaleString(language)}</time>
+                        <time dateTime={at} title={new Date(at).toLocaleString(language)}>
+                          {relativeTime(at, now, language)}
+                        </time>
                       </span>
                     </ItemContent>
                     <StatusChip
@@ -553,8 +590,11 @@ export function Overview({
                     {name} · {stageLabel(item, stint.stage)}{" "}
                     {stint.startedAt && Number.isFinite(Date.parse(stint.startedAt)) && (
                       <>
-                        · {Math.max(0, Math.floor((now - Date.parse(stint.startedAt)) / 60000))}{" "}
-                        {t.overview.elapsed}
+                        · {t.overview.elapsed}{" "}
+                        {formatDuration(
+                          Math.max(0, Math.floor((now - Date.parse(stint.startedAt)) / 60000)),
+                          t,
+                        )}
                       </>
                     )}
                   </>,

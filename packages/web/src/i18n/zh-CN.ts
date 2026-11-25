@@ -76,11 +76,10 @@ export const zhCN: Catalog = {
     stages: "工作所处阶段",
     next: "接下来",
     running: "正在运行",
-    activity: "近期 Stint",
+    activity: "最近 Stint",
     openQueue: "打开待你处理",
     newItem: "新建工作项",
-    elapsed: "分钟",
-    since: "开始于",
+    elapsed: "已运行",
     stintStatus: {
       running: "运行中",
       finished: "已结束",
@@ -90,6 +89,7 @@ export const zhCN: Catalog = {
       "preparation-failed": "准备失败",
     },
   },
+  duration: { lessThanMinute: "不到 1 分钟", minute: "分钟", hour: "小时", day: "天", days: "天" },
   viewNavigation: {
     label: "导航",
     overview: "概览",

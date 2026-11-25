@@ -35,7 +35,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           next.getByRole("heading", { name: richSnapshot.workItems[3].title }),
         ).toBeVisible();
-        await expect(page.getByText(/30 (min elapsed|分钟)/)).toBeVisible();
+        await expect(page.getByText(/(Elapsed 30 min|已运行 30 分钟)/)).toBeVisible();
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("rich-overview.png"), fullPage: true });
       });

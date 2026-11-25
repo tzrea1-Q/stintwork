@@ -64,8 +64,7 @@ export const en = {
     activity: "Recent stints",
     openQueue: "Open Needs you",
     newItem: "New work item",
-    elapsed: "min elapsed",
-    since: "Since",
+    elapsed: "Elapsed",
     stintStatus: {
       running: "Running",
       finished: "Finished",
@@ -74,6 +73,13 @@ export const en = {
       interrupted: "Interrupted",
       "preparation-failed": "Preparation failed",
     },
+  },
+  duration: {
+    lessThanMinute: "less than a minute",
+    minute: "min",
+    hour: "h",
+    day: "day",
+    days: "days",
   },
   viewNavigation: {
     label: "Navigation",

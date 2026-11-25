@@ -156,8 +156,70 @@ test("refreshes elapsed time immediately when a running stint appears", () => {
     } as NonNullable<typeof item.activeStint>,
   };
   rerender(<Overview snapshot={{ ...snapshot, workItems: [running] }} {...props} />);
-  expect(screen.getByText(/5 min elapsed/)).toBeVisible();
+  expect(screen.getByText(/Elapsed 5 min/)).toBeVisible();
   now.mockRestore();
+});
+
+test("keeps older recent stints when the seven day chart is empty", () => {
+  vi.useFakeTimers();
+  try {
+    vi.setSystemTime(new Date("2026-03-15T12:00:00Z"));
+    const snapshot = project({ ".scratch/one/spec.md": "# One" });
+    const at = "2026-02-01T12:00:00Z";
+    snapshot.workItems[0].stints = [
+      {
+        id: "old",
+        agent: "codex",
+        stage: "spec",
+        status: "finished",
+        startedAt: at,
+        endedAt: null,
+      },
+    ] as (typeof snapshot.workItems)[0]["stints"];
+    render(
+      <Overview
+        snapshot={snapshot}
+        connection="live"
+        onPipeline={() => {}}
+        onOpenItem={() => {}}
+        onNeedsYou={() => {}}
+        onCreate={() => {}}
+        onMilestone={() => {}}
+      />,
+    );
+    expect(screen.getByText("No stints in the last 7 days")).toBeVisible();
+    expect(screen.queryByRole("list", { name: "Last 7 days" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recent stints" })).toBeVisible();
+    expect(screen.getByText("6 weeks ago")).toHaveAttribute(
+      "title",
+      new Date(at).toLocaleString("en"),
+    );
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("Where the work is excludes shipped milestone items", () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One", ".scratch/two/spec.md": "# Two" });
+  snapshot.milestones = [
+    { id: "shipped", name: "Shipped", status: "shipped", workItemSlugs: ["one"] },
+  ];
+  snapshot.workItems[0].milestone = "shipped";
+  render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const card = screen
+    .getByRole("heading", { name: "Where the work is" })
+    .closest('[data-slot="card"]') as HTMLElement;
+  expect(within(card).getByText("1 work items")).toBeVisible();
 });
 
 test("orders cards and discloses shipped milestones", async () => {
@@ -395,9 +457,7 @@ test("shows all stage tracks, a neutral segment and the empty week alongside rec
   expect(occupied?.lastElementChild).toHaveClass("bg-muted-foreground/40");
   expect(occupied?.lastElementChild).toHaveStyle({ width: "100%" });
   expect(screen.getByText("No stints in the last 7 days")).toBeVisible();
-  expect(
-    within(screen.getByRole("list", { name: "Last 7 days" })).getAllByRole("listitem"),
-  ).toHaveLength(7);
+  expect(screen.queryByRole("list", { name: "Last 7 days" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /One.*Spec/ })).toBeVisible();
   expect(screen.getByText("Stints this week").nextElementSibling).toHaveTextContent("0");
 });
