@@ -362,7 +362,9 @@ test.each(["en", "zh-CN"] as const)(
         <StintHistory stints={[summarizeStint(stint)]} />
       </LanguageProvider>,
     );
-    await user.click(screen.getByRole("button", { name: t.stints.openStint(stint.id) }));
+    await user.click(
+      screen.getByRole("button", { name: t.stints.openStint(stint.id.slice(0, 8)) }),
+    );
     await screen.findByRole("log");
     expect(screen.queryByRole("button", { name: /Proceed 原文/ })).not.toBeInTheDocument();
     stint = { ...stint, recovery: { ...stint.recovery, state: "resumed" } };

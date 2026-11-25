@@ -56,7 +56,9 @@ export function stintEventKind(kind: string, labels: Record<string, string>) {
 export function ticketStatus(status: string, t: Catalog, gateResolved = false) {
   if (gateResolved) return t.stints.resolved;
   const labels = t.stints.ticketStatuses;
-  return Object.hasOwn(labels, status) ? labels[status as keyof typeof labels] : status;
+  return Object.hasOwn(labels, status)
+    ? labels[status as keyof typeof labels]
+    : t.stints.otherTicketStatus;
 }
 
 export function renderCoreText(message: unknown, english: string, t: Catalog): string {
