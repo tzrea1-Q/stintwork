@@ -354,14 +354,14 @@ test.each([
     "en",
     "GitHub work items are issues created through agent skills, such as to-spec.",
     "View repository issues",
-    "Create work item",
+    "New work item",
     "Open command palette",
   ],
   [
     "zh-CN",
     "GitHub 工作项是 Issue，请通过智能体技能（如 to-spec）创建。",
     "查看仓库 Issue",
-    "创建工作项",
+    "新建工作项",
     "打开命令面板",
   ],
 ])(
@@ -1502,4 +1502,18 @@ test("blocked detail storage falls back to the default width", async () => {
   fireEvent.keyDown(within(drawer).getByRole("separator"), { key: "ArrowLeft" });
   expect(drawer).toHaveStyle({ width: "576px" });
   vi.unstubAllGlobals();
+});
+
+test.each([
+  ["en", "New work item"],
+  ["zh-CN", "新建工作项"],
+])("Pipeline names the creation entry in %s", (language, label) => {
+  localStorage.setItem(languageStorageKey, language);
+  render(
+    <LanguageProvider>
+      <Board snapshot={project()} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+  localStorage.removeItem(languageStorageKey);
 });

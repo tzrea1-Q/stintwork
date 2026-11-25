@@ -139,7 +139,7 @@ export const zhCN: Catalog = {
     lastAvailable: " 正在显示上次可用的项目数据，并自动重试。",
     allMilestones: "全部里程碑",
     counts: (active, shipped) => joinChinese(active, "个进行中 · ", shipped, "个已交付"),
-    createWorkItem: "创建工作项",
+    createWorkItem: "新建工作项",
     githubStatus: {
       label: "GitHub 发现状态",
       fetched: "获取于 {time} · 已扫描 {count} 个 Issue",

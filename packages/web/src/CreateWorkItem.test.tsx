@@ -592,8 +592,7 @@ test.each(["c", "palette", "button"])(
       await user.click(screen.getByRole("option", { name: "New work item" }));
       expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
     }
-    if (entry === "button")
-      await user.click(screen.getByRole("button", { name: "Create work item" }));
+    if (entry === "button") await user.click(screen.getByRole("button", { name: "New work item" }));
     const dialog = screen.getByRole("dialog", { name: "New work item" });
     expect(within(dialog).getByRole("textbox", { name: "Title" })).toHaveFocus();
     expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
@@ -842,3 +841,20 @@ test("palette shows one Escape hint", () => {
   );
   expect(screen.getAllByText("Esc")).toHaveLength(1);
 });
+
+test.each(["Cancel", "Escape"])(
+  "%s restores focus to the Pipeline create trigger",
+  async (dismissal) => {
+    fetcher();
+    const user = userEvent.setup();
+    render(<Board snapshot={snapshot()} />);
+    const trigger = screen.getByRole("button", { name: "New work item" });
+    await user.click(trigger);
+    const dialog = screen.getByRole("dialog", { name: "New work item" });
+    expect(within(dialog).getByRole("textbox", { name: "Title" })).toHaveFocus();
+    if (dismissal === "Cancel")
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    else await user.keyboard("{Escape}");
+    await waitFor(() => expect(trigger).toHaveFocus());
+  },
+);

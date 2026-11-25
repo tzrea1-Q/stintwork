@@ -124,7 +124,7 @@ export const en = {
     lastAvailable: " Showing the last available project; retrying automatically.",
     allMilestones: "All milestones",
     counts: (active: number, shipped: number) => `${active} active · ${shipped} shipped`,
-    createWorkItem: "Create work item",
+    createWorkItem: "New work item",
     githubStatus: {
       label: "GitHub discovery status",
       fetched: "Fetched {time} · {count} issues scanned",

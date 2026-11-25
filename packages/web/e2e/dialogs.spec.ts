@@ -163,10 +163,13 @@ for (const language of ["en", "zh-CN"] as const) {
             });
           });
           await page.goto("/?view=pipeline");
-          await page.getByRole("button", { name: t.planning.create.title, exact: true }).click();
+          await page
+            .locator(".board-toolbar-actions")
+            .getByRole("button", { name: t.board.createWorkItem, exact: true })
+            .click();
           const dialog = page.getByRole("dialog", { name: t.planning.create.title });
           const confirm = dialog.getByRole("button", {
-            name: t.planning.create.title,
+            name: t.planning.create.submit,
             exact: true,
           });
           await expect(confirm).toBeDisabled();
@@ -241,7 +244,9 @@ for (const language of ["en", "zh-CN"] as const) {
           await dialog.getByRole("button", { name: t.planning.create.cancel }).click();
           await expect(dialog).toBeHidden();
           await expect(
-            page.getByRole("button", { name: t.planning.create.title, exact: true }),
+            page
+              .locator(".board-toolbar-actions")
+              .getByRole("button", { name: t.board.createWorkItem, exact: true }),
           ).toBeFocused();
         });
 
