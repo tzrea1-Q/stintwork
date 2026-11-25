@@ -287,13 +287,17 @@ for (const language of ["en", "zh-CN"] as const) {
           await expect(columns).toHaveCount(1);
         } else {
           const overflow = await strip.evaluate((el) => el.scrollWidth > el.clientWidth);
-          if (width === 768 || width === 1024) expect(overflow).toBe(true);
           if (overflow) {
             await expect(page.locator(".stage-navigation")).toBeVisible();
+            await expect(strip).toHaveAttribute("data-fade-right", "true");
             await page.locator(".stage-navigation button").last().click();
             await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
             await page.locator(".stage-navigation button").first().click();
             await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBe(0);
+          } else {
+            await expect(page.locator(".stage-navigation")).toHaveCount(0);
+            await expect(strip).toHaveAttribute("data-fade-left", "false");
+            await expect(strip).toHaveAttribute("data-fade-right", "false");
           }
         }
         await assertLayout(page, { region: ".pipeline-main" });

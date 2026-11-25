@@ -425,7 +425,7 @@ export function Board({
                                   {t.board.emptyMilestone}
                                 </p>
                               )}
-                              <StageStrip items={filteredActive}>
+                              <StageStrip items={filteredActive} openItem={openItem}>
                                 {(narrow, activeStage) => (
                                   <m.div
                                     layout={!skip && !reduced ? "position" : false}

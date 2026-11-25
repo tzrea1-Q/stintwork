@@ -156,9 +156,12 @@ export function Column({
               </button>
             )}
           </div>
-          {(running > 0 || waiting > 0) && (
-            <p className="mt-2 text-xs text-muted-foreground">{stats}</p>
-          )}
+          <p
+            aria-hidden={running === 0 && waiting === 0}
+            className="mt-2 h-4 text-xs text-muted-foreground"
+          >
+            {(running > 0 || waiting > 0) && stats}
+          </p>
         </header>
       )}
       <m.div

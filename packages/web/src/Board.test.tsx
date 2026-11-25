@@ -1700,3 +1700,34 @@ test("stage navigation skips collapsed rails", () => {
   fireEvent.click(screen.getByRole("button", { name: en.board.nextStages }));
   expect(strip.scrollTo).toHaveBeenCalledWith({ left: 300 });
 });
+
+test("opening an item from Needs you selects its narrow stage and returns focus to its card", async () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("767"),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  window.history.replaceState(null, "", "/?view=pipeline&stage=spec");
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: /^Needs you/ }));
+  const queue = screen.getByRole("dialog", { name: /Needs you/ });
+  await user.click(within(queue).getByRole("button", { name: /First work item · first/ }));
+  const drawer = await screen.findByRole("dialog", { name: "First work item" });
+  expect(new URL(location.href).searchParams.get("stage")).toBe("implement");
+  await user.click(within(drawer).getByRole("button", { name: en.stints.closeWorkItem }));
+  await waitFor(() => expect(screen.getByRole("button", { name: /Open first:/ })).toHaveFocus());
+});
+
+test("an item opened by URL selects its narrow stage", () => {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("767"),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  window.history.replaceState(null, "", "/?view=pipeline&stage=clarify&item=board");
+  render(<Board snapshot={project()} />);
+  expect(new URL(location.href).searchParams.get("stage")).toBe("implement");
+  expect(document.querySelector("#stage-tab-implement")).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector('[data-work-item="board"]')).toBeInTheDocument();
+});

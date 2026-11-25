@@ -501,7 +501,7 @@ export function ReviewOverlay({
             </div>
             <DialogDescription
               title={t.review.diff.readOnly}
-              className="truncate text-xs text-muted-foreground"
+              className="text-xs text-muted-foreground"
             >
               {t.review.diff.readOnly}
             </DialogDescription>
