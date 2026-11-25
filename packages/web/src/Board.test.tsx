@@ -1566,3 +1566,13 @@ test.each([
   expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
   localStorage.removeItem(languageStorageKey);
 });
+
+test.each(["overview", "pipeline"])("permission callout opens Needs you on %s", async (view) => {
+  window.history.replaceState(null, "", `/?view=${view}`);
+  render(<Board snapshot={attentionSnapshot()} />);
+  const banner = screen.getByRole("button", { name: /Permission requests need your attention/ });
+  expect(banner).toHaveClass("bg-attention-soft");
+  expect(banner.querySelector("svg.lucide-shield-alert")).toBeInTheDocument();
+  await userEvent.setup().click(banner);
+  expect(screen.getByRole("dialog", { name: /Needs you/ })).toBeVisible();
+});

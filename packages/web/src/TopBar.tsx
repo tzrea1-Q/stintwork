@@ -66,7 +66,7 @@ export function TopBar({
   }, [badgeScale, reduced, snapshot.attentionItems.length]);
 
   return (
-    <header className="top-bar mx-auto flex min-h-16 w-full max-w-[1500px] shrink-0 items-center gap-1 bg-background px-2 sm:gap-3 sm:px-4 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:px-7">
+    <header className="top-bar page-width flex min-h-16 shrink-0 items-center gap-1 bg-background sm:gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
       <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <span
           aria-hidden="true"

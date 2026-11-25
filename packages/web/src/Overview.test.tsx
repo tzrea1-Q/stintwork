@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createMemoryRepoFiles, indexProject, type ProjectSnapshot } from "@stintwork/core";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { domMax, LazyMotion } from "motion/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { Board } from "./Board";
 import { LanguageProvider, languageStorageKey } from "./i18n/language";
@@ -29,7 +30,7 @@ test("Overview opens a work item in Pipeline with keyboard and restores view on 
   expect(window.location.search).toContain("item=one");
 });
 
-test("empty Overview offers existing create and Pipeline actions and reports errors", async () => {
+test("empty Overview offers creation and reports errors", async () => {
   window.history.replaceState(null, "", "/");
   const user = userEvent.setup();
   render(<Board snapshot={project({})} connection="reconnecting" error="Offline" />);
@@ -231,29 +232,43 @@ test("orders cards and discloses shipped milestones", async () => {
   ];
   snapshot.workItems[0].milestone = "active";
   render(
-    <Overview
-      snapshot={snapshot}
-      connection="live"
-      onPipeline={() => {}}
-      onOpenItem={() => {}}
-      onNeedsYou={() => {}}
-      onCreate={() => {}}
-      onMilestone={() => {}}
-    />,
+    <LazyMotion features={domMax}>
+      <Overview
+        snapshot={snapshot}
+        connection="live"
+        onPipeline={() => {}}
+        onOpenItem={() => {}}
+        onNeedsYou={() => {}}
+        onCreate={() => {}}
+        onMilestone={() => {}}
+      />
+    </LazyMotion>,
   );
   const titles = Array.from(document.querySelectorAll('[data-slot="card-title"]')).map(
     (node) => node.textContent,
   );
-  expect(titles).toEqual(["Active milestone", "Where the work is", "One"]);
+  expect(titles).toEqual(["One", "Active milestone", "Where the work is"]);
   expect(screen.getAllByRole("progressbar", { name: /milestone/ })).toHaveLength(1);
   expect(screen.queryByRole("button", { name: "Planned milestone" })).not.toBeVisible();
-  await userEvent.setup().click(screen.getByText("1 more milestone"));
-  expect(screen.getByRole("button", { name: "Planned milestone" })).toBeVisible();
+  const moreDisclosure = screen.getByRole("button", { name: "1 more milestone" });
+  expect(moreDisclosure).toHaveAttribute("aria-expanded", "false");
+  await userEvent.setup().click(moreDisclosure);
+  expect(moreDisclosure).toHaveAttribute("aria-expanded", "true");
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Planned milestone" })).toBeVisible(),
+  );
   expect(screen.getByText("Planned")).toBeVisible();
-  const summary = screen.getByText("1 shipped milestone");
+  const summary = screen.getByRole("button", { name: "1 shipped milestone" });
+  expect(summary).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible();
   await userEvent.setup().click(summary);
-  expect(screen.getByRole("button", { name: "Done milestone" })).toBeVisible();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Done milestone" })).toBeVisible());
+  expect(summary).toHaveAttribute("aria-expanded", "true");
+  await userEvent.setup().click(summary);
+  expect(summary).toHaveAttribute("aria-expanded", "false");
+  await waitFor(() =>
+    expect(screen.queryByRole("button", { name: "Done milestone" })).not.toBeVisible(),
+  );
 });
 
 test.each([
@@ -418,9 +433,9 @@ test("keyboard focus follows the dashboard card order", async () => {
   );
   const user = userEvent.setup();
   await user.tab();
-  expect(screen.getByRole("button", { name: "Active milestone" })).toHaveFocus();
-  await user.tab();
   expect(screen.getByRole("button", { name: "Open" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Active milestone" })).toHaveFocus();
 });
 
 test("shows all stage tracks, a neutral segment and the empty week alongside recent activity", () => {
@@ -460,4 +475,69 @@ test("shows all stage tracks, a neutral segment and the empty week alongside rec
   expect(screen.queryByRole("list", { name: "Last 7 days" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: /One.*Spec/ })).toBeVisible();
   expect(screen.getByText("Stints this week").nextElementSibling).toHaveTextContent("0");
+});
+
+test("uses content-sized column stacks and hides the live status", () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One" });
+  const { container } = render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  expect(screen.getByRole("status")).toHaveClass("sr-only");
+  const cards = container.querySelectorAll('[data-slot="card"]');
+  expect(cards.length).toBeGreaterThan(0);
+  for (const card of cards) {
+    expect(card.parentElement).toHaveAttribute("data-overview-column");
+    expect(card.className).not.toMatch(/min-h-/);
+  }
+});
+
+test("reconnecting status and error share a visible callout", () => {
+  render(
+    <Overview
+      snapshot={project({})}
+      connection="reconnecting"
+      error="Offline"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const status = screen.getByRole("status");
+  expect(status).toBeVisible();
+  expect(status).toHaveTextContent("Reconnecting");
+  expect(status.closest(".bg-attention-soft")).toContainElement(screen.getByRole("alert"));
+  expect(screen.getByRole("alert")).toHaveTextContent("Offline");
+});
+
+test("empty state explains creation for each tracker", () => {
+  const snapshot = project({});
+  const props = {
+    snapshot,
+    connection: "live" as const,
+    onPipeline: () => {},
+    onOpenItem: () => {},
+    onNeedsYou: () => {},
+    onCreate: () => {},
+    onMilestone: () => {},
+  };
+  const { rerender } = render(<Overview {...props} />);
+  expect(
+    screen.getByText("Work items hold a piece of work as it moves through a workflow."),
+  ).toBeVisible();
+  expect(screen.getAllByRole("button")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "New work item" })).toBeVisible();
+  snapshot.setup.tracker = "github-issues";
+  rerender(<Overview {...props} />);
+  expect(screen.getByText("Add issues on GitHub to see work items here.")).toBeVisible();
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });

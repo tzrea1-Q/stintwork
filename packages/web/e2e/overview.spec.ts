@@ -29,13 +29,24 @@ for (const language of ["en", "zh-CN"] as const) {
         );
         await page.goto("/?view=overview");
         await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
-        const next = page
-          .locator('[data-slot="card"]')
-          .filter({ hasText: t.overview.eyebrows.next });
+        const next = page.locator('[data-slot="card"]').filter({ hasText: t.overview.next });
         await expect(
           next.getByRole("heading", { name: richSnapshot.workItems[3].title }),
         ).toBeVisible();
         await expect(page.getByText(/(Elapsed 30 min|已运行 30 分钟)/)).toBeVisible();
+        const stacks = page.locator("[data-overview-column]");
+        await expect(stacks).toHaveCount(width >= 1280 ? 3 : width >= 769 ? 2 : 1);
+        const cards = stacks.locator(':scope > [data-slot="card"]');
+        expect(await cards.count()).toBeGreaterThan(0);
+        for (const card of await cards.all()) {
+          await expect(card.locator(':scope > [data-slot="card-header"]')).toHaveCount(1);
+          expect(await card.getAttribute("class")).not.toContain("min-h-");
+        }
+        if (width === 1440) {
+          const firstCard = await cards.first().boundingBox();
+          const logo = await page.locator(".top-project > span").first().boundingBox();
+          expect(firstCard && logo && Math.abs(firstCard.x - logo.x)).toBeLessThanOrEqual(1);
+        }
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("rich-overview.png"), fullPage: true });
       });
@@ -85,7 +96,9 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(
           overview.getByRole("heading", { name: item.title, exact: true }),
         ).toBeVisible();
-        const disclosure = overview.locator("summary");
+        const disclosure = overview.getByRole("button", {
+          name: `1 ${t.overview.shippedMilestone}`,
+        });
         await disclosure.focus();
         await page.keyboard.press("Enter");
         await expect(overview.getByRole("button", { name: "Shipped milestone" })).toBeVisible();

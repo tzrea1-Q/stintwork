@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
-import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
+import {
+  CheckCheck,
+  ChevronLeft,
+  ChevronRight,
+  FolderOpen,
+  Layers3,
+  ShieldAlert,
+} from "lucide-react";
 import { AnimatePresence, LayoutGroup, MotionConfig, MotionGlobalConfig, m } from "motion/react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
@@ -279,13 +286,18 @@ export function Board({
         }}
       />
       {snapshot.attentionItems.some((item) => item.kind === "permission") && (
-        <button
-          type="button"
-          className="border-b border-attention/30 bg-card px-4 py-2 text-left text-sm text-attention-foreground"
-          onClick={() => setNeedsYouOpen(true)}
-        >
-          {t.needsYou.pendingPermissions}
-        </button>
+        <div className="page-width pt-4">
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-lg bg-attention-soft p-3 text-left text-sm text-attention-foreground"
+            onClick={() => setNeedsYouOpen(true)}
+          >
+            <ShieldAlert className="size-icon-md shrink-0" aria-hidden="true" />
+            <span className="flex-1">{t.needsYou.pendingPermissions}</span>
+            <span>{t.overview.openQueue}</span>
+            <ChevronRight className="size-icon-sm shrink-0" aria-hidden="true" />
+          </button>
+        </div>
       )}
       {view === "overview" && (
         <Overview
