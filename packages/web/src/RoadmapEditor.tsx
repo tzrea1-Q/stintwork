@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { m } from "motion/react";
-import { useId } from "react";
-import { spring, useReducedMotionSafe } from "./ui/motion";
+
 import type { Milestone, ProjectSnapshot, RoadmapChange } from "@stintwork/core";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { m } from "motion/react";
+import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
@@ -12,6 +11,7 @@ import { milestoneUnits } from "./overview-data";
 import { Button } from "./ui/Button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { Input } from "./ui/Input";
+import { spring, useReducedMotionSafe } from "./ui/motion";
 import { Progress } from "./ui/Progress";
 import { SelectField } from "./ui/SelectField";
 import { StatusChip } from "./ui/StatusChip";
@@ -61,6 +61,8 @@ function RoadmapSheet({
   const labels = t.planning.roadmap;
   const [milestones, setMilestones] = useState(snapshot.milestones);
   const indicatorId = useId();
+  const closeButton = useRef<HTMLButtonElement>(null);
+  const autoFocusing = useRef(false);
   const reduced = useReducedMotionSafe();
   const [selected, setSelected] = useState(snapshot.milestones[0]?.id ?? "");
   const milestone = milestones.find((item) => item.id === selected);
@@ -168,6 +170,12 @@ function RoadmapSheet({
     >
       <DialogContent
         onExitComplete={onExitComplete}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          autoFocusing.current = true;
+          closeButton.current?.focus({ preventScroll: true });
+          autoFocusing.current = false;
+        }}
         className="roadmap-editor w-[960px]"
         onEscapeKeyDown={(event) => {
           if (saving || adding) event.preventDefault();
@@ -184,8 +192,14 @@ function RoadmapSheet({
           <DialogTitle className="text-xl font-medium">{labels.title}</DialogTitle>
           <TooltipProvider>
             <Tooltip>
-              <TooltipTrigger asChild>
+              <TooltipTrigger
+                asChild
+                onFocus={(event) => {
+                  if (autoFocusing.current) event.preventDefault();
+                }}
+              >
                 <Button
+                  ref={closeButton}
                   variant="ghost"
                   size="icon"
                   aria-label={labels.close}

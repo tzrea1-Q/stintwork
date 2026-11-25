@@ -1117,3 +1117,28 @@ test.each(["pointer", "keyboard"])("%s opening focuses the appropriate target", 
     input === "pointer" ? panel : within(panel).getByRole("button", { name: "Close work item" }),
   ).toHaveFocus();
 });
+
+test("overview defers gate details and agents while keeping summary and footer", async () => {
+  MotionGlobalConfig.skipAnimations = false;
+  const item = indexProject(createMemoryRepoFiles({ ".scratch/first/spec.md": "# First" }), {
+    name: "Project",
+  }).workItems[0];
+  item.activeStint = { ...recoveryStint(), workItem: item.slug };
+  try {
+    const { container } = render(<WorkItemDrawer item={item} onClose={() => {}} />);
+    expect(
+      container.querySelector(".drawer-footer") ?? document.querySelector(".drawer-footer"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/conditions met/i)).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /gate conditions/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Agents by stage")).not.toBeInTheDocument();
+    expect(document.querySelector(".stint-stream")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("list", { name: /gate conditions/i })).toBeInTheDocument();
+      expect(screen.getByText("Agents by stage")).toBeInTheDocument();
+      expect(document.querySelector(".stint-stream")).toBeInTheDocument();
+    });
+  } finally {
+    MotionGlobalConfig.skipAnimations = true;
+  }
+});

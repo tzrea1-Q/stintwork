@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { spring, tween } from "../src/ui/motion";
 import { motionBoardSnapshot } from "./motion-board.fixture";
 import { sampleElementFrames, sampleFrames, waitForRest } from "./support/frames";
@@ -110,7 +110,12 @@ test("closing docked detail reflows the board during the panel exit", async ({ p
 
 async function openDetail(page: Page, onOpen?: () => void) {
   await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));
+  const snapshot = await (await page.request.get("/api/project")).json();
+  const item = snapshot.workItems.find((entry: { slug: string }) => entry.slug === "long-title");
+  if (!item?.column) throw new Error("Missing shared fixture item or stage");
   await page.goto("/?view=pipeline");
+  if ((page.viewportSize()?.width ?? 0) < 768)
+    await page.locator(`#stage-tab-${item.column}`).click();
   await page.locator('.board-scroll [data-work-item="long-title"]').click();
   await expect(page.locator(".work-item-drawer")).toBeVisible();
   onOpen?.();

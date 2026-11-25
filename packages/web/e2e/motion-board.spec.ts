@@ -57,34 +57,51 @@ for (const width of [1440, 390]) {
       connection.send(JSON.stringify(snapshot));
     });
     await page.goto("/?view=pipeline");
+    if (width < 768) await page.locator("#stage-tab-spec").click();
     const card = page.locator('[data-work-item="motion-0"]');
     await expect(card).toBeVisible();
     await expect.poll(() => !!socket).toBe(true);
     await page.waitForTimeout(1000);
-    const oldLeft = await card.evaluate((element) => element.getBoundingClientRect().left);
-    const targetLeft = await page
-      .locator('[data-card-column="tickets"] .work-item')
-      .first()
-      .evaluate((element) => element.getBoundingClientRect().left);
-    const framesPromise = sampleFrames(page, '[data-work-item="motion-0"]', 800);
-    moveMotionCard(snapshot, 0, "tickets");
-    socket?.send(JSON.stringify(snapshot));
-    const frames = await framesPromise;
-    await expect(card).toBeAttached();
-    await expect(card).toHaveCount(1);
-    expect(
-      frames.some(
-        ({ left }) =>
-          left > Math.min(oldLeft, targetLeft) + 1 && left < Math.max(oldLeft, targetLeft) - 1,
-      ),
-    ).toBe(true);
-    await expect
-      .poll(() =>
-        card.evaluate((element) =>
-          element.closest("[data-card-column]")?.getAttribute("data-card-column"),
+    if (width < 768) {
+      const spec = page.locator("#stage-tab-spec");
+      const tickets = page.locator("#stage-tab-tickets");
+      await expect(spec).toContainText("30");
+      await expect(tickets).toContainText("30");
+      moveMotionCard(snapshot, 0, "tickets");
+      socket?.send(JSON.stringify(snapshot));
+      await expect(spec).toContainText("29");
+      await expect(tickets).toContainText("31");
+      await expect(card).toHaveCount(0);
+      await tickets.click();
+      await expect(card).toBeVisible();
+      await expect(card).toHaveCount(1);
+      await spec.click();
+    } else {
+      const oldLeft = await card.evaluate((element) => element.getBoundingClientRect().left);
+      const targetLeft = await page
+        .locator('[data-card-column="tickets"] .work-item')
+        .first()
+        .evaluate((element) => element.getBoundingClientRect().left);
+      const framesPromise = sampleFrames(page, '[data-work-item="motion-0"]', 800);
+      moveMotionCard(snapshot, 0, "tickets");
+      socket?.send(JSON.stringify(snapshot));
+      const frames = await framesPromise;
+      await expect(card).toBeAttached();
+      await expect(card).toHaveCount(1);
+      expect(
+        frames.some(
+          ({ left }) =>
+            left > Math.min(oldLeft, targetLeft) + 1 && left < Math.max(oldLeft, targetLeft) - 1,
         ),
-      )
-      .toBe("tickets");
+      ).toBe(true);
+      await expect
+        .poll(() =>
+          card.evaluate((element) =>
+            element.closest("[data-card-column]")?.getAttribute("data-card-column"),
+          ),
+        )
+        .toBe("tickets");
+    }
     snapshot.workItems.push({
       ...structuredClone(template),
       slug: "motion-arrival",
@@ -174,5 +191,36 @@ for (const width of [1440, 390]) {
         JSON.stringify(durations),
       ).toBe(true);
     }
+  });
+}
+
+if (process.env.MEASURE_OPEN === "1") {
+  test("measure docked panel opening at 3x CPU", async ({ page, context }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const { snapshot } = motionBoardSnapshot();
+    await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+    await page.routeWebSocket("**/api/live", (connection) =>
+      connection.send(JSON.stringify(snapshot)),
+    );
+    await page.goto("/?view=pipeline");
+    const card = page.locator('[data-work-item="motion-0"]');
+    await expect(card).toBeVisible();
+    await page.waitForTimeout(1000);
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 3 });
+    await page.evaluate(() => {
+      const durations: number[] = [];
+      (window as typeof window & { openLongTasks: number[] }).openLongTasks = durations;
+      new PerformanceObserver((list) =>
+        durations.push(...list.getEntries().map((entry) => entry.duration)),
+      ).observe({ type: "longtask" });
+    });
+    await card.click();
+    await page.waitForTimeout(1000);
+    const durations = await page.evaluate(
+      () => (window as typeof window & { openLongTasks: number[] }).openLongTasks,
+    );
+    console.log("Docked panel long tasks at 3x CPU (ms):", durations);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
   });
 }

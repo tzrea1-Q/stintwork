@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  stageAgent,
   type AgentProfile,
   type Milestone,
   type ProjectSnapshot,
+  stageAgent,
   type WorkflowDefinition,
 } from "@stintwork/core";
 import { Bug, Layers3, Sparkles, Zap } from "lucide-react";
-import { m, useIsPresent } from "motion/react";
+import { m, useInView, useIsPresent } from "motion/react";
 import { forwardRef, useContext, useRef, useState } from "react";
-import { becameShipped } from "./moments";
 import { BoardMotionContext } from "./board-motion";
-import { blur, scale, shift, spring, staggerDelay, tween, usePress } from "./ui/motion";
-import { RollingNumber } from "./ui/RollingNumber";
 import { useLanguage } from "./i18n/language";
 import { uncustomisedBuiltIn, workflowName } from "./i18n/workflow-names";
+import { becameShipped } from "./moments";
 import { recoveryStatus } from "./StintRecovery";
 import { AgentAvatar } from "./ui/AgentAvatar";
+import { Button } from "./ui/Button";
+import { blur, scale, shift, spring, staggerDelay, tween, usePress } from "./ui/motion";
+import { RollingNumber } from "./ui/RollingNumber";
 import { SegmentedProgress } from "./ui/SegmentedProgress";
 import { StatusChip } from "./ui/StatusChip";
-import { Button } from "./ui/Button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
 const shippedMoments = new Set<string>();
@@ -54,6 +54,11 @@ export const WorkItemCard = forwardRef<
   },
   ref,
 ) {
+  const cardRef = useRef<HTMLElement | null>(null);
+  const visible = useInView(cardRef, {
+    initial: true,
+    once: typeof IntersectionObserver === "undefined",
+  });
   const { t } = useLanguage();
   const isPresent = useIsPresent();
   const { firstLoad, previous, skip, instant, reduced } = useContext(BoardMotionContext);
@@ -129,11 +134,15 @@ export const WorkItemCard = forwardRef<
 
   return (
     <m.article
-      ref={ref}
+      ref={(node) => {
+        cardRef.current = node;
+        if (typeof ref === "function") ref(node);
+        else if (ref) (ref as React.MutableRefObject<HTMLElement | null>).current = node;
+      }}
       data-exiting={isPresent ? undefined : item.slug}
       aria-hidden={isPresent ? undefined : true}
-      layout={!skip && !reduced ? "position" : false}
-      layoutId={skip || reduced ? undefined : `card-${item.slug}`}
+      layout={!skip && !reduced && visible ? "position" : false}
+      layoutId={skip || reduced || !visible ? undefined : `card-${item.slug}`}
       initial={
         arrival
           ? reduced
@@ -166,7 +175,7 @@ export const WorkItemCard = forwardRef<
           transition={spring.celebrate}
         />
       )}
-      <m.div layout="position">
+      <m.div layout={visible ? "position" : false}>
         <div className="flex items-start justify-between gap-2">
           <span
             className="work-item-id inline-flex min-w-0 flex-1 items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"

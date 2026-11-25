@@ -30,10 +30,11 @@ for (const width of [1440, 390]) {
       value === "none" ? 1 : Number(value.match(/^matrix\(([^,]+)/)?.[1]);
     expect(scale(transform)).toBeCloseTo(value / max, 2);
     await page.goto("/?view=pipeline");
+    if (width < 768 && item.column) await page.locator(`#stage-tab-${item.column}`).click();
     await page.locator('.board-scroll [data-work-item="long-title"]').click();
     await waitForRest(page, ".work-item-drawer");
     const drawer = page.locator(".work-item-drawer");
-    const button = drawer.getByRole("button").first();
+    const button = drawer.getByRole("button", { name: "Close work item" });
     await button.evaluate((element) => element.setAttribute("data-motion-test", "press"));
     const pressSelector = '[data-motion-test="press"]';
     const box = await button.boundingBox();

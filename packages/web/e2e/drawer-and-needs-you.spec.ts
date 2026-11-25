@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
-import { stageName } from "../src/i18n/workflow-names";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
+import { stageName } from "../src/i18n/workflow-names";
 import { zhCN } from "../src/i18n/zh-CN";
 import { assertLayout } from "./layout-check";
 import { richClock, richSnapshotWithEveryKind } from "./rich.fixture";
@@ -76,9 +76,12 @@ for (const language of ["en", "zh-CN"] as const) {
     const bounds = await tab.boundingBox();
     if (!bounds) throw new Error("Missing Spec tab bounds");
     await page.mouse.click(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    expect(await page.evaluate(() => document.activeElement?.matches(":focus-visible"))).toBe(
-      false,
-    );
+    expect(
+      await tab.evaluate((element) => {
+        const style = getComputedStyle(element);
+        return { shadow: style.boxShadow, outline: style.outlineStyle };
+      }),
+    ).toEqual({ shadow: "none", outline: "none" });
   });
   for (const width of [1440, 1024, 768, 390, 360]) {
     for (const colorScheme of width === 1440 || width === 390
