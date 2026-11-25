@@ -521,6 +521,8 @@ export const en = {
   },
   review: {
     diff: {
+      headShort: "Head",
+      copyHash: (label: string) => `Copy ${label}`,
       stint: "Stint",
       against: " against ",
       binary: "Binary",
@@ -756,6 +758,7 @@ export const en = {
     },
   },
   markShipped: {
+    close: "Close",
     mark: "Mark as shipped",
     explanation: "Record a merge made outside Stintwork. This commits the work item workflow file.",
     commit: "Merge commit",

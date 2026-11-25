@@ -523,7 +523,9 @@ test("opens the palette while Customise is still exiting", async () => {
     ).toHaveFocus();
     expect(document.querySelector(".customise-workflow")).toBeInTheDocument();
     await user.click(screen.getByRole("option", { name: "Customise Feature workflow" }));
-    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(
+      fetcher.mock.calls.filter(([url]) => String(url).endsWith("/customise/preview")),
+    ).toHaveLength(2);
   } finally {
     MotionGlobalConfig.skipAnimations = true;
   }

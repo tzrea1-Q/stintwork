@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
-import { builtInWorkflows } from "@stintwork/core";
+import { builtInWorkflows, type AgentProfile } from "@stintwork/core";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { agentName } from "./agent-name";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { stageName, workflowName } from "./i18n/workflow-names";
@@ -31,6 +32,7 @@ export function CustomiseWorkflow({
     setInternalOpen(false);
     onClose();
   };
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [preview, setPreview] = useState<{ path: string; yaml: string } | null>(null);
   const [error, setError] = useErrorText();
   const [saving, setSaving] = useState(false);
@@ -44,6 +46,12 @@ export function CustomiseWorkflow({
     const controller = new AbortController();
     let disposed = false;
     setPreview(null);
+    void fetch("/api/agents", { signal: controller.signal })
+      .then((response) => response.json())
+      .then((data) => {
+        if (!disposed && Array.isArray(data.agents)) setAgents(data.agents);
+      })
+      .catch(() => {});
     setError("");
     void (async () => {
       try {
@@ -101,7 +109,7 @@ export function CustomiseWorkflow({
       <DialogContent
         onExitComplete={onExitComplete}
         aria-describedby={undefined}
-        className="customise-workflow"
+        className="customise-workflow flex flex-col overflow-hidden p-0"
         onEscapeKeyDown={(event) => {
           if (saving) event.preventDefault();
         }}
@@ -109,10 +117,13 @@ export function CustomiseWorkflow({
           if (saving) event.preventDefault();
         }}
       >
-        <DialogTitle className="text-xl font-medium">
+        <DialogTitle className="shrink-0 px-6 pt-6 text-xl font-medium">
           {t.planning.customise.title(name)}
         </DialogTitle>
-        <fieldset disabled={saving} className="mt-5 grid min-w-0 gap-4">
+        <fieldset
+          disabled={saving}
+          className="customise-body min-h-0 min-w-0 flex-1 space-y-4 overflow-auto px-6 pt-5"
+        >
           {preview ? (
             <>
               <p>
@@ -139,8 +150,8 @@ export function CustomiseWorkflow({
                           <StatusChip status="stopped">
                             {t.planning.customise.gateKinds[stage.gate]}
                           </StatusChip>
-                          <AgentAvatar agent={agent} name={agent} />
-                          <span>{agent}</span>
+                          <AgentAvatar agent={agent} name={agentName(agent, agents)} />
+                          <span>{agentName(agent, agents)}</span>
                         </Item>
                       </li>
                     );
@@ -171,13 +182,15 @@ export function CustomiseWorkflow({
               )}
             </p>
           )}
-          <footer className="sticky bottom-0 flex flex-wrap justify-end gap-3 border-t border-border bg-card py-4">
-            <Button onClick={close}>{t.planning.customise.cancel}</Button>
-            <Button variant="primary" disabled={!preview} onClick={() => void customise()}>
-              {saving ? t.planning.customise.saving : t.planning.customise.confirm}
-            </Button>
-          </footer>
         </fieldset>
+        <footer className="flex shrink-0 flex-wrap justify-end gap-3 border-t border-border bg-card px-6 py-4">
+          <Button disabled={saving} onClick={close}>
+            {t.planning.customise.cancel}
+          </Button>
+          <Button variant="primary" disabled={!preview || saving} onClick={() => void customise()}>
+            {saving ? t.planning.customise.saving : t.planning.customise.confirm}
+          </Button>
+        </footer>
       </DialogContent>
     </Dialog>
   );

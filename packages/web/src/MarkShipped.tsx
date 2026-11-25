@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { X } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { useState } from "react";
 import { toast } from "sonner";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
@@ -57,7 +59,25 @@ export function MarkShipped({ slug, head }: { slug: string; head?: string }) {
         </Button>
       </DialogTrigger>
       <DialogContent className="[&_label]:grid [&_label]:gap-1 [&_label]:text-sm [&_input]:w-full [&_input]:rounded-xl [&_input]:border [&_input]:border-border [&_input]:bg-card [&_input]:p-2">
-        <DialogTitle className="text-xl font-medium">{t.markShipped.mark}</DialogTitle>
+        <div className="flex items-center justify-between gap-3">
+          <DialogTitle className="text-xl font-medium">{t.markShipped.mark}</DialogTitle>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={t.markShipped.close}
+                  disabled={busy}
+                  onClick={() => setOpen(false)}
+                >
+                  <X aria-hidden="true" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>{t.markShipped.close}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <DialogDescription className="text-muted-foreground">
           {t.markShipped.explanation}
         </DialogDescription>

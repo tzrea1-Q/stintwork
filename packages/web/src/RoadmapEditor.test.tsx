@@ -153,3 +153,20 @@ test("roadmap stays mounted during its exit and returns focus afterwards", async
     MotionGlobalConfig.skipAnimations = true;
   }
 });
+
+test("roadmap progress uses ticket units and the close icon dismisses", async () => {
+  const project = snapshot();
+  project.workItems[0].tickets = Array.from({ length: 6 }, (_, index) => ({
+    ...project.workItems[0].tickets[0],
+    number: index + 1,
+    resolved: index < 5,
+  }));
+  const user = userEvent.setup();
+  render(<RoadmapEditor snapshot={project} />);
+  await user.click(screen.getByRole("button", { name: "Edit roadmap" }));
+  expect(screen.getByText("5/6")).toBeInTheDocument();
+  const close = screen.getByRole("button", { name: "Close roadmap" });
+  expect(close.querySelector("svg")).toBeInTheDocument();
+  await user.click(close);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});

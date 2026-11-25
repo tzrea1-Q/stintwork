@@ -524,6 +524,8 @@ export const zhCN: Catalog = {
   },
   review: {
     diff: {
+      headShort: "提交",
+      copyHash: (label: string) => `复制 ${label}`,
       stint: "Stint",
       against: " 对比 ",
       binary: "二进制",
@@ -760,6 +762,7 @@ export const zhCN: Catalog = {
     },
   },
   markShipped: {
+    close: "关闭",
     mark: "标记为已交付",
     explanation: "记录在 Stintwork 外完成的合并。此操作会提交工作项的工作流文件。",
     commit: "合并提交",

@@ -8,11 +8,13 @@ import type {
   StintSummary,
 } from "@stintwork/core";
 import type { DiffFile, DiffLine, WorkItemDiff } from "@stintwork/git";
-import { X } from "lucide-react";
+import { Copy, X } from "lucide-react";
 import { Fragment, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
 import { FindingCard, FindingsRail, reviewFindings } from "./ReviewFindings";
+import { shortHash } from "./short-id";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { RiskyPaths } from "./RiskyPaths";
 import { Button } from "./ui/Button";
 import { cn } from "./ui/cn";
@@ -90,7 +92,13 @@ export function ReviewDiff({
           {diff.files.map((file, index) => (
             <li key={file.path}>
               <a href={`#${id}-file-${index}`} onClick={onSelectFile}>
-                <code>{file.path}</code>
+                <code
+                  title={file.path}
+                  data-truncate
+                  className="block min-w-0 overflow-hidden whitespace-nowrap text-ellipsis [direction:rtl] [text-align:left]"
+                >
+                  {file.path}
+                </code>
                 <small>{t.review.diff.fileStatuses[file.status]}</small>
                 <Counts file={file} />
               </a>
@@ -99,7 +107,13 @@ export function ReviewDiff({
           {outsideDiff.map((file, index) => (
             <li key={file.path}>
               <a href={`#${id}-outside-${index}`} onClick={onSelectFile}>
-                <code>{file.path}</code>
+                <code
+                  title={file.path}
+                  data-truncate
+                  className="block min-w-0 overflow-hidden whitespace-nowrap text-ellipsis [direction:rtl] [text-align:left]"
+                >
+                  {file.path}
+                </code>
                 <small>{t.review.diff.outside}</small>
               </a>
             </li>
@@ -271,10 +285,9 @@ export function ReviewOverlay({
     onClose();
   };
   const closeButton = useRef<HTMLButtonElement>(null);
+  const [closeTip, setCloseTip] = useState(false);
   const findingId = useId();
-  const detailsId = useId();
   const [pane, setPane] = useState<ReviewPane>("diff");
-  const [detailsOpen, setDetailsOpen] = useState(false);
   const [diff, setDiff] = useState<WorkItemDiff | null>(null);
   const [error, setError] = useErrorText();
   const [decisions, setDecisions] = useState<ReviewDecision[]>(item.reviewDecisions ?? []);
@@ -430,56 +443,83 @@ export function ReviewOverlay({
           closeButton.current?.focus();
         }}
       >
-        <header className="review-header flex shrink-0 flex-wrap justify-between gap-2 border-b border-border p-3 md:gap-4 md:p-6">
-          <div className="min-w-0 flex-1 basis-96 [overflow-wrap:anywhere]">
-            <p className="eyebrow text-xs uppercase tracking-widest text-muted-foreground">
+        <header className="review-header relative shrink-0 border-b border-border p-3 md:p-6">
+          <div className="min-w-0">
+            <p
+              className="eyebrow truncate pr-56 text-xs uppercase tracking-widest text-muted-foreground"
+              title={item.slug}
+              data-truncate
+            >
               {t.review.diff.review} / <code>{item.slug}</code>
             </p>
-            <div className="review-range flex flex-wrap items-center gap-2">
-              <DialogTitle className="my-1 text-sm font-medium md:my-2 md:text-xl">
-                {item.title}
-              </DialogTitle>
-              {(item.headCommit ?? diff?.headCommit) && (
-                <span className="text-xs text-muted-foreground">
-                  {t.review.diff.branchHead}
-                  <code className="rounded-full bg-muted px-2 py-1 text-xs">
-                    {item.headCommit ?? diff?.headCommit}
-                  </code>
+            <DialogTitle
+              title={item.title}
+              data-truncate
+              className="my-1 truncate pr-56 text-sm font-medium md:text-xl"
+            >
+              {item.title}
+            </DialogTitle>
+            <div className="review-range flex min-w-0 items-center gap-x-2 whitespace-nowrap text-xs">
+              {diff && (
+                <span
+                  data-truncate
+                  className="min-w-0 truncate"
+                  title={`${diff.branch} → ${diff.mainBranch}`}
+                >
+                  <code>{diff.branch}</code> → <code>{diff.mainBranch}</code>
                 </span>
               )}
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="md:hidden"
-              aria-expanded={detailsOpen}
-              aria-controls={detailsId}
-              onClick={() => setDetailsOpen(!detailsOpen)}
-            >
-              {t.review.diff.details}
-            </Button>
-            <div id={detailsId} className={cn(!detailsOpen && "hidden md:block")}>
-              <DialogDescription className="text-muted-foreground">
-                {t.review.diff.readOnly}
-              </DialogDescription>
-              {diff && (
-                <div className="review-range text-xs [overflow-wrap:anywhere]">
-                  <p>
-                    <code>{diff.branch}</code>
-                    {t.review.diff.against}
-                    <code>{diff.mainBranch}</code>
-                  </p>
-                  <p>
-                    {t.review.diff.mergeBase}
-                    <code>{diff.mergeBase}</code>
-                  </p>
-                </div>
+              {(
+                [
+                  [t.review.diff.headShort, item.headCommit ?? diff?.headCommit],
+                  [t.review.diff.mergeBase, diff?.mergeBase],
+                ] as const
+              ).map(
+                ([label, hash]) =>
+                  hash && (
+                    <span key={label} className="inline-flex shrink-0 items-center gap-1">
+                      {label} <code title={hash}>{shortHash(hash)}</code>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6"
+                              aria-label={t.review.diff.copyHash(label)}
+                              onClick={() => void navigator.clipboard.writeText(hash)}
+                            >
+                              <Copy aria-hidden="true" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>{t.review.diff.copyHash(label)}</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </span>
+                  ),
               )}
             </div>
+            <DialogDescription
+              title={t.review.diff.readOnly}
+              className="truncate text-xs text-muted-foreground"
+            >
+              {t.review.diff.readOnly}
+            </DialogDescription>
           </div>
-          <div className="review-header-actions flex flex-wrap items-start gap-2">
+          <div className="review-header-actions absolute right-3 top-3 flex items-start gap-1 md:right-6 md:top-6">
             <Button
-              variant="primary"
+              variant="outline"
+              size="sm"
+              className="md:min-h-8 md:px-3"
+              onClick={() => {
+                setPane("diff");
+                void readDiff();
+              }}
+            >
+              {t.review.diff.refresh}
+            </Button>
+            <Button
+              variant="outline"
               size="sm"
               className="md:min-h-8 md:px-3"
               disabled={
@@ -495,26 +535,24 @@ export function ReviewOverlay({
             >
               {t.review.diff.sendBack}
             </Button>
-            <Button
-              size="sm"
-              className="md:min-h-8 md:px-3"
-              onClick={() => {
-                setPane("diff");
-                void readDiff();
-              }}
-            >
-              {t.review.diff.refresh}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="md:min-h-8 md:px-3"
-              ref={closeButton}
-              onClick={close}
-              aria-label={t.review.diff.close}
-            >
-              <X aria-hidden="true" /> {t.review.diff.close}
-            </Button>
+            <TooltipProvider>
+              <Tooltip open={closeTip}>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    ref={closeButton}
+                    onPointerEnter={() => setCloseTip(true)}
+                    onPointerLeave={() => setCloseTip(false)}
+                    onClick={close}
+                    aria-label={t.review.diff.close}
+                  >
+                    <X aria-hidden="true" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t.review.diff.close}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </header>
         {actionError && (
