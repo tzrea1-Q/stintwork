@@ -40,15 +40,9 @@ export function TopBar({
   const [setupOpen, setSetupOpen] = useState(false);
   const [setupMounted, setSetupMounted] = useState(false);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
-  const setup = snapshot.setup;
-  const checks = [
-    setup.hasIssueTracker,
-    setup.usesLocalMarkdown,
-    setup.hasAgents || setup.hasClaude,
-    setup.hasGlossary,
-    setup.hasAdrs,
-  ];
-  const ready = checks.filter(Boolean).length;
+  const checks = snapshot.setup.checks;
+  const ready = checks.filter((check) => check.status === "ready").length;
+  const needsChange = checks.some((check) => check.status === "needs-change");
   const warnings = snapshot.warnings.length;
   const previousCount = useRef(snapshot.attentionItems.length);
   const pop = rose(previousCount.current, snapshot.attentionItems.length);
@@ -195,10 +189,10 @@ export function TopBar({
                     size="icon"
                     className="relative size-9"
                     aria-label={t.topBar.settings}
-                    aria-describedby={ready < checks.length ? "setup-status" : undefined}
+                    aria-describedby={needsChange ? "setup-status" : undefined}
                   >
                     <Settings aria-hidden="true" />
-                    {ready < checks.length && (
+                    {needsChange && (
                       <span
                         data-warning-dot
                         className="absolute right-1 top-1 size-1 rounded-full bg-attention"
@@ -240,7 +234,7 @@ export function TopBar({
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>
-        {ready < checks.length && (
+        {needsChange && (
           <span id="setup-status" className="sr-only">
             {t.topBar.setupIncomplete}
           </span>

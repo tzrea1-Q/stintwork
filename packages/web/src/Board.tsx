@@ -2,7 +2,7 @@
 import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
 import { CheckCheck, ChevronLeft, ChevronRight, FolderOpen, Layers3 } from "lucide-react";
 import { AnimatePresence, LayoutGroup, MotionConfig, MotionGlobalConfig, m } from "motion/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BoardWorkflowFilter } from "./BoardWorkflowFilter";
 import { BoardMotionContext, countBoardChanges } from "./board-motion";
 import { Column } from "./Column";
@@ -135,17 +135,12 @@ export function Board({
     });
   }
 
-  const openWorkItem = useCallback(
-    (slug: string) => {
-      if (
-        milestone &&
-        snapshot.workItems.find((item) => item.slug === slug)?.milestone !== milestone
-      )
-        setSelectedMilestone("");
-      setOpenSlug(slug);
-    },
-    [milestone, snapshot.workItems],
-  );
+  function openWorkItem(slug: string) {
+    if (view === "overview") changeView("pipeline");
+    if (milestone && snapshot.workItems.find((item) => item.slug === slug)?.milestone !== milestone)
+      setSelectedMilestone("");
+    setOpenSlug(slug);
+  }
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -298,10 +293,7 @@ export function Board({
           connection={connection}
           error={error}
           onPipeline={() => changeView("pipeline")}
-          onOpenItem={(slug) => {
-            changeView("pipeline");
-            openWorkItem(slug);
-          }}
+          onOpenItem={openWorkItem}
           onNeedsYou={() => setNeedsYouOpen(true)}
           onCreate={() => setCreateOpen(true)}
           onMilestone={(id) => {

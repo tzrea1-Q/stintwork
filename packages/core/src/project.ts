@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { assignMilestones, type Milestone, parseRoadmap } from "./roadmap.js";
 import { detectSetup, type SetupReport } from "./setup.js";
+import { planSetup, type SetupPlan } from "./setup-plan.js";
 import { readWorkflow, resolveStages, type StagedWorkItem } from "./stages.js";
 import { indexStints, type Stint, type StintSummary, summarizeStint } from "./stints.js";
 import { indexWorkItems, orderTickets, type RepoFiles, type Warning } from "./work-items.js";
@@ -118,7 +119,7 @@ export type ProjectSnapshot = {
       reviewHead?: string;
     };
   })[];
-  setup: SetupReport;
+  setup: SetupReport & { checks: SetupPlan["checks"] };
   warnings: Warning[];
 };
 
@@ -323,7 +324,7 @@ export function indexProject(
               ),
       };
     }),
-    setup,
+    setup: { ...setup, checks: planSetup(files, meta.github).checks },
     warnings: [
       ...warnings,
       ...roadmap.warnings,

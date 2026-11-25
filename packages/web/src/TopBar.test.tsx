@@ -109,7 +109,7 @@ test.each(["en", "zh-CN"] as const)(
       trigger.focus();
       await user.keyboard("{Enter}");
       const item = await screen.findByRole("menuitem", { name: new RegExp(t.topBar.projectSetup) });
-      expect(item).toHaveTextContent("0/5");
+      expect(item).toHaveTextContent("0/6");
       await user.keyboard("{End}");
       expect(item).toHaveFocus();
       await user.keyboard("{Enter}");
@@ -131,11 +131,11 @@ test("complete setup removes the warning description and keeps its count in Sett
     ...snapshot,
     setup: {
       ...snapshot.setup,
-      hasIssueTracker: true,
-      usesLocalMarkdown: true,
-      hasAgents: true,
-      hasGlossary: true,
-      hasAdrs: true,
+      checks: snapshot.setup.checks.map((check) => ({
+        ...check,
+        ready: true,
+        status: "ready" as const,
+      })),
     },
   };
   const user = userEvent.setup();
@@ -144,7 +144,51 @@ test("complete setup removes the warning description and keeps its count in Sett
   expect(trigger).not.toHaveAttribute("aria-describedby");
   expect(trigger.querySelector("[data-warning-dot]")).not.toBeInTheDocument();
   await user.click(trigger);
-  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("5/5");
+  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("6/6");
+});
+
+test("only required setup changes show the warning dot", async () => {
+  const checks = snapshot.setup.checks.map((check) => ({
+    ...check,
+    ready: true,
+    status: "ready" as const,
+  }));
+  const project = {
+    ...snapshot,
+    setup: {
+      ...snapshot.setup,
+      checks: checks.map((check, index) =>
+        index === 0 ? { ...check, ready: false, status: "needs-change" as const } : check,
+      ),
+    },
+  };
+  const user = userEvent.setup();
+  renderTopBar(project);
+  const trigger = screen.getByRole("button", { name: "Settings" });
+  expect(trigger.querySelector("[data-warning-dot]")).toBeInTheDocument();
+  await user.click(trigger);
+  expect(await screen.findByRole("menuitem", { name: /Project setup/ })).toHaveTextContent("5/6");
+});
+
+test("optional incomplete checks do not show the setup warning", () => {
+  const checks = snapshot.setup.checks.map((check) => ({
+    ...check,
+    ready: true,
+    status: "ready" as const,
+  }));
+  const project = {
+    ...snapshot,
+    setup: {
+      ...snapshot.setup,
+      checks: checks.map((check, index) =>
+        index === 2 ? { ...check, ready: false, status: "optional" as const } : check,
+      ),
+    },
+  };
+  renderTopBar(project);
+  expect(
+    screen.getByRole("button", { name: "Settings" }).querySelector("[data-warning-dot]"),
+  ).not.toBeInTheDocument();
 });
 
 test("the top bar exposes only the three actions and announces warnings without adding them to the count", async () => {

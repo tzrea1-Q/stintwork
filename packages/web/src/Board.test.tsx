@@ -1501,3 +1501,52 @@ test("blocked detail storage falls back to the default width", async () => {
   expect(drawer).toHaveStyle({ width: "576px" });
   vi.unstubAllGlobals();
 });
+
+test("opening a work item in Jump to from Overview shows its Pipeline detail", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  await user.click(screen.getByRole("button", { name: "Open command palette" }));
+  await user.click(screen.getByRole("option", { name: /board The live board/ }));
+  expect(await screen.findByRole("complementary", { name: "The live board" })).toBeInTheDocument();
+  expect(window.location.search).toBe("?view=pipeline&item=board");
+  vi.unstubAllGlobals();
+});
+
+test("opening a Needs you work item from Overview closes the queue and shows its detail", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  vi.stubGlobal("matchMedia", () => ({
+    matches: true,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }));
+  const user = userEvent.setup();
+  render(<Board snapshot={attentionSnapshot()} />);
+  await user.click(screen.getByRole("button", { name: /^Needs you/ }));
+  const queue = await screen.findByRole("dialog", { name: /Needs you/ });
+  await user.click(within(queue).getByRole("button", { name: /First work item · first/ }));
+  await waitFor(() =>
+    expect(screen.queryByRole("dialog", { name: /Needs you/ })).not.toBeInTheDocument(),
+  );
+  expect(await screen.findByRole("complementary", { name: "First work item" })).toBeInTheDocument();
+  expect(window.location.search).toBe("?view=pipeline&item=first");
+  vi.unstubAllGlobals();
+});
+
+test("switching from Overview to Pipeline does not open a work item", async () => {
+  window.history.replaceState({}, "", "/?view=overview");
+  const user = userEvent.setup();
+  render(<Board snapshot={project()} />);
+  await user.click(
+    within(screen.getByRole("navigation", { name: en.viewNavigation.label })).getByRole("button", {
+      name: "Pipeline",
+    }),
+  );
+  expect(screen.queryByRole("complementary")).not.toBeInTheDocument();
+  expect(new URLSearchParams(window.location.search).has("item")).toBe(false);
+});

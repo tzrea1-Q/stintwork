@@ -6,6 +6,7 @@ import {
   type Health,
   indexProject,
   indexStints,
+  planSetup,
   type Warning,
 } from "@stintwork/core";
 import { execFileSync } from "node:child_process";
@@ -368,6 +369,7 @@ export function createProjectServer(
         ...(branch ? { branch } : {}),
       },
     );
+    snapshot.setup.checks = planSetup(project.files, github).checks;
     try {
       snapshot.mainHead = execFileSync("git", ["rev-parse", "--verify", "HEAD^{commit}"], {
         cwd: root,

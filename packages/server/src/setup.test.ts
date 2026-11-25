@@ -453,9 +453,10 @@ test("the project server exposes setup through its real API wiring without probi
   try {
     const response = await project.app.request("/api/setup");
     expect(response.status).toBe(200);
-    expect((await response.json()).changes.map(({ path }: SetupChange) => path)).toEqual(
-      setupPaths,
-    );
+    const guide = await response.json();
+    expect(guide.changes.map(({ path }: SetupChange) => path)).toEqual(setupPaths);
+    const snapshot = await (await project.app.request("/api/project")).json();
+    expect(snapshot.setup.checks).toEqual(guide.checks);
   } finally {
     await project.stop();
   }
