@@ -295,7 +295,7 @@ for (const language of ["en", "zh-CN"] as const) {
             await page.locator(".stage-navigation button").first().click();
             await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBe(0);
           } else {
-            await expect(page.locator(".stage-navigation")).toHaveCount(0);
+            await expect(page.locator(".stage-navigation")).toBeHidden();
             await expect(strip).toHaveAttribute("data-fade-left", "false");
             await expect(strip).toHaveAttribute("data-fade-right", "false");
           }

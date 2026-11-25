@@ -61,10 +61,12 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/T
 import type { BoardWorkItem } from "./WorkItemCard";
 
 let keyboardInput = false;
+let hadUserInput = false;
 if (typeof window !== "undefined") {
   window.addEventListener(
     "keydown",
     () => {
+      hadUserInput = true;
       keyboardInput = true;
     },
     true,
@@ -72,6 +74,7 @@ if (typeof window !== "undefined") {
   window.addEventListener(
     "pointerdown",
     () => {
+      hadUserInput = true;
       keyboardInput = false;
     },
     true,
@@ -131,6 +134,7 @@ function FilePath({ path, compact = false }: { path: string; compact?: boolean }
 
 export function WorkItemDrawer({
   item,
+  initialUrlOpen = false,
   mainHead,
   localTracker = true,
   milestone,
@@ -150,6 +154,7 @@ export function WorkItemDrawer({
   full?: boolean;
   onFullChange?: (full: boolean) => void;
   item: BoardWorkItem;
+  initialUrlOpen?: boolean;
   mainHead?: string;
   localTracker?: boolean;
   pendingPermissions?: boolean;
@@ -224,6 +229,7 @@ export function WorkItemDrawer({
       clearTimeout(timer);
     };
   }, [githubNumber, githubRetryAt, refreshAttempt, setRefreshError, t.stints.changeGateFailed]);
+  const skipInitialFocus = useRef(initialUrlOpen && !hadUserInput);
   const opener = useRef<HTMLElement | null>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
@@ -275,10 +281,14 @@ export function WorkItemDrawer({
   }, []);
   useEffect(() => {
     if (!docked) return;
+    if (skipInitialFocus.current) {
+      skipInitialFocus.current = false;
+      return;
+    }
     const previous = document.activeElement;
     opener.current = previous instanceof HTMLElement ? previous : null;
     autoFocusing.current = true;
-    (keyboardInput && previous !== document.body ? closeButton.current : panel.current)?.focus({
+    (keyboardInput ? closeButton.current : panel.current)?.focus({
       focusVisible: keyboardInput,
     });
     autoFocusing.current = false;
@@ -1144,12 +1154,15 @@ export function WorkItemDrawer({
             aria-describedby={undefined}
             onOpenAutoFocus={(event) => {
               event.preventDefault();
+              if (skipInitialFocus.current) {
+                skipInitialFocus.current = false;
+                return;
+              }
               const previous = document.activeElement;
               autoFocusing.current = true;
-              (keyboardInput && previous !== document.body
-                ? closeButton.current
-                : sheetPanel.current
-              )?.focus({ focusVisible: keyboardInput });
+              (keyboardInput ? closeButton.current : sheetPanel.current)?.focus({
+                focusVisible: keyboardInput,
+              });
               autoFocusing.current = false;
               opener.current = previous instanceof HTMLElement ? previous : null;
             }}

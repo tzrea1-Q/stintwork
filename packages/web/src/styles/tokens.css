@@ -254,20 +254,28 @@
 .stage-grid {
   min-width: max-content;
 }
-.board-scroll[data-fade-left="true"] {
-  mask-image: linear-gradient(to right, transparent, black var(--board-fade));
+/* Edge fades sit above the scrollport without changing its dimensions. */
+.board-viewport::before,
+.board-viewport::after {
+  content: "";
+  position: absolute;
+  z-index: 30;
+  inset-block: 0;
+  width: var(--board-fade);
+  pointer-events: none;
+  opacity: 0;
 }
-.board-scroll[data-fade-right="true"] {
-  mask-image: linear-gradient(to left, transparent, black var(--board-fade));
+.board-viewport::before {
+  left: 0;
+  background: linear-gradient(to right, var(--background), transparent);
 }
-.board-scroll[data-fade-left="true"][data-fade-right="true"] {
-  mask-image: linear-gradient(
-    to right,
-    transparent,
-    black var(--board-fade),
-    black calc(100% - var(--board-fade)),
-    transparent
-  );
+.board-viewport::after {
+  right: 0;
+  background: linear-gradient(to left, var(--background), transparent);
+}
+.board-viewport[data-fade-left="true"]::before,
+.board-viewport[data-fade-right="true"]::after {
+  opacity: 1;
 }
 .status-edge {
   border-left-width: var(--board-status-edge);

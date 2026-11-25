@@ -571,7 +571,7 @@ test("?item=<slug> opens the drawer on load", async () => {
   window.history.replaceState(null, "", "/?item=board");
   render(<Board snapshot={project()} />);
   const drawer = screen.getByRole("dialog", { name: "The live board" });
-  expect(drawer).toHaveFocus();
+  expect(drawer).toBeVisible();
   await userEvent.setup().click(within(drawer).getByText("Agents by stage"));
   const rail = within(drawer).getByRole("list", { name: "Feature workflow stages" });
   expect(rail.querySelector('[aria-current="step"]')).toHaveTextContent("ImplementInferred");
@@ -1622,7 +1622,7 @@ test("narrow stage switcher selects cards with arrow keys and persists its choic
   expect(screen.getByRole("region", { name: "Spec" })).toBeInTheDocument();
 });
 
-test("stage overflow controls appear only for overflow and scroll", () => {
+test("stage overflow controls appear only for overflow and scroll", async () => {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
@@ -1641,19 +1641,20 @@ test("stage overflow controls appear only for overflow and scroll", () => {
   container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
     Object.defineProperty(column, "offsetLeft", { value: index * 180 });
   });
-  expect(screen.getByRole("button", { name: en.board.previousStages })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: en.board.previousStages })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: en.board.nextStages }));
   expect(scrollTo).toHaveBeenCalledWith({ left: 180 });
   strip.scrollLeft = 180;
   fireEvent.scroll(strip);
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: en.board.previousStages })).toBeEnabled(),
+  );
   fireEvent.click(screen.getByRole("button", { name: en.board.previousStages }));
   expect(scrollTo).toHaveBeenLastCalledWith({ left: 0 });
   unmount();
   vi.restoreAllMocks();
-  render(<Board snapshot={project()} />);
-  expect(
-    screen.queryByRole("navigation", { name: en.board.stageNavigation }),
-  ).not.toBeInTheDocument();
+  const empty = render(<Board snapshot={project()} />);
+  expect(empty.container.querySelector(".stage-navigation")).toHaveAttribute("aria-hidden", "true");
 });
 
 test("empty stage labels are horizontal and expose the full name", () => {
@@ -1675,7 +1676,7 @@ test("workflow marks appear only for multiple displayed workflow types", () => {
   expect(container.querySelector("[data-workflow-icon]")).not.toBeNull();
 });
 
-test("stage navigation skips collapsed rails", () => {
+test("stage navigation skips collapsed rails", async () => {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
@@ -1697,7 +1698,7 @@ test("stage navigation skips collapsed rails", () => {
   container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
     Object.defineProperty(column, "offsetLeft", { value: index * 100 });
   });
-  fireEvent.click(screen.getByRole("button", { name: en.board.nextStages }));
+  fireEvent.click(await screen.findByRole("button", { name: en.board.nextStages }));
   expect(strip.scrollTo).toHaveBeenCalledWith({ left: 300 });
 });
 
