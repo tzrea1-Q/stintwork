@@ -153,6 +153,7 @@ test("stage layout follows its width, viewport and detail panel", async () => {
     const bounds = originalBounds.call(this);
     return this.classList.contains("stage-column") ? { ...bounds, width } : bounds;
   });
+  vi.spyOn(HTMLElement.prototype, "getClientRects").mockReturnValue([{}] as unknown as DOMRectList);
   vi.stubGlobal("innerWidth", 1440);
   render(<Board snapshot={snapshot} />);
   const review = screen.getByRole("region", { name: "Review" });
@@ -169,6 +170,36 @@ test("stage layout follows its width, viewport and detail panel", async () => {
   expect(review).toHaveAttribute("data-layout", "grid");
   await userEvent.setup().click(within(review).getByRole("button", { name: /Open ready/ }));
   expect(review).toHaveAttribute("data-layout", "single");
+  vi.unstubAllGlobals();
+});
+
+test("hidden columns retain their layout and grid classes depend on the panel", async () => {
+  let width = 540;
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+    () => ({ width }) as DOMRect,
+  );
+  vi.spyOn(HTMLElement.prototype, "getClientRects").mockImplementation(() =>
+    width ? ([{}] as unknown as DOMRectList) : ([] as unknown as DOMRectList),
+  );
+  vi.stubGlobal("innerWidth", 1440);
+  render(<Board snapshot={project()} />);
+  const review = screen.getByRole("region", { name: "Review" });
+  const list = review.querySelector(".flex.flex-col.gap-3") as HTMLElement;
+  const gridClasses = [
+    "lg:@min-[452px]:grid",
+    "lg:@min-[452px]:grid-cols-[repeat(auto-fill,minmax(220px,1fr))]",
+    "lg:@min-[452px]:content-start",
+  ];
+  expect(review).toHaveClass("@container");
+  expect(review).toHaveAttribute("data-layout", "grid");
+  expect(list).toHaveClass(...gridClasses);
+  width = 0;
+  fireEvent.resize(window);
+  expect(review).toHaveAttribute("data-layout", "grid");
+  width = 540;
+  await userEvent.setup().click(within(review).getByRole("button", { name: /Open ready/ }));
+  expect(review).toHaveAttribute("data-layout", "single");
+  for (const className of gridClasses) expect(list).not.toHaveClass(className);
   vi.unstubAllGlobals();
 });
 

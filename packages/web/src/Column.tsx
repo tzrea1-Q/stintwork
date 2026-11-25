@@ -53,15 +53,18 @@ export function Column({
   panelOpen: boolean;
 }) {
   const { t } = useLanguage();
-  const { skip, reduced } = useContext(BoardMotionContext);
+  const { skip, instant, reduced } = useContext(BoardMotionContext);
   const section = useRef<HTMLElement>(null);
   const toggled = useRef(false);
   const [wide, setWide] = useState(false);
   useLayoutEffect(() => {
     const element = section.current;
     if (!element) return;
-    const measure = () =>
-      setWide(window.innerWidth >= 1024 && element.getBoundingClientRect().width >= 452);
+    const measure = () => {
+      const width = element.getBoundingClientRect().width;
+      if (width > 0 && element.getClientRects().length > 0)
+        setWide(window.innerWidth >= 1024 && width >= 452);
+    };
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     window.addEventListener("resize", measure);
@@ -86,9 +89,9 @@ export function Column({
   return (
     <m.section
       layout={!skip && !reduced ? "position" : false}
-      transition={skip ? { duration: 0 } : spring.layout}
+      transition={skip || instant ? { duration: 0 } : spring.layout}
       ref={section}
-      className={`stage-column relative snap-start ${rail ? "w-14 shrink-0" : "w-[min(280px,calc(100vw-80px))] shrink-0 lg:min-w-[220px] lg:flex-1"}`}
+      className={`stage-column @container relative snap-start ${rail ? "w-14 shrink-0" : "w-[min(280px,calc(100vw-80px))] shrink-0 lg:min-w-[220px] lg:flex-1"}`}
       data-card-column={id}
       data-layout={rail ? "rail" : grid ? "grid" : "single"}
       aria-labelledby={`stage-${id}`}
@@ -154,10 +157,10 @@ export function Column({
       )}
       <m.div
         layout={!skip && !reduced ? "position" : false}
-        transition={skip ? { duration: 0 } : spring.layout}
+        transition={skip || instant ? { duration: 0 } : spring.layout}
         className={
-          grid
-            ? "flex flex-col gap-3 lg:grid lg:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:content-start"
+          items.length > 0 && !panelOpen
+            ? "flex flex-col gap-3 lg:@min-[452px]:grid lg:@min-[452px]:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] lg:@min-[452px]:content-start"
             : "flex flex-col gap-3"
         }
       >

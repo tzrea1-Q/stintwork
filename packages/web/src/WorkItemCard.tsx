@@ -54,7 +54,7 @@ export const WorkItemCard = forwardRef<
 ) {
   const { t } = useLanguage();
   const isPresent = useIsPresent();
-  const { firstLoad, previous, skip, reduced } = useContext(BoardMotionContext);
+  const { firstLoad, previous, skip, instant, reduced } = useContext(BoardMotionContext);
   const was = previous?.get(item.slug);
   const moment = useRef(false);
   const [ringDone, setRingDone] = useState(false);
@@ -147,7 +147,7 @@ export const WorkItemCard = forwardRef<
       transition={{
         ...spring.arrive,
         delay: firstLoad && !previous ? staggerDelay(index) : 0,
-        layout: skip ? { duration: 0 } : spring.layout,
+        layout: skip || instant ? { duration: 0 } : spring.layout,
         scale: spring.press,
         opacity: skip ? { duration: 0 } : spring.arrive,
       }}

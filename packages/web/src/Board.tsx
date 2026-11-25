@@ -41,6 +41,10 @@ export function Board({
 }) {
   const { t } = useLanguage();
   const [firstLoad] = useState(() => !boardLoaded);
+  const [view, setView] = useState<"overview" | "pipeline">(() =>
+    viewFromSearch(window.location.search),
+  );
+  const previousView = useRef(view);
   const previous = useRef<Map<string, string> | null>(null);
   const next = new Map(
     snapshot.workItems.map((item) => [
@@ -50,6 +54,7 @@ export function Board({
   );
   const prior = previous.current;
   const reduced = useReducedMotionSafe();
+  const instant = view === "overview" || previousView.current === "overview";
   const skip =
     MotionGlobalConfig.skipAnimations ||
     document.visibilityState === "hidden" ||
@@ -57,6 +62,7 @@ export function Board({
   useLayoutEffect(() => {
     boardLoaded = true;
     previous.current = next;
+    previousView.current = view;
   });
   const githubTracker = snapshot.setup.tracker === "github-issues";
   const repository = snapshot.github?.repository;
@@ -66,9 +72,6 @@ export function Board({
   );
   const [fullDetail, setFullDetail] = useState(
     () => new URL(window.location.href).searchParams.get("detail") === "full",
-  );
-  const [view, setView] = useState<"overview" | "pipeline">(() =>
-    viewFromSearch(window.location.search),
   );
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteInstance, setPaletteInstance] = useState(0);
@@ -473,9 +476,15 @@ export function Board({
                     <GithubStatus github={snapshot.github} />
                   )}
                   <BoardMotionContext.Provider
-                    value={{ firstLoad, previous: prior, skip, reduced }}
+                    value={{ firstLoad, previous: prior, skip, instant, reduced }}
                   >
-                    <MotionConfig transition={skip ? { duration: 0 } : spring.layout}>
+                    <MotionConfig
+                      transition={
+                        skip
+                          ? { duration: 0 }
+                          : { ...spring.layout, layout: instant ? { duration: 0 } : spring.layout }
+                      }
+                    >
                       <LayoutGroup>
                         <section
                           className="board-scroll relative min-h-0 min-w-0 w-full max-w-full flex-1 overflow-x-auto overflow-y-auto overscroll-contain px-4 pb-6 scroll-px-7 sm:px-6 sm:scroll-px-9 max-lg:snap-x max-lg:snap-mandatory max-lg:[mask-image:linear-gradient(to_right,black_95%,transparent)]"
@@ -531,12 +540,12 @@ export function Board({
                               )}
                               <m.div
                                 layout={!skip && !reduced ? "position" : false}
-                                transition={spring.layout}
+                                transition={instant || skip ? { duration: 0 } : spring.layout}
                                 className="stage-board w-full min-w-max rounded-3xl bg-card p-3 shadow-card"
                               >
                                 <m.div
                                   layout={!skip && !reduced ? "position" : false}
-                                  transition={spring.layout}
+                                  transition={instant || skip ? { duration: 0 } : spring.layout}
                                   className="stage-grid flex min-h-[360px] justify-start gap-2 [&>.stage-column]:snap-start"
                                 >
                                   {builtInWorkflows.feature.stages.map((stage) => (

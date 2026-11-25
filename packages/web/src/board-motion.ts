@@ -15,5 +15,6 @@ export const BoardMotionContext = createContext<{
   firstLoad: boolean;
   previous: ReadonlyMap<string, string> | null;
   skip: boolean;
+  instant: boolean;
   reduced: boolean;
-}>({ firstLoad: false, previous: null, skip: false, reduced: false });
+}>({ firstLoad: false, previous: null, skip: false, instant: false, reduced: false });

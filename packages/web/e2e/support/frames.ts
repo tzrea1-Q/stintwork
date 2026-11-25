@@ -1,6 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Page } from "@playwright/test";
 
+export async function sampleElementFrames(page: Page, selector: string, ms: number) {
+  return page.evaluate(
+    ({ selector, ms }) =>
+      new Promise<
+        {
+          translateX: number;
+          translateY: number;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        }[][]
+      >((resolve) => {
+        const frames: {
+          translateX: number;
+          translateY: number;
+          x: number;
+          y: number;
+          width: number;
+          height: number;
+        }[][] = [];
+        let start = 0;
+        const sample = (timestamp: number) => {
+          const elements = [...document.querySelectorAll(selector)];
+          if (elements.length && elements[0].getBoundingClientRect().width > 0) {
+            start ||= timestamp;
+            frames.push(
+              elements.map((element) => {
+                const { x, y, width, height } = element.getBoundingClientRect();
+                const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+                return { translateX: matrix.m41, translateY: matrix.m42, x, y, width, height };
+              }),
+            );
+          }
+          if (start && timestamp - start >= ms) resolve(frames);
+          else requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+    { selector, ms },
+  );
+}
+
 export async function sampleFrames(page: Page, selector: string, ms: number) {
   return page.evaluate(
     ({ selector, ms }) =>

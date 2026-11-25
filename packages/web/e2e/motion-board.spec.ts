@@ -1,9 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, test, type WebSocketRoute } from "@playwright/test";
 import { motionBoardSnapshot, moveMotionCard } from "./motion-board.fixture";
-import { sampleFrames } from "./support/frames";
+import { sampleElementFrames, sampleFrames } from "./support/frames";
 
 test.use({ contextOptions: { reducedMotion: "no-preference", colorScheme: "light" } });
+
+for (const initialView of ["pipeline", "overview"] as const) {
+  test(`revealing Pipeline from ${initialView} does not animate cards, while opening the panel still does`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => localStorage.setItem("stintwork.language", "en"));
+    const { snapshot } = motionBoardSnapshot();
+    await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
+    await page.routeWebSocket("**/api/live", (connection) =>
+      connection.send(JSON.stringify(snapshot)),
+    );
+    await page.goto(`/?view=${initialView}`);
+    await expect(page.locator('[data-work-item="motion-0"]')).toBeAttached();
+    await page.waitForTimeout(1000);
+    if (initialView === "pipeline")
+      await page.getByRole("button", { name: "Overview", exact: true }).click();
+    const framesPromise = sampleElementFrames(page, ".stage-column .work-item", 600);
+    await page.getByRole("button", { name: "Pipeline", exact: true }).click();
+    const frames = await framesPromise;
+    expect(frames.length).toBeGreaterThan(1);
+    expect(frames[0]).toHaveLength(60);
+    for (const frame of frames) {
+      expect(frame).toHaveLength(frames[0].length);
+      frame.forEach((card, index) => {
+        expect(Math.hypot(card.translateX, card.translateY)).toBeLessThanOrEqual(1);
+        for (const key of ["x", "y", "width", "height"] as const)
+          expect(card[key]).toBe(frames[0][index][key]);
+      });
+    }
+    const reflow = sampleElementFrames(page, ".stage-column .work-item", 600);
+    await page.locator('[data-work-item="motion-0"]').click();
+    const reflowFrames = await reflow;
+    expect(
+      reflowFrames.some((frame) =>
+        frame.some((card) => Math.hypot(card.translateX, card.translateY) > 1),
+      ),
+    ).toBe(true);
+  });
+}
 
 for (const width of [1440, 390]) {
   test(`board snapshot continuity at ${width}px`, async ({ page }) => {
