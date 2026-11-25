@@ -355,7 +355,7 @@ test("an explicit no-findings review and a parse failure are distinct, with comm
   await user.click(rail.getByText("Raw findings reply"));
   expect(rail.getByText(/private reply/)).toHaveTextContent(raw.replace("\n", " "));
   expect(document.querySelector("script")).toBeNull();
-  await screen.findByTitle("reviewed");
+  await screen.findAllByTitle("reviewed");
   expect(rail.getByText(/Stale/)).toHaveTextContent("old");
 });
 

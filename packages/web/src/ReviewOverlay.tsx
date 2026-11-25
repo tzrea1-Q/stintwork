@@ -447,7 +447,7 @@ export function ReviewOverlay({
           <div className="min-w-0">
             <p
               className="eyebrow truncate pr-56 text-xs uppercase tracking-widest text-muted-foreground"
-              title={item.slug}
+              title={`${t.review.diff.review} / ${item.slug}`}
               data-truncate
             >
               {t.review.diff.review} / <code>{item.slug}</code>

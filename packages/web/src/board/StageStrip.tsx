@@ -140,7 +140,7 @@ export function StageStrip({
       )}
       <div
         ref={strip}
-        className="stage-strip overflow-x-auto"
+        className={`stage-strip ${narrow ? "overflow-visible" : "overflow-x-auto"}`}
         data-fade-left={edges.left && !narrow}
         data-fade-right={edges.right && !narrow}
       >

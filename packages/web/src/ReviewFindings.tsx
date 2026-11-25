@@ -16,6 +16,7 @@ import { Button } from "./ui/Button";
 import { CodeBlock } from "./ui/CodeBlock";
 import { Item, ItemContent } from "./ui/Item";
 import { SelectField } from "./ui/SelectField";
+import { shortHash } from "./short-id";
 import { StatusChip } from "./ui/StatusChip";
 
 export type DisplayFinding = ReviewFinding & {
@@ -131,7 +132,7 @@ export function FindingCard({
           )}
           <p className="muted text-muted-foreground">
             {t.review.findings.reviewedCommit}
-            <code>{finding.commit}</code>
+            <code title={finding.commit}>{shortHash(finding.commit)}</code>
             {finding.stale && (
               <span className="rounded bg-attention-soft text-attention-foreground">
                 {t.review.findings.stale}
@@ -232,7 +233,7 @@ export function FindingsRail({
   );
   return (
     <>
-      <div className="review-filters mb-3 grid grid-cols-3 gap-2 [&_label]:grid [&_label]:min-w-0 [&_label]:gap-2">
+      <div className="review-filters mb-3 grid grid-cols-1 gap-2 [&_label]:grid [&_label]:min-w-0 [&_label]:gap-2">
         <label htmlFor={`${selectId}-axis`}>
           {t.review.findings.axis}
           <SelectField
@@ -291,7 +292,7 @@ export function FindingsRail({
           >
             <p>
               {t.review.findings.reviewedCommit}
-              <code>{report.commit}</code>
+              <code title={report.commit}>{shortHash(report.commit)}</code>
               {report.stale && t.review.findings.stale}
               {report.historical && t.review.findings.history}
             </p>
@@ -351,13 +352,20 @@ export function FindingsRail({
                   </Badge>
                 </p>
                 <p>
-                  <code>
-                    {finding.path}:{finding.line}
+                  <code
+                    className="flex min-w-0 whitespace-nowrap"
+                    data-truncate
+                    title={`${finding.path}:${finding.line}`}
+                  >
+                    <span className="min-w-0 truncate">{finding.path.slice(0, -12)}</span>
+                    <span className="shrink-0">
+                      {finding.path.slice(-12)}:{finding.line}
+                    </span>
                   </code>
                 </p>
                 <p>
                   {t.review.findings.reviewedCommit}
-                  <code>{finding.commit}</code>
+                  <code title={finding.commit}>{shortHash(finding.commit)}</code>
                   {finding.stale && (
                     <span className="rounded bg-attention-soft text-attention-foreground">
                       {t.review.findings.stale}

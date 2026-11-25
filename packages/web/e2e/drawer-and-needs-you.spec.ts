@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { expect, type Locator, type Page, type TestInfo, test } from "@playwright/test";
-import type { ProjectSnapshot } from "@stintwork/core";
+import { builtInWorkflows, type ProjectSnapshot } from "@stintwork/core";
+import { stageName } from "../src/i18n/workflow-names";
 import { claudeProfile, codexProfile } from "../../agents/src/profiles";
 import { en } from "../src/i18n/en";
 import { zhCN } from "../src/i18n/zh-CN";
@@ -82,6 +83,7 @@ for (const language of ["en", "zh-CN"] as const) {
         });
         await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
+        if (width < 768 && item.column) await page.locator(`#stage-tab-${item.column}`).click();
         const trigger = page.locator('.board-scroll [data-work-item="long-title"]');
         await trigger.focus();
         await page.keyboard.press("Enter");
@@ -167,7 +169,16 @@ for (const language of ["en", "zh-CN"] as const) {
             await panel.evaluate((element) => element.scrollWidth <= element.clientWidth + 1),
           ).toBe(true);
         }
-        await sheet.getByRole("tab", { name: t.detailTabs.spec }).click();
+        const specTab = sheet.getByRole("tab", { name: t.detailTabs.spec });
+        const specBounds = await specTab.boundingBox();
+        if (!specBounds) throw new Error("Missing Spec tab bounds");
+        await page.mouse.click(
+          specBounds.x + specBounds.width / 2,
+          specBounds.y + specBounds.height / 2,
+        );
+        expect(await page.evaluate(() => document.activeElement?.matches(":focus-visible"))).toBe(
+          false,
+        );
         const content = sheet.getByRole("tabpanel");
         await expect(sheet.locator('.drawer-header button[aria-haspopup="menu"]')).toHaveCount(1);
         const header = sheet.locator(".drawer-header");
@@ -206,9 +217,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(languageTrigger).toBeFocused();
         await trigger.click();
         await expect(sheet).toBeVisible();
-        await expect(
-          sheet.getByRole("button", { name: (other === "en" ? en : zhCN).stints.closeWorkItem }),
-        ).toBeFocused();
+        await expect(sheet).toBeFocused();
         await page.keyboard.press("Escape");
         await expect(sheet).not.toBeVisible();
         await expect
@@ -308,7 +317,8 @@ for (const language of ["en", "zh-CN"] as const) {
         await expect(page.locator("html")).toHaveAttribute("lang", language);
         await page.locator("#needs-you-trigger").click();
         const sheet = page.locator(".needs-you-queue");
-        const stage = language === "en" ? "Spec" : "规格说明";
+        const workflow = builtInWorkflows.feature;
+        const stage = stageName(workflow, workflow.stages.find((entry) => entry.id === "spec")!, t);
         await expect(
           sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
         ).toBeVisible();

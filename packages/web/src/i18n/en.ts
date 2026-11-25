@@ -820,6 +820,7 @@ export const en = {
       `Approval is stale; HEAD changed while it was recorded. Reopen ${name} to review the newer commits.`,
     gateReopened: (name: string) => `${name} reopened.`,
     gate: (name: string) => `${name} gate`,
+    gateBlockedBy: (conditions: string) => `Blocked by: ${conditions}`,
     gateConditions: (name: string) => `${name} gate conditions`,
     approving: "Approving…",
     readyToApprove: "Ready to approve",

@@ -130,6 +130,7 @@ const samples: Record<string, unknown[][]> = {
   "stints.localApprovalStale": [["Stage 自定义"], ["审查"]],
   "stints.gateReopened": [["Stage 自定义"]],
   "stints.gate": [["Stage 自定义"]],
+  "stints.gateBlockedBy": [["Condition"]],
   "stints.gateConditions": [["Stage 自定义"]],
   "stints.approve": [["Stage 自定义"], ["实现"]],
   "stints.reopen": [["Stage 自定义"]],

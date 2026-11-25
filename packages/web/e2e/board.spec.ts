@@ -70,11 +70,13 @@ for (const language of ["en", "zh-CN"] as const) {
         expect(widths.length).toBeGreaterThan(0);
         for (const columnWidth of widths) expect(columnWidth).toBeLessThanOrEqual(width - 32);
       }
-      await scroller.evaluate((element) => {
+      if (width < 768 && item.column) await page.locator(`#stage-tab-${item.column}`).click();
+      const verticalScroller = scroller;
+      await verticalScroller.evaluate((element) => {
         element.scrollTop = 700;
       });
-      await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(700);
-      const top = await scroller.evaluate((element) => element.getBoundingClientRect().top);
+      await expect.poll(() => verticalScroller.evaluate((element) => element.scrollTop)).toBe(700);
+      const top = await verticalScroller.evaluate((element) => element.getBoundingClientRect().top);
       for (const header of await scroller.locator(".stage-header").all()) {
         await header.scrollIntoViewIfNeeded();
         const box = await header.boundingBox();
@@ -93,7 +95,7 @@ for (const language of ["en", "zh-CN"] as const) {
           }),
         ).toBe(true);
       }
-      await expect(scroller).toHaveAttribute("data-scrolled", "true");
+      if (width >= 768) await expect(scroller).toHaveAttribute("data-scrolled", "true");
       await assertLayout(page);
     });
   }
@@ -202,6 +204,9 @@ for (const language of ["en", "zh-CN"] as const) {
             workItemSlugs: ["short-title", "chinese-title"],
           },
         ];
+        const inferred = snapshot.workItems.find((item) => item.inferred);
+        if (inferred && !inferred.stints.length)
+          inferred.stints = [structuredClone(richSnapshot.workItems[0].stints[0])];
         for (const item of snapshot.workItems)
           item.milestone = item.slug === "long-title" ? "first" : "next";
         await page.route("**/api/project", (route) => route.fulfill({ json: snapshot }));
