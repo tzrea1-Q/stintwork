@@ -7,7 +7,6 @@ import type {
   SetupPlan,
   WorkflowDefinitions,
 } from "@stintwork/core";
-import { Check, Circle } from "lucide-react";
 import { type RefObject, useEffect, useId, useRef, useState } from "react";
 import { en } from "./i18n/en";
 import { CoreTextError, readResponseJson, useErrorText, useLanguage } from "./i18n/language";
@@ -19,6 +18,7 @@ import { DialogContent, DialogDescription, DialogTitle } from "./ui/Dialog";
 import { DiffPreview } from "./ui/DiffPreview";
 import { Disclosure } from "./ui/Disclosure";
 import { SegmentedProgress } from "./ui/SegmentedProgress";
+import { StatusChip } from "./ui/StatusChip";
 import { WarningCallout } from "./ui/WarningCallout";
 
 type Guide = SetupPlan & { skills: AgentSkillAvailability[] };
@@ -296,26 +296,18 @@ export function SetupGuide({
                               return (
                                 <li key={check.id} className="rounded-xl border border-border p-4">
                                   <div className="flex flex-wrap items-center gap-2">
-                                    {check.status === "ready" ? (
-                                      <Check aria-hidden="true" className="size-4 text-success" />
-                                    ) : (
-                                      <Circle
-                                        aria-hidden="true"
-                                        className="size-4 text-muted-foreground"
-                                      />
-                                    )}
                                     <h4 className="text-sm font-medium">{copy.name}</h4>
-                                    <Badge
-                                      variant={
+                                    <StatusChip
+                                      status={
                                         check.status === "ready"
                                           ? "success"
                                           : check.status === "needs-change"
-                                            ? "warning"
-                                            : "secondary"
+                                            ? "attention"
+                                            : "stopped"
                                       }
                                     >
                                       {t.planning.setup.statuses[check.status]}
-                                    </Badge>
+                                    </StatusChip>
                                   </div>
                                   <p className="my-2 text-muted-foreground">{copy.why}</p>
                                   {check.id === "tracker" && guide.tracker === "github-issues" && (

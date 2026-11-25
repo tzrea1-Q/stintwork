@@ -397,7 +397,9 @@ test.each([
     await user.keyboard("c");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: palette }));
-    expect(screen.queryByText(create)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(language === "en" ? "New work item" : "新建工作项"),
+    ).not.toBeInTheDocument();
     localStorage.removeItem(languageStorageKey);
   },
 );
@@ -1315,17 +1317,17 @@ test.each([true, false])("board shortcuts while detail is open (docked=%s)", asy
   await user.click(alpha);
   if (docked) {
     await user.keyboard("c");
-    expect(screen.queryByRole("dialog", { name: /create work item/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /new work item/i })).not.toBeInTheDocument();
     alpha.focus();
     await user.keyboard("{ArrowDown}");
     expect(beta).toHaveFocus();
     await user.keyboard("c");
-    expect(screen.getByRole("dialog", { name: /create work item/i })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: /new work item/i })).toBeInTheDocument();
   } else {
     fireEvent.keyDown(alpha, { key: "ArrowDown" });
     fireEvent.keyDown(alpha, { key: "c" });
     expect(beta).not.toHaveFocus();
-    expect(screen.queryByRole("dialog", { name: /create work item/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: /new work item/i })).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Alpha" })).toBeInTheDocument();
   }
   vi.unstubAllGlobals();

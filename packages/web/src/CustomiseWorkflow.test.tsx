@@ -300,7 +300,7 @@ test("new workflow ids appear in the create dialog without a built-in copy actio
   );
   render(<Board snapshot={project} />);
   await user.keyboard("c");
-  const create = within(screen.getByRole("dialog", { name: "Create work item" }));
+  const create = within(screen.getByRole("dialog", { name: "New work item" }));
   await chooseOption(user, create.getByRole("combobox", { name: "Workflow" }), "Team");
   expect(create.getByRole("combobox", { name: "Workflow" })).toHaveTextContent("Team");
   await user.click(create.getByRole("button", { name: "Cancel" }));

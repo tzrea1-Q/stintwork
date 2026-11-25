@@ -70,7 +70,7 @@ test.each([
       target: { value: "Retry 原文" },
     });
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
-    expect(screen.getByRole("button", { name: "创建工作项" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
     expect(screen.getByRole("textbox", { name: "标题" })).toHaveValue("Retry 原文");
   },
 );
@@ -104,7 +104,7 @@ test.each([
   );
   const title = screen.getByRole("textbox", { name: "标题" });
   fireEvent.change(title, { target: { value: "Retry 原文" } });
-  const confirm = screen.getByRole("button", { name: "创建工作项" });
+  const confirm = screen.getByRole("button", { name: "创建" });
   await waitFor(() => expect(confirm).toBeEnabled());
   await user.click(confirm);
   expect(await screen.findByRole("alert")).toHaveTextContent(message);
@@ -120,7 +120,7 @@ test("create contains keyboard focus and dismisses on an outside click", async (
   render(<CreateWorkItem snapshot={snapshot()} onClose={close} onCreated={vi.fn()} />);
   await waitFor(() => expect(screen.getByRole("textbox", { name: "Title" })).toHaveFocus());
   await user.tab({ shift: true });
-  expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+  expect(screen.getByRole("button", { name: "Close new work item" })).toHaveFocus();
   await user.tab();
   expect(screen.getByRole("textbox", { name: "Title" })).toHaveFocus();
   fireEvent.pointerDown(document.body);
@@ -142,7 +142,7 @@ test("pending creation prevents duplicate writes, Escape and outside dismissal",
   render(<CreateWorkItem snapshot={snapshot()} onClose={close} onCreated={vi.fn()} />);
   await user.type(screen.getByRole("textbox", { name: "Title" }), "Idea");
   await screen.findByText(".scratch/idea/");
-  await user.click(screen.getByRole("button", { name: "Create work item" }));
+  await user.click(screen.getByRole("button", { name: "Create" }));
   expect(screen.getByRole("button", { name: "Creating…" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   await user.keyboard("{Escape}");
@@ -240,14 +240,14 @@ test("the folder-name hint is hidden when the title derives an ASCII slug", asyn
 test.each([
   [
     "en",
-    "Create work item",
+    "New work item",
     "Title",
     "Folder name",
     "Enter a folder name using lowercase English letters, digits and single hyphens (up to 48 characters).",
   ],
   [
     "zh-CN",
-    "创建工作项",
+    "新建工作项",
     "标题",
     "文件夹名称",
     "请输入文件夹名称，使用小写英文字母、数字和单个连字符，最多 48 个字符。",
@@ -281,23 +281,31 @@ test.each([
     const folder = dialog.getByRole("textbox", { name: folderLabel });
     expect(folder).toHaveValue("");
     expect(folder).toHaveAccessibleDescription(hint);
-    expect(dialog.getByRole("button", { name: createLabel })).toBeDisabled();
+    expect(
+      dialog.getByRole("button", { name: language === "en" ? "Create" : "创建" }),
+    ).toBeDisabled();
     for (const invalid of ["修复", "Fix-login", "fix--login", "a".repeat(49)]) {
       await user.clear(folder);
       await user.type(folder, invalid);
-      expect(dialog.getByRole("button", { name: createLabel })).toBeDisabled();
+      expect(
+        dialog.getByRole("button", { name: language === "en" ? "Create" : "创建" }),
+      ).toBeDisabled();
       expect(folder).toHaveAttribute("aria-invalid", "true");
     }
     await user.clear(folder);
     await user.type(folder, "fix-login");
-    await waitFor(() => expect(dialog.getByRole("button", { name: createLabel })).toBeEnabled());
+    await waitFor(() =>
+      expect(
+        dialog.getByRole("button", { name: language === "en" ? "Create" : "创建" }),
+      ).toBeEnabled(),
+    );
     expect(await dialog.findByText(".scratch/fix-login/")).toBeInTheDocument();
   },
 );
 
 test.each([
-  ["en", "Create work item", "Title", "Folder name"],
-  ["zh-CN", "创建工作项", "标题", "文件夹名称"],
+  ["en", "New work item", "Title", "Folder name"],
+  ["zh-CN", "新建工作项", "标题", "文件夹名称"],
 ])(
   "%s preserves an edited slug and creates a verbatim Chinese card and drawer",
   async (language, createLabel, titleLabel, folderLabel) => {
@@ -335,9 +343,15 @@ test.each([
     await user.clear(title);
     await user.type(title, "修复登录问题");
     expect(folder).toHaveValue("fix-login");
-    expect(dialog.getByRole("button", { name: createLabel })).toBeDisabled();
-    await waitFor(() => expect(dialog.getByRole("button", { name: createLabel })).toBeEnabled());
-    await user.click(dialog.getByRole("button", { name: createLabel }));
+    expect(
+      dialog.getByRole("button", { name: language === "en" ? "Create" : "创建" }),
+    ).toBeDisabled();
+    await waitFor(() =>
+      expect(
+        dialog.getByRole("button", { name: language === "en" ? "Create" : "创建" }),
+      ).toBeEnabled(),
+    );
+    await user.click(dialog.getByRole("button", { name: language === "en" ? "Create" : "创建" }));
     expect(fetch).toHaveBeenLastCalledWith(
       "/api/work-items",
       expect.objectContaining({
@@ -376,21 +390,21 @@ test.each([
 test.each([
   [
     "en",
-    "Create work item",
+    "New work item",
     "Title",
     "Folder name",
     "Folder name must use lowercase English letters, digits and single hyphens, with at most 48 characters.",
   ],
   [
     "zh-CN",
-    "创建工作项",
+    "新建工作项",
     "标题",
     "文件夹名称",
     "文件夹名称必须使用小写英文字母、数字和单个连字符，最多 48 个字符。",
   ],
 ])(
   "%s translates the explicit-slug server refusal",
-  async (language, createLabel, titleLabel, folderLabel, expected) => {
+  async (language, _createLabel, titleLabel, folderLabel, expected) => {
     localStorage.setItem(languageStorageKey, language);
     vi.stubGlobal(
       "fetch",
@@ -414,7 +428,9 @@ test.each([
     await user.type(screen.getByRole("textbox", { name: titleLabel }), "修复登录");
     await user.type(screen.getByRole("textbox", { name: folderLabel }), "fix-login");
     expect(await screen.findByRole("alert")).toHaveTextContent(expected);
-    expect(screen.getByRole("button", { name: createLabel })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: language === "en" ? "Create" : "创建" }),
+    ).toBeDisabled();
   },
 );
 
@@ -447,7 +463,7 @@ test("Chinese command palette translates controls and searches verbatim repo con
   const search = palette.getByRole("combobox", { name: "搜索工作项和里程碑" });
   expect(search).toHaveAttribute("placeholder", "查找工作项或里程碑…");
   expect(palette.getByRole("button", { name: "关闭命令面板" })).toBeInTheDocument();
-  expect(palette.getByRole("option", { name: "创建工作项" })).toBeInTheDocument();
+  expect(palette.getByRole("option", { name: "新建工作项" })).toBeInTheDocument();
   await user.click(palette.getByRole("option", { name: "自定义功能工作流" }));
   expect(onCustomiseWorkflow).toHaveBeenCalledWith("feature");
   expect(palette.getByText("Repo milestone 中文")).toBeInTheDocument();
@@ -479,7 +495,7 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
       <CreateWorkItem snapshot={project} onClose={vi.fn()} onCreated={onCreated} />
     </LanguageProvider>,
   );
-  const dialog = within(screen.getByRole("dialog", { name: "创建工作项" }));
+  const dialog = within(screen.getByRole("dialog", { name: "新建工作项" }));
   await user.type(dialog.getByRole("textbox", { name: "标题" }), "中文计划 API");
   await chooseOption(user, dialog.getByRole("combobox", { name: "工作流" }), "Team workflow");
   await user.click(dialog.getByRole("combobox", { name: "工作流" }));
@@ -491,7 +507,7 @@ test("Chinese create controls submit a mixed Chinese title using the existing sl
   await user.type(dialog.getByRole("textbox", { name: "意图（可选）" }), "Developer intent 原文");
   expect(await dialog.findByText(".scratch/api/")).toBeInTheDocument();
   expect(dialog.getByRole("button", { name: "取消" })).toBeInTheDocument();
-  await user.click(dialog.getByRole("button", { name: "创建工作项" }));
+  await user.click(dialog.getByRole("button", { name: "创建" }));
   expect(fetch).toHaveBeenLastCalledWith(
     "/api/work-items",
     expect.objectContaining({
@@ -556,7 +572,7 @@ test.each([
     );
     await user.type(screen.getByRole("textbox", { name: "标题" }), "中文标题");
     expect(await screen.findByRole("alert")).toHaveTextContent(expected);
-    expect(screen.getByRole("button", { name: "创建工作项" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "创建" })).toBeDisabled();
   },
 );
 
@@ -571,19 +587,19 @@ test.each(["c", "palette", "button"])(
       fireEvent.keyDown(document.body, { key: "k", metaKey: true });
       await user.type(
         screen.getByRole("combobox", { name: "Search work items and milestones" }),
-        "Create work item",
+        "New work item",
       );
-      await user.click(screen.getByRole("option", { name: "Create work item" }));
+      await user.click(screen.getByRole("option", { name: "New work item" }));
       expect(screen.queryByRole("dialog", { name: "Command palette" })).not.toBeInTheDocument();
     }
     if (entry === "button")
       await user.click(screen.getByRole("button", { name: "Create work item" }));
-    const dialog = screen.getByRole("dialog", { name: "Create work item" });
+    const dialog = screen.getByRole("dialog", { name: "New work item" });
     expect(within(dialog).getByRole("textbox", { name: "Title" })).toHaveFocus();
-    expect(within(dialog).getByRole("button", { name: "Create work item" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
     expect(fetch).not.toHaveBeenCalled();
     await user.keyboard("{Escape}");
-    expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New work item" })).not.toBeInTheDocument();
   },
 );
 
@@ -592,7 +608,7 @@ test("previews on the server, offers all loaded workflows and submits optional m
   const fetch = fetcher();
   const rendered = render(<Board snapshot={snapshot()} />);
   await user.keyboard("c");
-  const dialog = within(screen.getByRole("dialog", { name: "Create work item" }));
+  const dialog = within(screen.getByRole("dialog", { name: "New work item" }));
   const workflow = dialog.getByRole("combobox", { name: "Workflow" });
   await user.click(workflow);
   expect(screen.getAllByRole("option").map((entry) => entry.textContent)).toEqual(
@@ -627,13 +643,13 @@ test("previews on the server, offers all loaded workflows and submits optional m
       signal: expect.any(AbortSignal),
     }),
   );
-  await user.click(dialog.getByRole("button", { name: "Create work item" }));
+  await user.click(dialog.getByRole("button", { name: "Create" }));
   expect(fetch).toHaveBeenLastCalledWith(
     "/api/work-items",
     expect.objectContaining({ method: "POST", body: JSON.stringify(input) }),
   );
   await waitFor(() =>
-    expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument(),
+    expect(screen.queryByRole("dialog", { name: "New work item" })).not.toBeInTheDocument(),
   );
   rendered.rerender(
     <Board
@@ -666,10 +682,10 @@ test.each([
   );
   render(<Board snapshot={snapshot()} />);
   await user.keyboard("c");
-  const dialog = within(screen.getByRole("dialog", { name: "Create work item" }));
+  const dialog = within(screen.getByRole("dialog", { name: "New work item" }));
   await user.type(dialog.getByRole("textbox", { name: "Title" }), "Idea");
   expect(await dialog.findByRole("alert")).toHaveTextContent(reason);
-  expect(dialog.getByRole("button", { name: "Create work item" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
 });
 
 test("a confirmation refusal keeps entered fields and allows retry or cancel", async () => {
@@ -683,15 +699,15 @@ test("a confirmation refusal keeps entered fields and allows retry or cancel", a
   vi.stubGlobal("fetch", fetch);
   render(<Board snapshot={snapshot()} />);
   await user.keyboard("c");
-  const dialog = within(screen.getByRole("dialog", { name: "Create work item" }));
+  const dialog = within(screen.getByRole("dialog", { name: "New work item" }));
   await user.type(dialog.getByRole("textbox", { name: "Title" }), "Idea");
   await dialog.findByText(".scratch/idea/");
-  await user.click(dialog.getByRole("button", { name: "Create work item" }));
+  await user.click(dialog.getByRole("button", { name: "Create" }));
   expect(await dialog.findByRole("alert")).toHaveTextContent("already exists");
   expect(dialog.getByRole("textbox", { name: "Title" })).toHaveValue("Idea");
-  expect(dialog.getByRole("button", { name: "Create work item" })).toBeEnabled();
+  expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled();
   await user.click(dialog.getByRole("button", { name: "Cancel" }));
-  expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "New work item" })).not.toBeInTheDocument();
 });
 
 test("c does not intercept text inputs, editable content, other dialogs or modified shortcuts", async () => {
@@ -700,18 +716,18 @@ test("c does not intercept text inputs, editable content, other dialogs or modif
   render(<Board snapshot={snapshot()} />);
   for (const modifiers of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
     fireEvent.keyDown(document.body, { key: "c", ...modifiers });
-    expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "New work item" })).not.toBeInTheDocument();
   }
   const editable = document.createElement("div");
   editable.setAttribute("contenteditable", "true");
   document.body.append(editable);
   fireEvent.keyDown(editable, { key: "c" });
-  expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "New work item" })).not.toBeInTheDocument();
   editable.remove();
   await user.click(screen.getByRole("button", { name: "Edit roadmap" }));
   await user.click(screen.getByRole("button", { name: "New milestone" }));
   await user.type(screen.getByRole("textbox", { name: "New milestone name" }), "c");
-  expect(screen.queryByRole("dialog", { name: "Create work item" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "New work item" })).not.toBeInTheDocument();
 });
 
 test("stale previews cannot enable confirmation for a newer title", async () => {
@@ -721,7 +737,7 @@ test("stale previews cannot enable confirmation for a newer title", async () => 
   vi.stubGlobal("fetch", fetch);
   render(<Board snapshot={snapshot()} />);
   await user.keyboard("c");
-  const dialog = within(screen.getByRole("dialog", { name: "Create work item" }));
+  const dialog = within(screen.getByRole("dialog", { name: "New work item" }));
   const title = dialog.getByRole("textbox", { name: "Title" });
   await user.type(title, "Old");
   await waitFor(() => expect(pending).toHaveLength(1));
@@ -729,17 +745,25 @@ test("stale previews cannot enable confirmation for a newer title", async () => 
   await user.type(title, "New");
   await waitFor(() => expect(pending).toHaveLength(2));
   await act(async () => pending[0](response({ slug: "old" })));
-  expect(dialog.getByRole("button", { name: "Create work item" })).toBeDisabled();
+  expect(dialog.getByRole("button", { name: "Create" })).toBeDisabled();
   expect(dialog.queryByText(".scratch/old/")).not.toBeInTheDocument();
   await act(async () => pending[1](response({ slug: "new" })));
   expect(await dialog.findByText(".scratch/new/")).toBeInTheDocument();
-  expect(dialog.getByRole("button", { name: "Create work item" })).toBeEnabled();
+  expect(dialog.getByRole("button", { name: "Create" })).toBeEnabled();
 });
 
 test("places a preview refusal immediately after the folder field", async () => {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue(response({ reason: "Work item idea already exists." }, 409)),
+    vi.fn().mockResolvedValue(
+      response(
+        {
+          reason: "Work item idea already exists.",
+          reasonMessage: { code: "creation.exists", params: { slug: "idea" } },
+        },
+        409,
+      ),
+    ),
   );
   render(<CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />);
   fireEvent.change(screen.getByRole("textbox", { name: "Title" }), { target: { value: "Idea" } });
@@ -748,4 +772,73 @@ test("places a preview refusal immediately after the folder field", async () => 
   expect(
     screen.getByRole("textbox", { name: "Folder name" }).closest("label")?.nextElementSibling,
   ).toBe(error);
+});
+
+test.each([
+  ["en", "New work item", "Create", "Close new work item"],
+  ["zh-CN", "新建工作项", "创建", "关闭新建工作项"],
+])("%s dialog names, tooltip and dismissal", async (language, title, submit, closeLabel) => {
+  localStorage.setItem(languageStorageKey, language);
+  const user = userEvent.setup();
+  const close = vi.fn();
+  render(
+    <LanguageProvider>
+      <CreateWorkItem snapshot={snapshot()} onClose={close} onCreated={vi.fn()} />
+    </LanguageProvider>,
+  );
+  expect(screen.getByRole("dialog", { name: title })).toHaveAccessibleDescription();
+  expect(screen.getByRole("button", { name: submit })).toBeInTheDocument();
+  const button = screen.getByRole("button", { name: closeLabel });
+  await user.hover(button);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent(closeLabel);
+  await user.click(button);
+  expect(close).toHaveBeenCalledOnce();
+});
+
+test.each([
+  ["en", "workItem.titleSlug", "Title"],
+  ["en", "creation.exists", "Folder name"],
+  ["zh-CN", "workItem.titleSlug", "标题"],
+  ["zh-CN", "creation.exists", "文件夹名称"],
+])("%s places %s error by its field using its code", async (language, code, field) => {
+  localStorage.setItem(languageStorageKey, language);
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        response(
+          { reason: "Arbitrary diagnostic", reasonMessage: { code, params: { slug: "idea" } } },
+          409,
+        ),
+      ),
+  );
+  render(
+    <LanguageProvider>
+      <CreateWorkItem snapshot={snapshot()} onClose={vi.fn()} onCreated={vi.fn()} />
+    </LanguageProvider>,
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: language === "en" ? "Title" : "标题" }), {
+    target: { value: "Idea" },
+  });
+  const error = await screen.findByRole("alert");
+  expect(screen.getByRole("textbox", { name: field }).closest("label")?.nextElementSibling).toBe(
+    error,
+  );
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+});
+
+test("palette shows one Escape hint", () => {
+  render(
+    <CommandPalette
+      snapshot={snapshot()}
+      milestone=""
+      onMilestoneChange={vi.fn()}
+      onOpenItem={vi.fn()}
+      onCreateItem={vi.fn()}
+      onCustomiseWorkflow={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+  expect(screen.getAllByText("Esc")).toHaveLength(1);
 });
