@@ -174,8 +174,12 @@ test("Needs you raises a checkpoint attention item with paths and remediation", 
   render(<Board snapshot={project} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "Needs you 1" }));
   const queue = screen.getByRole("dialog", { name: "Needs you 1" });
-  expectWarnings(within(queue).getByRole("region", { name: "Checkpoint warnings" }));
-  expect(within(queue).getByText(/Excluded from the checkpoint/)).toBeInTheDocument();
+  const region = within(queue).getByRole("region", { name: "Checkpoint warnings" });
+  expect(region.querySelector("[data-slot=card]")).toBeNull();
+  expect(
+    within(region).getByText("Excluded from the checkpoint and left uncommitted."),
+  ).toBeInTheDocument();
+  for (const { path } of warnings) expect(within(region).getByText(path)).toBeInTheDocument();
 });
 
 test("a clean follow-up stint clears attention but keeps the earlier warning in history", () => {
@@ -215,4 +219,35 @@ test("warning rows group paths, reason chips and short commit hashes", async () 
   expect(rows[0]).toHaveTextContent("abcdef0, 1234567");
   expect(rows[0].querySelector("code")?.textContent).toBe(".env");
   expect(rows[1]).toHaveTextContent("Generated directory");
+});
+
+test("inline mixed warnings show short explanations and keep paths and hashes", async () => {
+  const { CheckpointWarnings } = await import("./CheckpointWarnings");
+  render(
+    <CheckpointWarnings
+      variant="inline"
+      warnings={[
+        { path: ".env", reasons: ["likely-secret"], excluded: true },
+        {
+          path: "dist/out",
+          reasons: ["generated-directory"],
+          excluded: false,
+          committed: true,
+          commits: ["abcdef012345"],
+        },
+      ]}
+    />,
+  );
+  const region = screen.getByRole("region", { name: "Checkpoint warnings" });
+  expect(region.querySelector("[data-slot=card]")).toBeNull();
+  expect(
+    within(region).getByText("Excluded from the checkpoint and left uncommitted."),
+  ).toBeInTheDocument();
+  expect(
+    within(region).getByText(
+      "Already committed on the branch — remove them in a later commit or accept them in review.",
+    ),
+  ).toBeInTheDocument();
+  expect(region).toHaveTextContent("abcdef0");
+  expect(region).toHaveTextContent("Generated directory");
 });

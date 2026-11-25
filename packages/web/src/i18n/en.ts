@@ -485,6 +485,9 @@ export const en = {
     answerSent: "Answer sent.",
     fullPermissionJson: "Full permission JSON",
     checkpointWarnings: "Checkpoint warnings",
+    excludedFilesShort: "Excluded from the checkpoint and left uncommitted.",
+    committedFilesShort:
+      "Already committed on the branch — remove them in a later commit or accept them in review.",
     likelySecret: "Likely secret",
     largeFile: "Larger than 1 MiB",
     generatedDirectory: "Generated directory",

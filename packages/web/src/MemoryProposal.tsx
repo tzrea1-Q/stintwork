@@ -13,10 +13,12 @@ export function MemoryProposal({
   item,
   onError,
   onSuccess,
+  variant = "card",
 }: {
   item: MemoryProposalAttentionItem;
   onError: (reason: string | Error) => void;
   onSuccess?: () => void;
+  variant?: "card" | "inline";
 }) {
   const { t } = useLanguage();
   const [sending, setSending] = useState(false);
@@ -51,39 +53,43 @@ export function MemoryProposal({
       setSending(false);
     }
   }
+  const content = (
+    <>
+      <p>{item.details}</p>
+      <p className="muted text-muted-foreground">{t.review.memory.rejectWarning}</p>
+      <section aria-label={t.review.memory.diff(item.path)}>
+        <CodeBlock className="permission-details">
+          <code>{item.diff}</code>
+        </CodeBlock>
+      </section>
+      <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
+        <Button
+          type="button"
+          variant="primary"
+          disabled={sending || submitted}
+          onClick={() => void decide("accepted")}
+        >
+          {t.review.memory.accept}
+        </Button>
+        <Button
+          type="button"
+          disabled={sending || submitted}
+          onClick={() => void decide("rejected")}
+        >
+          {t.review.memory.reject}
+        </Button>
+      </div>
+      {submitted && <p role="status">{t.review.memory.recorded}</p>}
+    </>
+  );
+  if (variant === "inline") return content;
   return (
     <Card>
       <CardHeader className="flex flex-row items-center gap-3">
         <IconChip icon={FileText} tone="attention" />
         <h4 className="font-mono font-semibold">{item.path}</h4>
       </CardHeader>
-      <CardContent>
-        <p>{item.details}</p>
-        <p className="muted text-muted-foreground">{t.review.memory.rejectWarning}</p>
-        <section aria-label={t.review.memory.diff(item.path)}>
-          <CodeBlock className="permission-details">
-            <code>{item.diff}</code>
-          </CodeBlock>
-        </section>
-        <div className="stint-permission-actions flex flex-wrap gap-2 [&_span]:text-xs">
-          <Button
-            type="button"
-            variant="primary"
-            disabled={sending || submitted}
-            onClick={() => void decide("accepted")}
-          >
-            {t.review.memory.accept}
-          </Button>
-          <Button
-            type="button"
-            disabled={sending || submitted}
-            onClick={() => void decide("rejected")}
-          >
-            {t.review.memory.reject}
-          </Button>
-        </div>
-        {submitted && <p role="status">{t.review.memory.recorded}</p>}
-      </CardContent>
+      <CardContent>{content}</CardContent>
     </Card>
   );
 }

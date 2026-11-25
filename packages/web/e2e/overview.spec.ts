@@ -101,7 +101,9 @@ for (const language of ["en", "zh-CN"] as const) {
         });
         await disclosure.focus();
         await page.keyboard.press("Enter");
-        await expect(overview.getByRole("button", { name: "Shipped milestone" })).toBeVisible();
+        await expect(
+          overview.getByRole("button", { name: "Shipped milestone", exact: true }),
+        ).toBeVisible();
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("overview.png"), fullPage: true });
         await overview

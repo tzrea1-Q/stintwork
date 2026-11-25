@@ -359,9 +359,11 @@ export function NeedsYouQueue({
                       )}
                     </p>
                   )}
-                  {item.kind === "permission" && stint && <StintRecovery stint={stint} />}
+                  {item.kind === "permission" && stint && (
+                    <StintRecovery stint={stint} variant="inline" />
+                  )}
                   {item.kind === "checkpoint-warning" && (
-                    <CheckpointWarnings warnings={item.warnings} />
+                    <CheckpointWarnings warnings={item.warnings} variant="inline" />
                   )}
                   {item.kind === "approval-stale" && (
                     <Button
@@ -399,6 +401,7 @@ export function NeedsYouQueue({
                   )}
                   {item.kind === "memory-proposal" && (
                     <MemoryProposal
+                      variant="inline"
                       item={item}
                       onSuccess={() => answeredItem(item.id, t.review.memory.recorded)}
                       onError={(reason) => {

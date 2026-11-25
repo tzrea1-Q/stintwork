@@ -79,6 +79,10 @@ const samples: Record<string, unknown[][]> = {
     ["Codex", "/to-spec", undefined],
     ["Claude Code", "/to-tickets", "~/.claude/skills/, <project>/.agents/skills/"],
   ],
+  "needsYou.conditionsMet": [
+    [0, 1],
+    [2, 3],
+  ],
   "needsYou.permissionRequest": [["Agent title 原文"]],
   "needsYou.stageReady": [["Stage 自定义"]],
   "needsYou.staleApprovalTitle": [["Stage 自定义"]],

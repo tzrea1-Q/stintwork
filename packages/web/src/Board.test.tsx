@@ -1581,7 +1581,7 @@ test("Overview attention rows focus their queue item; top bar opens at the top",
   window.history.replaceState({}, "", "/?view=overview");
   const user = userEvent.setup();
   render(<Board snapshot={attentionSnapshot()} />);
-  await user.click(screen.getByRole("button", { name: "Check project request" }));
+  await user.click(screen.getByRole("button", { name: /^Check project request/ }));
   let queue = screen.getByRole("dialog", { name: "Needs you 1" });
   await waitFor(() => expect(within(queue).getByRole("article")).toHaveFocus());
   await user.click(within(queue).getByRole("button", { name: "Close Needs you" }));

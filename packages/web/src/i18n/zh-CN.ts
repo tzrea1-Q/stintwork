@@ -491,6 +491,8 @@ export const zhCN: Catalog = {
     answerSent: "答复已发送。",
     fullPermissionJson: "完整权限 JSON",
     checkpointWarnings: "检查点警告",
+    excludedFilesShort: "已从检查点排除，尚未提交。",
+    committedFilesShort: "已提交到分支，请在后续提交中移除，或在审查中接受。",
     likelySecret: "疑似敏感信息",
     largeFile: "大于 1 MiB",
     generatedDirectory: "生成的目录",

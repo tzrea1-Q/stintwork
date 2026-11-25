@@ -132,10 +132,10 @@ test("failed handoff answers keep the note editable and allow retry without clai
   const textarea = screen.getByRole("textbox", { name: "Developer note" });
   await user.type(textarea, "Use CSV.");
   await user.click(screen.getByRole("button", { name: "Save developer note" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Unresolved handoff: Could not persist the answer.",
-  );
+  const item = screen.getByRole("article", { name: "Unresolved handoff" });
+  expect(await within(item).findByRole("alert")).toHaveTextContent("Could not persist the answer.");
   expect(textarea).toHaveValue("Use CSV.");
+  expect(textarea).toBeEnabled();
   expect(screen.queryByText("Handoff answered.")).not.toBeInTheDocument();
   await user.click(screen.getByRole("button", { name: "Save developer note" }));
   expect(await screen.findByText("Handoff answered.")).toBeInTheDocument();

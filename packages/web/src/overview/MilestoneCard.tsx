@@ -144,7 +144,7 @@ export function MilestoneCard({ data, t, onMilestone }: CardProps) {
             {featured.incomplete && (
               <p className="text-xs text-muted-foreground">{t.overview.progressIncomplete}</p>
             )}
-            <div className="mt-8 text-display leading-none font-display tracking-display tabular-nums">
+            <div className="text-display leading-none font-display tracking-display tabular-nums">
               <RollingNumber value={milestonePercent(featured.unitsDone, featured.units)} />
               <span className="text-display-unit">%</span>
             </div>

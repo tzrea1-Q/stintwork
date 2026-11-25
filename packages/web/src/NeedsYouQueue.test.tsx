@@ -551,9 +551,10 @@ describe("Chinese Needs-you queue", () => {
     expect(warnings.getByText("疑似敏感信息")).toBeInTheDocument();
     expect(warnings.getByText("大于 1 MiB")).toBeInTheDocument();
     expect(warnings.getByText(/生成的目录/)).toBeInTheDocument();
-    expect(warnings.getByText(/已从检查点排除，保持未提交状态/)).toBeInTheDocument();
-    expect(warnings.getByText(/已提交到分支，未被检查点排除/)).toBeInTheDocument();
-    expect(queue.getByText(/风险文件会阻止交付/)).toBeInTheDocument();
+    expect(warnings.getByText("已从检查点排除，尚未提交。")).toBeInTheDocument();
+    expect(
+      warnings.getByText("已提交到分支，请在后续提交中移除，或在审查中接受。"),
+    ).toBeInTheDocument();
   });
 
   test("permission JSON disclosure translates without changing its command, paths or raw JSON", async () => {
@@ -611,7 +612,7 @@ describe("Chinese Needs-you queue", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "待你处理 5" }));
     const article = within(screen.getByRole("article", { name: "已从检查点排除风险文件" }));
     expect(article.getByText("未记录就绪时间")).toBeInTheDocument();
-    expect(article.getByText(/检查和本地合并要求工作树干净/)).toBeInTheDocument();
+    expect(article.getByText("已从检查点排除，尚未提交。")).toBeInTheDocument();
   });
 
   test("agent login reasons stay verbatim and refresh failure is Chinese", async () => {
