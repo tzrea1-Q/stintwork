@@ -114,7 +114,7 @@ Product and agent names stay unchanged. Stint and Agent are also left untranslat
 | Milestone | 里程碑 |
 | Work item | 工作项 |
 | Ticket | 工单 |
-| Spec | 规格说明 |
+| Spec | 规格 |
 | Shipped | 已交付 |
 | Workflow | 工作流 |
 | Stage | 阶段 |

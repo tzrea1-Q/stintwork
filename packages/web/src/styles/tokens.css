@@ -71,6 +71,11 @@
   --backdrop: oklch(0 0 0 / 53%);
   --radius: 0.875rem;
   --space-unit: 4px;
+  --board-column-width: 280px;
+  --board-column-min: 220px;
+  --board-aux-min: 180px;
+  --board-status-edge: 3px;
+  --board-fade: 24px;
   --shadow-card: 0 1px 2px oklch(0 0 0 / 4%), 0 8px 24px -8px oklch(0 0 0 / 6%);
   --shadow-overlay: 0 8px 32px oklch(0 0 0 / 20%);
   --page-width: 1500px;
@@ -238,5 +243,71 @@
   }
   @media (width >= 80rem) {
     padding-inline: --spacing(7);
+  }
+}
+
+/* Pipeline layout */
+.stage-column-wide {
+  width: var(--board-column-width);
+  min-width: var(--board-column-min);
+}
+.stage-grid {
+  min-width: max-content;
+}
+.stage-strip[data-fade-left="true"] {
+  mask-image: linear-gradient(to right, transparent, black var(--board-fade));
+}
+.stage-strip[data-fade-right="true"] {
+  mask-image: linear-gradient(to left, transparent, black var(--board-fade));
+}
+.stage-strip[data-fade-left="true"][data-fade-right="true"] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black var(--board-fade),
+    black calc(100% - var(--board-fade)),
+    transparent
+  );
+}
+.status-edge {
+  border-left-width: var(--board-status-edge);
+}
+.status-edge-running {
+  border-left-color: var(--running);
+}
+.status-edge-attention {
+  border-left-color: var(--attention);
+}
+.status-edge-blocked {
+  border-left-color: var(--blocked);
+}
+.status-edge-stopped {
+  border-left-color: var(--stopped);
+}
+.auxiliary-items {
+  grid-template-columns: repeat(auto-fill, minmax(var(--board-aux-min), var(--board-column-min)));
+}
+@media (max-width: 767px) {
+  .stage-grid {
+    min-width: 0;
+  }
+}
+
+@media (min-width: 1024px) {
+  @container (min-width: 452px) {
+    .stage-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(var(--board-column-min), 1fr));
+      align-content: start;
+    }
+  }
+}
+
+@media (max-width: 767px) {
+  .board-toolbar-actions {
+    gap: var(--space-unit);
+  }
+  .board-toolbar-actions button {
+    padding-inline: var(--space-unit);
   }
 }

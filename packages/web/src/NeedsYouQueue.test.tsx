@@ -807,7 +807,7 @@ test.each(["en", "zh-CN"] as const)(
     );
     await user.click(screen.getByRole("button", { name: `${t.topBar.needsYou} 1` }));
     const sheet = within(screen.getByRole("dialog"));
-    const stage = language === "en" ? "Spec" : "规格说明";
+    const stage = language === "en" ? "Spec" : "规格";
     expect(
       sheet.getByRole("heading", { name: t.needsYou.staleApprovalTitle(stage) }),
     ).toBeVisible();
@@ -867,11 +867,11 @@ test("Chinese notifications translate the stage for gate-ready and stale approva
   );
   expect(notify).toHaveBeenCalledWith(
     "Project · 待你处理",
-    expect.objectContaining({ body: zhCN.needsYou.stageReady("规格说明"), tag: gate.id }),
+    expect.objectContaining({ body: zhCN.needsYou.stageReady("规格"), tag: gate.id }),
   );
   expect(notify).toHaveBeenCalledWith(
     "Project · 待你处理",
-    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: stale.id }),
+    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格"), tag: stale.id }),
   );
   rerender(
     <LanguageProvider>
@@ -897,7 +897,7 @@ test("Chinese notifications translate the stage for gate-ready and stale approva
   expect(notify).toHaveBeenCalledTimes(3);
   expect(notify).toHaveBeenLastCalledWith(
     "Project · 待你处理",
-    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格说明"), tag: later.id }),
+    expect.objectContaining({ body: zhCN.needsYou.staleApprovalTitle("规格"), tag: later.id }),
   );
 });
 

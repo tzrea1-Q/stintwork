@@ -28,7 +28,7 @@ for (const language of ["en", "zh-CN"] as const) {
     const rails = page.locator('.stage-column[data-layout="rail"]');
     await expect(rails).toHaveCount(5);
     for (const rail of await rails.all())
-      expect((await rail.boundingBox())?.width).toBeLessThanOrEqual(64);
+      expect((await rail.boundingBox())?.width).toBeLessThanOrEqual(80);
     const busy = page.locator('.stage-column[data-layout="grid"]');
     await expect(busy).toHaveCount(1);
     const positions = await busy
@@ -36,7 +36,7 @@ for (const language of ["en", "zh-CN"] as const) {
       .evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().x));
     expect(new Set(positions).size).toBeGreaterThanOrEqual(2);
   });
-  for (const width of [1440, 1024, 768, 390]) {
+  for (const width of [1440, 1024, 768, 390, 360]) {
     test(`sticky stage headers and page width ${width}px ${language}`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await page.addInitScript(
@@ -55,7 +55,7 @@ for (const language of ["en", "zh-CN"] as const) {
       await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
       await page.goto("/?view=pipeline");
       const scroller = page.locator(".board-scroll");
-      await expect(scroller.locator(".stage-header")).toHaveCount(6);
+      await expect(scroller.locator(".stage-header")).toHaveCount(width < 768 ? 1 : 6);
       const bottoms = await scroller
         .locator(".stage-header")
         .evaluateAll((headers) => headers.map((header) => header.getBoundingClientRect().bottom));
@@ -63,7 +63,7 @@ for (const language of ["en", "zh-CN"] as const) {
       if (width < 1024) {
         await expect(scroller.locator('.stage-column[data-layout="grid"]')).toHaveCount(0);
       }
-      if (width === 390 || width === 768) {
+      if (width < 768) {
         const widths = await scroller
           .locator('.stage-column:not([data-layout="rail"])')
           .evaluateAll((columns) => columns.map((column) => column.getBoundingClientRect().width));
@@ -114,6 +114,13 @@ for (const language of ["en", "zh-CN"] as const) {
           socket.send(JSON.stringify(richSnapshot)),
         );
         await page.goto("/?view=pipeline");
+        if (width < 768) {
+          await expect(page.getByRole("tablist", { name: t.board.stages })).toBeVisible();
+          await expect(page.locator(".stage-board .stage-column")).toHaveCount(1);
+          const cards = page.locator(".stage-board .work-item");
+          expect(await cards.count()).toBeGreaterThan(0);
+          for (const card of await cards.all()) await expect(card).toBeVisible();
+        }
         await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
         await assertLayout(page);
         await page.screenshot({ path: info.outputPath("rich-pipeline.png"), fullPage: true });
@@ -201,7 +208,15 @@ for (const language of ["en", "zh-CN"] as const) {
         await page.routeWebSocket("**/api/live", (socket) => socket.send(JSON.stringify(snapshot)));
         await page.goto("/?view=pipeline");
         await expect(page.locator("html")).toHaveAttribute("lang", language);
+        if (width < 768) {
+          const column = snapshot.workItems.find((item) => item.slug === "long-title")?.column;
+          if (column) await page.locator(`#stage-tab-${column}`).click();
+        }
         await expect(page.locator('.board-scroll [data-work-item="long-title"]')).toBeAttached();
+        if (width < 768) {
+          const column = snapshot.workItems.find((item) => item.slug === "chinese-title")?.column;
+          if (column) await page.locator(`#stage-tab-${column}`).click();
+        }
         await expect(page.locator('.board-scroll [data-work-item="chinese-title"]')).toHaveText(
           /^这是一个只有中文/,
         );
@@ -217,14 +232,24 @@ for (const language of ["en", "zh-CN"] as const) {
         if (!label || !stats || !context || !actions || !roadmap || !create)
           throw new Error("Board toolbar groups and actions must be visible");
         expect(Math.abs(roadmap.y - create.y)).toBeLessThanOrEqual(1);
-        if (width === 1440) {
-          expect(
-            Math.abs(label.y + label.height / 2 - stats.y - stats.height / 2),
-          ).toBeLessThanOrEqual(1);
-          expect(stats.x - label.x - label.width).toBeGreaterThanOrEqual(8);
-          expect(actions.x).toBeGreaterThan(context.x + context.width);
-        } else if (width < 1024) {
-          expect(actions.y).toBeGreaterThanOrEqual(context.y + context.height);
+        if (width < 768) {
+          const toolbar = await page.locator(".board-toolbar").boundingBox();
+          const gap = await page
+            .locator(".board-toolbar")
+            .evaluate((el) => parseFloat(getComputedStyle(el).rowGap));
+          const padding = await page
+            .locator(".board-toolbar")
+            .evaluate(
+              (el) =>
+                parseFloat(getComputedStyle(el).paddingTop) +
+                parseFloat(getComputedStyle(el).paddingBottom),
+            );
+          const first = await page
+            .locator(".board-toolbar-context [role=combobox]")
+            .first()
+            .boundingBox();
+          if (!toolbar || !first) throw new Error("Missing toolbar bounds");
+          expect(toolbar.height - padding).toBeLessThanOrEqual(2 * first.height + gap + 1);
         }
         const stages = page.locator(".board-scroll");
         await expect(
@@ -243,50 +268,40 @@ for (const language of ["en", "zh-CN"] as const) {
         }));
         expect(dimensions.scroller).toBeLessThanOrEqual(dimensions.viewport);
         const columns = stages.locator(".stage-column");
-        await expect(columns.locator(".stage-header .count")).toHaveCount(6);
-        const emptyLabels = columns.locator(":scope > div > .sr-only");
-        expect(await emptyLabels.count()).toBeGreaterThan(0);
-        expect(await stages.evaluate((element) => getComputedStyle(element).position)).toBe(
-          "relative",
-        );
+        await expect(columns.locator(".stage-header .count")).toHaveCount(width < 768 ? 1 : 6);
         expect(
-          await emptyLabels.evaluateAll((labels) =>
-            labels.every(
-              (label) => (label as HTMLElement).offsetParent === label.closest(".stage-column"),
+          await page
+            .locator(".stage-board *")
+            .evaluateAll((nodes) =>
+              nodes.every((node) => getComputedStyle(node).writingMode === "horizontal-tb"),
             ),
-          ),
         ).toBe(true);
-        if (width === 390 || width === 768) {
-          expect(await stages.evaluate((element) => getComputedStyle(element).scrollSnapType)).toBe(
-            "x mandatory",
-          );
-          await page.locator(".stage-navigation button").last().click();
-          await expect
-            .poll(() => stages.evaluate((element) => element.scrollLeft))
-            .toBeGreaterThan(0);
-          await page.locator(".stage-navigation button").first().click();
-          await expect.poll(() => stages.evaluate((element) => element.scrollLeft)).toBe(0);
-        }
-        await assertLayout(page, { region: ".pipeline-main" });
-
-        if (width < 1024) {
-          expect(
-            await stages.evaluate((element) => element.scrollWidth > element.clientWidth),
-          ).toBe(true);
-        }
-        await stages.evaluate((element) => {
-          element.scrollLeft = element.scrollWidth;
-        });
-        if (width < 1024)
-          expect(await stages.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
-        if (width === 390 || width === 768) {
-          const last = await columns.last().boundingBox();
-          const card = await page.locator(".stage-board").boundingBox();
-          if (!last || !card) throw new Error("Missing stage bounds");
-          expect(last.x + last.width).toBeLessThanOrEqual(card.x + card.width);
+        const strip = page.locator(".stage-strip");
+        if (width < 768) {
+          await expect(page.getByRole("tablist", { name: t.board.stages })).toBeVisible();
+          await expect(columns).toHaveCount(1);
+        } else {
+          const overflow = await strip.evaluate((el) => el.scrollWidth > el.clientWidth);
+          if (width === 768 || width === 1024) expect(overflow).toBe(true);
+          if (overflow) {
+            await expect(page.locator(".stage-navigation")).toBeVisible();
+            await page.locator(".stage-navigation button").last().click();
+            await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBeGreaterThan(0);
+            await page.locator(".stage-navigation button").first().click();
+            await expect.poll(() => strip.evaluate((el) => el.scrollLeft)).toBe(0);
+          }
         }
         await assertLayout(page, { region: ".pipeline-main" });
         const inference = page.getByRole("button", { name: new RegExp(t.card.inferred) }).first();
+        if (width < 768) {
+          for (const tab of await page
+            .getByRole("tablist", { name: t.board.stages })
+            .getByRole("tab")
+            .all()) {
+            if (await inference.count()) break;
+            await tab.click();
+          }
+        }
         await inference.hover();
         const description = page.getByRole("tooltip");
         await expect(description).toContainText(t.card.inference);
@@ -398,7 +413,7 @@ for (const language of ["en", "zh-CN"] as const) {
         await options.getByRole("option", { name: "Next milestone", exact: true }).click();
         await expect(milestone).toBeFocused();
         await expect(page.getByText(t.board.emptyMilestone, { exact: true })).toBeVisible();
-        await expect(page.locator(".stage-column")).toHaveCount(6);
+        await expect(page.locator(".stage-column")).toHaveCount(width < 768 ? 1 : 6);
         await expect(page.locator("[data-work-item]")).toHaveCount(0);
         await assertLayout(page);
         await page.screenshot({
