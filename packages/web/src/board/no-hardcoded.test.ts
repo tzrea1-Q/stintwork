@@ -26,3 +26,9 @@ test("Board files use tokens for arbitrary sizes and colors", () => {
     ).toEqual([]);
   }
 });
+
+test("stage headers have no nested strip scroll container", () => {
+  for (const file of ["../Board.tsx", "StageStrip.tsx"]) {
+    expect(readFileSync(join(dir, file), "utf8")).not.toContain("stage-strip");
+  }
+});

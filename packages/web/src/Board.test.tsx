@@ -1626,17 +1626,17 @@ test("stage overflow controls appear only for overflow and scroll", () => {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
-    return this.classList.contains("stage-strip") ? 1000 : 0;
+    return this.classList.contains("board-scroll") ? 1000 : 0;
   });
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
-    return this.classList.contains("stage-strip") ? 300 : 0;
+    return this.classList.contains("board-scroll") ? 300 : 0;
   });
   const scrollTo = vi.fn();
   const { unmount, container } = render(<Board snapshot={project()} />);
-  const strip = container.querySelector<HTMLElement>(".stage-strip");
-  if (!strip) throw new Error("Missing stage strip");
+  const strip = container.querySelector<HTMLElement>(".board-scroll");
+  if (!strip) throw new Error("Missing board scroller");
   strip.scrollTo = scrollTo;
   container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
     Object.defineProperty(column, "offsetLeft", { value: index * 180 });
@@ -1679,20 +1679,20 @@ test("stage navigation skips collapsed rails", () => {
   vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
-    return this.classList.contains("stage-strip") ? 1000 : 0;
+    return this.classList.contains("board-scroll") ? 1000 : 0;
   });
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (
     this: HTMLElement,
   ) {
-    return this.classList.contains("stage-strip") ? 300 : 0;
+    return this.classList.contains("board-scroll") ? 300 : 0;
   });
   const snapshot = project();
   snapshot.workItems = snapshot.workItems.filter(
     (item) => item.column === "implement" || item.column === "ship",
   );
   const { container } = render(<Board snapshot={snapshot} />);
-  const strip = container.querySelector<HTMLElement>(".stage-strip");
-  if (!strip) throw new Error("Missing stage strip");
+  const strip = container.querySelector<HTMLElement>(".board-scroll");
+  if (!strip) throw new Error("Missing board scroller");
   strip.scrollTo = vi.fn();
   container.querySelectorAll<HTMLElement>(".stage-column").forEach((column, index) => {
     Object.defineProperty(column, "offsetLeft", { value: index * 100 });
