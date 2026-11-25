@@ -104,7 +104,7 @@ export function Column({
         <m.button
           layout="position"
           type="button"
-          className="flex h-full w-full flex-col items-center rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
+          className="flex h-full w-full flex-col items-center justify-start rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
           aria-label={t.column.expand(name, items.length)}
           onClick={() => {
             toggled.current = true;

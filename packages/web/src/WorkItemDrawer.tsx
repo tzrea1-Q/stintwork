@@ -277,7 +277,9 @@ export function WorkItemDrawer({
     const previous = document.activeElement;
     opener.current = previous instanceof HTMLElement ? previous : null;
     autoFocusing.current = true;
-    (keyboardInput && previous !== document.body ? closeButton.current : panel.current)?.focus();
+    (keyboardInput && previous !== document.body ? closeButton.current : panel.current)?.focus({
+      focusVisible: keyboardInput,
+    });
     autoFocusing.current = false;
     return () => {
       if (
@@ -1013,7 +1015,7 @@ export function WorkItemDrawer({
                 <span
                   className="order-first block min-w-0 basis-full truncate"
                   data-truncate
-                  title={`${ticketNumber(nextTicket.number)} · ${nextTicket.title}`}
+                  title={`${t.stints.nextTicket}: ${ticketNumber(nextTicket.number)} · ${nextTicket.title}`}
                 >
                   {t.stints.nextTicket}: {ticketNumber(nextTicket.number)} · {nextTicket.title}
                 </span>
@@ -1145,7 +1147,7 @@ export function WorkItemDrawer({
               (keyboardInput && previous !== document.body
                 ? closeButton.current
                 : sheetPanel.current
-              )?.focus();
+              )?.focus({ focusVisible: keyboardInput });
               autoFocusing.current = false;
               opener.current = previous instanceof HTMLElement ? previous : null;
             }}

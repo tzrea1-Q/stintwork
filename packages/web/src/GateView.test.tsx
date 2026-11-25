@@ -130,7 +130,7 @@ test.each([
 });
 
 test.each([
-  [false, "所有工单都必须解决后才能批准。"],
+  [false, "受阻于："],
   [true, "此工作项有正在运行的 Stint。请先结束或停止，再批准。"],
 ])("Chinese gate shows the blocking reason and output label (%s)", (running, reason) => {
   localStorage.setItem(languageStorageKey, "zh-CN");
@@ -157,7 +157,7 @@ test("Chinese gate translates its required path but keeps parser warnings verbat
       <GateView item={item} />
     </LanguageProvider>,
   );
-  expect(screen.getByRole("status")).toHaveTextContent(
+  expect(screen.getByRole("list", { name: /关卡条件/ })).toHaveTextContent(
     "编写或编辑 .scratch/first/spec.md，加入非空的 # 标题。 Repo parser 原文",
   );
   expect(
@@ -196,7 +196,9 @@ test.each([
         <GateView item={item} />
       </LanguageProvider>,
     );
-    expect(screen.getByRole("status")).toHaveTextContent(reason);
+    expect(screen.getByRole("list", { name: /gate conditions|关卡条件/ })).toHaveTextContent(
+      reason,
+    );
     expect(screen.getByRole("link", { name: link })).toHaveAttribute("href", item.github.url);
     expect(screen.getByRole("link", { name: link })).toHaveAttribute("target", "_blank");
     expect(screen.getByRole("link", { name: link })).toHaveAttribute("rel", "noreferrer");
@@ -314,7 +316,7 @@ test("fresh bookkeeping evidence enables Review approval, but the server's refus
   );
   render(<GateView item={reviewItem()} />);
   const conditions = within(screen.getByRole("list", { name: "Review gate conditions" }));
-  expect(conditions.getAllByText("No action needed.")).toHaveLength(6);
+  expect(conditions.queryByText("No action needed.")).not.toBeInTheDocument();
   expect(screen.getByRole("progressbar", { name: "Review gate conditions" })).toHaveAttribute(
     "aria-valuenow",
     "6",
@@ -342,7 +344,7 @@ test("gate evidence shows tickets, last checkpoint, handoff and open warnings in
     />,
   );
   const gate = within(screen.getByRole("region", { name: "Implement gate" }));
-  expect(gate.getByText("1/1 tickets resolved")).toBeInTheDocument();
+  expect(gate.queryByText("1/1 tickets resolved")).not.toBeInTheDocument();
   expect(gate.queryByText("01 · First ticket · Resolved")).not.toBeInTheDocument();
   expect(gate.getAllByText("evidence-checkpoint").length).toBeGreaterThan(0);
   expect(gate.getByText("All edits checkpointed")).toBeInTheDocument();
@@ -537,7 +539,7 @@ test.each([
     expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
     rerender(<GateView item={valid} />);
     expect(conditions.getByText(label).closest("li")).toHaveTextContent("Ready");
-    expect(conditions.getByText("No action needed.")).toBeInTheDocument();
+    expect(conditions.queryByText("No action needed.")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeEnabled();
   },
 );
@@ -583,8 +585,7 @@ test.each([
   if (!item) throw new Error("Fixture work item is missing.");
   item.stints = [{ ...stint, stage, ticket: null }];
   render(<GateView item={item} />);
-  expect(screen.getByRole("status")).toHaveTextContent(path);
-  expect(screen.getByRole("status")).toHaveTextContent(path);
+  expect(screen.getByRole("list", { name: `${name} gate conditions` })).toHaveTextContent(path);
   expect(screen.getByRole("button", { name: `Approve ${name}` })).toBeDisabled();
 });
 

@@ -151,9 +151,16 @@ export function GateView({
   const reopenAvailable = !!(github?.reviewDigest || github?.reopenDigest) && !!github?.reviewHead;
   const gate = gateReadiness(item, workflows);
   const disabledReason =
-    gate.reason?.code === "gate.running"
-      ? gate.reason
-      : (gate.conditions.find((condition) => !condition.ready)?.action ?? gate.reason);
+    gate.reason?.code === "gate.running" ||
+    gate.reason?.code === "gate.activeWrite" ||
+    !gate.conditions.some((condition) => !condition.ready)
+      ? translateCoreText(gate.reason, t)
+      : t.stints.gateBlockedBy(
+          gate.conditions
+            .filter((condition) => !condition.ready)
+            .map((condition) => translateCoreText(condition.label, t))
+            .join(", "),
+        );
   const emptyGithubSpec =
     !!github &&
     item.spec === null &&
@@ -190,16 +197,6 @@ export function GateView({
             total={gate.conditions.length}
             label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
           />
-          <ul>
-            {gate.conditions
-              .filter((condition) => !condition.ready)
-              .map((condition) => (
-                <li key={condition.id}>
-                  <strong>{translateCoreText(condition.label, t)}</strong> ·{" "}
-                  {translateCoreText(condition.action, t)}
-                </li>
-              ))}
-          </ul>
           <ul
             aria-label={t.stints.gateConditions(stageName(workflows[item.workflow], current, t))}
             className="space-y-2"
@@ -207,7 +204,7 @@ export function GateView({
             {gate.conditions.map((condition) => (
               <li key={condition.id} className="rounded-xl border border-border p-3">
                 <div className="flex items-start gap-2">
-                  <strong className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+                  <>
                     {condition.ready ? (
                       <CheckCircle2
                         aria-hidden="true"
@@ -219,6 +216,8 @@ export function GateView({
                         className="size-4 shrink-0 text-muted-foreground"
                       />
                     )}
+                  </>
+                  <strong className="min-w-0 flex-1">
                     {translateCoreText(condition.label, t)}
                   </strong>
                   <span className="shrink-0">
@@ -227,27 +226,12 @@ export function GateView({
                     </StatusChip>
                   </span>
                 </div>
-                {condition.id === "ticket-resolution" && (
-                  <p>
-                    {item.tickets.filter(({ resolved }) => resolved).length}/{item.tickets.length}
-                    {t.stints.ticketsResolved}
-                  </p>
-                )}
-                {condition.ready ? (
-                  <p>{t.stints.noAction}</p>
-                ) : (
-                  translateCoreText(condition.action, t) !== translateCoreText(gate.reason, t) && (
-                    <p>{translateCoreText(condition.action, t)}</p>
-                  )
-                )}
+                {!condition.ready && <p>{translateCoreText(condition.action, t)}</p>}
               </li>
             ))}
           </ul>
         </div>
       )}
-      <p role="status">
-        {gate.ready ? t.stints.readyToApprove : translateCoreText(gate.reason, t)}
-      </p>
       {!checkpoint && !lastHandoff && !warnings.length ? (
         <p className="text-muted-foreground">{t.stints.emptyGateEvidence}</p>
       ) : (
@@ -354,8 +338,8 @@ export function GateView({
             {saving && <span aria-hidden="true"> · {t.stints.approving}</span>}
           </Button>
           {!gate.ready && (
-            <span id="gate-approve-reason" className="ml-2 text-muted-foreground">
-              {translateCoreText(disabledReason, t)}
+            <span id="gate-approve-reason" role="status" className="ml-2 text-muted-foreground">
+              {disabledReason}
             </span>
           )}
         </>
@@ -365,8 +349,8 @@ export function GateView({
           <Button disabled aria-describedby="gate-approve-reason">
             {t.stints.approve(stageName(workflows[item.workflow], current, t))}
           </Button>
-          <span id="gate-approve-reason" className="ml-2 text-muted-foreground">
-            {translateCoreText(disabledReason, t)}
+          <span id="gate-approve-reason" role="status" className="ml-2 text-muted-foreground">
+            {disabledReason}
           </span>
         </div>
       )}

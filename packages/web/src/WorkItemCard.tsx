@@ -167,9 +167,9 @@ export const WorkItemCard = forwardRef<
         />
       )}
       <m.div layout="position">
-        <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-2">
           <span
-            className="work-item-id inline-flex max-w-full flex-none items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
+            className="work-item-id inline-flex min-w-0 flex-1 items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
             title={typeName}
           >
             {showWorkflow && (
@@ -182,8 +182,13 @@ export const WorkItemCard = forwardRef<
           </span>
           {item.milestone && (
             <span
-              className="milestone-tag shrink-0 whitespace-nowrap rounded-sm border border-border px-1 font-mono text-xs text-muted-foreground"
-              title={milestone?.name}
+              className="milestone-tag max-w-40 min-w-0 shrink truncate rounded-sm border border-border px-1 text-xs text-muted-foreground"
+              data-truncate
+              title={
+                /^m\d+$/i.test(milestone?.id ?? item.milestone)
+                  ? (milestone?.id ?? item.milestone).toUpperCase()
+                  : (milestone?.name ?? item.milestone)
+              }
             >
               {/^m\d+$/i.test(milestone?.id ?? item.milestone)
                 ? (milestone?.id ?? item.milestone).toUpperCase()
