@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { Page } from "@playwright/test";
 
+// CI is about 3x slower (panel opening measured 99–140 ms); developer machines enforce 50 ms.
+export const longTaskBudgetMs = process.env.CI ? 200 : 50;
+
 export async function sampleElementFrames(page: Page, selector: string, ms: number) {
   return page.evaluate(
     ({ selector, ms }) =>
