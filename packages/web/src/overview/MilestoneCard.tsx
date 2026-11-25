@@ -5,6 +5,7 @@ import { milestonePercent } from "../overview-data";
 import { Card, CardAction, CardContent, CardHeader, CardTitle, Eyebrow } from "../ui/Card";
 import { Disclosure } from "../ui/Disclosure";
 import { tween, useReducedMotionSafe } from "../ui/motion";
+import { RollingNumber } from "../ui/RollingNumber";
 import { Progress } from "../ui/Progress";
 import { StatusChip } from "../ui/StatusChip";
 import type { CardProps } from "./types";
@@ -144,11 +145,11 @@ export function MilestoneCard({ data, t, onMilestone }: CardProps) {
               <p className="text-xs text-muted-foreground">{t.overview.progressIncomplete}</p>
             )}
             <div className="mt-8 text-display leading-none font-display tracking-display tabular-nums">
-              {milestonePercent(featured.unitsDone, featured.units)}
+              <RollingNumber value={milestonePercent(featured.unitsDone, featured.units)} />
               <span className="text-display-unit">%</span>
             </div>
             <Progress
-              className="mt-5 h-2.5 [&_[data-slot=progress-indicator]]:bg-[var(--overview-chart-today)]"
+              className="mt-5 h-2.5 [&_[data-slot=progress-indicator]]:bg-running"
               value={featured.unitsDone}
               max={featured.units || 1}
               aria-label={featured.milestone.name}

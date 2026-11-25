@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { CircleAlert } from "lucide-react";
+import { kinds } from "../attention-kinds";
 import { Button } from "../ui/Button";
 import { Card, CardContent, CardHeader, CardTitle, Eyebrow } from "../ui/Card";
 import { IconChip } from "../ui/IconChip";
 import { Item, ItemContent, ItemMedia } from "../ui/Item";
 import { attentionStageName, attentionTitle } from "../useAttentionAlerts";
+import { RollingNumber } from "../ui/RollingNumber";
 import type { CardProps } from "./types";
 
 export function AttentionCard({ data, snapshot, t, language, onNeedsYou }: CardProps) {
@@ -17,7 +18,7 @@ export function AttentionCard({ data, snapshot, t, language, onNeedsYou }: CardP
             <CardTitle>
               {t.overview.attention}{" "}
               <span className="text-xs font-medium tabular-nums text-muted-foreground">
-                {snapshot.attentionItems.length}
+                <RollingNumber value={snapshot.attentionItems.length} />
               </span>
             </CardTitle>
           </CardHeader>
@@ -34,15 +35,21 @@ export function AttentionCard({ data, snapshot, t, language, onNeedsYou }: CardP
                 name,
                 attentionStageName(item, snapshot, t),
               );
+              const workTitle = snapshot.workItems.find(
+                (entry) => entry.slug === item.workItem,
+              )?.title;
+              const rowTitle =
+                workTitle && !title.includes(workTitle) ? `${title} · ${workTitle}` : title;
+              const presentation = kinds[item.kind];
               return (
                 <Item asChild key={item.id}>
                   <button type="button" className="text-left hover:bg-muted" onClick={onNeedsYou}>
                     <ItemMedia>
-                      <IconChip icon={CircleAlert} tone="attention" />
+                      <IconChip icon={presentation.icon} tone={presentation.tone} />
                     </ItemMedia>
                     <ItemContent className="min-w-0">
-                      <span className="truncate" data-truncate title={title}>
-                        {title}
+                      <span className="truncate" data-truncate title={rowTitle}>
+                        {rowTitle}
                       </span>
                     </ItemContent>
                   </button>

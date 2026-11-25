@@ -335,7 +335,7 @@ test("switching views moves focus to the selected navigation pill", async () => 
 test("shows the wordmark and project identity and hides an empty badge", () => {
   renderTopBar();
   expect(screen.getByText("Stintwork")).toBeInTheDocument();
-  expect(screen.getByText("✳")).toBeInTheDocument();
+  expect(document.querySelector("svg[data-logo]")).toHaveAttribute("aria-hidden", "true");
   const project = screen.getByText("Project");
   expect(project).toBeInTheDocument();
   expect(project).not.toHaveClass("flex-[2_1_0%]");
@@ -421,5 +421,24 @@ test("the needs you badge springs up on a first arrival and a later rise", async
     await waitFor(() => expect(scale()).toBeCloseTo(1, 2), { interval: 20, timeout: 3000 });
   } finally {
     MotionGlobalConfig.skipAnimations = true;
+  }
+});
+
+test.each([
+  [7, "7"],
+  [42, "42"],
+  [150, "99+"],
+])("badge fits %i items", (count, label) => {
+  const item = attentionSnapshot().attentionItems[0];
+  const { container } = renderTopBar({
+    ...snapshot,
+    attentionItems: Array.from({ length: count }, () => item),
+  });
+  expect(container.querySelector("[data-needs-you-badge]")).toHaveTextContent(label);
+  const buttons = ["command-palette-trigger", "needs-you-trigger", "settings-trigger"].map(
+    (id) => container.querySelector(`#${id}`)!,
+  );
+  for (const button of buttons) {
+    expect(button).toHaveClass("border-border", "bg-card", "text-foreground", "rounded-full");
   }
 });

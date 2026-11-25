@@ -56,8 +56,6 @@ test("Overview colors and type scales use shared theme tokens", () => {
       "focus-middle",
       "focus-end",
       "focus-glow",
-      "chart",
-      "chart-today",
       "focus-text",
       "focus-muted",
       "focus-button",
@@ -68,5 +66,21 @@ test("Overview colors and type scales use shared theme tokens", () => {
   }
   for (const name of ["display", "display-unit", "hero-title"]) {
     expect(css).toContain(`--text-${name}: var(--type-${name});`);
+  }
+});
+
+test("stage other contrasts with its track in both themes", () => {
+  const [light, dark] = css.split(".dark {");
+  for (const theme of [light, dark.split("@theme inline")[0]]) {
+    const value = (name: string) => {
+      const match = new RegExp(`--${name}: (oklch\\([^;]+\\));`).exec(theme);
+      if (!match) throw new Error(`Missing ${name}`);
+      return luminance(match[1]);
+    };
+    const track = value("muted");
+    const other = value("stopped");
+    expect(
+      (Math.max(track, other) + 0.05) / (Math.min(track, other) + 0.05),
+    ).toBeGreaterThanOrEqual(3);
   }
 });

@@ -3,6 +3,7 @@ import { AgentAvatar } from "../ui/AgentAvatar";
 import { Card, CardAction, CardContent, CardHeader, CardTitle, Eyebrow } from "../ui/Card";
 import { Item, ItemContent, ItemMedia } from "../ui/Item";
 import { StatusChip } from "../ui/StatusChip";
+import { RollingNumber } from "../ui/RollingNumber";
 import type { CardProps } from "./types";
 
 function relativeTime(at: string, now: number, language: string) {
@@ -48,7 +49,7 @@ export function ActivityCard({
             <Eyebrow>{t.overview.eyebrows.activity}</Eyebrow>
             <CardTitle>{t.overview.lastSevenDays}</CardTitle>
             <CardAction className="rounded-full bg-muted px-2 py-1 text-xs text-muted-foreground">
-              {weekTotal} {t.overview.stintCount}
+              <RollingNumber value={weekTotal} /> {t.overview.stintCount}
             </CardAction>
           </CardHeader>
           <CardContent>
@@ -73,7 +74,7 @@ export function ActivityCard({
                       className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2"
                     >
                       <div
-                        className={`w-full max-w-8 rounded-t ${index === 6 ? "bg-[var(--overview-chart-today)]" : "bg-[var(--overview-chart)]"}`}
+                        className={`w-full max-w-8 rounded-t ${index === 6 ? "bg-running" : "bg-muted-foreground/40"}`}
                         style={{ height: count ? `${(count / maxDay) * 100}%` : "2px" }}
                       />
                       <span className="text-xs text-muted-foreground">
@@ -84,7 +85,7 @@ export function ActivityCard({
                 })}
               </ul>
             )}
-            <h3>{t.overview.recentStints}</h3>
+            <h3 className="mt-4">{t.overview.recentStints}</h3>
             {data.activity.map(({ item, stint, at }) => (
               <Item asChild key={`${item.slug}-${stint.id}`}>
                 <button

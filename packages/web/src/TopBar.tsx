@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/DropdownMenu";
+import { Logo } from "./ui/Logo";
 import { Kbd } from "./ui/Kbd";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 
@@ -70,9 +71,9 @@ export function TopBar({
       <div className="top-project flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <span
           aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-primary text-[17px] text-primary-foreground"
+          className="grid size-7 shrink-0 place-items-center rounded-[9px] bg-primary text-primary-foreground"
         >
-          ✳
+          <Logo />
         </span>
         <strong className="hidden font-bold tracking-tight sm:inline">Stintwork</strong>
         <div
@@ -161,10 +162,14 @@ export function TopBar({
                     data-needs-you-badge
                     data-pop={pop || undefined}
                     style={{ scale: badgeScale }}
-                    className="absolute -right-[3px] -top-[3px] grid size-4 place-items-center rounded-full bg-attention text-[9px] tabular-nums text-background"
+                    className="absolute -right-[3px] -top-[3px] grid h-4 min-w-4 place-items-center rounded-full bg-attention px-1 text-eyebrow tabular-nums text-background"
                     aria-hidden="true"
                   >
-                    <RollingNumber value={snapshot.attentionItems.length} />
+                    {snapshot.attentionItems.length > 99 ? (
+                      "99+"
+                    ) : (
+                      <RollingNumber value={snapshot.attentionItems.length} />
+                    )}
                   </m.span>
                 )}
                 {warnings > 0 && (
@@ -185,7 +190,7 @@ export function TopBar({
                   <Button
                     id="settings-trigger"
                     ref={settingsTrigger}
-                    variant="ghost"
+                    variant="secondary"
                     size="icon"
                     className="relative size-9"
                     aria-label={t.topBar.settings}

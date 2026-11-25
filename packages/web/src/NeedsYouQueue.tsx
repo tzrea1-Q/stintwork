@@ -1,21 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { AttentionItem, ProjectSnapshot } from "@stintwork/core";
-import {
-  Bell,
-  Brain,
-  ChevronRight,
-  CircleHelp,
-  History,
-  Inbox,
-  KeyRound,
-  ListChecks,
-  MessageCircleQuestion,
-  ShieldCheck,
-  TriangleAlert,
-  X,
-} from "lucide-react";
+import { Bell, ChevronRight, CircleHelp, Inbox, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { kinds } from "./attention-kinds";
 import { CheckpointWarnings } from "./CheckpointWarnings";
 import { formatDuration } from "./duration";
 import { GateView } from "./GateView";
@@ -39,16 +27,6 @@ import { Sheet, SheetClose, SheetContent, SheetTitle } from "./ui/Sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/Tooltip";
 import { WarningCallout } from "./ui/WarningCallout";
 import { attentionStageName, attentionTitle, type useAttentionAlerts } from "./useAttentionAlerts";
-
-const kinds = {
-  permission: { label: "permission", icon: ShieldCheck, tone: "attention" },
-  "login-required": { label: "loginRequired", icon: KeyRound, tone: "attention" },
-  "gate-ready": { label: "gateReady", icon: ListChecks, tone: "running" },
-  "handoff-unresolved": { label: "handoff", icon: MessageCircleQuestion, tone: "attention" },
-  "memory-proposal": { label: "memoryProposal", icon: Brain, tone: "attention" },
-  "checkpoint-warning": { label: "checkpoint", icon: TriangleAlert, tone: "attention" },
-  "approval-stale": { label: "approvalStale", icon: History, tone: "attention" },
-} as const;
 
 const kindOrder = Object.keys(kinds) as AttentionItem["kind"][];
 export function sortAttentionItems(items: readonly AttentionItem[]): AttentionItem[] {

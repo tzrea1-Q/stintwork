@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
+import { attentionSnapshot } from "./attention-test-fixtures";
+import { kinds } from "./attention-kinds";
 import { createMemoryRepoFiles, indexProject, type ProjectSnapshot } from "@stintwork/core";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -128,8 +130,8 @@ test("Overview localizes attention titles and workflow stage names", () => {
   expect(screen.getByRole("heading", { name: "需要你处理 1" })).toBeVisible();
   expect(screen.getByText("你的关注")).toBeVisible();
   const title = zhCN.needsYou.stageReady("规格说明");
-  expect(screen.getByRole("button", { name: title })).toBeVisible();
-  expect(screen.getByText(title)).toHaveAttribute("title", title);
+  expect(screen.getByRole("button", { name: `${title} · One` })).toBeVisible();
+  expect(screen.getByText(`${title} · One`)).toHaveAttribute("title", `${title} · One`);
   localStorage.removeItem(languageStorageKey);
 });
 
@@ -220,7 +222,7 @@ test("Where the work is excludes shipped milestone items", () => {
   const card = screen
     .getByRole("heading", { name: "Where the work is" })
     .closest('[data-slot="card"]') as HTMLElement;
-  expect(within(card).getByText("1 work items")).toBeVisible();
+  expect(card.querySelector('[data-slot="card-action"]')).toHaveTextContent("1 work items");
 });
 
 test("orders cards and discloses shipped milestones", async () => {
@@ -466,10 +468,12 @@ test("shows all stage tracks, a neutral segment and the empty week alongside rec
   const stageCard = screen
     .getByRole("heading", { name: "Where the work is" })
     .closest('[data-slot="card"]') as HTMLElement;
-  const tracks = within(stageCard).getAllByRole("img");
+  const tracks = within(stageCard)
+    .getAllByRole("img")
+    .filter((node) => node.getAttribute("aria-label")?.includes("Other"));
   expect(tracks).toHaveLength(6);
   const occupied = tracks.find((track) => track.getAttribute("aria-label")?.includes("Other 1"));
-  expect(occupied?.lastElementChild).toHaveClass("bg-muted-foreground/40");
+  expect(occupied?.lastElementChild).toHaveClass("bg-stopped");
   expect(occupied?.lastElementChild).toHaveStyle({ width: "100%" });
   expect(screen.getByText("No stints in the last 7 days")).toBeVisible();
   expect(screen.queryByRole("list", { name: "Last 7 days" })).not.toBeInTheDocument();
@@ -566,3 +570,67 @@ test("empty state explains creation for each tracker", () => {
   expect(screen.getByText("Add issues on GitHub to see work items here.")).toBeVisible();
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
+
+test("stage swatches match segments and overview avoids chart and violet tokens", () => {
+  const snapshot = project({ ".scratch/one/spec.md": "# One" });
+  const { container } = render(
+    <Overview
+      snapshot={snapshot}
+      connection="live"
+      onPipeline={() => {}}
+      onOpenItem={() => {}}
+      onNeedsYou={() => {}}
+      onCreate={() => {}}
+      onMilestone={() => {}}
+    />,
+  );
+  const swatches = [...container.querySelectorAll("[data-stage-swatch]")];
+  const track = screen
+    .getAllByRole("img")
+    .find((node) => node.getAttribute("aria-label")?.includes("Other"));
+  if (!track) throw new Error("Missing stage track");
+  expect(swatches).toHaveLength(3);
+  expect(swatches.map((node) => node.className)).toEqual(
+    [...track.children].map((node) => node.className),
+  );
+  expect(container.innerHTML).not.toMatch(/--overview-chart|bg-(?:violet|accent|chart-2)/);
+});
+
+test.each(Object.keys(kinds) as (keyof typeof kinds)[])(
+  "attention row for %s uses its icon and work item title",
+  (kind) => {
+    const snapshot = project({ ".scratch/one/spec.md": "# One" });
+    const base = attentionSnapshot().attentionItems[0];
+    snapshot.attentionItems = [
+      {
+        ...base,
+        kind,
+        workItem: "one",
+        stage: "spec",
+        path: "AGENTS.md",
+        warnings: [],
+      } as ProjectSnapshot["attentionItems"][number],
+    ];
+    render(
+      <Overview
+        snapshot={snapshot}
+        connection="live"
+        onPipeline={() => {}}
+        onOpenItem={() => {}}
+        onNeedsYou={() => {}}
+        onCreate={() => {}}
+        onMilestone={() => {}}
+      />,
+    );
+    const card = screen.getByRole("heading", { name: /Needs you/ }).closest('[data-slot="card"]');
+    if (!card) throw new Error("Missing attention card");
+    const iconName = kinds[kind].icon.displayName;
+    if (!iconName) throw new Error("Missing icon name");
+    const iconClass = iconName.replace(
+      /[A-Z]/g,
+      (letter, i) => `${i ? "-" : ""}${letter.toLowerCase()}`,
+    );
+    const row = within(card as HTMLElement).getByRole("button", { name: /One/ });
+    expect(row.querySelector(`.lucide-${iconClass}`)).toBeInTheDocument();
+  },
+);
