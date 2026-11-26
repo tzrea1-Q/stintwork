@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useReducedMotion } from "motion/react";
+import { getReducedMotion, subscribeAppearance } from "../appearance";
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 export const spring = {
@@ -41,17 +41,8 @@ export const stagger = { interval: 0.035, maxItems: 12, maxDelay: 0.3 } as const
 export const pressScale = { control: 0.97, card: 0.985 } as const;
 export const staggerDelay = (index: number) =>
   Math.min(Math.min(Math.max(0, index), stagger.maxItems - 1) * stagger.interval, stagger.maxDelay);
-const motionQuery = "(prefers-reduced-motion: reduce)";
-const subscribeMotion = (callback: () => void) => {
-  const media = window.matchMedia?.(motionQuery);
-  media?.addEventListener("change", callback);
-  return () => media?.removeEventListener("change", callback);
-};
-const reducedSnapshot = () => window.matchMedia?.(motionQuery).matches ?? false;
 export function useReducedMotionSafe() {
-  const motionReduced = useReducedMotion();
-  const reduced = useSyncExternalStore(subscribeMotion, reducedSnapshot, () => false);
-  return typeof window.matchMedia === "function" ? reduced : motionReduced === true;
+  return useSyncExternalStore(subscribeAppearance, getReducedMotion, () => false);
 }
 
 export function usePress<T extends HTMLElement, P extends React.DOMAttributes<T>>(

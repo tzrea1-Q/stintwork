@@ -6,6 +6,7 @@ import { animate, m, useMotionValue } from "motion/react";
 import { spring, useReducedMotionSafe } from "./ui/motion";
 import { rose } from "./moments";
 import { RollingNumber } from "./ui/RollingNumber";
+import { AppearanceMenu } from "./AppearanceMenu";
 import { LanguageMenu } from "./i18n/LanguageMenu";
 import { useLanguage } from "./i18n/language";
 import { SetupGuide } from "./SetupGuide";
@@ -223,6 +224,8 @@ export function TopBar({
               }}
             >
               <LanguageMenu />
+              <DropdownMenuSeparator className="my-1 border-t border-border" />
+              <AppearanceMenu />
               <DropdownMenuSeparator className="my-1 border-t border-border" />
               <DropdownMenuItem
                 aria-haspopup="dialog"
