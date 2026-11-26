@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The UI moves with Motion and one set of motion tokens
 
-Status: accepted 2026-11-24 by the maintainer.
+Status: accepted 2026-11-24 by the maintainer; partly superseded by [ADR 0023](0023-appearance-and-motion-are-viewer-settings.md) (reduced motion from the operating system only).
 
 On 2026-11-24 the maintainer found the web UI's motion poor and pointed to Animate UI (`imskyleen/animate-ui`) as a reference. The coordinator checked the M16 build:
 

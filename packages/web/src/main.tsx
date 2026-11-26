@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import "./appearance";
 import { createRoot } from "react-dom/client";
 import { MotionRoot } from "./ui/MotionRoot";
 import { App } from "./App";
 import { Toaster } from "./ui/Sonner";
 import "./style.css";
-import "./system-theme";
 
 const root = document.getElementById("root");
 if (!root) {

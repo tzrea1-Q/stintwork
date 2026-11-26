@@ -3,7 +3,8 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MotionGlobalConfig } from "motion/react";
 import { useRef, useState } from "react";
-import { expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
+import { setMotion } from "../appearance";
 import { Button } from "./Button";
 import {
   Dialog,
@@ -285,11 +286,7 @@ test.each(["left", "right"] as const)(
 );
 
 test("a reduced-motion sheet starts with opacity only", () => {
-  vi.stubGlobal("matchMedia", () => ({
-    matches: true,
-    addEventListener() {},
-    removeEventListener() {},
-  }));
+  setMotion("reduced");
   MotionGlobalConfig.skipAnimations = false;
   try {
     render(
@@ -306,6 +303,7 @@ test("a reduced-motion sheet starts with opacity only", () => {
     expect(dialog.style.transform === "" || dialog.style.transform === "none").toBe(true);
   } finally {
     MotionGlobalConfig.skipAnimations = true;
-    vi.unstubAllGlobals();
+    setMotion("system");
+    localStorage.removeItem("stintwork.motion");
   }
 });

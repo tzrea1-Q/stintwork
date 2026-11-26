@@ -86,6 +86,10 @@ export const en = {
     pipeline: "Pipeline",
   },
   topBar: {
+    appearance: "Appearance",
+    themes: { system: "System", light: "Light", dark: "Dark" },
+    motion: "Motion",
+    motions: { system: "System", full: "Full", reduced: "Reduced" },
     language: "Language",
     languages: { en: "English", "zh-CN": "简体中文" },
     needsYou: "Needs you",
