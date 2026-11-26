@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 08 — Appearance and motion settings
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -23,15 +23,22 @@ Scope: the Settings menu, theme and motion preference modules, `src/ui/motion.ts
 
 ## Acceptance criteria
 
-- [ ] jsdom tests cover:
+- [x] jsdom tests cover:
   - both groups render with System checked by default and the stored choice checked after a reload;
   - Dark and Light override the system scheme, and System follows a live system change;
   - Reduced and Full override the system motion preference in `useReducedMotionSafe`;
   - unreadable or invalid storage falls back to System.
-- [ ] A browser spec at 1440 and 390px in `en` and `zh-CN` checks:
+- [x] A browser spec at 1440 and 390px in `en` and `zh-CN` checks:
   - choosing Dark under an emulated light scheme sets `.dark`, survives a reload, and System returns to the emulated scheme;
   - choosing Reduced under `reducedMotion: "no-preference"` stops transforms while fades still play, and Full under `reducedMotion: "reduce"` restores them;
   - the menu fits the viewport without overflow.
-- [ ] The existing browser suite still passes.
+- [x] The existing browser suite still passes.
 
 ## Comments
+
+**Coordinator, 2026-11-26:** Implemented by Codex in three rounds (initial build; Node-safe `appearance.ts` and three existing unit tests moved to `data-motion`; a race in `e2e/appearance.spec.ts` where the sampler caught the previous menu's exit). A throwaway probe confirmed that under Reduced the menu only fades (`transform: none`, opacity 0.53 → 1). Verification on 3c0d05b:
+
+- `pnpm build`, `pnpm typecheck`, `pnpm format:check` pass; `pnpm lint` shows the same 13 warnings and 8 infos as before the change.
+- `pnpm --dir packages/web test`: 100 files, 1035 tests passed.
+- Full browser suite (4 workers): 559 of 560 passed. `motion-board` "board snapshot continuity at 1440px" failed under parallel load and passed 4/4 alone with `--workers=1`. `e2e/appearance.spec.ts` passes at 1440 and 390px in `en` and `zh-CN`.
+- Screenshots reviewed: the Settings menu at 1440px `zh-CN` light and 390px `en` dark fits the viewport and matches the Language group.
