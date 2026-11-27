@@ -74,6 +74,7 @@ export const WorkItemCard = forwardRef<
     shippedMoments.add(item.slug);
   }
   const shipped = moment.current && !ringDone;
+  const layout = !skip && !reduced && visible ? "position" : false;
   const arrival = !skip && (previous ? !previous.has(item.slug) : firstLoad);
   const { rest, press } = usePress("card", { onClick: () => onOpen(item.slug) });
   const resolved = item.tickets.filter((ticket) => ticket.resolved).length;
@@ -141,7 +142,8 @@ export const WorkItemCard = forwardRef<
       }}
       data-exiting={isPresent ? undefined : item.slug}
       aria-hidden={isPresent ? undefined : true}
-      layout={!skip && !reduced && visible ? "position" : false}
+      layout={layout}
+      data-layout={layout || "off"}
       layoutId={skip || reduced || !visible ? undefined : `card-${item.slug}`}
       initial={
         arrival
@@ -175,7 +177,7 @@ export const WorkItemCard = forwardRef<
           transition={spring.celebrate}
         />
       )}
-      <m.div layout={visible ? "position" : false}>
+      <div>
         <div className="flex items-start justify-between gap-2">
           <span
             className="work-item-id inline-flex min-w-0 flex-1 items-center gap-2 font-mono text-xs text-muted-foreground [&_svg]:size-icon-sm [&_svg]:shrink-0"
@@ -310,7 +312,7 @@ export const WorkItemCard = forwardRef<
             </div>
           )}
         </div>
-      </m.div>
+      </div>
     </m.article>
   );
 });

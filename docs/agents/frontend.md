@@ -79,6 +79,7 @@ Motion is expressive within a frequency gate (ADR 0022). Use Motion (`motion/rea
 - Press scales on pointer down and on Enter or Space. Hover never scales; it changes colour, background, border or shadow.
 - Re-triggering retargets from the current value and never restarts. The keyboard animates like the pointer.
 - Text never scales. Changing text and status chips fade and blur through `tween.swap`. Containers that resize use layout animation with `layout` on their children, so nothing stretches.
+- A card's content is not a layout node of its own: the card only animates position, and toggling a child's layout off in the render that moves it leaves one frame of stale projection.
 - Motion never blocks input or focus. Controls stay usable mid-animation, focus moves into a dialog at once, and switching tabs shows the new panel without waiting for the old one to leave.
 - Live updates: when one snapshot changes more than 12 cards, or the document is hidden, skip continuity and jump to the result. Only running indicators loop. Loops pause off screen and when the document is hidden.
 - Reduced motion: set `MotionConfig reducedMotion` from the viewer’s Motion setting (`user`, `always` or `never`) and use the effective `data-motion` attribute on `<html>` for CSS (ADR 0023). Under reduced motion, drop transform, travel, scale, blur and stagger, and keep fades, colour changes and spinners. CSS reduced-motion rules use `[data-motion="reduced"]`.

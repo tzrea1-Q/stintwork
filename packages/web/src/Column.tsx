@@ -102,7 +102,7 @@ export function Column({
     >
       {rail ? (
         <m.button
-          layout="position"
+          layout={!skip && !reduced ? "position" : false}
           type="button"
           className="flex h-full w-full flex-col items-center justify-start rounded-lg focus-visible:outline-2 focus-visible:outline-ring"
           aria-label={t.column.expand(name, items.length)}
