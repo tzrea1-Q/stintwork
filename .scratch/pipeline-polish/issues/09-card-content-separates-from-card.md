@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 09 — Card content separates from its card
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -26,8 +26,15 @@ Scope: `WorkItemCard.tsx`, `Board.tsx`, `Column.tsx`, `board/*`, the stage heade
 
 ## Acceptance criteria
 
-- [ ] A browser spec pushes a snapshot over `/api/live` that moves a card to a new slot (as `e2e/motion-board.spec.ts` does) and samples every frame for 1.5 s. Under reduced motion, under a hidden document and under full motion, the card's content keeps the same offset from its card shell in every frame. The spec fails on the current code.
-- [ ] At 768px, with and without the docked panel, no stage header extends beyond `stage-board`.
-- [ ] The existing browser suite still passes.
+- [x] A browser spec pushes a snapshot over `/api/live` that moves a card to a new slot (as `e2e/motion-board.spec.ts` does) and samples every frame for 1.5 s. Under reduced motion, under a hidden document and under full motion, the card's content keeps the same offset from its card shell in every frame. The spec fails on the current code.
+- [x] At 768px, with and without the docked panel, no stage header extends beyond `stage-board`.
+- [x] The existing browser suite still passes.
 
 ## Comments
+
+**Coordinator, 2026-11-27:** Implemented by Codex in three rounds. Round 1 matched the content's layout condition to the card's and added `min-w-max` to `.stage-board`; the new spec still failed under a hidden document: one frame had both nodes `data-layout="off"`, the card at its new x and the content at `translateX(-258px)`, because Motion projects the pre-update snapshot onto a child whose layout is switched off in the render that moves it. Round 2 made the content a plain `div` but also removed the stage grid's and columns' layout nodes, which `.scratch/motion/issues/04-board-continuity.md` requires and no spec covers; round 3 restored them (the collapsed-stage button now uses `!skip && !reduced`). Verification on ec490ea:
+
+- The new `e2e/card-content-continuity.spec.ts` fails on the pre-fix code (reduced, hidden, and the 768px and 1024px-with-panel header cases) and passes with the fix.
+- `pnpm build`, `pnpm typecheck`, `pnpm format:check` pass; `pnpm lint` has the same 13 warnings and 8 infos as before.
+- `pnpm --dir packages/web test`: 101 files, 1038 tests passed.
+- Full browser suite (4 workers): 564 of 566 passed. `motion-board` "board snapshot continuity at 1440px" and `motion-moments` "live moments at 1440px" failed under parallel load and passed alone with `--workers=1` (12/12 with the new spec).
