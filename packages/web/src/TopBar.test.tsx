@@ -71,7 +71,13 @@ test.each(["en", "zh-CN"] as const)(
     expect(document.documentElement.lang).toBe(other);
     expect(localStorage.getItem(languageStorageKey)).toBe(other);
     await user.click(trigger);
-    await waitFor(() => expect(screen.getByRole("menuitemradio", { checked: true })).toHaveFocus());
+    await waitFor(() =>
+      expect(
+        within(
+          screen.getByRole("group", { name: (other === "en" ? en : zhCN).topBar.language }),
+        ).getByRole("menuitemradio", { checked: true }),
+      ).toHaveFocus(),
+    );
     await user.click(screen.getByRole("menuitemradio", { name: t.topBar.languages[language] }));
     await waitFor(() => expect(trigger).toHaveFocus());
     expect(document.documentElement.lang).toBe(language);

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # The web UI adopts shadcn/ui and a new visual language
 
-Status: partly superseded by [ADR 0020](0020-work-surfaces-drop-page-titles-and-detail-can-go-full-screen.md) (page titles and the docked-only detail)
+Status: partly superseded by [ADR 0020](0020-work-surfaces-drop-page-titles-and-detail-can-go-full-screen.md) (page titles and the docked-only detail) and [ADR 0023](0023-appearance-and-motion-are-viewer-settings.md) (the theme switch)
 
 On 2026-11-10 the maintainer found the shipped UI rough and chose Variant D of the visual prototype. It combines Variant B's top pill navigation and Overview with Variant A's Pipeline board and docked work item detail. The prototype at tag `prototype-visual-v1` is a design reference to rebuild from, never code to import.
 

@@ -116,23 +116,20 @@ test("native details use global height transitions and open at their natural hei
   );
   expect(styles).toMatch(/details\[open\]::details-content\s*\{\s*height:\s*auto;/);
   expect(styles).toMatch(
-    /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{\s*details::details-content\s*\{\s*transition:\s*none;/,
+    /\[data-motion="reduced"\]\s+details::details-content\s*\{\s*transition:\s*none;/,
   );
   expect(styles).not.toContain("@starting-style");
 });
 
 test("reduced motion keeps disclosure state indicators visible", () => {
   const styles = read("../style.css");
-  const reducedRules = [
-    ...styles.matchAll(
-      /@media\s*\(prefers-reduced-motion:\s*reduce\)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/g,
-    ),
-  ].map((match) => match[1]);
+  const reducedRules = [...styles.matchAll(/\[data-motion="reduced"\]([^{}]*)\{([^{}]*)\}/g)];
   expect(
     reducedRules.some(
-      (rule) => rule.includes(".group\\/disclosure summary svg") && /transition:\s*none/.test(rule),
+      (match) =>
+        match[1].includes(".group\\/disclosure summary svg") && /transition:\s*none/.test(match[2]),
     ),
   ).toBe(true);
-  for (const rule of reducedRules)
+  for (const [, , rule] of reducedRules)
     expect(rule).not.toMatch(/(?:^|[;{])\s*(?:rotate|transform)\s*:\s*none\b/);
 });

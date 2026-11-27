@@ -95,6 +95,10 @@ export const zhCN: Catalog = {
     pipeline: "流水线",
   },
   topBar: {
+    appearance: "外观",
+    themes: { system: "跟随系统", light: "浅色", dark: "深色" },
+    motion: "动效",
+    motions: { system: "跟随系统", full: "完整", reduced: "减弱" },
     language: "语言",
     languages: { en: "English", "zh-CN": "简体中文" },
     needsYou: "待你处理",
