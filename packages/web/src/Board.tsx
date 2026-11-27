@@ -455,7 +455,7 @@ export function Board({
                                     <m.div
                                       layout={!skip && !reduced ? "position" : false}
                                       transition={instant || skip ? { duration: 0 } : spring.layout}
-                                      className="stage-board w-full rounded-3xl bg-card p-3 shadow-card"
+                                      className="stage-board w-full min-w-max rounded-3xl bg-card p-3 shadow-card"
                                     >
                                       <m.div
                                         layout={!skip && !reduced ? "position" : false}
