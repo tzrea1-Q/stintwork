@@ -11,7 +11,9 @@ function MilestoneSelect() {
   return (
     <Select value={value} onValueChange={setValue}>
       <SelectTrigger aria-label="Milestone">
-        <SelectValue />
+        <SelectValue>
+          {value === "m1" ? "First milestone" : value === "m2" ? "Next milestone" : "All"}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All</SelectItem>
@@ -56,7 +58,9 @@ test("long option names stay available when their single-line labels truncate", 
     return (
       <Select value={value} onValueChange={setValue}>
         <SelectTrigger aria-label="Milestone">
-          <SelectValue data-truncate title={value === "all" ? "All milestones" : name} />
+          <SelectValue data-truncate title={value === "all" ? "All milestones" : name}>
+            {value === "all" ? "All milestones" : name}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All milestones</SelectItem>
@@ -65,6 +69,7 @@ test("long option names stay available when their single-line labels truncate", 
       </Select>
     );
   }
+
   render(<Picker />);
   const trigger = screen.getByRole("combobox", { name: "Milestone" });
   expect(trigger.querySelectorAll("[data-truncate]")).toHaveLength(1);
@@ -83,6 +88,12 @@ test("long option names stay available when their single-line labels truncate", 
   expect(trigger.querySelectorAll("[data-truncate]")).toHaveLength(1);
   expect(trigger.querySelector("[data-truncate]")).toHaveAttribute("title", name);
   expect(trigger.querySelector("[data-truncate]")?.childElementCount).toBe(0);
+});
+
+test("SelectValue requires explicit children", () => {
+  // @ts-expect-error A childless value would let Radix duplicate the selected text during exit.
+  const childless = <SelectValue />;
+  expect(childless).toBeDefined();
 });
 
 test("Escape and outside press dismiss without changing the selected value", async () => {
