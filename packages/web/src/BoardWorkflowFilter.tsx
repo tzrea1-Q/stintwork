@@ -27,7 +27,9 @@ export function BoardWorkflowFilter({
     previousSlug.current = openSlug;
   }, [openSlug, snapshot.workItems, workflow]);
   const available = Object.values(snapshot.workflows);
-  const selected = available.some((entry) => entry.id === workflow) ? workflow : null;
+  const selectedWorkflow = available.find((entry) => entry.id === workflow);
+  const selected = selectedWorkflow?.id ?? null;
+  const label = selectedWorkflow ? workflowName(selectedWorkflow, t) : t.pipelineBoard.allWorkflows;
   const picker = available.length > 0 && (
     <Select
       value={selected === null ? "all" : `workflow:${selected}`}
@@ -36,7 +38,9 @@ export function BoardWorkflowFilter({
       }
     >
       <SelectTrigger aria-label={t.pipelineBoard.workflow} className="max-w-48">
-        <SelectValue />
+        <SelectValue data-truncate title={label}>
+          {label}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">{t.pipelineBoard.allWorkflows}</SelectItem>
