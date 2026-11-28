@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # 10 — Workflow picker label shows twice while closing
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 ## What to build
@@ -21,8 +21,26 @@ Scope: `BoardWorkflowFilter.tsx`, `ui/Select.tsx`, and tests. Keep the menu's op
 
 ## Acceptance criteria
 
-- [ ] A browser spec opens the workflow picker on Pipeline, closes it with Escape and again by choosing an option, and samples the trigger's text on every frame for 1 s. Every frame shows the selected label exactly once, in `en` and `zh-CN`. The spec fails on the current code.
-- [ ] A jsdom test covers the same with a childless `SelectValue` in `ui/Select.tsx`, or fails if a childless `SelectValue` is used.
-- [ ] The existing browser suite still passes.
+- [x] A browser spec opens the workflow picker on Pipeline, closes it with Escape and again by choosing an option, and samples the trigger's text on every frame for 1 s. Every frame shows the selected label exactly once, in `en` and `zh-CN`. The spec fails on the current code.
+- [x] A jsdom test covers the same with a childless `SelectValue` in `ui/Select.tsx`, or fails if a childless `SelectValue` is used.
+- [x] The existing browser suite still passes.
 
 ## Comments
+
+**Coordinator, 2026-11-28:** Implemented by Codex in two rounds.
+
+- The workflow picker now passes its label as `SelectValue` children.
+- `ui/Select.tsx` wraps `Primitive.Value` with required `children`. A childless use fails `pnpm typecheck`, which `Select.test.tsx` enforces with `@ts-expect-error`.
+- Round 1's browser spec passed on the pre-fix build. It found the trigger with `getByRole`, which matches nothing while Radix hides everything outside the open listbox, so sampling started only after the close.
+- Round 2 captures the trigger before opening the menu and requires at least 3 sampled frames with the listbox present.
+
+Verification on a73cf74:
+
+- `e2e/workflow-picker-label.spec.ts` fails on a pre-fix build in `en` and `zh-CN` and passes with the fix.
+- `pnpm build`, `pnpm typecheck` and `pnpm format:check` pass. `pnpm lint` shows the same 13 warnings and 8 infos as before the change.
+- `pnpm --dir packages/web test`: 1039 of 1040 passed under load. The full suite rerun passed 1040 of 1040.
+- Full browser suite (4 workers): 565 of 568 passed. Three tests failed under parallel load and passed alone with `--workers=1` (104 of 104):
+  - `motion-board` "board snapshot continuity at 1440px";
+  - `motion-moments` "live moments at 390px";
+  - one `agent-preparation` "keyboard dismissal and focus return" case.
+
