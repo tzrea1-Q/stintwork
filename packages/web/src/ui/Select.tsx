@@ -6,6 +6,7 @@ import { Select as Primitive } from "radix-ui";
 import {
   type ComponentPropsWithoutRef,
   type ElementRef,
+  type ReactNode,
   createContext,
   forwardRef,
   useContext,
@@ -42,7 +43,13 @@ export function Select({
     </OpenContext.Provider>
   );
 }
-export const SelectValue = Primitive.Value;
+// Explicit children prevent duplicate Radix item text portals during exit.
+export const SelectValue = forwardRef<
+  ElementRef<typeof Primitive.Value>,
+  ComponentPropsWithoutRef<typeof Primitive.Value> & { children: ReactNode }
+>(function SelectValue(props, ref) {
+  return <Primitive.Value {...props} ref={ref} />;
+});
 
 export const SelectTrigger = forwardRef<
   ElementRef<typeof Primitive.Trigger>,
